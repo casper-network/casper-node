@@ -58,29 +58,41 @@ impl BlockAcceptor {
     pub(super) fn register_block(
         &mut self,
         block: Block,
-        peer: NodeId,
+        peer: Option<NodeId>,
     ) -> Result<(), AcceptorError> {
         if self.block_hash() != *block.hash() {
-            return Err(AcceptorError::BlockHashMismatch {
-                expected: self.block_hash(),
-                actual: *block.hash(),
-                peer,
-            });
+            match peer {
+                Some(node_id) => {
+                    return Err(AcceptorError::BlockHashMismatch {
+                        expected: self.block_hash(),
+                        actual: *block.hash(),
+                        peer: node_id,
+                    })
+                }
+                None => return Err(AcceptorError::InvalidConfiguration),
+            }
         }
 
         if let Err(error) = block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
-            return Err(AcceptorError::InvalidGossip(Box::new(
-                InvalidGossipError::Block {
-                    block_hash: *block.hash(),
-                    peer,
-                    validation_error: error,
-                },
-            )));
+            match peer {
+                Some(node_id) => {
+                    return Err(AcceptorError::InvalidGossip(Box::new(
+                        InvalidGossipError::Block {
+                            block_hash: *block.hash(),
+                            peer: node_id,
+                            validation_error: error,
+                        },
+                    )))
+                }
+                None => return Err(AcceptorError::InvalidConfiguration),
+            }
         }
 
-        self.register_peer(peer);
+        if let Some(node_id) = peer {
+            self.register_peer(node_id);
+        }
 
         if self.block.is_none() {
             self.touch();
@@ -93,17 +105,22 @@ impl BlockAcceptor {
     pub(super) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
-        peer: NodeId,
+        peer: Option<NodeId>,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
-            return Err(AcceptorError::InvalidGossip(Box::new(
-                InvalidGossipError::FinalitySignature {
-                    block_hash: finality_signature.block_hash,
-                    peer,
-                    validation_error: error,
-                },
-            )));
+            match peer {
+                Some(node_id) => {
+                    return Err(AcceptorError::InvalidGossip(Box::new(
+                        InvalidGossipError::FinalitySignature {
+                            block_hash: finality_signature.block_hash,
+                            peer: node_id,
+                            validation_error: error,
+                        },
+                    )))
+                }
+                None => return Err(AcceptorError::InvalidConfiguration),
+            }
         }
 
         let had_sufficient_finality = self.has_sufficient_finality;
@@ -111,7 +128,9 @@ impl BlockAcceptor {
         // while we could store the finality signature, we currently prefer
         // to store block and signatures when sufficient weight is attained
         if false == had_sufficient_finality {
-            self.register_peer(peer);
+            if let Some(node_id) = peer {
+                self.register_peer(node_id);
+            }
             self.signatures
                 .insert(finality_signature.public_key.clone(), finality_signature);
             return Ok(None);
@@ -121,12 +140,17 @@ impl BlockAcceptor {
             // if the signature's era does not match the block's era
             // its malicious / bogus / invalid.
             if block.header().era_id() != finality_signature.era_id {
-                return Err(AcceptorError::EraMismatch {
-                    block_hash: finality_signature.block_hash,
-                    expected: block.header().era_id(),
-                    actual: finality_signature.era_id,
-                    peer,
-                });
+                match peer {
+                    Some(node_id) => {
+                        return Err(AcceptorError::EraMismatch {
+                            block_hash: finality_signature.block_hash,
+                            expected: block.header().era_id(),
+                            actual: finality_signature.era_id,
+                            peer: node_id,
+                        });
+                    }
+                    None => return Err(AcceptorError::InvalidConfiguration),
+                }
             }
         } else {
             // should have block if self.has_sufficient_finality
@@ -135,7 +159,9 @@ impl BlockAcceptor {
             });
         }
 
-        self.register_peer(peer);
+        if let Some(node_id) = peer {
+            self.register_peer(node_id);
+        }
         let is_new = self
             .signatures
             .insert(

@@ -13,7 +13,6 @@ use crate::components::block_synchronizer::{
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
-use crate::types::ValidatorMatrix;
 use crate::{
     components::block_synchronizer::{
         block_acquisition::FinalitySignatureAcceptance,
@@ -23,7 +22,7 @@ use crate::{
     },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap,
+        DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -55,6 +54,7 @@ pub(super) struct BlockBuilder {
 
     // progress tracking
     last_progress: Timestamp,
+    in_flight_latch: bool,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -82,6 +82,7 @@ impl BlockBuilder {
             should_fetch_execution_state,
             requires_strict_finality,
             last_progress: Timestamp::now(),
+            in_flight_latch: false,
         }
     }
 
@@ -123,6 +124,7 @@ impl BlockBuilder {
             should_fetch_execution_state,
             requires_strict_finality,
             last_progress: Timestamp::now(),
+            in_flight_latch: false,
         }
     }
 
@@ -142,6 +144,14 @@ impl BlockBuilder {
 
     pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
+    }
+
+    pub(super) fn in_flight_latch(&self) -> bool {
+        self.in_flight_latch
+    }
+
+    pub(super) fn set_in_flight_latch(&mut self, in_flight_latch: bool) {
+        self.in_flight_latch = in_flight_latch;
     }
 
     pub(super) fn is_fatal(&self) -> bool {
@@ -183,6 +193,9 @@ impl BlockBuilder {
     }
 
     pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
+        if self.in_flight_latch() {
+            return BlockAcquisitionAction::noop();
+        }
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
                 error!("XXXXX - sufficent peers for block_hash {}", self.block_hash);
@@ -243,10 +256,12 @@ impl BlockBuilder {
         block_header: BlockHeader,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
+        let era_id = block_header.era_id();
         if let Err(error) = self.acquisition_state.register_header(block_header) {
             self.disqualify_peer(maybe_peer);
             return Err(Error::BlockAcquisition(error));
         }
+        self.era_id = Some(era_id);
         self.touch();
         self.promote_peer(maybe_peer);
         Ok(())
@@ -407,5 +422,6 @@ impl BlockBuilder {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
+        self.set_in_flight_latch(false);
     }
 }

@@ -91,9 +91,8 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
-use crate::components::ValidatorBoundComponent;
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent},
+    components::{Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent},
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
@@ -869,6 +868,7 @@ where
         self.peers_random(rng, up_to).into_keys().collect_vec()
     }
 
+    #[cfg(test)]
     /// Returns the node id of this network node.
     pub(crate) fn node_id(&self) -> NodeId {
         self.context.our_id()

@@ -20,11 +20,10 @@ use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::{TimeDiff, Timestamp};
 
-use crate::components::ValidatorBoundComponent;
 use crate::{
     components::{
         fetcher::{Error, FetchResult, FetchedData},
-        Component, ComponentStatus, InitializedComponent,
+        Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
         announcements::PeerBehaviorAnnouncement,
@@ -376,7 +375,12 @@ impl BlockSynchronizer {
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
-            match action.need_next() {
+            let need_next = action.need_next();
+            error!("XXXXX - need next: {:?}", need_next);
+            if !matches!(need_next, NeedNext::Nothing) {
+                builder.set_in_flight_latch(true);
+            }
+            match need_next {
                 NeedNext::Nothing => {}
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
@@ -487,9 +491,11 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = &mut self.forward {
+            error!("XXXXX - forward builder");
             builder_needs_next(builder);
         }
         if let Some(builder) = &mut self.historical {
+            error!("XXXXX - historical builder");
             builder_needs_next(builder);
         }
         results

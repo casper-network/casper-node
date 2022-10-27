@@ -888,9 +888,8 @@ impl reactor::Reactor for MainReactor {
                         self.block_accumulator.handle_event(
                             effect_builder,
                             rng,
-                            block_accumulator::Event::ReceivedFinalitySignature {
+                            block_accumulator::Event::CreatedFinalitySignature {
                                 finality_signature: Box::new(finality_signature.clone()),
-                                sender: self.small_network.node_id(),
                             },
                         ),
                     ));
@@ -918,10 +917,7 @@ impl reactor::Reactor for MainReactor {
                 //             .handle_event(effect_builder, rng, event),
                 //     ));
                 // }
-                let event = block_accumulator::Event::ExecutedBlock {
-                    block,
-                    sender: self.small_network.node_id(),
-                };
+                let event = block_accumulator::Event::ExecutedBlock { block };
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator

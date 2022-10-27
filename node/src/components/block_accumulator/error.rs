@@ -33,6 +33,8 @@ impl InvalidGossipError {
 pub(super) enum Error {
     #[error(transparent)]
     InvalidGossip(Box<InvalidGossipError>),
+    #[error("invalid configuration")]
+    InvalidConfiguration,
     #[error("mismatched eras detected")]
     EraMismatch {
         block_hash: BlockHash,

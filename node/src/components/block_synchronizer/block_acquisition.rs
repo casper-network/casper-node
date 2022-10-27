@@ -169,6 +169,7 @@ impl BlockAcquisitionState {
         let new_state = match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
                 if header.id() == *block_hash {
+                    error!("XXXXX - registering header");
                     BlockAcquisitionState::HaveBlockHeader(Box::new(header), signatures.clone())
                 } else {
                     return Err(Error::BlockHashMismatch {
@@ -187,7 +188,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::Fatal => return Err(Error::InvalidStateTransition),
+            | BlockAcquisitionState::Fatal => return Ok(()),
         };
         *self = new_state;
         Ok(())

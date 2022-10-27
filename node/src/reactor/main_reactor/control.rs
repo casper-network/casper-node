@@ -6,7 +6,6 @@ use tracing::{debug, error, info};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
-use crate::components::ValidatorBoundComponent;
 use crate::{
     components::{
         block_accumulator::{StartingWith, SyncInstruction},
@@ -17,7 +16,7 @@ use crate::{
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
         sync_leaper::LeapStatus,
-        upgrade_watcher, InitializedComponent,
+        upgrade_watcher, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::{

@@ -34,6 +34,7 @@ pub(crate) enum Error<T: FetcherItem> {
 impl<T: FetcherItem> Error<T> {
     pub(crate) fn is_peer_fault(&self) -> bool {
         match self {
+            // The peer claimed to have the item, so it should not be absent.
             Error::Absent { .. } | Error::Rejected { .. } | Error::TimedOut { .. } => true,
             Error::CouldNotConstructGetRequest { .. }
             | Error::ValidationMetadataMismatch { .. } => false,

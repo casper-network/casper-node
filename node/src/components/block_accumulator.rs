@@ -16,12 +16,13 @@ use casper_types::{TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{
-        announcements::BlockAccumulatorAnnouncement,
-        announcements::PeerBehaviorAnnouncement,
-        requests::BlockCompleteConfirmationRequest,
-        requests::{BlockAccumulatorRequest, StorageRequest},
+        announcements::{
+            BlockAccumulatorAnnouncement, ControlAnnouncement, PeerBehaviorAnnouncement,
+        },
+        requests::{BlockAccumulatorRequest, BlockCompleteConfirmationRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
     types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
     NodeRng,
 };
@@ -194,10 +195,13 @@ impl BlockAccumulator {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block: Block,
-        sender: NodeId,
+        sender: Option<NodeId>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
+        REv: From<StorageRequest>
+            + From<PeerBehaviorAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
     {
         let block_hash = block.hash();
 
@@ -219,7 +223,7 @@ impl BlockAccumulator {
         let acceptor = self
             .block_acceptors
             .entry(*block_hash)
-            .or_insert_with(|| BlockAcceptor::new(*block_hash, vec![sender]));
+            .or_insert_with(|| BlockAcceptor::new(*block_hash, vec![]));
 
         error!(?acceptor, "XXXXX - acceptor");
         match acceptor.register_block(block, sender) {
@@ -256,6 +260,11 @@ impl BlockAccumulator {
                 error!(%error, "should not have sufficient finality without block");
                 Effects::new()
             }
+            Err(Error::InvalidConfiguration) => fatal!(
+                effect_builder,
+                "node has an invalid configuration, shutting down"
+            )
+            .ignore(),
         }
     }
 
@@ -263,10 +272,13 @@ impl BlockAccumulator {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         finality_signature: FinalitySignature,
-        sender: NodeId,
+        sender: Option<NodeId>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
+        REv: From<StorageRequest>
+            + From<PeerBehaviorAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
     {
         // TODO: Also ignore signatures for blocks older than the highest complete one?
         // TODO: Ignore signatures for `already_handled` blocks?
@@ -275,10 +287,12 @@ impl BlockAccumulator {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
 
-        let acceptor = self
-            .block_acceptors
-            .entry(block_hash)
-            .or_insert_with(|| BlockAcceptor::new(block_hash, vec![sender]));
+        let acceptor = self.block_acceptors.entry(block_hash).or_insert_with(|| {
+            BlockAcceptor::new(
+                block_hash,
+                sender.map(|sender| vec![sender]).unwrap_or_default(),
+            )
+        });
 
         match acceptor.register_finality_signature(finality_signature, sender) {
             Ok(Some(finality_signature)) => store_block_and_finality_signatures(
@@ -324,6 +338,11 @@ impl BlockAccumulator {
                 error!(%error, "should not have sufficient finality without block");
                 Effects::new()
             }
+            Err(Error::InvalidConfiguration) => fatal!(
+                effect_builder,
+                "node has an invalid configuration, shutting down"
+            )
+            .ignore(),
         }
     }
 
@@ -410,6 +429,7 @@ pub(crate) trait ReactorEvent:
     + From<PeerBehaviorAnnouncement>
     + From<BlockAccumulatorAnnouncement>
     + From<BlockCompleteConfirmationRequest>
+    + From<ControlAnnouncement>
     + Send
     + 'static
 {
@@ -420,6 +440,7 @@ impl<REv> ReactorEvent for REv where
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
         + From<BlockCompleteConfirmationRequest>
+        + From<ControlAnnouncement>
         + Send
         + 'static
 {
@@ -441,15 +462,20 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
             Event::ValidatorMatrixUpdated => self.handle_validators(effect_builder),
             Event::ReceivedBlock { block, sender } => {
-                self.register_block(effect_builder, *block, sender)
+                self.register_block(effect_builder, *block, Some(sender))
+            }
+            Event::CreatedFinalitySignature { finality_signature } => {
+                self.register_finality_signature(effect_builder, *finality_signature, None)
             }
             Event::ReceivedFinalitySignature {
                 finality_signature,
                 sender,
-            } => self.register_finality_signature(effect_builder, *finality_signature, sender),
-            Event::ExecutedBlock { block, sender } => {
+            } => {
+                self.register_finality_signature(effect_builder, *finality_signature, Some(sender))
+            }
+            Event::ExecutedBlock { block } => {
                 let height = block.header().height();
-                let effects = self.register_block(effect_builder, *block, sender);
+                let effects = self.register_block(effect_builder, *block, None);
                 self.register_local_tip(height);
                 effects
             }

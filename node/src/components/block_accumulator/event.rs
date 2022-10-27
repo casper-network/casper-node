@@ -16,13 +16,15 @@ pub(crate) enum Event {
         block: Box<Block>,
         sender: NodeId,
     },
+    CreatedFinalitySignature {
+        finality_signature: Box<FinalitySignature>,
+    },
     ReceivedFinalitySignature {
         finality_signature: Box<FinalitySignature>,
         sender: NodeId,
     },
     ExecutedBlock {
         block: Box<Block>,
-        sender: NodeId,
     },
     Stored {
         block: Option<Box<Block>>,
@@ -46,6 +48,9 @@ impl Display for Event {
             Event::ReceivedBlock { block, sender } => {
                 write!(f, "received {} from {}", block, sender)
             }
+            Event::CreatedFinalitySignature { finality_signature } => {
+                write!(f, "created {}", finality_signature)
+            }
             Event::ReceivedFinalitySignature {
                 finality_signature,
                 sender,
@@ -55,8 +60,8 @@ impl Display for Event {
             // Event::UpdatedValidatorMatrix { era_id } => {
             //     write!(f, "validator matrix update for era {}", era_id)
             // }
-            Event::ExecutedBlock { block, sender } => {
-                write!(f, "executed block: hash={} sender={}", block.hash(), sender)
+            Event::ExecutedBlock { block } => {
+                write!(f, "executed block: hash={}", block.hash())
             }
             Event::Stored {
                 block,
