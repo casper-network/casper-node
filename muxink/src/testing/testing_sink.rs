@@ -99,6 +99,11 @@ impl TestingSink {
         )
     }
 
+    /// Returns a copy of the contents, parsed as a UTF8 encoded string.
+    pub fn get_contents_string(&self) -> String {
+        String::from_utf8(self.get_contents()).expect("non-utf8 characters in sink")
+    }
+
     /// Creates a new reference to the testing sink that also implements `Sink`.
     ///
     /// Internally, the reference has a static lifetime through `Arc` and can thus be passed
