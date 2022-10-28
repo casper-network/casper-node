@@ -204,7 +204,7 @@ impl BlockBuilder {
             }
             PeersStatus::Insufficient => {
                 error!(
-                    "XXXXX - insufficent peers for block_hash {}",
+                    "XXXXX - insufficient peers for block_hash {}",
                     self.block_hash
                 );
                 return BlockAcquisitionAction::peers(self.block_hash);

@@ -70,6 +70,10 @@ impl ValidatorMatrix {
         }
     }
 
+    pub(crate) fn public_signing_key(&self) -> &PublicKey {
+        &self.public_signing_key
+    }
+
     pub(crate) fn register_era_validator_weights(
         &mut self,
         validators: EraValidatorWeights,

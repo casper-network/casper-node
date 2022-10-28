@@ -214,7 +214,7 @@ impl MainReactor {
                     };
                 error!("XXXXX - starting with {:?}", starting_with);
                 let instruction = self.block_accumulator.sync_instruction(starting_with);
-
+                error!("XXXXX - sync_instruction {:?}", instruction);
                 match instruction {
                     SyncInstruction::Leap => {
                         // we've fallen behind, go back to catch up mode
@@ -340,9 +340,19 @@ impl MainReactor {
                                             Duration::from(timediff),
                                         );
                                     } else {
-                                        error!("XXXXX - catch_up_instructions - self.genesis_committed = true;");
-                                        self.genesis_committed = true;
-                                        return CatchUpInstruction::CommitGenesis;
+                                        error!("XXXXX - catch_up_instructions - checking if we're validator");
+                                        match self.chainspec.network_config.is_genesis_validator(
+                                            self.validator_matrix.public_signing_key(),
+                                        ) {
+                                            Some(true) => {
+                                                error!("XXXXX - catch_up_instructions - we're validator: self.genesis_committed = true;");
+                                                self.genesis_committed = true;
+                                                return CatchUpInstruction::CommitGenesis;
+                                            }
+                                            Some(false) | None => {
+                                                error!("XXXXX - catch_up_instructions - we're NOT a validator");
+                                            }
+                                        }
                                     }
                                 }
                                 // we are post genesis, have no local blocks, and no trusted hash
@@ -447,8 +457,12 @@ impl MainReactor {
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip
         let trusted_hash = starting_with.block_hash();
-        match self.block_accumulator.sync_instruction(starting_with) {
-            SyncInstruction::Leap => match self.sync_leaper.leap_status() {
+        let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
+        let leap_status = self.sync_leaper.leap_status();
+        error!("XXXXX - sync_instruction: {:?}", sync_instruction);
+        error!("XXXXX - leap_status: {:?}", leap_status);
+        match sync_instruction {
+            SyncInstruction::Leap => match leap_status {
                 LeapStatus::Inactive | LeapStatus::Failed { .. } => {
                     let peers_to_ask = self.small_network.peers_random_vec(
                         rng,

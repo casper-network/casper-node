@@ -3,9 +3,12 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::Serialize;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(test)]
 use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey,
+};
 
 use super::AccountsConfig;
 
@@ -19,6 +22,14 @@ pub struct NetworkConfig {
     // Note: `accounts_config` must be the last field on this struct due to issues in the TOML
     // crate - see <https://github.com/alexcrichton/toml-rs/search?q=ValueAfterTable&type=issues>.
     pub(crate) accounts_config: AccountsConfig,
+}
+
+impl NetworkConfig {
+    pub(crate) fn is_genesis_validator(&self, public_key: &PublicKey) -> Option<bool> {
+        self.accounts_config
+            .account(public_key)
+            .map(|account| account.is_genesis_validator())
+    }
 }
 
 #[cfg(test)]
