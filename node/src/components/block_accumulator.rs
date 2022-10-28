@@ -23,7 +23,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, Item, NodeId, ValidatorMatrix},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -205,7 +205,7 @@ impl BlockAccumulator {
     {
         let block_hash = block.hash();
 
-        error!(%block_hash, "XXXXX - register_block");
+        // error!(%block_hash, "XXXXX - register_block");
 
         let era_id = block.header().era_id();
         let block_height = block.header().height();
@@ -225,7 +225,7 @@ impl BlockAccumulator {
             .entry(*block_hash)
             .or_insert_with(|| BlockAcceptor::new(*block_hash, vec![]));
 
-        error!(?acceptor, "XXXXX - acceptor");
+        // error!(?acceptor, "XXXXX - acceptor");
         match acceptor.register_block(block, sender) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
                 Some(evw) => store_block_and_finality_signatures(
@@ -282,7 +282,7 @@ impl BlockAccumulator {
     {
         // TODO: Also ignore signatures for blocks older than the highest complete one?
         // TODO: Ignore signatures for `already_handled` blocks?
-        error!(id=%finality_signature.id(), "XXXXX - register_finality_signature");
+        // error!(id=%finality_signature.id(), "XXXXX - register_finality_signature");
 
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
@@ -305,7 +305,7 @@ impl BlockAccumulator {
                     acceptor.should_store_block(evw),
                 ),
                 None => {
-                    error!("XXXXX - received finality_signature, insufficent finality");
+                    // error!("XXXXX - received finality_signature, insufficent finality");
                     Effects::new()
                 }
             },

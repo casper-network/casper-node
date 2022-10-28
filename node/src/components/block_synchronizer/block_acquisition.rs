@@ -119,8 +119,6 @@ pub(super) enum BlockAcquisitionState {
     HaveWeakFinalitySignatures(Box<BlockHeader>, SignatureAcquisition),
     #[display(fmt = "HaveBlock")]
     HaveBlock(Box<Block>, SignatureAcquisition, DeployAcquisition),
-    #[display(fmt = "HaveApprovalsHashes")]
-    HaveApprovalsHashes(Box<Block>, SignatureAcquisition, DeployAcquisition),
     #[display(fmt = "HaveGlobalState")]
     HaveGlobalState(
         Box<Block>,
@@ -135,6 +133,8 @@ pub(super) enum BlockAcquisitionState {
         DeployAcquisition,
         ExecutionResultsChecksum,
     ),
+    #[display(fmt = "HaveApprovalsHashes")]
+    HaveApprovalsHashes(Box<Block>, SignatureAcquisition, DeployAcquisition),
     #[display(fmt = "HaveAllDeploys")]
     HaveAllDeploys(Box<BlockHeader>, SignatureAcquisition),
     #[display(fmt = "HaveStrictFinalitySignatures")]
@@ -290,6 +290,7 @@ impl BlockAcquisitionState {
     ) -> Result<FinalitySignatureAcceptance, Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(header, acquired_signatures)
             | BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
                 if false == acquired_signatures.apply_signature(signature) {
                     return Ok(FinalitySignatureAcceptance::Noop);
@@ -309,7 +310,10 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            BlockAcquisitionState::HaveAllExecutionResults(block, acquired_signatures, _, _) => {
+            BlockAcquisitionState::HaveBlock(block, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveGlobalState(block, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveApprovalsHashes(block, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveAllExecutionResults(block, acquired_signatures, ..) => {
                 if false == acquired_signatures.apply_signature(signature) {
                     return Ok(FinalitySignatureAcceptance::Noop);
                 };
@@ -332,11 +336,7 @@ impl BlockAcquisitionState {
             // we never ask for finality signatures while in these states, thus it's always
             // erroneous to attempt to apply any
             BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
-            | BlockAcquisitionState::HaveBlock(..)
-            | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
                 return Ok(FinalitySignatureAcceptance::Noop);
             }
@@ -347,7 +347,8 @@ impl BlockAcquisitionState {
 
     pub(super) fn register_marked_complete(&mut self) -> Result<(), Error> {
         let new_state = match self {
-            BlockAcquisitionState::HaveBlock(block, acquired_signatures, _) => {
+            BlockAcquisitionState::HaveBlock(block, acquired_signatures, _)
+            | BlockAcquisitionState::HaveGlobalState(block, acquired_signatures, ..) => {
                 BlockAcquisitionState::HaveStrictFinalitySignatures(
                     Box::new(block.header().clone()),
                     acquired_signatures.clone(),
@@ -359,20 +360,14 @@ impl BlockAcquisitionState {
                     acquired_signatures.clone(),
                 )
             }
-            BlockAcquisitionState::HaveApprovalsHashes(block, acquired_signatures, ..)
-            | BlockAcquisitionState::HaveAllExecutionResults(block, acquired_signatures, ..) => {
-                BlockAcquisitionState::HaveStrictFinalitySignatures(
-                    Box::new(block.header().clone()),
-                    acquired_signatures.clone(),
-                )
-            }
 
             // we never ask for finality signatures while in these states, thus it's always
             // erroneous to attempt to apply any
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
-            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Fatal => {
                 return Ok(());
@@ -702,9 +697,23 @@ impl BlockAcquisitionState {
                     block, peer_list, rng,
                 ))
             }
-            BlockAcquisitionState::HaveGlobalState(block, _, _, exec_results) => {
+            BlockAcquisitionState::HaveGlobalState(
+                block,
+                signatures,
+                deploy_state,
+                exec_results,
+            ) => {
                 if should_fetch_execution_state == false {
                     return Err(Error::InvalidStateTransition);
+                }
+                if deploy_state.needs_deploy().is_none() {
+                    return Ok(BlockAcquisitionAction::strict_finality_signatures(
+                        peer_list,
+                        rng,
+                        block.header(),
+                        validator_weights,
+                        signatures,
+                    ));
                 }
                 match exec_results {
                     ExecutionResultsAcquisition::Complete { .. }

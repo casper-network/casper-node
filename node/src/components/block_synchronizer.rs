@@ -1008,7 +1008,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     }
                     Event::MarkedComplete(block_hash) => {
                         self.register_marked_complete(&block_hash);
-                        self.hook_need_next(effect_builder, Effects::new())
+                        Effects::new()
+                        // self.hook_need_next(effect_builder, Effects::new())
                     }
 
                     Event::AccumulatedPeers(block_hash, Some(peers)) => {

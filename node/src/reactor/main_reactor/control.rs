@@ -192,26 +192,49 @@ impl MainReactor {
                 }
             },
             ReactorState::KeepUp => {
-                // todo! if sync to genesis == true, determine if cycles
-                // are available to get next earliest historical block via synchronizer
                 error!("XXXXX - we are now in keep up");
 
-                let starting_with =
-                    match self.block_synchronizer.maybe_executable_block_identifier() {
-                        Some((block_hash, block_height)) => {
-                            StartingWith::ExecutableBlock(block_hash, block_height)
+                // todo! if sync to genesis == true, determine if cycles
+                // are available to get next earliest historical block via synchronizer
+
+                if let Some(block_hash) = self.immediate_switch_block {
+                    match self.create_required_eras(effect_builder, rng) {
+                        // if node is in validator set and era supervisor has what it needs
+                        // to run, switch to validate mode
+                        Ok(Some(mut effects)) => {
+                            self.state = ReactorState::Validate;
+                            self.block_synchronizer.pause();
+                            return (Duration::ZERO, effects);
                         }
-                        None => match self.block_synchronizer.maybe_finished_block_identifier() {
-                            None => {
-                                // this should be unreachable
-                                self.state = ReactorState::CatchUp;
-                                return (Duration::ZERO, Effects::new());
+                        Ok(None) => {
+                            if let Err(msg) = self.check_upgrade() {
+                                return (Duration::ZERO, utils::new_shutdown_effect(msg));
                             }
-                            Some((block_hash, block_height)) => {
-                                StartingWith::SyncedBlockIdentifier(block_hash, block_height)
-                            }
-                        },
-                    };
+                        }
+                        Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                    }
+                }
+
+                let foo = self.block_synchronizer.maybe_executable_block_identifier();
+                error!("XXXXX - in keep up -- block ID: {:?}", foo);
+                let starting_with = match foo {
+                    Some((block_hash, block_height)) => {
+                        error!("XXXXX - have executable block {}", block_hash);
+                        StartingWith::ExecutableBlock(block_hash, block_height)
+                    }
+                    None => match self.block_synchronizer.maybe_finished_block_identifier() {
+                        None => {
+                            // this should only be reachable immediately after genesis or upgrade.
+                            error!("XXXXX - should be unreachable");
+                            self.state = ReactorState::CatchUp;
+                            return (Duration::ZERO, Effects::new());
+                        }
+                        Some((block_hash, block_height)) => {
+                            error!("XXXXX - have synced historical block {}", block_hash);
+                            StartingWith::SyncedBlockIdentifier(block_hash, block_height)
+                        }
+                    },
+                };
                 error!("XXXXX - starting with {:?}", starting_with);
                 let instruction = self.block_accumulator.sync_instruction(starting_with);
                 error!("XXXXX - sync_instruction {:?}", instruction);
@@ -275,6 +298,7 @@ impl MainReactor {
                 }
             }
             ReactorState::Validate => {
+                error!("XXXXX - we are now in validate");
                 //if self.upgrade_watcher.should_upgrade_after(era_id)
                 // todo! only validators should actually apply upgrades and sign them and gossip
                 // them; other nodes should instead sync to them
@@ -282,6 +306,9 @@ impl MainReactor {
                 //         Ok(effects) => return (WAIT_DURATION, effects),
                 //         Err(msg) => return (Duration::ZERO, utils::new_shutdown_effect(msg)),
                 //     }
+
+                // todo! - only needs checked at switch blocks.
+
                 match self.create_required_eras(effect_builder, rng) {
                     Ok(Some(effects)) => return (Duration::ZERO, effects),
                     Ok(None) => {
@@ -327,9 +354,9 @@ impl MainReactor {
                                 error!(
                                     "XXXXX - catch_up_instructions - got immediate switch block"
                                 );
-                                StartingWith::BlockIdentifier(*block.hash(), block.height())
+                                StartingWith::SyncedBlockIdentifier(*block.hash(), block.height())
                             }
-                            Ok(None) if !self.genesis_committed => {
+                            Ok(None) if self.immediate_switch_block.is_none() => {
                                 if let ActivationPoint::Genesis(timestamp) =
                                     self.chainspec.protocol_config.activation_point
                                 {
@@ -346,7 +373,6 @@ impl MainReactor {
                                         ) {
                                             Some(true) => {
                                                 error!("XXXXX - catch_up_instructions - we're validator: self.genesis_committed = true;");
-                                                self.genesis_committed = true;
                                                 return CatchUpInstruction::CommitGenesis;
                                             }
                                             Some(false) | None => {
@@ -488,6 +514,7 @@ impl MainReactor {
                     from_peers,
                     ..
                 } => {
+                    error!("XXXXX - recvd sync leap: {:?}", best_available);
                     for validator_weights in best_available
                         .era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
                     {
@@ -562,12 +589,26 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Result<Option<Effects<MainEvent>>, String> {
+        error!(
+            "XXXXX - in create_required_eras, {:?}",
+            self.validator_matrix
+        );
+
         let highest_switch_block_header = match self.recent_switch_block_headers.last() {
-            None => return Ok(None),
+            None => {
+                error!("XXXXX - recent_switch_block_headers is empty");
+                return Ok(None);
+            }
             Some(header) => header,
         };
+        error!(
+            "XXXXX - last recent_switch_block_headers: {} - {}",
+            highest_switch_block_header.block_hash(),
+            highest_switch_block_header.era_id()
+        );
 
         if let Some(current_era) = self.consensus.current_era() {
+            error!("XXXXX - consensus current era {}", current_era.value());
             if highest_switch_block_header.next_block_era_id() <= current_era {
                 return Ok(Some(Effects::new()));
             }
@@ -583,6 +624,7 @@ impl MainReactor {
             Some(weights) => weights,
         };
         if !highest_era_weights.contains_key(self.consensus.public_key()) {
+            error!("XXXXX - we are not a validator");
             return Ok(None);
         }
 
@@ -590,6 +632,7 @@ impl MainReactor {
             .deploy_buffer
             .have_full_ttl_of_deploys(highest_switch_block_header.height())
         {
+            error!("XXXXX - we don't have TTL of deploys");
             return Ok(None);
         }
 
@@ -597,13 +640,21 @@ impl MainReactor {
             .upgrade_watcher
             .should_upgrade_after(highest_switch_block_header.era_id())
         {
+            error!("XXXXX - upgrade required");
             return Ok(None);
         }
 
-        Ok(self
-            .consensus
-            .create_required_eras(effect_builder, rng, &self.recent_switch_block_headers)
-            .map(|effects| reactor::wrap_effects(MainEvent::Consensus, effects)))
+        let foo = self.consensus.create_required_eras(
+            effect_builder,
+            rng,
+            &self.recent_switch_block_headers,
+        );
+        error!(
+            "XXXXX - trying to create required eras in consensus: is some: {}",
+            foo.is_some()
+        );
+
+        Ok(foo.map(|effects| reactor::wrap_effects(MainEvent::Consensus, effects)))
     }
 
     fn commit_genesis(

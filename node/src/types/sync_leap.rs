@@ -60,7 +60,7 @@ impl SyncLeap {
             })
             .chain(self.switch_blocks().flat_map(move |block_header| {
                 Some(EraValidatorWeights::new(
-                    block_header.era_id(),
+                    block_header.next_block_era_id(),
                     block_header.next_era_validator_weights().cloned()?,
                     fault_tolerance_fraction,
                 ))
