@@ -27,7 +27,7 @@ use datasize::DataSize;
 use derive_more::From;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{error, info};
 
 use casper_types::{EraId, PublicKey, Timestamp};
 
@@ -268,6 +268,7 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        error!("{:?}", event);
         match event {
             Event::Timer {
                 era_id,

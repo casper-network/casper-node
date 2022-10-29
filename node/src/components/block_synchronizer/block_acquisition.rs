@@ -190,6 +190,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => return Ok(()),
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -237,6 +238,7 @@ impl BlockAcquisitionState {
                 return Ok(());
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -279,6 +281,7 @@ impl BlockAcquisitionState {
                 return Ok(());
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -341,6 +344,7 @@ impl BlockAcquisitionState {
                 return Ok(FinalitySignatureAcceptance::Noop);
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(FinalitySignatureAcceptance::Noop)
     }
@@ -374,6 +378,7 @@ impl BlockAcquisitionState {
                 // todo!: return Err(Error::InvalidAttemptToMarkComplete);
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -430,6 +435,7 @@ impl BlockAcquisitionState {
                 // todo!: return Err(Error::InvalidAttemptToApplyDeploy { deploy_id });
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -474,6 +480,7 @@ impl BlockAcquisitionState {
                 return Ok(());
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -506,7 +513,6 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
                 return Ok(());
-                // todo!: return Err(Error::InvalidAttemptToApplyExecutionResultsChecksum);
             }
         };
         Ok(())
@@ -578,7 +584,6 @@ impl BlockAcquisitionState {
                     },
                     Err(error) => {
                         error!(%error, "failed to apply execution results");
-                        // todo!: return Err(Error::ExecutionResults(error))
                         return Ok(None);
                     }
                 }
@@ -594,9 +599,9 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
                 return Ok(None);
-                // todo!(): return Err(Error::InvalidAttemptToApplyExecutionResults)
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(ret)
     }
@@ -628,9 +633,9 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal => {
                 return Ok(());
-                // todo!: return Err(Error::InvalidAttemptToApplyStoredExecutionResults);
             }
         };
+        error!("YYY - current state: {:?} new state: {:?}", self, new_state);
         *self = new_state;
         Ok(())
     }
@@ -642,25 +647,26 @@ impl BlockAcquisitionState {
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
     ) -> Result<BlockAcquisitionAction, Error> {
-        match self {
+        let next_action = match self {
             BlockAcquisitionState::Initialized(block_hash, ..) => Ok(
                 BlockAcquisitionAction::block_header(peer_list, rng, *block_hash),
             ),
             BlockAcquisitionState::HaveBlockHeader(block_header, signatures) => {
                 if validator_weights.is_empty() {
-                    return Ok(BlockAcquisitionAction::era_validators(
+                    Ok(BlockAcquisitionAction::era_validators(
                         validator_weights.era_id(),
-                    ));
+                    ))
+                } else {
+                    Ok(BlockAcquisitionAction::finality_signatures(
+                        peer_list,
+                        rng,
+                        block_header,
+                        validator_weights
+                            .missing_validators(signatures.have_signatures())
+                            .cloned()
+                            .collect(),
+                    ))
                 }
-                Ok(BlockAcquisitionAction::finality_signatures(
-                    peer_list,
-                    rng,
-                    block_header,
-                    validator_weights
-                        .missing_validators(signatures.have_signatures())
-                        .cloned()
-                        .collect(),
-                ))
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => {
                 error!(
@@ -675,27 +681,25 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveBlock(block, signatures, deploy_state) => {
                 if should_fetch_execution_state {
-                    return Ok(BlockAcquisitionAction::global_state(
+                    Ok(BlockAcquisitionAction::global_state(
                         peer_list,
                         rng,
                         *block.hash(),
                         *block.state_root_hash(),
-                    ));
-                }
-
-                if deploy_state.needs_deploy().is_none() {
-                    return Ok(BlockAcquisitionAction::strict_finality_signatures(
+                    ))
+                } else if deploy_state.needs_deploy().is_none() {
+                    Ok(BlockAcquisitionAction::strict_finality_signatures(
                         peer_list,
                         rng,
                         block.header(),
                         validator_weights,
                         signatures,
-                    ));
+                    ))
+                } else {
+                    Ok(BlockAcquisitionAction::approvals_hashes(
+                        block, peer_list, rng,
+                    ))
                 }
-
-                Ok(BlockAcquisitionAction::approvals_hashes(
-                    block, peer_list, rng,
-                ))
             }
             BlockAcquisitionState::HaveGlobalState(
                 block,
@@ -704,51 +708,51 @@ impl BlockAcquisitionState {
                 exec_results,
             ) => {
                 if should_fetch_execution_state == false {
-                    return Err(Error::InvalidStateTransition);
-                }
-                if deploy_state.needs_deploy().is_none() {
-                    return Ok(BlockAcquisitionAction::strict_finality_signatures(
+                    Err(Error::InvalidStateTransition)
+                } else if deploy_state.needs_deploy().is_none() {
+                    Ok(BlockAcquisitionAction::strict_finality_signatures(
                         peer_list,
                         rng,
                         block.header(),
                         validator_weights,
                         signatures,
-                    ));
-                }
-                match exec_results {
-                    ExecutionResultsAcquisition::Complete { .. }
-                    | ExecutionResultsAcquisition::Mapped { .. } => {
-                        Err(Error::InvalidAttemptToAcquireExecutionResults)
-                    }
-                    ExecutionResultsAcquisition::Needed { .. } => {
-                        error!(
-                            "XXXXX - getting execution results root hash for block {}",
-                            block.hash()
-                        );
-                        Ok(BlockAcquisitionAction::execution_results_root_hash(
-                            *block.hash(),
-                            *block.state_root_hash(),
-                        ))
-                    }
-                    acq @ ExecutionResultsAcquisition::Pending { .. }
-                    | acq @ ExecutionResultsAcquisition::Incomplete { .. } => {
-                        match acq.needs_value_or_chunk() {
-                            None => {
-                                debug!(block_hash=%block.hash(), "by design, execution_results_acquisition.needs_value_or_chunk() should never be None for these variants for block_hash");
-                                Err(Error::InvalidAttemptToAcquireExecutionResults)
-                            }
-                            Some((next, checksum)) => {
-                                error!(
-                                    "XXXXX - getting execution results for block {}",
-                                    block.hash()
-                                );
-                                Ok(BlockAcquisitionAction::execution_results(
-                                    *block.hash(),
-                                    peer_list,
-                                    rng,
-                                    next,
-                                    checksum,
-                                ))
+                    ))
+                } else {
+                    match exec_results {
+                        ExecutionResultsAcquisition::Complete { .. }
+                        | ExecutionResultsAcquisition::Mapped { .. } => {
+                            Err(Error::InvalidAttemptToAcquireExecutionResults)
+                        }
+                        ExecutionResultsAcquisition::Needed { .. } => {
+                            error!(
+                                "XXXXX - getting execution results root hash for block {}",
+                                block.hash()
+                            );
+                            Ok(BlockAcquisitionAction::execution_results_root_hash(
+                                *block.hash(),
+                                *block.state_root_hash(),
+                            ))
+                        }
+                        acq @ ExecutionResultsAcquisition::Pending { .. }
+                        | acq @ ExecutionResultsAcquisition::Incomplete { .. } => {
+                            match acq.needs_value_or_chunk() {
+                                None => {
+                                    debug!(block_hash=%block.hash(), "by design, execution_results_acquisition.needs_value_or_chunk() should never be None for these variants for block_hash");
+                                    Err(Error::InvalidAttemptToAcquireExecutionResults)
+                                }
+                                Some((next, checksum)) => {
+                                    error!(
+                                        "XXXXX - getting execution results for block {}",
+                                        block.hash()
+                                    );
+                                    Ok(BlockAcquisitionAction::execution_results(
+                                        *block.hash(),
+                                        peer_list,
+                                        rng,
+                                        next,
+                                        checksum,
+                                    ))
+                                }
                             }
                         }
                     }
@@ -761,41 +765,42 @@ impl BlockAcquisitionState {
                 checksum,
             ) => {
                 if should_fetch_execution_state == false {
-                    return Err(Error::InvalidStateTransition);
-                }
-
-                match deploys.needs_deploy() {
-                    Some(missing_deploys) => {
-                        if let ExecutionResultsChecksum::Checkable(_) = checksum {
-                            return Ok(BlockAcquisitionAction::approvals_hashes(
-                                block, peer_list, rng,
-                            ));
-                        }
-                        match missing_deploys {
-                            Either::Left(deploy_hash) => {
-                                Ok(BlockAcquisitionAction::deploy_by_hash(
-                                    *block.hash(),
-                                    deploy_hash,
-                                    peer_list,
-                                    rng,
+                    Err(Error::InvalidStateTransition)
+                } else {
+                    match deploys.needs_deploy() {
+                        Some(missing_deploys) => {
+                            if let ExecutionResultsChecksum::Checkable(_) = checksum {
+                                Ok(BlockAcquisitionAction::approvals_hashes(
+                                    block, peer_list, rng,
                                 ))
+                            } else {
+                                match missing_deploys {
+                                    Either::Left(deploy_hash) => {
+                                        Ok(BlockAcquisitionAction::deploy_by_hash(
+                                            *block.hash(),
+                                            deploy_hash,
+                                            peer_list,
+                                            rng,
+                                        ))
+                                    }
+                                    Either::Right(deploy_id) => {
+                                        Ok(BlockAcquisitionAction::deploy_by_id(
+                                            *block.hash(),
+                                            deploy_id,
+                                            peer_list,
+                                            rng,
+                                        ))
+                                    }
+                                }
                             }
-                            Either::Right(deploy_id) => Ok(BlockAcquisitionAction::deploy_by_id(
-                                *block.hash(),
-                                deploy_id,
-                                peer_list,
-                                rng,
-                            )),
                         }
-                    }
-                    None => {
-                        return Ok(BlockAcquisitionAction::strict_finality_signatures(
+                        None => Ok(BlockAcquisitionAction::strict_finality_signatures(
                             peer_list,
                             rng,
                             block.header(),
                             validator_weights,
                             signatures,
-                        ))
+                        )),
                     }
                 }
             }
@@ -846,10 +851,13 @@ impl BlockAcquisitionState {
                 Ok(BlockAcquisitionAction::noop())
             }
             BlockAcquisitionState::Fatal => Ok(BlockAcquisitionAction::noop()),
-        }
+        };
+        error!("next_action: {:?}", next_action);
+        next_action
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct BlockAcquisitionAction {
     peers_to_ask: Vec<NodeId>,
     need_next: NeedNext,

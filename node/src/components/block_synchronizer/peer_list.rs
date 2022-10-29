@@ -133,19 +133,18 @@ impl PeerList {
 
     pub(super) fn need_peers(&mut self) -> PeersStatus {
         if self.peer_list.is_empty() {
-            error!("XXXXX - PeersStatus::Insufficient 1");
+            error!("XXXXX - peer_list.is_empty()");
             return PeersStatus::Insufficient;
         }
 
         // periodically ask for refreshed peers
         if Timestamp::now().saturating_diff(self.keep_fresh) > self.peer_refresh_interval {
+            error!("XXXXX - peer_list.is_stale()");
             self.keep_fresh = Timestamp::now();
             return PeersStatus::Stale;
         }
 
-        // if reliable / untried peer count is below self.simultaneous_peers, ask for new peers
         //let reliability_goal = self.max_simultaneous_peers as usize;
-
         if self
             .peer_list
             .iter()
@@ -156,21 +155,11 @@ impl PeerList {
             })
             .count()
             == 0
+        // < reliability_goal
         {
-            error!(peer_list = ?self.peer_list, "XXXXX - PeersStatus::Insufficient 2");
-            self.keep_fresh = Timestamp::now();
+            error!(peer_list = ?self.peer_list, "XXXXX - peer_list.is_under_goal()");
             return PeersStatus::Insufficient;
         }
-
-        // if self
-        //     .peer_list
-        //     .iter()
-        //     .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
-        //     .count()
-        //     < reliability_goal
-        // {
-        //     return PeersStatus::Insufficient;
-        // }
 
         PeersStatus::Sufficient
     }

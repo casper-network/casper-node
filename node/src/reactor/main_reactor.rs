@@ -127,7 +127,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    immediate_switch_block: Option<BlockHash>,
+    switch_block: Option<BlockHash>,
 
     // todo! add this to the status endpoint maybe?
     last_progress: Timestamp,
@@ -321,7 +321,7 @@ impl reactor::Reactor for MainReactor {
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,
-            immediate_switch_block: None,
+            switch_block: None,
         };
 
         let effects = effect_builder
@@ -875,10 +875,12 @@ impl reactor::Reactor for MainReactor {
                     "executed block"
                 );
 
-                if block.header().is_switch_block() && block.body().proposer().is_system() {
-                    self.immediate_switch_block = Some(*block.hash());
+                let is_switch_block = block.header().is_switch_block();
+                if is_switch_block {
+                    error!("XXXXX - block_hash: {} is a switch block", block.id());
+                    self.switch_block = Some(block_hash);
                 } else {
-                    self.immediate_switch_block = None;
+                    self.switch_block = None;
                 }
 
                 let execution_results_map: HashMap<_, _> = execution_results

@@ -78,13 +78,9 @@ impl BlockAccumulator {
         // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
         // AFTER the f-seq cant help you, SYNC-all-state
         // |------------- future chain ------------------------> ?
-        let should_fetch_execution_state = starting_with.should_fetch_execution_state();
-
         let maybe_highest_usable_block_height = self.highest_usable_block_height();
-
         match starting_with {
             StartingWith::ExecutableBlock(block_hash, block_height) => {
-                // keep up only
                 match maybe_highest_usable_block_height {
                     None => {
                         return SyncInstruction::BlockExec {
@@ -128,28 +124,27 @@ impl BlockAccumulator {
                     self.last_progress = Timestamp::now();
                     return SyncInstruction::BlockSync {
                         block_hash,
-                        should_fetch_execution_state,
+                        should_fetch_execution_state: starting_with.is_executable(),
                     };
                 }
             }
-            StartingWith::BlockIdentifier(block_hash, block_height) => {
-                // catch up only
+            StartingWith::LocalTip(block_hash, block_height)
+            | StartingWith::BlockIdentifier(block_hash, block_height) => {
                 if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
                     self.last_progress = Timestamp::now();
                     return SyncInstruction::BlockSync {
                         block_hash,
-                        should_fetch_execution_state,
+                        should_fetch_execution_state: starting_with.is_executable(),
                     };
                 }
             }
             StartingWith::SyncedBlockIdentifier(block_hash, block_height) => {
-                // catch up only
                 if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
                     if let Some(child_hash) = self.next_syncable_block_hash(block_hash) {
                         self.last_progress = Timestamp::now();
                         return SyncInstruction::BlockSync {
                             block_hash: child_hash,
-                            should_fetch_execution_state,
+                            should_fetch_execution_state: starting_with.is_executable(),
                         };
                     } else if self.last_progress.elapsed() < self.dead_air_interval {
                         return SyncInstruction::CaughtUp;
@@ -204,9 +199,6 @@ impl BlockAccumulator {
             + Send,
     {
         let block_hash = block.hash();
-
-        // error!(%block_hash, "XXXXX - register_block");
-
         let era_id = block.header().era_id();
         let block_height = block.header().height();
         if self
