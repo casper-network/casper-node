@@ -594,6 +594,7 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
 
+                // todo! should we notify Consensus if we are not in Validate mode or not a validator?
                 // Consensus must be notified to keep track of executed blocks and create finality
                 // signatures.
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
@@ -628,7 +629,6 @@ impl reactor::Reactor for MainReactor {
                             block_synchronizer::Event::ValidatorMatrixUpdated,
                         ),
                     ));
-
                     effects.extend(reactor::wrap_effects(
                         MainEvent::Network,
                         self.small_network.handle_event(
