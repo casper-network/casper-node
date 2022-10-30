@@ -130,7 +130,7 @@ impl BlockAccumulator {
                 self.next_syncable_block_hash(block_hash),
             ) {
                 (true, None) => {
-                    // the block we just finished syncing appears has no perceived children
+                    // the block we just finished syncing appears to have no perceived children
                     // and is either at tip or within execution range of tip
                     None
                 }
@@ -141,16 +141,25 @@ impl BlockAccumulator {
             match block_hash_to_sync {
                 Some(block_hash) => {
                     self.last_progress = Timestamp::now();
-                    SyncInstruction::BlockSync {
+                    return SyncInstruction::BlockSync {
                         block_hash,
                         should_fetch_execution_state: starting_with.is_historical(),
-                    }
+                    };
                 }
-                None => SyncInstruction::CaughtUp,
+                None => {
+                    // we expect to be receiving gossiped blocks from other nodes
+                    // if we haven't received any messages describing higher blocks
+                    // for more than the self.dead_air_interval config allows
+                    // we leap again to poll the network
+                    if self.last_progress.elapsed() < self.dead_air_interval {
+                        return SyncInstruction::CaughtUp;
+                    }
+                    // we don't want to swamp the network with "are we there yet" leaps.
+                    self.last_progress = Timestamp::now();
+                }
             }
-        } else {
-            SyncInstruction::Leap
         }
+        SyncInstruction::Leap
     }
 
     fn should_sync(&mut self, starting_with_block_height: u64) -> bool {
