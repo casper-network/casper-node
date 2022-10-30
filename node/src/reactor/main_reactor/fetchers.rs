@@ -7,7 +7,7 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec, Deploy,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
         FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
     FetcherConfig, NodeRng,
@@ -29,7 +29,6 @@ pub(super) struct Fetchers {
 impl Fetchers {
     pub(super) fn new(
         config: &FetcherConfig,
-        chainspec: &Chainspec,
         metrics_registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetchers {

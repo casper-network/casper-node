@@ -1,7 +1,5 @@
-use datasize::DataSize;
 use std::time::Duration;
-use tokio::time;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
@@ -21,41 +19,16 @@ use crate::{
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::{
         self,
-        main_reactor::{utils, MainEvent, MainReactor},
-        Reactor,
+        main_reactor::{
+            catch_up_instruction::CatchUpInstruction, utils, MainEvent, MainReactor, ReactorState,
+        },
     },
-    types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, Item,
-        ValidatorMatrix,
-    },
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, Item},
     NodeRng,
 };
 
 // todo!: put in the config
 pub(crate) const WAIT_DURATION: Duration = Duration::from_secs(2);
-
-#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug)]
-pub(crate) enum ReactorState {
-    // get all components and reactor state set up on start
-    Initialize,
-    // orient to the network and attempt to catch up to tip
-    CatchUp,
-    // stay caught up with tip
-    KeepUp,
-    // node is currently caught up and is an active validator
-    Validate,
-    // node should be shut down for upgrade
-    Upgrade,
-}
-
-enum CatchUpInstruction {
-    Do(Effects<MainEvent>),
-    CheckSoon(String),
-    CheckLater(String, Duration),
-    Shutdown(String),
-    CaughtUp,
-    CommitGenesis,
-}
 
 impl MainReactor {
     pub(super) fn crank(
@@ -81,11 +54,10 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
         let current_state = self.state;
-        error!("ZZZ - current_state: {:?}", current_state);
+        info!("{:?}", current_state);
         match current_state {
             ReactorState::Initialize => {
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.diagnostics_port,
                     "diagnostics",
                     MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
@@ -93,7 +65,6 @@ impl MainReactor {
                     return (Duration::ZERO, effects);
                 }
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.upgrade_watcher,
                     "upgrade_watcher",
                     MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
@@ -101,7 +72,6 @@ impl MainReactor {
                     return (Duration::ZERO, effects);
                 }
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.small_network,
                     "small_network",
                     MainEvent::Network(small_network::Event::Initialize),
@@ -109,7 +79,6 @@ impl MainReactor {
                     return (Duration::ZERO, effects);
                 }
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.event_stream_server,
                     "event_stream_server",
                     MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
@@ -117,7 +86,6 @@ impl MainReactor {
                     return (Duration::ZERO, effects);
                 }
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.rest_server,
                     "rest_server",
                     MainEvent::RestServer(rest_server::Event::Initialize),
@@ -125,7 +93,6 @@ impl MainReactor {
                     return (Duration::ZERO, effects);
                 }
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.rpc_server,
                     "rpc_server",
                     MainEvent::RpcServer(rpc_server::Event::Initialize),
@@ -133,7 +100,6 @@ impl MainReactor {
                     return (Duration::ZERO, effects);
                 }
                 if let Some(effects) = utils::initialize_component(
-                    effect_builder,
                     &mut self.block_synchronizer,
                     "block_synchronizer",
                     MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
@@ -166,7 +132,6 @@ impl MainReactor {
                     };
                     let event = deploy_buffer::Event::Initialize(blocks);
                     if let Some(effects) = utils::initialize_component(
-                        effect_builder,
                         &mut self.deploy_buffer,
                         "deploy_buffer",
                         MainEvent::DeployBuffer(event),
@@ -203,11 +168,11 @@ impl MainReactor {
 
                 // if on a switch block, check if we should go to Validate
                 if let Some(block_hash) = self.switch_block {
-                    error!("XXXXX - switch_block");
+                    error!("XXXXX - switch_block: {}", block_hash);
                     match self.create_required_eras(effect_builder, rng) {
                         // if node is in validator set and era supervisor has what it needs
                         // to run, switch to validate mode
-                        Ok(Some(mut effects)) => {
+                        Ok(Some(effects)) => {
                             error!("XXXXX - switch to validate mode");
                             self.state = ReactorState::Validate;
                             self.block_synchronizer.pause();
@@ -465,7 +430,7 @@ impl MainReactor {
                     self.attempts += 1;
                     if self.attempts > self.max_attempts {
                         return CatchUpInstruction::Shutdown(
-                            "catch up process exceeds idle tolerances".to_string(),
+                            "CatchUp block sync idleness exceeded reattempt tolerance".to_string(),
                         );
                     }
                 }
@@ -495,7 +460,22 @@ impl MainReactor {
         error!("XXXXX - leap_status: {:?}", leap_status);
         match sync_instruction {
             SyncInstruction::Leap => match leap_status {
-                LeapStatus::Inactive | LeapStatus::Failed { .. } => {
+                ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
+                    if let LeapStatus::Failed {
+                        error,
+                        block_hash: _,
+                        from_peers: _,
+                        in_flight: _,
+                    } = ls
+                    {
+                        self.attempts += 1;
+                        if self.attempts > self.max_attempts {
+                            return CatchUpInstruction::Shutdown(format!(
+                                "CatchUp failed leap exceeded reattempt tolerance: {}",
+                                error,
+                            ));
+                        }
+                    }
                     let peers_to_ask = self.small_network.peers_random_vec(
                         rng,
                         self.chainspec
@@ -723,6 +703,8 @@ impl MainReactor {
         }
     }
 
+    // todo!("remove this after we wire up method again")
+    #[allow(dead_code)]
     fn commit_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -809,9 +791,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         let mut effects = Effects::new();
-        if let Some((block_hash, block_height)) =
-            self.block_synchronizer.maybe_executable_block_identifier()
-        {
+        if let Some((block_hash, _)) = self.block_synchronizer.maybe_executable_block_identifier() {
             match self.storage.make_executable_block(&block_hash) {
                 Ok(Some((finalized_block, deploys))) => {
                     effects.extend(

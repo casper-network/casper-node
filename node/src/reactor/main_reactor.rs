@@ -1,6 +1,3 @@
-// todo!("Remove this")
-#![allow(unused)]
-
 //! Main reactor for nodes.
 
 mod config;
@@ -11,6 +8,8 @@ mod fetchers;
 mod memory_metrics;
 mod utils;
 
+mod catch_up_instruction;
+mod reactor_state;
 #[cfg(test)]
 mod tests;
 
@@ -57,14 +56,12 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::{
-        self,
-        event_queue_metrics::EventQueueMetrics,
-        main_reactor::{control::ReactorState, fetchers::Fetchers},
+        self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
         EventQueueHandle, ReactorExit,
     },
     types::{
-        ApprovalsHashes, Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy,
-        ExitCode, FinalitySignature, Item, TrieOrChunk, ValidatorMatrix,
+        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
+        FinalitySignature, Item, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -72,6 +69,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
+pub(crate) use reactor_state::ReactorState;
 
 /// Main node reactor.
 #[derive(DataSize, Debug)]
@@ -231,7 +229,7 @@ impl reactor::Reactor for MainReactor {
 
         // local / remote data management
         let sync_leaper = SyncLeaper::new(chainspec.highway_config.finality_threshold_fraction);
-        let fetchers = Fetchers::new(&config.fetcher, chainspec.as_ref(), registry)?;
+        let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
         let block_gossiper = Gossiper::new_for_partial_items(
@@ -280,8 +278,6 @@ impl reactor::Reactor for MainReactor {
         let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
         let era_count = chainspec.number_of_past_switch_blocks_needed();
         let recent_switch_block_headers = storage.read_highest_switch_block_headers(era_count)?;
-
-        let genesis_committed = false;
 
         let reactor = MainReactor {
             chainspec,
@@ -775,13 +771,14 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                let deploy_footprint = match deploy.footprint() {
-                    Ok(deploy_footprint) => deploy_footprint,
-                    Err(error) => {
-                        error!(%error, "invalid deploy");
-                        return Effects::new();
-                    }
-                };
+                // todo! does anyone remember why we put this in? currently not used.
+                // let deploy_footprint = match deploy.footprint() {
+                //     Ok(deploy_footprint) => deploy_footprint,
+                //     Err(error) => {
+                //         error!(%error, "invalid deploy");
+                //         return Effects::new();
+                //     }
+                // };
 
                 let mut effects = self.dispatch_event(
                     effect_builder,
@@ -986,9 +983,10 @@ impl reactor::Reactor for MainReactor {
                     upcoming_era_validators,
                 },
             ) => {
-                // the components that need to follow the era validators should have
-                // a handle on the validator matrix
-                error!("XXXXX - self.validator_matrix.register_eras");
+                info!(
+                    "UpcomingEraValidators era_that_is_ending: {}",
+                    era_that_is_ending
+                );
                 self.validator_matrix.register_eras(upcoming_era_validators);
                 Effects::new()
             }
@@ -1072,7 +1070,6 @@ impl MainReactor {
     }
 }
 
-use crate::effect::{requests::NetworkRequest, AutoClosingResponder};
 #[cfg(test)]
 use crate::{testing::network::NetworkedReactor, types::NodeId};
 

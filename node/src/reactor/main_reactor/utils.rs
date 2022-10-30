@@ -1,18 +1,13 @@
 use futures::FutureExt;
 use smallvec::smallvec;
 
-use crate::{
-    components::InitializedComponent,
-    effect::{EffectBuilder, EffectExt, Effects},
-    reactor::main_reactor::MainEvent,
-};
+use crate::{components::InitializedComponent, effect::Effects, reactor::main_reactor::MainEvent};
 
 pub(super) fn new_shutdown_effect<T: ToString + Send + 'static>(message: T) -> Effects<MainEvent> {
     smallvec![async move { smallvec![MainEvent::Shutdown(message.to_string())] }.boxed()]
 }
 
 pub(super) fn initialize_component(
-    effect_builder: EffectBuilder<MainEvent>,
     component: &mut impl InitializedComponent<MainEvent>,
     component_name: &str,
     initiating_event: MainEvent,
