@@ -9,9 +9,11 @@ mod memory_metrics;
 mod utils;
 
 mod catch_up_instruction;
+mod keep_up_instruction;
 mod reactor_state;
 #[cfg(test)]
 mod tests;
+mod validate_instruction;
 
 use std::{cmp::Ordering, collections::HashMap, sync::Arc, time::Instant};
 

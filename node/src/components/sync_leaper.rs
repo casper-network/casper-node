@@ -220,7 +220,7 @@ impl SyncLeaper {
                                 self.finality_threshold_fraction.into(),
                             )
                             .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                                trusted_hash: block_hash,
+                                block_hash,
                                 fetch_result,
                             }),
                     );
@@ -241,7 +241,7 @@ impl SyncLeaper {
                             self.finality_threshold_fraction.into(),
                         )
                         .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                            trusted_hash: block_hash,
+                            block_hash,
                             fetch_result,
                         }),
                 );
@@ -347,11 +347,11 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::AttemptLeap {
-                trusted_hash,
+                block_hash: trusted_hash,
                 peers_to_ask,
             } => self.register_leap_attempt(effect_builder, trusted_hash, peers_to_ask),
             Event::FetchedSyncLeapFromPeer {
-                trusted_hash,
+                block_hash: trusted_hash,
                 fetch_result,
             } => self.fetch_received(trusted_hash, fetch_result),
         }

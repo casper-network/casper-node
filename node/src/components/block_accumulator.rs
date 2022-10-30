@@ -85,7 +85,7 @@ impl BlockAccumulator {
                     Some(height) => height,
                     None => {
                         // we have no height for this block hash, so we must leap
-                        return SyncInstruction::Leap;
+                        return SyncInstruction::Leap { block_hash };
                     }
                 }
             }
@@ -117,7 +117,10 @@ impl BlockAccumulator {
                 }
                 ret
             };
-            return SyncInstruction::BlockExec { next_block_hash };
+            return SyncInstruction::BlockExec {
+                block_hash,
+                next_block_hash,
+            };
         }
 
         if starting_with.is_local_tip() {
@@ -159,7 +162,7 @@ impl BlockAccumulator {
                 }
             }
         }
-        SyncInstruction::Leap
+        SyncInstruction::Leap { block_hash }
     }
 
     fn should_sync(&mut self, starting_with_block_height: u64) -> bool {

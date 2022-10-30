@@ -195,24 +195,6 @@ impl BlockSynchronizer {
         None
     }
 
-    /// Returns the block hash and height of the historical block (if finished).
-    pub(crate) fn maybe_synced_historical_block_identifier(&self) -> Option<(BlockHash, u64)> {
-        if let Some(historical) = &self.historical {
-            if historical.is_finished() {
-                match historical.block_height() {
-                    None => {
-                        error!("block_height should be Some");
-                        return None;
-                    }
-                    Some(height) => {
-                        return Some((historical.block_hash(), height));
-                    }
-                }
-            }
-        }
-        None
-    }
-
     /// Registers a block for synchronization.
     pub(crate) fn register_block_by_hash(
         &mut self,

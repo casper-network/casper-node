@@ -10,11 +10,11 @@ use crate::{
 #[derive(Debug, Serialize)]
 pub(crate) enum Event {
     AttemptLeap {
-        trusted_hash: BlockHash,
+        block_hash: BlockHash,
         peers_to_ask: Vec<NodeId>,
     },
     FetchedSyncLeapFromPeer {
-        trusted_hash: BlockHash,
+        block_hash: BlockHash,
         fetch_result: FetchResult<SyncLeap>,
     },
 }
@@ -23,7 +23,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::AttemptLeap {
-                trusted_hash,
+                block_hash: trusted_hash,
                 peers_to_ask,
             } => write!(
                 f,
@@ -31,7 +31,7 @@ impl Display for Event {
                 trusted_hash, peers_to_ask
             ),
             Event::FetchedSyncLeapFromPeer {
-                trusted_hash,
+                block_hash: trusted_hash,
                 fetch_result,
             } => write!(
                 f,
