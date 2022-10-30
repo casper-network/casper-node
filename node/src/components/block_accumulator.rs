@@ -70,6 +70,27 @@ impl BlockAccumulator {
     }
 
     pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
+        let block_hash = starting_with.block_hash();
+        let block_height = match starting_with.block_height() {
+            Some(height) => height,
+            None => {
+                let maybe_height = {
+                    if let Some(block_acceptor) = self.block_acceptors.get(&block_hash) {
+                        block_acceptor.block_height()
+                    } else {
+                        None
+                    }
+                };
+                match maybe_height {
+                    Some(height) => height,
+                    None => {
+                        // we have no height for this block hash, so we must leap
+                        return SyncInstruction::Leap;
+                    }
+                }
+            }
+        };
+
         // BEFORE the f-seq cant help you, LEAP
         // ? |------------- future chain ------------------------>
         // IN f-seq not in range of tip, LEAP
@@ -78,101 +99,68 @@ impl BlockAccumulator {
         // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
         // AFTER the f-seq cant help you, SYNC-all-state
         // |------------- future chain ------------------------> ?
-        let maybe_highest_usable_block_height = self.highest_usable_block_height();
-        match starting_with {
-            StartingWith::ExecutableBlock(block_hash, block_height) => {
-                match maybe_highest_usable_block_height {
-                    None => {
-                        return SyncInstruction::BlockExec {
-                            next_block_hash: None,
-                        };
+        if starting_with.is_executable_block() {
+            let next_block_hash = {
+                let mut ret: Option<BlockHash> = None;
+                if let Some(highest_perceived) = self.highest_usable_block_height() {
+                    if block_height > highest_perceived {
+                        self.block_acceptors
+                            .insert(block_hash, BlockAcceptor::new(block_hash, vec![]));
                     }
-                    Some(highest_perceived) => {
-                        if block_height > highest_perceived {
-                            self.block_acceptors
-                                .insert(block_hash, BlockAcceptor::new(block_hash, vec![]));
-                            return SyncInstruction::BlockExec {
-                                next_block_hash: None,
-                            };
-                        }
-                        if highest_perceived == block_height {
-                            return SyncInstruction::BlockExec {
-                                next_block_hash: None,
-                            };
-                        }
-                        if highest_perceived.saturating_sub(self.attempt_execution_threshold)
-                            <= block_height
-                        {
-                            return SyncInstruction::BlockExec {
-                                next_block_hash: self.next_syncable_block_hash(block_hash),
-                            };
-                        }
+                    if highest_perceived.saturating_sub(self.attempt_execution_threshold)
+                        <= block_height
+                    {
+                        // this will short circuit the block synchronizer to start syncing the
+                        // child of this block after enqueueing this block for execution
+                        ret = self.next_syncable_block_hash(block_hash)
                     }
                 }
-            }
-            StartingWith::Hash(block_hash) => {
-                let (block_hash, maybe_block_height) = match self.block_acceptors.get(&block_hash) {
-                    None => {
-                        // the accumulator is unaware of the starting-with block
-                        return SyncInstruction::Leap;
-                    }
-                    Some(block_acceptor) => {
-                        (block_acceptor.block_hash(), block_acceptor.block_height())
-                    }
-                };
-                if self.should_sync(maybe_block_height, maybe_highest_usable_block_height) {
-                    self.last_progress = Timestamp::now();
-                    return SyncInstruction::BlockSync {
-                        block_hash,
-                        should_fetch_execution_state: starting_with.is_executable(),
-                    };
-                }
-            }
-            StartingWith::LocalTip(block_hash, block_height)
-            | StartingWith::BlockIdentifier(block_hash, block_height) => {
-                if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
-                    self.last_progress = Timestamp::now();
-                    return SyncInstruction::BlockSync {
-                        block_hash,
-                        should_fetch_execution_state: starting_with.is_executable(),
-                    };
-                }
-            }
-            StartingWith::SyncedBlockIdentifier(block_hash, block_height) => {
-                if self.should_sync(Some(block_height), maybe_highest_usable_block_height) {
-                    if let Some(child_hash) = self.next_syncable_block_hash(block_hash) {
-                        self.last_progress = Timestamp::now();
-                        return SyncInstruction::BlockSync {
-                            block_hash: child_hash,
-                            should_fetch_execution_state: starting_with.is_executable(),
-                        };
-                    } else if self.last_progress.elapsed() < self.dead_air_interval {
-                        return SyncInstruction::CaughtUp;
-                    }
-                }
-            }
+                ret
+            };
+            return SyncInstruction::BlockExec { next_block_hash };
         }
-        SyncInstruction::Leap
+
+        if starting_with.is_local_tip() {
+            self.register_local_tip(block_height);
+        }
+
+        if self.should_sync(block_height) {
+            let block_hash_to_sync = match (
+                starting_with.is_synced_block_identifier(),
+                self.next_syncable_block_hash(block_hash),
+            ) {
+                (true, None) => {
+                    // the block we just finished syncing appears has no perceived children
+                    // and is either at tip or within execution range of tip
+                    None
+                }
+                (true, Some(child_hash)) => Some(child_hash),
+                (false, _) => Some(block_hash),
+            };
+
+            match block_hash_to_sync {
+                Some(block_hash) => {
+                    self.last_progress = Timestamp::now();
+                    SyncInstruction::BlockSync {
+                        block_hash,
+                        should_fetch_execution_state: starting_with.is_historical(),
+                    }
+                }
+                None => SyncInstruction::CaughtUp,
+            }
+        } else {
+            SyncInstruction::Leap
+        }
     }
 
-    fn should_sync(
-        &mut self,
-        maybe_starting_with_block_height: Option<u64>,
-        maybe_highest_usable_block_height: Option<u64>,
-    ) -> bool {
-        match (
-            maybe_starting_with_block_height,
-            maybe_highest_usable_block_height,
-        ) {
-            (None, _) | (_, None) => false,
-            (Some(starting_with), Some(highest_usable_block_height)) => {
-                let height_diff = highest_usable_block_height.saturating_sub(starting_with);
-                if height_diff == 0 {
-                    true
-                } else {
-                    height_diff <= self.attempt_execution_threshold
-                }
+    fn should_sync(&mut self, starting_with_block_height: u64) -> bool {
+        match self.highest_usable_block_height() {
+            Some(highest_usable_block_height) => {
+                let height_diff =
+                    highest_usable_block_height.saturating_sub(starting_with_block_height);
+                height_diff <= self.attempt_execution_threshold
             }
+            None => false,
         }
     }
 
