@@ -76,7 +76,7 @@ impl Display for Error {
                 write!(f, "invalid attempt to apply execution results")
             }
             Error::InvalidAttemptToApplyExecutionResultsChecksum => {
-                write!(f, "invalid attempt to apply execution results root hash")
+                write!(f, "invalid attempt to apply execution results checksum")
             }
             Error::InvalidAttemptToApplyStoredExecutionResults => {
                 write!(f, "invalid attempt to apply stored execution results notification; execution results are not in terminal state")
@@ -478,7 +478,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    pub(super) fn register_execution_results_root_hash(
+    pub(super) fn register_execution_results_checksum(
         &mut self,
         execution_results_checksum: ExecutionResultsChecksum,
         need_execution_state: bool,
@@ -722,10 +722,10 @@ impl BlockAcquisitionState {
                     }
                     ExecutionResultsAcquisition::Needed { .. } => {
                         error!(
-                            "XXXXX - getting execution results root hash for block {}",
+                            "XXXXX - getting execution results checksum for block {}",
                             block.hash()
                         );
-                        Ok(BlockAcquisitionAction::execution_results_root_hash(
+                        Ok(BlockAcquisitionAction::execution_results_checksum(
                             *block.hash(),
                             *block.state_root_hash(),
                         ))
@@ -878,13 +878,13 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn execution_results_root_hash(
+    pub(super) fn execution_results_checksum(
         block_hash: BlockHash,
         global_state_root_hash: Digest,
     ) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::ExecutionResultsRootHash(block_hash, global_state_root_hash),
+            need_next: NeedNext::ExecutionResultsChecksum(block_hash, global_state_root_hash),
         }
     }
 

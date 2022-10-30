@@ -1367,11 +1367,11 @@ mod tests {
             ),
             format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
             format!(
-                r#"{{"BlockExecutionResultsRootHash":"block-effects-root-hash-{}"}}"#,
+                r#"{{"BlockExecutionResultsChecksum":"block-effects-checksum-{}"}}"#,
                 BLOCK_HEIGHT
             ),
             format!(
-                r#"{{"DeployApprovalsRootHash":"deploy-approvals-root-hash-{}"}}"#,
+                r#"{{"DeployApprovalsChecksum":"deploy-approvals-checksum-{}"}}"#,
                 BLOCK_HEIGHT
             ),
         ];

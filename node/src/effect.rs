@@ -718,13 +718,10 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkRequest<P>>,
     {
         self.make_request(
-            |responder| {
-                error!("XXXXX - broadcast_message_to_validators");
-                NetworkRequest::ValidatorBroadcast {
-                    payload: Box::new(payload),
-                    era_id,
-                    auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
-                }
+            |responder| NetworkRequest::ValidatorBroadcast {
+                payload: Box::new(payload),
+                era_id,
+                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
         )
@@ -2115,9 +2112,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns the value of the deploys' approvals root hash stored in the ChecksumRegistry for the
+    /// Returns the value of the deploys' approvals checksum stored in the ChecksumRegistry for the
     /// given state root hash.
-    pub(crate) async fn get_approvals_root_hash(
+    pub(crate) async fn get_approvals_checksum(
         self,
         state_root_hash: Digest,
     ) -> Result<Option<Digest>, engine_state::Error>
@@ -2125,7 +2122,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetApprovalsRootHash {
+            |responder| ContractRuntimeRequest::GetApprovalsChecksum {
                 state_root_hash,
                 responder,
             },
@@ -2134,9 +2131,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns the value of the execution results root hash stored in the ChecksumRegistry for the
+    /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
-    pub(crate) async fn get_execution_results_root_hash(
+    pub(crate) async fn get_execution_results_checksum(
         self,
         state_root_hash: Digest,
     ) -> Result<Option<Digest>, engine_state::Error>
@@ -2144,7 +2141,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetExecutionResultsRootHash {
+            |responder| ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
                 responder,
             },

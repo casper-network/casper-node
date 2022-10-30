@@ -527,7 +527,7 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetApprovalsRootHash {
+            ContractRuntimeRequest::GetApprovalsChecksum {
                 state_root_hash,
                 responder,
             } => {
@@ -541,7 +541,7 @@ impl ContractRuntime {
                     });
                 responder.respond(result).ignore()
             }
-            ContractRuntimeRequest::GetExecutionResultsRootHash {
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
                 responder,
             } => {

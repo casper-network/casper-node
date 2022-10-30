@@ -710,7 +710,6 @@ impl reactor::Reactor for MainReactor {
             )) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
-                error!("XXXXX - MainEvent::FinalitySignatureIncoming");
                 // Finality signature received via broadcast.
                 let sender = incoming.sender;
                 let finality_signature = incoming.message;

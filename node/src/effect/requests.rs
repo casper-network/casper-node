@@ -1062,15 +1062,15 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-    /// Returns the value of the deploys' approvals root hash stored in the ChecksumRegistry for
+    /// Returns the value of the deploys' approvals checksum stored in the ChecksumRegistry for
     /// the given state root hash.
-    GetApprovalsRootHash {
+    GetApprovalsChecksum {
         state_root_hash: Digest,
         responder: Responder<Result<Option<Digest>, engine_state::Error>>,
     },
-    /// Returns the value of the execution results root hash stored in the ChecksumRegistry for the
+    /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
-    GetExecutionResultsRootHash {
+    GetExecutionResultsChecksum {
         state_root_hash: Digest,
         responder: Responder<Result<Option<Digest>, engine_state::Error>>,
     },
@@ -1167,7 +1167,7 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
 
-            ContractRuntimeRequest::GetApprovalsRootHash {
+            ContractRuntimeRequest::GetApprovalsChecksum {
                 state_root_hash, ..
             } => write!(
                 formatter,
@@ -1175,11 +1175,11 @@ impl Display for ContractRuntimeRequest {
                 state_root_hash
             ),
 
-            ContractRuntimeRequest::GetExecutionResultsRootHash {
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash, ..
             } => write!(
                 formatter,
-                "get execution results root hash under {}",
+                "get execution results checksum under {}",
                 state_root_hash
             ),
 
