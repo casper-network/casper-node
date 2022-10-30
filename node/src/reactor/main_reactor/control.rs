@@ -200,6 +200,8 @@ impl MainReactor {
             ReactorState::KeepUp => {
                 // todo! determine if cycles are available to get next
                 // earliest historical block via synchronizer
+
+                // if on a switch block, check if we should go to Validate
                 if let Some(block_hash) = self.switch_block {
                     error!("XXXXX - switch_block");
                     match self.create_required_eras(effect_builder, rng) {
@@ -224,13 +226,6 @@ impl MainReactor {
                     }
                 }
 
-                // what to do when starting from local tip which is also network tip?
-                // synchronizer has nothing
-                // neither executable_block nor finalized_block are populated
-                // so, we switch back to catch up
-                // in catch up, the accumulator says we are caught up
-                // and we bounce back and forth
-
                 let maybe_executable_block_id =
                     self.block_synchronizer.maybe_executable_block_identifier();
                 error!(
@@ -242,15 +237,18 @@ impl MainReactor {
                         error!("XXXXX - have executable block {}", block_hash);
                         StartingWith::ExecutableBlock(block_hash, block_height)
                     }
-                    None => match self.block_synchronizer.maybe_finished_block_identifier() {
-                        None => {
-                            error!("XXXXX - should be unreachable");
-                            self.state = ReactorState::CatchUp;
-                            return (Duration::ZERO, Effects::new());
-                        }
+                    None => match self
+                        .block_synchronizer
+                        .maybe_synced_historical_block_identifier()
+                    {
                         Some((block_hash, block_height)) => {
                             error!("XXXXX - have synced historical block {}", block_hash);
                             StartingWith::SyncedBlockIdentifier(block_hash, block_height)
+                        }
+                        None => {
+                            error!("XXXXX - the block synchronizer is either empty or idle");
+                            self.state = ReactorState::CatchUp;
+                            return (Duration::ZERO, Effects::new());
                         }
                     },
                 };

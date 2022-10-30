@@ -603,8 +603,15 @@ impl reactor::Reactor for MainReactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
 
                 // if it is a switch block, get validators
-                if let Some(era_end) = block.header().era_end() {
+                if let Some(validator_weights) = block.header().next_era_validator_weights() {
+                    self.switch_block = Some(block.id());
                     let era_id = block.header().era_id();
+                    self.validator_matrix
+                        .register_validator_weights(era_id.successor(), validator_weights.clone());
+                    error!(
+                        "XXXXX - notifying components of validator weights at end of: {}",
+                        era_id
+                    );
                     effects.extend(reactor::wrap_effects(
                         MainEvent::BlockAccumulator,
                         self.block_accumulator.handle_event(
@@ -650,7 +657,10 @@ impl reactor::Reactor for MainReactor {
                             .push(block.header().clone()),
                     }
                 }
-
+                error!(
+                    "XXXXX - notifying block gossiper to send out block_hash: {}",
+                    block.id()
+                );
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockGossiper,
                     self.block_gossiper.handle_event(
@@ -667,6 +677,11 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
             ) => {
+                error!(
+                    "XXXXX - notifying finality signature gossiper to send out block_hash: {} public_key: {}",
+                    finality_signature.block_hash,
+                    finality_signature.public_key,
+                );
                 let mut effects = reactor::wrap_effects(
                     MainEvent::FinalitySignatureGossiper,
                     self.finality_signature_gossiper.handle_event(

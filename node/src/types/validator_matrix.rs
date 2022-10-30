@@ -86,7 +86,7 @@ impl ValidatorMatrix {
             .is_none()
     }
 
-    fn register_validator_weights(
+    pub(crate) fn register_validator_weights(
         &mut self,
         era_id: EraId,
         validator_weights: BTreeMap<PublicKey, U512>,

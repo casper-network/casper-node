@@ -196,7 +196,7 @@ impl BlockSynchronizer {
     }
 
     /// Returns the block hash and height of the historical block (if finished).
-    pub(crate) fn maybe_finished_block_identifier(&self) -> Option<(BlockHash, u64)> {
+    pub(crate) fn maybe_synced_historical_block_identifier(&self) -> Option<(BlockHash, u64)> {
         if let Some(historical) = &self.historical {
             if historical.is_finished() {
                 match historical.block_height() {
