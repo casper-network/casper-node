@@ -459,6 +459,7 @@ mod tests {
     use tokio_util::sync::PollSender;
 
     use crate::testing::{
+        collect_buf, collect_bufs,
         encoding::EncodeAndSend,
         testing_sink::{BufferingClogAdapter, TestingSink, TestingSinkRef},
     };
@@ -487,20 +488,10 @@ mod tests {
         (sink, stream)
     }
 
-    // Backpressure requirements
-    //     impl<Item, A, S, AckErr> Sink<Item> for BackpressuredSink<S, A, Item>
-    // where
-    // S: Sink<Item> + Unpin,
-    // Self: Unpin,
-    // A: Stream<Item = Result<u64, AckErr>> + Unpin,
-    // AckErr: std::error::Error,
-    // <S as Sink<Item>>::Error: std::error::Error,
-
     /// A common set of fixtures used in the backpressure tests.
     ///
     /// The fixtures represent what a server holds when dealing with a backpressured client.
-
-    struct Fixtures {
+    struct OneWayFixtures {
         /// A sender for ACKs back to the client.
         ack_sink: Box<dyn Sink<u64, Error = Infallible> + Unpin>,
         /// The clients sink for requests, with no backpressure wrapper. Used for retrieving the
@@ -514,7 +505,7 @@ mod tests {
         >,
     }
 
-    impl Fixtures {
+    impl OneWayFixtures {
         /// Creates a new set of fixtures.
         fn new() -> Self {
             let sink = Arc::new(TestingSink::new());
@@ -532,13 +523,52 @@ mod tests {
         }
     }
 
+    /// A more complicated setup for testing backpressure that allows accessing both sides of the backpressured connection.
+    ///
+    /// The resulting `client` sends byte frames across to the `server`, with ACKs flowing through
+    /// the associated ACK pipe.
+    struct TwoWayFixtures {
+        client: BackpressuredSink<
+            Box<dyn Sink<Bytes, Error = Infallible> + Unpin>,
+            Box<dyn Stream<Item = Result<u64, Infallible>> + Unpin>,
+            Bytes,
+        >,
+        server: BackpressuredStream<
+            Box<dyn Stream<Item = Result<Bytes, Infallible>> + Unpin>,
+            Box<dyn Sink<u64, Error = Infallible> + Unpin>,
+            Bytes,
+        >,
+    }
+
+    impl TwoWayFixtures {
+        fn new(size: usize) -> Self {
+            let (sink, stream) = setup_io_pipe::<Bytes>(size);
+
+            let (ack_sink, ack_stream) = setup_io_pipe::<u64>(size);
+
+            let boxed_sink: Box<dyn Sink<Bytes, Error = Infallible> + Unpin + 'static> =
+                Box::new(sink);
+            let boxed_ack_stream: Box<dyn Stream<Item = Result<u64, Infallible>> + Unpin> =
+                Box::new(ack_stream);
+
+            let client = BackpressuredSink::new(boxed_sink, boxed_ack_stream, WINDOW_SIZE);
+
+            let boxed_stream: Box<dyn Stream<Item = Result<Bytes, Infallible>> + Unpin> =
+                Box::new(stream);
+            let boxed_ack_sink: Box<dyn Sink<u64, Error = Infallible> + Unpin> = Box::new(ack_sink);
+            let server = BackpressuredStream::new(boxed_stream, boxed_ack_sink, WINDOW_SIZE);
+
+            TwoWayFixtures { client, server }
+        }
+    }
+
     #[test]
     fn backpressured_sink_lifecycle() {
-        let Fixtures {
+        let OneWayFixtures {
             mut ack_sink,
             sink,
             mut bp,
-        } = Fixtures::new();
+        } = OneWayFixtures::new();
 
         // The first four attempts at `window_size = 3` should succeed.
         bp.encode_and_send('A').now_or_never().unwrap().unwrap();
@@ -640,137 +670,145 @@ mod tests {
 
     #[test]
     fn backpressured_roundtrip() {
-        // // Our main communications channel is emulated by a tokio channel. We send `u16`s as data.
-        // let (sender, receiver) = tokio::sync::mpsc::channel::<io::Result<u16>>(u16::MAX as usize);
+        let TwoWayFixtures {
+            mut client,
+            mut server,
+        } = TwoWayFixtures::new(1024);
 
-        // let (ack_sender, clean_ack_receiver) = tokio::sync::mpsc::channel::<u64>(u16::MAX as usize);
+        // This test assumes a hardcoded window size of 3.
+        assert_eq!(WINDOW_SIZE, 3);
 
-        // let ack_receiver_stream =
-        //     ReceiverStream::new(clean_ack_receiver).map(|ack| io::Result::Ok(ack));
+        // Send just enough requests to max out the receive window of the backpressured channel.
+        for i in 0..=3u8 {
+            client.encode_and_send(i).now_or_never().unwrap().unwrap();
+        }
 
-        // let mut sink = BackpressuredSink::new(
-        //     PollSender::new(sender),
-        //     ReceiverStream::new(ack_receiver_stream),
-        //     WINDOW_SIZE,
-        // );
+        // Sanity check: Attempting to send another item will be refused by the client side's
+        // limiter to avoid exceeding the allowed window.
+        assert!(client.encode_and_send(99 as u8).now_or_never().is_none());
 
-        // // Our main data stream is infallible (FIXME: Just sent `Ok` instead).
-        // let stream = ReceiverStream::new(receiver);
-        // let mut stream = BackpressuredStream::new(stream, PollSender::new(ack_sender), WINDOW_SIZE);
+        let mut items = VecDeque::new();
+        let mut tickets = VecDeque::new();
 
-        // // Fill up sink to capacity of the channel.
-        // for i in 0..=WINDOW_SIZE {
-        //     sink.send(Ok(i as u16)).now_or_never().unwrap().unwrap();
-        // }
+        // Receive the items along with their tickets all at once.
+        for _ in 0..=WINDOW_SIZE as u8 {
+            let (item, ticket) = server.next().now_or_never().unwrap().unwrap().unwrap();
+            items.push_back(item);
+            tickets.push_back(ticket);
+        }
 
-        // let mut items = VecDeque::new();
-        // let mut tickets = VecDeque::new();
+        // We simulate the completion of two items by dropping their tickets.
+        let _ = tickets.pop_front();
+        let _ = tickets.pop_front();
 
-        // // Receive the items along with their tickets.
-        // for _ in 0..=WINDOW_SIZE {
-        //     let (item, ticket) = stream.next().now_or_never().unwrap().unwrap().unwrap();
-        //     items.push_back(item);
-        //     tickets.push_back(ticket);
-        // }
+        // Send the ACKs to the client by polling the server.
+        assert_eq!(server.items_processed, 0); // (Before, the internal channel will not have been polled).
+        assert_eq!(server.last_received, 4);
+        assert!(server.next().now_or_never().is_none());
+        assert_eq!(server.last_received, 4);
+        assert_eq!(server.items_processed, 2);
 
-        // // Make room for 2 more items.
-        // let _ = tickets.pop_front();
-        // let _ = tickets.pop_front();
-        // // Send the ACKs to the sink by polling the stream.
-        // assert!(stream.next().now_or_never().is_none());
-        // assert_eq!(stream.last_received, 4);
-        // assert_eq!(stream.items_processed, 2);
-        // // Send another item. Even though at this point in the stream state
-        // // all capacity is used, the next poll will receive an ACK for 2 items.
-        // assert_eq!(sink.last_request, 4);
-        // assert_eq!(sink.received_ack, 0);
-        // sink.send(4).now_or_never().unwrap().unwrap();
-        // // Make sure we received the ACK and we recorded the send.
-        // assert_eq!(sink.last_request, 5);
-        // assert_eq!(sink.received_ack, 2);
-        // assert_eq!(stream.items_processed, 2);
-        // // Send another item to fill up the capacity again.
-        // sink.send(5).now_or_never().unwrap().unwrap();
-        // assert_eq!(sink.last_request, 6);
+        // Send another item. ACKs will be received at the start, so while it looks like as if we cannot send the item initially, the incoming ACK(2) will fix this.
+        assert_eq!(client.last_request, 4);
+        assert_eq!(client.received_ack, 0);
+        client.encode_and_send(4u8).now_or_never().unwrap().unwrap();
+        assert_eq!(client.last_request, 5);
+        assert_eq!(client.received_ack, 2);
+        assert_eq!(server.items_processed, 2);
 
-        // // Receive both items.
-        // for _ in 0..2 {
-        //     let (item, ticket) = stream.next().now_or_never().unwrap().unwrap().unwrap();
-        //     items.push_back(item);
-        //     tickets.push_back(ticket);
-        // }
-        // // At this point both the sink and stream should reflect the same
-        // // state.
-        // assert_eq!(sink.last_request, 6);
-        // assert_eq!(sink.received_ack, 2);
-        // assert_eq!(stream.last_received, 6);
-        // assert_eq!(stream.items_processed, 2);
-        // // Drop all tickets.
-        // for _ in 0..=WINDOW_SIZE {
-        //     let _ = tickets.pop_front();
-        // }
-        // // Send the ACKs to the sink by polling the stream.
-        // assert!(stream.next().now_or_never().is_none());
-        // // Make sure the stream state reflects the sent ACKs.
-        // assert_eq!(stream.items_processed, 6);
-        // // Send another item.
-        // sink.send(6).now_or_never().unwrap().unwrap();
-        // assert_eq!(sink.received_ack, 6);
-        // assert_eq!(sink.last_request, 7);
-        // // Receive the item.
-        // let (item, ticket) = stream.next().now_or_never().unwrap().unwrap().unwrap();
-        // // At this point both the sink and stream should reflect the same
-        // // state.
-        // assert_eq!(stream.items_processed, 6);
-        // assert_eq!(stream.last_received, 7);
-        // items.push_back(item);
-        // tickets.push_back(ticket);
+        // Send another item, filling up the entire window again.
+        client.encode_and_send(5u8).now_or_never().unwrap().unwrap();
+        assert_eq!(client.last_request, 6);
 
-        // // Send 2 items.
-        // sink.send(7).now_or_never().unwrap().unwrap();
-        // sink.send(8).now_or_never().unwrap().unwrap();
-        // // Receive only 1 item.
-        // let (item, ticket) = stream.next().now_or_never().unwrap().unwrap().unwrap();
-        // // The sink state should be ahead of the stream by 1 item, which is yet
-        // // to be yielded in a `poll_next` by the stream.
-        // assert_eq!(sink.last_request, 9);
-        // assert_eq!(sink.received_ack, 6);
-        // assert_eq!(stream.items_processed, 6);
-        // assert_eq!(stream.last_received, 8);
-        // items.push_back(item);
-        // tickets.push_back(ticket);
-        // // Drop a ticket.
-        // let _ = tickets.pop_front();
-        // // Receive the other item. Also send the ACK with this poll.
-        // let (item, ticket) = stream.next().now_or_never().unwrap().unwrap().unwrap();
-        // // Ensure the stream state has been updated.
-        // assert_eq!(stream.items_processed, 7);
-        // assert_eq!(stream.last_received, 9);
-        // items.push_back(item);
-        // tickets.push_back(ticket);
+        // Receive two additional items.
+        for _ in 0..2 {
+            let (item, ticket) = server.next().now_or_never().unwrap().unwrap().unwrap();
+            items.push_back(item);
+            tickets.push_back(ticket);
+        }
 
-        // // The stream should have received all of these items.
-        // assert_eq!(items, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        // At this point client and server should reflect the same state.
+        assert_eq!(client.last_request, 6);
+        assert_eq!(client.received_ack, 2);
+        assert_eq!(server.last_received, 6);
+        assert_eq!(server.items_processed, 2);
 
-        // // Now send 2 more items to occupy all available capacity in the sink.
-        // sink.send(9).now_or_never().unwrap().unwrap();
-        // // The sink should have received the latest ACK with this poll, so
-        // // we check it against the stream one to ensure correctness.
-        // assert_eq!(sink.received_ack, stream.items_processed);
-        // sink.send(10).now_or_never().unwrap().unwrap();
-        // // Make sure we reached full capacity in the sink state.
-        // assert_eq!(sink.last_request, sink.received_ack + WINDOW_SIZE + 1);
-        // // Sending a new item should return `Poll::Pending`.
-        // assert!(sink.send(9).now_or_never().is_none());
+        // Drop all tickets, marking the work as done.
+        tickets.clear();
+
+        // The ACKs have been queued now, send them by polling the server.
+        assert!(server.next().now_or_never().is_none());
+        // Make sure the server state reflects the sent ACKs.
+        assert_eq!(server.items_processed, 6);
+
+        // Send another item.
+        client.encode_and_send(6u8).now_or_never().unwrap().unwrap();
+        assert_eq!(client.received_ack, 6);
+        assert_eq!(client.last_request, 7);
+
+        // Receive the item.
+        let (item, ticket) = server.next().now_or_never().unwrap().unwrap().unwrap();
+        assert_eq!(server.items_processed, 6);
+        assert_eq!(server.last_received, 7);
+        items.push_back(item);
+        tickets.push_back(ticket);
+
+        // Send two items.
+        client.encode_and_send(7u8).now_or_never().unwrap().unwrap();
+        client.encode_and_send(8u8).now_or_never().unwrap().unwrap();
+        // Receive only one item.
+        let (item, ticket) = server.next().now_or_never().unwrap().unwrap().unwrap();
+        // The client state should be ahead of the server by one item, which is yet to be yielded in
+        // a `poll_next` by the server.
+        items.push_back(item);
+        tickets.push_back(ticket);
+
+        // Two items are on the server processing, one is in transit:
+        assert_eq!(tickets.len(), 2);
+        assert_eq!(client.last_request, 9);
+        assert_eq!(client.received_ack, 6);
+        assert_eq!(server.items_processed, 6);
+        assert_eq!(server.last_received, 8);
+
+        // Finish processing another item.
+        let _ = tickets.pop_front();
+        // Receive the other item. This will implicitly send the ACK from the popped ticket.
+        let (item, ticket) = server.next().now_or_never().unwrap().unwrap().unwrap();
+        // Ensure the stream state has been updated.
+        assert_eq!(server.items_processed, 7);
+        assert_eq!(server.last_received, 9);
+        items.push_back(item);
+        tickets.push_back(ticket);
+
+        // The server should have received all of these items so far.
+        assert_eq!(
+            collect_bufs(items.clone().into_iter()),
+            b"\x00\x01\x02\x03\x04\x05\x06\x07\x08"
+        );
+
+        // Now send two more items to occupy the entire window. In between, the client should have
+        // received the latest ACK with this poll, so we check it against the stream one to ensure
+        // correctness.
+        client.encode_and_send(9u8).now_or_never().unwrap().unwrap();
+        assert_eq!(client.received_ack, server.items_processed);
+        client
+            .encode_and_send(10u8)
+            .now_or_never()
+            .unwrap()
+            .unwrap();
+        // Make sure we reached full capacity in the sink state.
+        assert_eq!(client.last_request, client.received_ack + 3 + 1);
+        // Sending a new item should return `Poll::Pending`.
+        assert!(client.encode_and_send(9u8).now_or_never().is_none());
     }
 
     #[test]
     fn backpressured_sink_premature_ack_kills_stream() {
-        let Fixtures {
+        let OneWayFixtures {
             mut ack_sink,
             mut bp,
             ..
-        } = Fixtures::new();
+        } = OneWayFixtures::new();
 
         bp.encode_and_send('A').now_or_never().unwrap().unwrap();
         bp.encode_and_send('B').now_or_never().unwrap().unwrap();
@@ -794,11 +832,11 @@ mod tests {
         // we must have had ACKs up until at least
         // `last_request` - `window_size`, so an ACK out of range is a
         // duplicate.
-        let Fixtures {
+        let OneWayFixtures {
             mut ack_sink,
             mut bp,
             ..
-        } = Fixtures::new();
+        } = OneWayFixtures::new();
 
         bp.encode_and_send('A').now_or_never().unwrap().unwrap();
         bp.encode_and_send('B').now_or_never().unwrap().unwrap();
