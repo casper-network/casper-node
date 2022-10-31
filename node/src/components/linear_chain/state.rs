@@ -791,7 +791,7 @@ mod tests {
         invalid_sig.public_key = pub_key;
         let outcomes = lc.handle_finality_signature(Box::new(invalid_sig), false);
 
-        // todo!() - [RC] double check if `LoadSignatures` is an expected outcome here.
+        // TODO - [RC] double check if `LoadSignatures` is an expected outcome here.
         assert!(outcomes
             .iter()
             .all(|outcome| matches!(outcome, Outcome::LoadSignatures(_))));

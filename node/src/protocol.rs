@@ -157,36 +157,6 @@ impl Payload for Message {
             Message::FinalitySignature(_) => false,
         }
     }
-
-    // TODO
-    /*// Checks the validity of the message.
-    fn is_valid(&self, validator_matrix: ValidatorMatrix) -> Validity {
-        match self {
-            Message::Consensus(_) => Validity::Valid,
-            Message::DeployGossiper(_) => Validity::Valid,
-            Message::BlockGossiper(_) => Validity::Valid,
-            Message::FinalitySignatureGossiper(gossiper::Message::Gossip(item_id))
-            | Message::FinalitySignatureGossiper(gossiper::Message::GossipResponse {
-                item_id,
-                ..
-            }) => {
-                if let Ok(validator_matrix) = validator_matrix.read() {
-                    match validator_matrix.is_validator_in_era(item_id.era_id, &item_id.public_key) {
-                        Some(false) => Validity::Malicious,
-                        Some(true) => Validity::Valid,
-                        None => Validity::NotValid,
-                    }
-                } else {
-                    error!("could not get validators, lock poisoned");
-                    Validity::NotValid
-                }
-            }
-            Message::AddressGossiper(_) => Validity::Valid,
-            Message::GetRequest { .. } => Validity::Valid,
-            Message::GetResponse { .. } => Validity::Valid,
-            Message::FinalitySignature(_) => Validity::Valid,
-        }
-    }*/
 }
 
 impl Message {

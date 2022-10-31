@@ -92,7 +92,7 @@ use self::{
     tasks::{MessageQueueItem, NetworkContext},
 };
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent},
+    components::{Component, ComponentStatus, InitializedComponent},
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
@@ -675,7 +675,7 @@ where
                         .into_iter(),
                 );
 
-                // TODO - should remove from self.connected_validators?
+                // todo! - should remove from self.connected_validators?
 
                 self.process_dial_requests(requests)
             }
@@ -1123,9 +1123,6 @@ where
 
                 effects
             }
-            (ComponentStatus::Initialized, Event::ValidatorMatrixUpdated) => {
-                self.handle_validators(effect_builder)
-            }
         }
     }
 }
@@ -1143,23 +1140,6 @@ where
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
-    }
-}
-
-impl<REv, P> ValidatorBoundComponent<REv> for SmallNetwork<REv, P>
-where
-    REv: ReactorEvent
-        + From<Event<P>>
-        + From<BeginGossipRequest<GossipedAddress>>
-        + FromIncoming<P>
-        + From<StorageRequest>
-        + From<NetworkRequest<P>>
-        + From<PeerBehaviorAnnouncement>,
-    P: Payload,
-{
-    fn handle_validators(&mut self, _: EffectBuilder<REv>) -> Effects<Self::Event> {
-        // todo! make networking component refresh itself from self.validator matrix
-        Effects::new()
     }
 }
 

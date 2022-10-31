@@ -14,7 +14,7 @@ use thiserror::Error;
 use crate::types::BlockHeader;
 use crate::types::BlockSignatures;
 
-#[cfg(test)] // TODO: Move closer to the test code?
+#[cfg(test)]
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
     #[error("cannot get switch block for era {era_id}")]

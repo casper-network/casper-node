@@ -1130,7 +1130,6 @@ where
                 .ignore()
         }
         NetResponse::Block(ref serialized_item) => {
-            // TODO: Use different message types for gossip and fetch responses?
             let mut effects = handle_fetch_response::<R, Block>(
                 reactor,
                 effect_builder,

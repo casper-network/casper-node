@@ -570,7 +570,7 @@ where
                 count,
                 exclude,
                 auto_closing_responder,
-                gossip_target: _, // TODO
+                gossip_target: _,
             } => {
                 if let Ok(guard) = self.nodes.read() {
                     let chosen: HashSet<_> = guard

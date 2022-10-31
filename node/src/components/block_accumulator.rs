@@ -268,8 +268,7 @@ impl BlockAccumulator {
             + From<ControlAnnouncement>
             + Send,
     {
-        // TODO: Also ignore signatures for blocks older than the highest complete one?
-        // TODO: Ignore signatures for `already_handled` blocks?
+        // todo!: Also ignore signatures for blocks older than the highest complete one?
 
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;

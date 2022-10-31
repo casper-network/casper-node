@@ -33,7 +33,6 @@ fn fix_it() {
 pub(crate) enum Event<P> {
     Initialize,
 
-    ValidatorMatrixUpdated,
     /// The TLS handshake completed on the incoming connection.
     IncomingConnection {
         incoming: Box<IncomingConnection<P>>,
@@ -116,9 +115,6 @@ impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Initialize => write!(f, "initialize"),
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
-            }
             Event::IncomingConnection { incoming, span: _ } => {
                 write!(f, "incoming connection: {}", incoming)
             }

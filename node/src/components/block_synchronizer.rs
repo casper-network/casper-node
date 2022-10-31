@@ -97,7 +97,6 @@ impl<REv> ReactorEvent for REv where
 {
 }
 
-// todo!() - remove Debug derive.
 #[derive(Debug)]
 pub(crate) enum BlockSynchronizerProgress {
     Idle,
@@ -167,7 +166,7 @@ impl BlockSynchronizer {
         }
     }
 
-    /// Returns the progress being made on the historical syncing.
+    /// Returns the progress being made on the forward syncing.
     pub(crate) fn keep_up_progress(&mut self) -> BlockSynchronizerProgress {
         match &self.forward {
             None => BlockSynchronizerProgress::Idle,

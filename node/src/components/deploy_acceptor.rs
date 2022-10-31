@@ -27,10 +27,11 @@ use casper_types::{
 use crate::{
     components::Component,
     effect::{
-        announcements::DeployAcceptorAnnouncement,
+        announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
+    fatal,
     types::{chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure},
     utils::Source,
     NodeRng,
@@ -122,6 +123,7 @@ pub(crate) trait ReactorEventT:
     + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<ControlAnnouncement>
     + Send
 {
 }
@@ -131,6 +133,7 @@ impl<REv> ReactorEventT for REv where
         + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<ControlAnnouncement>
         + Send
 {
 }
@@ -347,8 +350,11 @@ impl DeployAcceptor {
             // This would only happen due to programmer error and should crash the node.
             // Balance checks for deploys received by from a peer will cause the network
             // to stall.
-            // TODO: Change this to a fatal!
-            panic!("Balance checks for deploys received from peers should never occur.")
+            return fatal!(
+                effect_builder,
+                "Balance checks for deploys received from peers should never occur."
+            )
+            .ignore();
         }
         match maybe_balance_value {
             None => {

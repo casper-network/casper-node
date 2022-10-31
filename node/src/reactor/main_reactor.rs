@@ -78,7 +78,7 @@ pub(crate) use reactor_state::ReactorState;
 pub(crate) struct MainReactor {
     // components
     //   i/o bound components
-    storage: Storage, // todo! - get_highest_block_header must return only COMPLETE block's header
+    storage: Storage,
     contract_runtime: ContractRuntime,
     upgrade_watcher: UpgradeWatcher,
     rpc_server: RpcServer,
@@ -592,9 +592,9 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
 
-                // todo! should we notify Consensus if we are not in Validate mode or not a validator?
-                // Consensus must be notified to keep track of executed blocks and create finality
-                // signatures.
+                // todo! should we notify Consensus if we are not in Validate mode or not a
+                // validator? Consensus must be notified to keep track of executed
+                // blocks and create finality signatures.
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
                     header: Box::new(block.header().clone()),
                     header_hash: *block.hash(),
@@ -625,14 +625,6 @@ impl reactor::Reactor for MainReactor {
                             effect_builder,
                             rng,
                             block_synchronizer::Event::ValidatorMatrixUpdated,
-                        ),
-                    ));
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::Network,
-                        self.small_network.handle_event(
-                            effect_builder,
-                            rng,
-                            small_network::Event::ValidatorMatrixUpdated,
                         ),
                     ));
 

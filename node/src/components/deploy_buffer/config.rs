@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use casper_types::TimeDiff;
 
 const DEFAULT_DEPLOY_DELAY: &str = "15sec";
-// TODO: 60s might be too aggressive
 const DEFAULT_EXPIRY_CHECK_INTERVAL: &str = "1min";
 
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
