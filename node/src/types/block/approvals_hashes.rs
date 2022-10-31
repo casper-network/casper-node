@@ -89,13 +89,13 @@ impl ApprovalsHashes {
             })
             .ok_or(ApprovalsHashesValidationError::InvalidChecksumRegistry)?;
 
-        let computed_approvals_root_hash =
+        let computed_approvals_checksum =
             types::compute_approvals_checksum(self.deploy_ids(block).collect())
-                .map_err(ApprovalsHashesValidationError::ApprovalsRootHash)?;
+                .map_err(ApprovalsHashesValidationError::ApprovalsChecksum)?;
 
-        if value_in_proof != computed_approvals_root_hash {
-            return Err(ApprovalsHashesValidationError::ApprovalsRootHashMismatch {
-                computed_approvals_root_hash,
+        if value_in_proof != computed_approvals_checksum {
+            return Err(ApprovalsHashesValidationError::ApprovalsChecksumMismatch {
+                computed_approvals_checksum,
                 value_in_proof,
             });
         }
@@ -183,9 +183,9 @@ pub(crate) enum ApprovalsHashesValidationError {
     #[error("value provided in the proof cannot be parsed to the checksum registry type")]
     InvalidChecksumRegistry,
 
-    /// An error while computing the root hash of the approvals.
-    #[error("failed to compute root hash of the approvals")]
-    ApprovalsRootHash(bytesrepr::Error),
+    /// An error while computing the checksum of the approvals.
+    #[error("failed to compute checksum of the approvals")]
+    ApprovalsChecksum(bytesrepr::Error),
 
     #[error("approvals hashes era mismatch: block_era_id={block_era_id} approvals_era_id={approvals_era_id}")]
     EraMismatch {
@@ -193,10 +193,10 @@ pub(crate) enum ApprovalsHashesValidationError {
         approvals_era_id: EraId,
     },
 
-    /// The approvals root hash implied by the Merkle proof doesn't match the approvals.
-    #[error("approvals root hash implied by the Merkle proof doesn't match the approvals")]
-    ApprovalsRootHashMismatch {
-        computed_approvals_root_hash: Digest,
+    /// The approvals checksum provided doesn't match one calculated from the approvals.
+    #[error("provided approvals checksum doesn't match one calculated from the approvals")]
+    ApprovalsChecksumMismatch {
+        computed_approvals_checksum: Digest,
         value_in_proof: Digest,
     },
 }

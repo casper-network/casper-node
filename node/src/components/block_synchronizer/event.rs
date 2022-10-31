@@ -39,7 +39,7 @@ pub(crate) enum Event {
         #[serde(skip_serializing)]
         result: Result<Digest, GlobalStateSynchronizerError>,
     },
-    GotExecutionResultsRootHash {
+    GotExecutionResultsChecksum {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
         result: Result<Option<Digest>, engine_state::Error>,
@@ -107,13 +107,13 @@ impl Display for Event {
                 Ok(root_hash) => write!(f, "synced global state under root {}", root_hash),
                 Err(error) => write!(f, "failed to sync global state: {}", error),
             },
-            Event::GotExecutionResultsRootHash {
+            Event::GotExecutionResultsChecksum {
                 block_hash: _,
                 result,
             } => match result {
-                Ok(Some(digest)) => write!(f, "got exec results root hash {}", digest),
-                Ok(None) => write!(f, "got no exec results root hash"),
-                Err(error) => write!(f, "failed to get exec results root hash: {}", error),
+                Ok(Some(digest)) => write!(f, "got exec results checksum {}", digest),
+                Ok(None) => write!(f, "got no exec results checksum"),
+                Err(error) => write!(f, "failed to get exec results checksum: {}", error),
             },
             Event::DeployFetched {
                 block_hash: _,

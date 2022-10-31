@@ -345,12 +345,12 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(super) fn register_execution_results_root_hash(
+    pub(super) fn register_execution_results_checksum(
         &mut self,
-        execution_results_root_hash: ExecutionResultsChecksum,
+        execution_results_checksum: ExecutionResultsChecksum,
     ) -> Result<(), Error> {
-        if let Err(err) = self.acquisition_state.register_execution_results_root_hash(
-            execution_results_root_hash,
+        if let Err(err) = self.acquisition_state.register_execution_results_checksum(
+            execution_results_checksum,
             self.should_fetch_execution_state,
         ) {
             return Err(Error::BlockAcquisition(err));

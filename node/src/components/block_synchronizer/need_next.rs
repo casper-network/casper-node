@@ -21,7 +21,7 @@ pub(crate) enum NeedNext {
     DeployById(BlockHash, DeployId),
     /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
-    ExecutionResultsRootHash(BlockHash, Digest),
+    ExecutionResultsChecksum(BlockHash, Digest),
     ExecutionResults(
         BlockHash,
         BlockExecutionResultsOrChunkId,

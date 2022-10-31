@@ -421,11 +421,11 @@ impl BlockSynchronizer {
                             .event(Event::ApprovalsHashesFetched)
                     }))
                 }
-                NeedNext::ExecutionResultsRootHash(block_hash, global_state_root_hash) => {
+                NeedNext::ExecutionResultsChecksum(block_hash, global_state_root_hash) => {
                     results.extend(
                         effect_builder
-                            .get_execution_results_root_hash(global_state_root_hash)
-                            .event(move |result| Event::GotExecutionResultsRootHash {
+                            .get_execution_results_checksum(global_state_root_hash)
+                            .event(move |result| Event::GotExecutionResultsChecksum {
                                 block_hash,
                                 result,
                             }),
@@ -707,7 +707,7 @@ impl BlockSynchronizer {
         Effects::new()
     }
 
-    fn got_execution_results_root_hash(
+    fn got_execution_results_checksum(
         &mut self,
         block_hash: BlockHash,
         result: Result<Option<Digest>, engine_state::Error>,
@@ -738,9 +738,9 @@ impl BlockSynchronizer {
             if builder.block_hash() != block_hash {
                 debug!(%block_hash, "not currently synchronising block");
             } else if let Err(error) =
-                builder.register_execution_results_root_hash(execution_results_root_hash)
+                builder.register_execution_results_checksum(execution_results_checksum)
             {
-                error!(%block_hash, %error, "failed to apply execution results root hash");
+                error!(%block_hash, %error, "failed to apply execution results checksum");
             }
         }
         Effects::new()
@@ -966,8 +966,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         let effects = self.approvals_hashes_fetched(result);
                         self.hook_need_next(effect_builder, effects)
                     }
-                    Event::GotExecutionResultsRootHash { block_hash, result } => {
-                        let effects = self.got_execution_results_root_hash(block_hash, result);
+                    Event::GotExecutionResultsChecksum { block_hash, result } => {
+                        let effects = self.got_execution_results_checksum(block_hash, result);
                         self.hook_need_next(effect_builder, effects)
                     }
                     Event::GlobalStateSynced { block_hash, result } => {

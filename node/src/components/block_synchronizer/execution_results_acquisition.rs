@@ -384,7 +384,7 @@ fn apply_chunk(
         }
     }
 
-    // ExecutionResultsRootHash::Legacy has no checksum, otherwise check it
+    // ExecutionResultsChecksum::Legacy has no checksum, otherwise check it
     if let ExecutionResultsChecksum::Checkable(expected) = checksum {
         if expected != digest {
             return Err(Error::ChecksumMismatch {
