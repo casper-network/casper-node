@@ -719,7 +719,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| {
-                error!("XXXXX - broadcast_message_to_validators");
+                debug!("validator broadcast for : {}", era_id);
                 NetworkRequest::ValidatorBroadcast {
                     payload: Box::new(payload),
                     era_id,
@@ -994,7 +994,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(
-                ContractRuntimeAnnouncement::LinearChainBlock {
+                ContractRuntimeAnnouncement::ExecutedBlock {
                     block,
                     approvals_hashes,
                     execution_results,

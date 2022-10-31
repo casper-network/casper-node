@@ -30,16 +30,6 @@ impl StartingWith {
         }
     }
 
-    pub(crate) fn is_historical(&self) -> bool {
-        match self {
-            StartingWith::ExecutableBlock(..) => false,
-            StartingWith::LocalTip(..)
-            | StartingWith::SyncedBlockIdentifier(..)
-            | StartingWith::BlockIdentifier(..)
-            | StartingWith::Hash(_) => true,
-        }
-    }
-
     pub(crate) fn is_executable_block(&self) -> bool {
         matches!(self, StartingWith::ExecutableBlock(_, _))
     }

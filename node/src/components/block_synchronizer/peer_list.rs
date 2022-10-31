@@ -3,7 +3,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::seq::IteratorRandom;
-use tracing::error;
+use tracing::debug;
 
 use crate::{types::NodeId, NodeRng};
 use casper_types::{TimeDiff, Timestamp};
@@ -12,7 +12,6 @@ use casper_types::{TimeDiff, Timestamp};
 enum PeerQuality {
     #[default]
     Unknown,
-    Unresponsive,
     Unreliable,
     Reliable,
     Dishonest,
@@ -78,8 +77,8 @@ impl PeerList {
 
     pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
         if let Some(peer_id) = peer {
+            debug!("BlockSynchronizer: promoting peer {:?}", peer_id);
             // vacant should be unreachable
-            error!(?self.peer_list, "XXXXX - promote_peer before");
             match self.peer_list.entry(peer_id) {
                 Entry::Vacant(_) => {
                     self.peer_list.insert(peer_id, PeerQuality::Unknown);
@@ -91,23 +90,20 @@ impl PeerList {
                     PeerQuality::Unknown => {
                         self.peer_list.insert(peer_id, PeerQuality::Unreliable);
                     }
-                    PeerQuality::Unresponsive => {
-                        self.peer_list.insert(peer_id, PeerQuality::Unreliable);
-                    }
                     PeerQuality::Unreliable => {
                         self.peer_list.insert(peer_id, PeerQuality::Reliable);
                     }
                     PeerQuality::Reliable => {
-                        // no change -- this is the top
+                        // no change -- this is the best
                     }
                 },
             }
-            error!(?self.peer_list, "XXXXX - promote_peer after");
         }
     }
 
     pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
         if let Some(peer_id) = peer {
+            debug!("BlockSynchronizer: demoting peer {:?}", peer_id);
             // vacant should be unreachable
             match self.peer_list.entry(peer_id) {
                 Entry::Vacant(_) => {
@@ -117,11 +113,8 @@ impl PeerList {
                     PeerQuality::Dishonest | PeerQuality::Unknown => {
                         // no change
                     }
-                    PeerQuality::Unresponsive => {
-                        self.peer_list.insert(peer_id, PeerQuality::Unknown);
-                    }
                     PeerQuality::Unreliable => {
-                        self.peer_list.insert(peer_id, PeerQuality::Unresponsive);
+                        self.peer_list.insert(peer_id, PeerQuality::Unknown);
                     }
                     PeerQuality::Reliable => {
                         self.peer_list.insert(peer_id, PeerQuality::Unreliable);
@@ -133,32 +126,23 @@ impl PeerList {
 
     pub(super) fn need_peers(&mut self) -> PeersStatus {
         if self.peer_list.is_empty() {
-            error!("XXXXX - peer_list.is_empty()");
+            debug!("PeerList: is empty");
             return PeersStatus::Insufficient;
         }
 
         // periodically ask for refreshed peers
         if Timestamp::now().saturating_diff(self.keep_fresh) > self.peer_refresh_interval {
-            error!("XXXXX - peer_list.is_stale()");
             self.keep_fresh = Timestamp::now();
-            return PeersStatus::Stale;
-        }
-
-        //let reliability_goal = self.max_simultaneous_peers as usize;
-        if self
-            .peer_list
-            .iter()
-            .filter(|(_, pq)| {
-                **pq == PeerQuality::Reliable
-                    || **pq == PeerQuality::Unknown
-                    || **pq == PeerQuality::Unreliable
-            })
-            .count()
-            == 0
-        // < reliability_goal
-        {
-            error!(peer_list = ?self.peer_list, "XXXXX - peer_list.is_under_goal()");
-            return PeersStatus::Insufficient;
+            let count = self
+                .peer_list
+                .iter()
+                .filter(|(_, pq)| **pq == PeerQuality::Reliable || **pq == PeerQuality::Unknown)
+                .count();
+            let reliability_goal = self.max_simultaneous_peers as usize;
+            if count < reliability_goal {
+                debug!("PeerList: is stale");
+                return PeersStatus::Stale;
+            }
         }
 
         PeersStatus::Sufficient
@@ -179,8 +163,6 @@ impl PeerList {
 
         // if below limit get semi-useful
         let missing = up_to.saturating_sub(peers.len());
-        error!(missing, "XXXXX - missing");
-        error!(?peers, "XXXXX - peers before");
         if missing > 0 {
             let better_than_nothing = self
                 .peer_list
@@ -194,7 +176,6 @@ impl PeerList {
 
             peers.extend(better_than_nothing);
         }
-        error!(?peers, "XXXXX - peers after");
         peers
     }
 }

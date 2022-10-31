@@ -144,10 +144,7 @@ impl BlockAccumulator {
             match block_hash_to_sync {
                 Some(block_hash) => {
                     self.last_progress = Timestamp::now();
-                    return SyncInstruction::BlockSync {
-                        block_hash,
-                        should_fetch_execution_state: starting_with.is_historical(),
-                    };
+                    return SyncInstruction::BlockSync { block_hash };
                 }
                 None => {
                     // we expect to be receiving gossiped blocks from other nodes
@@ -217,7 +214,6 @@ impl BlockAccumulator {
             .entry(*block_hash)
             .or_insert_with(|| BlockAcceptor::new(*block_hash, vec![]));
 
-        // error!(?acceptor, "XXXXX - acceptor");
         match acceptor.register_block(block, sender) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
                 Some(evw) => store_block_and_finality_signatures(
@@ -274,7 +270,6 @@ impl BlockAccumulator {
     {
         // TODO: Also ignore signatures for blocks older than the highest complete one?
         // TODO: Ignore signatures for `already_handled` blocks?
-        // error!(id=%finality_signature.id(), "XXXXX - register_finality_signature");
 
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
@@ -296,10 +291,7 @@ impl BlockAccumulator {
                     effect_builder,
                     acceptor.should_store_block(evw),
                 ),
-                None => {
-                    // error!("XXXXX - received finality_signature, insufficent finality");
-                    Effects::new()
-                }
+                None => Effects::new(),
             },
             Err(Error::InvalidGossip(error)) => {
                 warn!(%error, "received invalid finality_signature");

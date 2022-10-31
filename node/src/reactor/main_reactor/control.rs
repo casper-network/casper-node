@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
@@ -116,7 +116,7 @@ impl MainReactor {
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
-                ValidateInstruction::NonSwitchBlock => (Duration::ZERO, Effects::new()),
+                ValidateInstruction::NonSwitchBlock => (Duration::from_secs(2), Effects::new()),
                 ValidateInstruction::KeepUp => {
                     info!("Validate: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
@@ -124,8 +124,12 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
                 ValidateInstruction::Do(wait, effects) => {
-                    debug!("Validate: node is processing effects");
+                    trace!("Validate: node is processing effects");
                     (wait, effects)
+                }
+                ValidateInstruction::CheckLater(msg, wait) => {
+                    debug!("Validate: {}", msg);
+                    (wait, Effects::new())
                 }
             },
             ReactorState::Upgrade => {
@@ -273,7 +277,7 @@ impl MainReactor {
                                 return CatchUpInstruction::CheckLater(
                                     "CatchUp: waiting for genesis immediate switch block to be stored"
                                         .to_string(),
-                                    Duration::ZERO,
+                                    Duration::from_secs(1),
                                 );
                             }
                             Err(err) => {
@@ -335,7 +339,7 @@ impl MainReactor {
             }
             BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
                 // do idleness / reattempt checking
-                if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerances {
+                if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
                     self.attempts += 1;
                     if self.attempts > self.max_attempts {
                         return CatchUpInstruction::Shutdown(
@@ -367,7 +371,7 @@ impl MainReactor {
         match sync_instruction {
             SyncInstruction::Leap { block_hash } => {
                 let leap_status = self.sync_leaper.leap_status();
-                debug!("CatchUp: leap_status: {:?}", leap_status);
+                trace!("CatchUp: leap_status: {:?}", leap_status);
                 match leap_status {
                     ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
                         if let LeapStatus::Failed {
@@ -398,12 +402,12 @@ impl MainReactor {
                             })
                         });
                         info!("CatchUp: initiating sync leap for: {}", block_hash);
-                        return CatchUpInstruction::Do(Duration::ZERO, effects);
+                        return CatchUpInstruction::Do(Duration::from_secs(1), effects);
                     }
                     LeapStatus::Awaiting { .. } => {
                         return CatchUpInstruction::CheckLater(
-                            "CatchUp: sync leaper is awaiting response".to_string(),
-                            Duration::ZERO,
+                            "sync leaper is awaiting response".to_string(),
+                            Duration::from_secs(2),
                         );
                     }
                     LeapStatus::Received {
@@ -441,22 +445,10 @@ impl MainReactor {
                     }
                 }
             }
-            SyncInstruction::BlockSync {
-                block_hash,
-                should_fetch_execution_state,
-            } => {
-                if should_fetch_execution_state == false {
-                    let msg = format!(
-                        "BlockSync should require execution state while in CatchUp mode: {}",
-                        block_hash
-                    );
-                    error!("{}", msg);
-                    return CatchUpInstruction::Shutdown(msg);
-                }
-
+            SyncInstruction::BlockSync { block_hash } => {
                 self.block_synchronizer.register_block_by_hash(
                     block_hash,
-                    should_fetch_execution_state,
+                    true,
                     true,
                     self.chainspec
                         .core_config
@@ -504,37 +496,56 @@ impl MainReactor {
             }
         }
 
-        let maybe_executable_block_id = self.block_synchronizer.maybe_executable_block_identifier();
-        debug!(
-            "KeepUp: maybe_executable_block_id: {:?}",
-            maybe_executable_block_id
-        );
-        let starting_with = match maybe_executable_block_id {
-            Some((block_hash, block_height)) => {
+        let starting_with = match self.block_synchronizer.keep_up_progress() {
+            BlockSynchronizerProgress::Idle => match self.storage.read_highest_complete_block() {
+                Ok(Some(block)) => StartingWith::LocalTip(block.id(), block.height()),
+                Ok(None) => {
+                    error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
+                    return KeepUpInstruction::CatchUp;
+                }
+                Err(err) => {
+                    return KeepUpInstruction::Do(
+                        Duration::ZERO,
+                        utils::new_shutdown_effect(format!(
+                            "fatal storage error read_highest_complete_block: {}",
+                            err
+                        )),
+                    )
+                }
+            },
+            BlockSynchronizerProgress::Syncing(block_hash, block_height, last_progress) => {
+                // do idleness / reattempt checking
+                if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
+                    self.attempts += 1;
+                } else {
+                    // if any progress has been made, reset attempts
+                    if last_progress > self.last_progress {
+                        debug!("KeepUp: syncing last_progress: {}", last_progress);
+                        self.last_progress = last_progress;
+                        self.attempts = 0;
+                    }
+                }
+                match block_height {
+                    None => StartingWith::Hash(block_hash),
+                    Some(height) => StartingWith::BlockIdentifier(block_hash, height),
+                }
+            }
+            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
                 debug!("KeepUp: executable block: {}", block_hash);
                 StartingWith::ExecutableBlock(block_hash, block_height)
             }
-            None => {
-                info!("KeepUp: no block to execute, go to CatchUp");
-                return KeepUpInstruction::CatchUp;
-            }
         };
+
         debug!("KeepUp: starting with {:?}", starting_with);
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
         debug!("KeepUp: sync_instruction {:?}", sync_instruction);
         match sync_instruction {
-            SyncInstruction::Leap { block_hash } => {
-                debug!("KeepUp: Leap: {:?}", block_hash);
-                KeepUpInstruction::CatchUp
-            }
-            SyncInstruction::BlockSync {
-                block_hash,
-                should_fetch_execution_state,
-            } => {
+            SyncInstruction::Leap { .. } => KeepUpInstruction::CatchUp,
+            SyncInstruction::BlockSync { block_hash } => {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
                 self.block_synchronizer.register_block_by_hash(
                     block_hash,
-                    should_fetch_execution_state,
+                    false,
                     true,
                     self.chainspec
                         .core_config
@@ -550,12 +561,12 @@ impl MainReactor {
                 next_block_hash,
             } => {
                 debug!("KeepUp: BlockExec: {:?}", block_hash);
-                match self.enqueue_executable_block(effect_builder) {
+                match self.enqueue_executable_block(effect_builder, block_hash) {
                     Ok(effects) => {
-                        if let Some(block_hash) = next_block_hash {
-                            debug!("KeepUp: BlockSync: {:?}", block_hash);
+                        if let Some(sync_block_hash) = next_block_hash {
+                            debug!("KeepUp: BlockSync: {:?}", sync_block_hash);
                             self.block_synchronizer.register_block_by_hash(
-                                block_hash,
+                                sync_block_hash,
                                 false,
                                 true,
                                 self.chainspec
@@ -563,20 +574,24 @@ impl MainReactor {
                                     .sync_leap_simultaneous_peer_requests,
                             );
                         }
-                        KeepUpInstruction::Do(Duration::ZERO, effects)
+                        if effects.is_empty() {
+                            KeepUpInstruction::CheckLater(
+                                "KeepUp is keeping up".to_string(),
+                                Duration::from_secs(1),
+                            )
+                        } else {
+                            KeepUpInstruction::Do(Duration::ZERO, effects)
+                        }
                     }
                     Err(msg) => {
                         KeepUpInstruction::Do(Duration::ZERO, utils::new_shutdown_effect(msg))
                     }
                 }
             }
-            SyncInstruction::CaughtUp => {
-                // stay in KeepUp mode
-                KeepUpInstruction::CheckLater(
-                    "KeepUp: caught up to perceived tip of chain".to_string(),
-                    Duration::from_secs(1),
-                )
-            }
+            SyncInstruction::CaughtUp => KeepUpInstruction::CheckLater(
+                "KeepUp: at perceived tip of chain".to_string(),
+                Duration::from_secs(1),
+            ),
         }
     }
 
@@ -595,18 +610,16 @@ impl MainReactor {
                 if last_progress > self.last_progress {
                     self.last_progress = last_progress;
                 }
-                ValidateInstruction::Do(Duration::ZERO, effects)
+                if effects.is_empty() {
+                    ValidateInstruction::CheckLater(
+                        "consensus state is up to date".to_string(),
+                        Duration::from_secs(2),
+                    )
+                } else {
+                    ValidateInstruction::Do(Duration::ZERO, effects)
+                }
             }
-            Ok(None) => {
-                // either consensus doesn't have enough protocol data
-                // or this node has been evicted or has naturally
-                // fallen out of the validator set in a new era.
-                // regardless, go back to keep up mode;
-                // the keep up logic will handle putting them back
-                // to catch up if necessary, or back to validate
-                // if they become able to validate again
-                ValidateInstruction::KeepUp
-            }
+            Ok(None) => ValidateInstruction::KeepUp,
             Err(msg) => {
                 return ValidateInstruction::Do(Duration::ZERO, utils::new_shutdown_effect(msg));
             }
@@ -642,8 +655,6 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Result<Option<Effects<MainEvent>>, String> {
-        debug!("create_required_eras: {:?}", self.validator_matrix);
-
         let highest_switch_block_header = match self.recent_switch_block_headers.last() {
             None => {
                 debug!("create_required_eras: recent_switch_block_headers is empty");
@@ -652,9 +663,9 @@ impl MainReactor {
             Some(header) => header,
         };
         debug!(
-            "recent_switch_block_headers: {} - {}",
+            "highest_switch_block_header: {} - {}",
+            highest_switch_block_header.era_id(),
             highest_switch_block_header.block_hash(),
-            highest_switch_block_header.era_id()
         );
 
         if let Some(current_era) = self.consensus.current_era() {
@@ -850,26 +861,30 @@ impl MainReactor {
     fn enqueue_executable_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
+        block_hash: BlockHash,
     ) -> Result<Effects<MainEvent>, String> {
         let mut effects = Effects::new();
-        if let Some((block_hash, _)) = self.block_synchronizer.maybe_executable_block_identifier() {
-            match self.storage.make_executable_block(&block_hash) {
-                Ok(Some((finalized_block, deploys))) => {
-                    effects.extend(
-                        effect_builder
-                            .enqueue_block_for_execution(finalized_block, deploys)
-                            .ignore(),
-                    );
-                }
-                Ok(None) => {
-                    // noop
-                }
-                Err(err) => {
-                    return Err(format!(
-                        "failure to make block {} and approvals hashes into executable block: {}",
-                        block_hash, err
-                    ));
-                }
+        match self.storage.make_executable_block(&block_hash) {
+            Ok(Some((finalized_block, deploys))) => {
+                debug!("KeepUp: enqueue_executable_block: {:?}", block_hash);
+                effects.extend(
+                    effect_builder
+                        .enqueue_block_for_execution(finalized_block, deploys)
+                        .ignore(),
+                );
+            }
+            Ok(None) => {
+                // noop
+                warn!(
+                    "KeepUp: idempotent enqueue_executable_block: {:?}",
+                    block_hash
+                );
+            }
+            Err(err) => {
+                return Err(format!(
+                    "failure to make block {} and approvals hashes into executable block: {}",
+                    block_hash, err
+                ));
             }
         }
         Ok(effects)

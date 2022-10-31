@@ -132,7 +132,7 @@ pub(crate) struct MainReactor {
     // todo! add this to the status endpoint maybe?
     last_progress: Timestamp,
     attempts: usize,
-    idle_tolerances: TimeDiff,
+    idle_tolerance: TimeDiff,
     recent_switch_block_headers: Vec<BlockHeader>,
 }
 
@@ -315,7 +315,7 @@ impl reactor::Reactor for MainReactor {
             attempts: 0,
             last_progress: Timestamp::now(),
             max_attempts: 3,
-            idle_tolerances: TimeDiff::from_seconds(1200),
+            idle_tolerance: TimeDiff::from_seconds(1200),
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,
@@ -607,8 +607,8 @@ impl reactor::Reactor for MainReactor {
                     let era_id = block.header().era_id();
                     self.validator_matrix
                         .register_validator_weights(era_id.successor(), validator_weights.clone());
-                    error!(
-                        "XXXXX - notifying components of validator weights at end of: {}",
+                    debug!(
+                        "block_accumulator added switch block (notifying components of validator weights at end of: {})",
                         era_id
                     );
                     effects.extend(reactor::wrap_effects(
@@ -655,8 +655,8 @@ impl reactor::Reactor for MainReactor {
                             .push(block.header().clone()),
                     }
                 }
-                error!(
-                    "XXXXX - notifying block gossiper to send out block_hash: {}",
+                debug!(
+                    "notifying block gossiper to start gossiping for: {}",
                     block.id()
                 );
                 effects.extend(reactor::wrap_effects(
@@ -675,10 +675,9 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
             ) => {
-                error!(
-                    "XXXXX - notifying finality signature gossiper to send out block_hash: {} public_key: {}",
-                    finality_signature.block_hash,
-                    finality_signature.public_key,
+                debug!(
+                    "notifying finality signature gossiper to start gossiping for: {} , {}",
+                    finality_signature.block_hash, finality_signature.public_key,
                 );
                 let mut effects = reactor::wrap_effects(
                     MainEvent::FinalitySignatureGossiper,
@@ -723,18 +722,20 @@ impl reactor::Reactor for MainReactor {
             )) => Effects::new(),
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
-                error!("XXXXX - MainEvent::FinalitySignatureIncoming");
                 // Finality signature received via broadcast.
                 let sender = incoming.sender;
                 let finality_signature = incoming.message;
+                debug!(
+                    "FinalitySignatureIncoming({},{},{},{})",
+                    finality_signature.era_id,
+                    finality_signature.block_hash,
+                    finality_signature.public_key,
+                    sender
+                );
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
                     finality_signature,
                     sender,
                 };
-
-                // todo!() - reconsider if we need that
-                // let block_synchronizer_event =
-                // block_synchronizer::Event::FinalitySignatureFetched(())
                 reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator.handle_event(
@@ -873,7 +874,7 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::LinearChainBlock {
+                ContractRuntimeAnnouncement::ExecutedBlock {
                     block,
                     approvals_hashes,
                     execution_results,
@@ -881,17 +882,16 @@ impl reactor::Reactor for MainReactor {
             ) => {
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
-
+                let is_switch_block = block.header().is_switch_block();
                 debug!(
                     %block_hash,
                     height=block.header().height(),
                     era=block.header().era_id().value(),
+                    is_switch_block=is_switch_block,
                     "executed block"
                 );
 
-                let is_switch_block = block.header().is_switch_block();
                 if is_switch_block {
-                    error!("XXXXX - block_hash: {} is a switch block", block.id());
                     self.switch_block = Some(block_hash);
                 } else {
                     self.switch_block = None;
@@ -911,8 +911,16 @@ impl reactor::Reactor for MainReactor {
                         )
                         .ignore(),
                 );
-                // todo! - we might want to store here before broadcasting the signature
-                //         so we can produce the signed-over data if required, even after restart.
+
+                // notify the block accumulator
+                let event = block_accumulator::Event::ExecutedBlock {
+                    block: block.clone(),
+                };
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator
+                        .handle_event(effect_builder, rng, event),
+                ));
 
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
@@ -942,14 +950,10 @@ impl reactor::Reactor for MainReactor {
                     ));
                 }
 
-                let event = block_accumulator::Event::ExecutedBlock { block };
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator
-                        .handle_event(effect_builder, rng, event),
-                ));
+                // todo! make sure there aren't other things we should be putting to
+                //  the event stream here, like BlockAdded, etc
 
-                // send to event stream
+                // send deploy processed events to event stream
                 for (deploy_hash, deploy_header, execution_result) in execution_results {
                     let event = event_stream_server::Event::DeployProcessed {
                         deploy_hash,

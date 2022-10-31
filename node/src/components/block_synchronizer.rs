@@ -167,6 +167,35 @@ impl BlockSynchronizer {
         }
     }
 
+    /// Returns the progress being made on the historical syncing.
+    pub(crate) fn keep_up_progress(&mut self) -> BlockSynchronizerProgress {
+        match &self.forward {
+            None => BlockSynchronizerProgress::Idle,
+            Some(builder) => {
+                if builder.is_finished() {
+                    match builder.block_height() {
+                        None => error!("finished builder should have block height"),
+                        Some(block_height) => {
+                            return BlockSynchronizerProgress::Synced(
+                                builder.block_hash(),
+                                block_height,
+                            )
+                        }
+                    }
+                }
+                BlockSynchronizerProgress::Syncing(
+                    builder.block_hash(),
+                    builder.block_height(),
+                    builder.last_progress_time().max(
+                        self.global_sync
+                            .last_progress()
+                            .unwrap_or_else(Timestamp::zero),
+                    ),
+                )
+            }
+        }
+    }
+
     /// Pauses block synchronization.
     pub(crate) fn pause(&mut self) {
         self.paused = true;
@@ -175,24 +204,6 @@ impl BlockSynchronizer {
     /// Resumes block synchronization.
     pub(crate) fn resume(&mut self) {
         self.paused = false;
-    }
-
-    /// Returns the block hash and height of a block that can be executed (if any).
-    pub(crate) fn maybe_executable_block_identifier(&self) -> Option<(BlockHash, u64)> {
-        if let Some(fwd) = &self.forward {
-            if fwd.is_finished() {
-                match fwd.block_height() {
-                    None => {
-                        error!("block_height should be Some");
-                        return None;
-                    }
-                    Some(height) => {
-                        return Some((fwd.block_hash(), height));
-                    }
-                }
-            }
-        }
-        None
     }
 
     /// Registers a block for synchronization.
@@ -360,7 +371,7 @@ impl BlockSynchronizer {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             let need_next = action.need_next();
-            error!("XXXXX - need next: {:?}", need_next);
+            debug!("BlockSynchronizer: {:?}", need_next);
             if !matches!(need_next, NeedNext::Nothing) {
                 builder.set_in_flight_latch(true);
             }
@@ -475,11 +486,9 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = &mut self.forward {
-            // error!("XXXXX - forward builder");
             builder_needs_next(builder);
         }
         if let Some(builder) = &mut self.historical {
-            // error!("XXXXX - historical builder");
             builder_needs_next(builder);
         }
         results
@@ -550,7 +559,11 @@ impl BlockSynchronizer {
             Option<NodeId>,
         ) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => {
-                error!("XXXXX - fetched block {} from peer {:?}", item.hash(), peer);
+                debug!(
+                    "BlockSynchronizer: fetched {} from peer {:?}",
+                    item.hash(),
+                    peer
+                );
                 (*item.hash(), Some(item), Some(peer))
             }
             Ok(FetchedData::FromStorage { item }) => (*item.hash(), Some(item), None),
@@ -568,10 +581,6 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block {
                     None => {
-                        error!(
-                            "XXXXX - demoting peer because we have no block {:?}",
-                            maybe_peer_id
-                        );
                         builder.demote_peer(maybe_peer_id);
                     }
                     Some(block) => {
@@ -582,7 +591,7 @@ impl BlockSynchronizer {
                 }
             }
             _ => {
-                debug!(%block_hash, "not currently synchronizing block");
+                warn!(%block_hash, "not currently synchronizing block");
             }
         }
         Effects::new()
@@ -703,11 +712,16 @@ impl BlockSynchronizer {
         block_hash: BlockHash,
         result: Result<Option<Digest>, engine_state::Error>,
     ) -> Effects<Event> {
-        error!("XXXXX - got the root hash {:?}", result);
         let execution_results_root_hash = match result {
-            Ok(Some(digest)) => ExecutionResultsChecksum::Checkable(digest),
+            Ok(Some(digest)) => {
+                debug!(
+                    "BlockSynchronizer: got execution_results_root_hash for {:?}",
+                    block_hash
+                );
+                ExecutionResultsChecksum::Checkable(digest)
+            }
             Ok(None) => {
-                error!("the checksum registry should contain the execution results checksum");
+                warn!("the checksum registry should contain the execution results checksum");
                 ExecutionResultsChecksum::Uncheckable
             }
             Err(engine_state::Error::MissingChecksumRegistry) => {

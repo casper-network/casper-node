@@ -11,7 +11,6 @@ pub(crate) enum SyncInstruction {
     },
     BlockSync {
         block_hash: BlockHash,
-        should_fetch_execution_state: bool,
     },
     CaughtUp,
 }

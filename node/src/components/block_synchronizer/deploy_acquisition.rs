@@ -5,7 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use either::Either;
-use tracing::error;
+use tracing::debug;
 
 use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 
@@ -73,7 +73,7 @@ impl DeployAcquisition {
                 })
             }
             DeployAcquisition::ById(_) => {
-                error!("XXXXX - this should not be possible, but we are applying approvals hashes on a deploy acq by ID");
+                debug!("DeployAcquisition: attempt to apply approvals hashes on a deploy acquired by ID");
                 return Err(Error::AcquisitionByIdNotPossible);
             }
         };

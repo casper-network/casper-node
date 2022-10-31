@@ -329,8 +329,8 @@ impl Display for UpgradeWatcherAnnouncement {
 /// A ContractRuntime announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum ContractRuntimeAnnouncement {
-    /// A new block from the linear chain was produced.
-    LinearChainBlock {
+    /// A new block was executed.
+    ExecutedBlock {
         /// The block.
         block: Box<Block>,
         /// Approval hashes.
@@ -358,8 +358,8 @@ pub(crate) enum ContractRuntimeAnnouncement {
 impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
-                write!(f, "created linear chain block {}", block.hash())
+            ContractRuntimeAnnouncement::ExecutedBlock { block, .. } => {
+                write!(f, "executed block {}", block.hash())
             }
             ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
                 write!(f, "commit step completed for {}", era_id)
