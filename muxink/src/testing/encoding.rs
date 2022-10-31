@@ -24,7 +24,6 @@ pub(crate) trait TestEncodeable {
     /// Decodes a previously encoded value from bytes.
     ///
     /// The given `raw` buffer must contain exactly the output of a previous `encode` call.
-    #[inline]
     fn decode(raw: &Bytes) -> Self;
 }
 
