@@ -103,10 +103,12 @@ impl BlockAccumulator {
             let next_block_hash = {
                 let mut ret: Option<BlockHash> = None;
                 if let Some(highest_perceived) = self.highest_usable_block_height() {
-                    if block_height > highest_perceived {
-                        self.block_acceptors
-                            .insert(block_hash, BlockAcceptor::new(block_hash, vec![]));
-                    }
+                    debug_assert!(
+                        block_height <= highest_perceived,
+                        "executable block height({}) is higher than highest perceived({})",
+                        block_height,
+                        highest_perceived
+                    );
                     if highest_perceived.saturating_sub(self.attempt_execution_threshold)
                         <= block_height
                     {
@@ -337,9 +339,8 @@ impl BlockAccumulator {
     }
 
     fn purge(&mut self) {
-        // todo!: discuss w/ team if this approach or sth similar is acceptable
         let now = Timestamp::now();
-        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours
+        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours todo!("move to config")
         let mut purged = vec![];
         self.block_acceptors.retain(|k, v| {
             let expired =
