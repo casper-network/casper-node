@@ -1,5 +1,3 @@
-#![allow(unused)] // TODO: To be removed
-
 //! Weighted round-robin scheduling.
 //!
 //! This module implements a weighted round-robin scheduler that ensures no deadlocks occur, but
@@ -281,24 +279,6 @@ where
             .forget();
 
         events
-    }
-
-    /// Drains all events from all queues.
-    pub async fn drain_queues(&self) -> Vec<I> {
-        let mut events = Vec::new();
-        let keys: Vec<K> = self.queues.keys().cloned().collect();
-
-        for kind in keys {
-            events.extend(self.drain_queue(kind).await);
-        }
-        events
-    }
-
-    /// Seals the queue, preventing it from accepting any more items.
-    ///
-    /// Items pushed into the queue via `push` will be dropped immediately.
-    pub fn seal(&self) {
-        self.sealed.store(true, Ordering::SeqCst);
     }
 
     /// Returns the number of events currently in the queue.

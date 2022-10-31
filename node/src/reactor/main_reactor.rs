@@ -85,8 +85,6 @@ pub(crate) struct MainReactor {
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
-    // todo! - check we prefer to fetch tries from non-validators
-    // todo! - is_syncing_peer behavior of small network no longer required
     small_network: SmallNetwork<MainEvent, Message>,
     consensus: EraSupervisor,
 
@@ -118,8 +116,7 @@ pub(crate) struct MainReactor {
     event_queue_metrics: EventQueueMetrics,
 
     //   ambient settings / data / load-bearing config
-    validator_matrix: ValidatorMatrix, /* todo! fill from: sync_leap, block execution (step),
-                                        * executed_block (switch) */
+    validator_matrix: ValidatorMatrix,
     trusted_hash: Option<BlockHash>,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
@@ -129,7 +126,6 @@ pub(crate) struct MainReactor {
     max_attempts: usize,
     switch_block: Option<BlockHash>,
 
-    // todo! add this to the status endpoint maybe?
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
@@ -349,7 +345,6 @@ impl reactor::Reactor for MainReactor {
         event: MainEvent,
     ) -> Effects<MainEvent> {
         match event {
-            // TODO: this may be redundant / unnecessary now
             MainEvent::ControlAnnouncement(ctrl_ann) => {
                 error!("unhandled control announcement: {}", ctrl_ann);
                 Effects::new()
@@ -592,9 +587,6 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
 
-                // todo! should we notify Consensus if we are not in Validate mode or not a
-                // validator? Consensus must be notified to keep track of executed
-                // blocks and create finality signatures.
                 let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
                     header: Box::new(block.header().clone()),
                     header_hash: *block.hash(),
@@ -766,15 +758,6 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                // todo! does anyone remember why we put this in? currently not used.
-                // let deploy_footprint = match deploy.footprint() {
-                //     Ok(deploy_footprint) => deploy_footprint,
-                //     Err(error) => {
-                //         error!(%error, "invalid deploy");
-                //         return Effects::new();
-                //     }
-                // };
-
                 let mut effects = self.dispatch_event(
                     effect_builder,
                     rng,
@@ -831,7 +814,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_deploy_id,
             )) => {
-                // TODO: notify DeployBuffer the deploy can be proposed
+                // [TODO][Fraser]: notify DeployBuffer the deploy can be proposed
                 // let reactor_event =
                 //     MainEvent::DeployBuffer(deploy_buffer::Event::
                 // BufferDeploy(gossiped_deploy_id));
@@ -941,9 +924,6 @@ impl reactor::Reactor for MainReactor {
                             .ignore(),
                     ));
                 }
-
-                // todo! make sure there aren't other things we should be putting to
-                //  the event stream here, like BlockAdded, etc
 
                 // send deploy processed events to event stream
                 for (deploy_hash, deploy_header, execution_result) in execution_results {

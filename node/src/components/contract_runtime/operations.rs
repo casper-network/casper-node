@@ -212,7 +212,6 @@ pub fn execute_finalized_block(
         .collect();
     let approvals_hashes = Box::new(ApprovalsHashes::new(
         block.hash(),
-        block.header().era_id(),
         approvals_hashes,
         proof_of_checksum_registry,
     ));

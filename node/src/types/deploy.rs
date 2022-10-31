@@ -561,8 +561,7 @@ impl FetcherItem for Deploy {
     type ValidationMetadata = EmptyValidationMetadata;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        // TODO: Validate approvals later, and only if the approvers are actually authorized!
-        validate_deploy(self)
+        self.is_valid()
     }
 }
 

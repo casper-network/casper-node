@@ -52,17 +52,14 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
         match self.state {
-            ReactorState::Initialize => {
-                match self.initialize_next_component() {
-                    Some(effects) => (Duration::ZERO, effects),
-                    None => {
-                        // todo! apply upgrade here?
-                        info!("Initialize: switch to CatchUp");
-                        self.state = ReactorState::CatchUp;
-                        (Duration::ZERO, Effects::new())
-                    }
+            ReactorState::Initialize => match self.initialize_next_component() {
+                Some(effects) => (Duration::ZERO, effects),
+                None => {
+                    info!("Initialize: switch to CatchUp");
+                    self.state = ReactorState::CatchUp;
+                    (Duration::ZERO, Effects::new())
                 }
-            }
+            },
             ReactorState::CatchUp => match self.catch_up_instruction(effect_builder, rng) {
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
                     Ok(effects) => {
@@ -90,8 +87,6 @@ impl MainReactor {
                 }
             },
             ReactorState::KeepUp => {
-                // todo! get next earliest historical block from storage
-                // and give it to the block synchronizer to work on
                 match self.keep_up_instruction(effect_builder, rng) {
                     KeepUpInstruction::Validate(effects) => {
                         // node is in validator set and consensus has what it needs to validate
@@ -436,8 +431,6 @@ impl MainReactor {
                                 .sync_leap_simultaneous_peer_requests,
                         );
                         self.block_accumulator.handle_validators(effect_builder);
-                        // todo!: should we update network validator tracking here?
-                        //self.small_network.handle_validators(effect_builder);
                         let effects = effect_builder.immediately().event(|_| {
                             MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                         });

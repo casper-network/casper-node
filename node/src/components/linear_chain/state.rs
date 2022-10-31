@@ -467,12 +467,8 @@ mod tests {
             Default::default(),
         );
         let execution_results = HashMap::new();
-        let approvals_hashes = ApprovalsHashes::new(
-            block.hash(),
-            block.header().era_id(),
-            vec![],
-            proof_of_checksum_registry,
-        );
+        let approvals_hashes =
+            ApprovalsHashes::new(block.hash(), vec![], proof_of_checksum_registry);
         let new_block_outcomes = lc.handle_new_block(
             Box::new(block.clone()),
             Box::new(approvals_hashes.clone()),
@@ -546,12 +542,8 @@ mod tests {
             StoredValue::from(CLValue::from_t(BTreeMap::<String, Digest>::new()).unwrap()),
             Default::default(),
         );
-        let approvals_hashes = ApprovalsHashes::new(
-            block.hash(),
-            block.header().era_id(),
-            vec![],
-            proof_of_checksum_registry,
-        );
+        let approvals_hashes =
+            ApprovalsHashes::new(block.hash(), vec![], proof_of_checksum_registry);
 
         let execution_results = HashMap::new();
         let outcomes = lc.handle_new_block(
@@ -604,12 +596,8 @@ mod tests {
             StoredValue::from(CLValue::from_t(BTreeMap::<String, Digest>::new()).unwrap()),
             Default::default(),
         );
-        let approvals_hashes = ApprovalsHashes::new(
-            block.hash(),
-            block.header().era_id(),
-            vec![],
-            proof_of_checksum_registry,
-        );
+        let approvals_hashes =
+            ApprovalsHashes::new(block.hash(), vec![], proof_of_checksum_registry);
 
         let execution_results = HashMap::new();
         let outcomes = lc.handle_new_block(
@@ -760,12 +748,8 @@ mod tests {
             StoredValue::from(CLValue::from_t(BTreeMap::<String, Digest>::new()).unwrap()),
             Default::default(),
         );
-        let approvals_hashes = ApprovalsHashes::new(
-            block.hash(),
-            block.header().era_id(),
-            vec![],
-            proof_of_checksum_registry,
-        );
+        let approvals_hashes =
+            ApprovalsHashes::new(block.hash(), vec![], proof_of_checksum_registry);
 
         let put_block_outcomes =
             lc.handle_put_block(Box::new(block.clone()), Box::new(approvals_hashes));
@@ -823,12 +807,8 @@ mod tests {
             StoredValue::from(CLValue::from_t(BTreeMap::<String, Digest>::new()).unwrap()),
             Default::default(),
         );
-        let approvals_hashes = ApprovalsHashes::new(
-            block.hash(),
-            block.header().era_id(),
-            vec![],
-            proof_of_checksum_registry,
-        );
+        let approvals_hashes =
+            ApprovalsHashes::new(block.hash(), vec![], proof_of_checksum_registry);
 
         let execution_results = HashMap::new();
 
