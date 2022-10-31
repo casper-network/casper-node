@@ -9,6 +9,8 @@
 //! Note that there is no decoding format, as the format is insufficiently framed to allow for easy
 //! deserialization.
 
+use std::ops::Deref;
+
 use bytes::Bytes;
 use futures::{Sink, SinkExt};
 
@@ -18,6 +20,12 @@ pub(crate) trait TestEncodeable {
     ///
     /// This function is not terribly efficient, but in test code, it does not have to be.
     fn encode(&self) -> Bytes;
+
+    /// Decodes a previously encoded value from bytes.
+    ///
+    /// The given `raw` buffer must contain exactly the output of a previous `encode` call.
+    #[inline]
+    fn decode(raw: &Bytes) -> Self;
 }
 
 impl TestEncodeable for char {
@@ -27,6 +35,14 @@ impl TestEncodeable for char {
         let s = self.encode_utf8(&mut buf);
         Bytes::from(s.to_string())
     }
+
+    fn decode(raw: &Bytes) -> Self {
+        let s = std::str::from_utf8(&raw).expect("invalid utf8");
+        let mut chars = s.chars();
+        let c = chars.next().expect("no chars in string");
+        assert!(chars.next().is_none());
+        c
+    }
 }
 
 impl TestEncodeable for u8 {
@@ -35,6 +51,23 @@ impl TestEncodeable for u8 {
         let raw: Box<[u8]> = Box::new([*self]);
         Bytes::from(raw)
     }
+
+    fn decode(raw: &Bytes) -> Self {
+        assert_eq!(raw.len(), 1);
+        raw[0]
+    }
+}
+
+impl TestEncodeable for u16 {
+    #[inline]
+    fn encode(&self) -> Bytes {
+        let raw: Box<[u8]> = Box::new(self.to_le_bytes());
+        Bytes::from(raw)
+    }
+
+    fn decode(raw: &Bytes) -> Self {
+        u16::from_le_bytes(raw.deref().try_into().unwrap())
+    }
 }
 
 impl TestEncodeable for u32 {
@@ -42,6 +75,10 @@ impl TestEncodeable for u32 {
     fn encode(&self) -> Bytes {
         let raw: Box<[u8]> = Box::new(self.to_le_bytes());
         Bytes::from(raw)
+    }
+
+    fn decode(raw: &Bytes) -> Self {
+        u32::from_le_bytes(raw.deref().try_into().unwrap())
     }
 }
 

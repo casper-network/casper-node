@@ -460,7 +460,7 @@ mod tests {
 
     use crate::testing::{
         collect_buf, collect_bufs,
-        encoding::EncodeAndSend,
+        encoding::{EncodeAndSend, TestEncodeable},
         testing_sink::{BufferingClogAdapter, TestingSink, TestingSinkRef},
     };
 
@@ -529,13 +529,13 @@ mod tests {
     /// the associated ACK pipe.
     struct TwoWayFixtures {
         client: BackpressuredSink<
-            Box<dyn Sink<Bytes, Error = Infallible> + Unpin>,
-            Box<dyn Stream<Item = Result<u64, Infallible>> + Unpin>,
+            Box<dyn Sink<Bytes, Error = Infallible> + Send + Unpin>,
+            Box<dyn Stream<Item = Result<u64, Infallible>> + Send + Unpin>,
             Bytes,
         >,
         server: BackpressuredStream<
-            Box<dyn Stream<Item = Result<Bytes, Infallible>> + Unpin>,
-            Box<dyn Sink<u64, Error = Infallible> + Unpin>,
+            Box<dyn Stream<Item = Result<Bytes, Infallible>> + Send + Unpin>,
+            Box<dyn Sink<u64, Error = Infallible> + Send + Unpin>,
             Bytes,
         >,
     }
@@ -546,16 +546,17 @@ mod tests {
 
             let (ack_sink, ack_stream) = setup_io_pipe::<u64>(size);
 
-            let boxed_sink: Box<dyn Sink<Bytes, Error = Infallible> + Unpin + 'static> =
+            let boxed_sink: Box<dyn Sink<Bytes, Error = Infallible> + Send + Unpin + 'static> =
                 Box::new(sink);
-            let boxed_ack_stream: Box<dyn Stream<Item = Result<u64, Infallible>> + Unpin> =
+            let boxed_ack_stream: Box<dyn Stream<Item = Result<u64, Infallible>> + Send + Unpin> =
                 Box::new(ack_stream);
 
             let client = BackpressuredSink::new(boxed_sink, boxed_ack_stream, WINDOW_SIZE);
 
-            let boxed_stream: Box<dyn Stream<Item = Result<Bytes, Infallible>> + Unpin> =
+            let boxed_stream: Box<dyn Stream<Item = Result<Bytes, Infallible>> + Send + Unpin> =
                 Box::new(stream);
-            let boxed_ack_sink: Box<dyn Sink<u64, Error = Infallible> + Unpin> = Box::new(ack_sink);
+            let boxed_ack_sink: Box<dyn Sink<u64, Error = Infallible> + Send + Unpin> =
+                Box::new(ack_sink);
             let server = BackpressuredStream::new(boxed_stream, boxed_ack_sink, WINDOW_SIZE);
 
             TwoWayFixtures { client, server }
@@ -859,49 +860,49 @@ mod tests {
         ));
     }
 
-    // #[tokio::test]
-    // async fn backpressured_sink_concurrent_tasks() {
-    //     let to_send: Vec<u16> = (0..u16::MAX).into_iter().rev().collect();
-    //     let (sink, receiver) = tokio::sync::mpsc::channel::<u16>(u16::MAX as usize);
-    //     let (ack_sender, ack_receiver) = tokio::sync::mpsc::unbounded_channel::<u64>();
-    //     let ack_stream = UnboundedReceiverStream::new(ack_receiver);
-    //     let mut sink = BackpressuredSink::new(PollSender::new(sink), ack_stream, WINDOW_SIZE);
+    #[tokio::test]
+    async fn backpressured_sink_concurrent_tasks() {
+        let to_send: Vec<u16> = (0..u16::MAX).into_iter().rev().collect();
 
-    //     let send_fut = tokio::spawn(async move {
-    //         for item in to_send.iter() {
-    //             // Try to feed each item into the sink.
-    //             if sink.feed(*item).await.is_err() {
-    //                 // When `feed` fails, the sink is full, so we flush it.
-    //                 sink.flush().await.unwrap();
-    //                 // After flushing, the sink must be able to accept new items.
-    //                 sink.feed(*item).await.unwrap();
-    //             }
-    //         }
-    //         // Close the sink here to signal the end of the stream on the other end.
-    //         sink.close().await.unwrap();
-    //         // Return the sink so we don't drop the ACK sending end yet.
-    //         sink
-    //     });
+        let TwoWayFixtures {
+            mut client,
+            mut server,
+        } = TwoWayFixtures::new(512);
 
-    //     let recv_fut = tokio::spawn(async move {
-    //         let mut item_stream = ReceiverStream::new(receiver);
-    //         let mut items: Vec<u16> = vec![];
-    //         while let Some(item) = item_stream.next().await {
-    //             // Receive each item sent by the sink.
-    //             items.push(item);
-    //             // Send the ACK for it.
-    //             ack_sender.send(items.len().try_into().unwrap()).unwrap();
-    //         }
-    //         items
-    //     });
+        let send_fut = tokio::spawn(async move {
+            for item in to_send.iter() {
+                // Try to feed each item into the sink.
+                if client.feed(item.encode()).await.is_err() {
+                    // When `feed` fails, the sink is full, so we flush it.
+                    client.flush().await.unwrap();
+                    // After flushing, the sink must be able to accept new items.
+                    client.feed(item.encode()).await.unwrap();
+                }
+            }
+            // Close the sink here to signal the end of the stream on the other end.
+            client.close().await.unwrap();
+            // Return the sink so we don't drop the ACK sending end yet.
+            client
+        });
 
-    //     let (send_result, recv_result) = tokio::join!(send_fut, recv_fut);
-    //     assert!(send_result.is_ok());
-    //     assert_eq!(
-    //         recv_result.unwrap(),
-    //         (0..u16::MAX).into_iter().rev().collect::<Vec<u16>>()
-    //     );
-    // }
+        let recv_fut = tokio::spawn(async move {
+            let mut items: Vec<u16> = vec![];
+            while let Some((item, ticket)) = server.next().await.transpose().unwrap() {
+                // Receive each item sent by the sink.
+                items.push(u16::decode(&item));
+                // Send the ACK for it.
+                drop(ticket);
+            }
+            items
+        });
+
+        let (send_result, recv_result) = tokio::join!(send_fut, recv_fut);
+        assert!(send_result.is_ok());
+        assert_eq!(
+            recv_result.unwrap(),
+            (0..u16::MAX).into_iter().rev().collect::<Vec<u16>>()
+        );
+    }
 
     // #[tokio::test]
     // async fn backpressured_roundtrip_concurrent_tasks() {
