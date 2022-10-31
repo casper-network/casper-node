@@ -260,26 +260,22 @@ impl Drop for Ticket {
 
 /// Error type for a [`BackpressuredStream`].
 #[derive(Debug, Error)]
-pub enum BackpressuredStreamError<E: std::error::Error> {
-    /// Couldn't enqueue an ACK for sending on the ACK sink after it polled
-    /// ready.
-    #[error("Error sending ACK to sender")]
-    AckSend,
+pub enum BackpressuredStreamError<ErrRecv: std::error::Error, ErrSendAck: std::error::Error> {
+    /// Couldn't enqueue an ACK for sending on the ACK sink after it polled ready.
+    #[error("error sending ACK")]
+    AckSend(#[source] ErrSendAck),
     /// Error on polling the ACK sink.
-    #[error("Error polling the ACK stream")]
+    #[error("error polling the ACK stream")]
     AckSinkPoll,
     /// Error flushing the ACK sink.
-    #[error("Error flushing the ACK stream")]
+    #[error("error flushing the ACK stream")]
     Flush,
-    /// Error on the underlying stream when it is ready to yield a new item,
-    /// but doing so would bring the number of in flight items over the
-    /// limit imposed by the window size and therefore the sender broke the
-    /// contract.
-    #[error("Sender sent more items than the window size")]
+    /// The peer exceeded the configure window size.
+    #[error("peer exceeded window size")]
     ItemOverflow,
     /// Error encountered by the underlying stream.
-    #[error(transparent)]
-    Stream(E),
+    #[error("stream receive failure")]
+    Stream(#[source] ErrRecv),
 }
 
 /// A backpressuring stream.
@@ -351,8 +347,9 @@ where
     E: std::error::Error,
     Self: Unpin,
     A: Sink<u64> + Unpin,
+    <A as Sink<u64>>::Error: std::error::Error,
 {
-    type Item = Result<(StreamItem, Ticket), BackpressuredStreamError<E>>;
+    type Item = Result<(StreamItem, Ticket), BackpressuredStreamError<E, <A as Sink<u64>>::Error>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let self_mut = self.get_mut();
@@ -389,8 +386,8 @@ where
                     // Enqueue one item representing the number of items processed
                     // so far. This should never be an error as the sink must be
                     // ready to accept new items at this point.
-                    if let Err(_) = self_mut.ack_sink.start_send_unpin(self_mut.items_processed) {
-                        return Poll::Ready(Some(Err(BackpressuredStreamError::AckSend)));
+                    if let Err(err) = self_mut.ack_sink.start_send_unpin(self_mut.items_processed) {
+                        return Poll::Ready(Some(Err(BackpressuredStreamError::AckSend(err))));
                     }
                     // Now that the ACKs have been handed to the ACK sink,
                     // reset the received ACK counter.
