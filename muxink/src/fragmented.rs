@@ -211,7 +211,7 @@ where
         loop {
             match ready!(self_mut.stream.poll_next_unpin(cx)) {
                 Some(Ok(mut next_fragment)) => {
-                    let is_final = match next_fragment.get(0).cloned() {
+                    let is_final = match next_fragment.first().cloned() {
                         Some(MORE_FRAGMENTS) => false,
                         Some(FINAL_FRAGMENT) => true,
                         Some(invalid) => {

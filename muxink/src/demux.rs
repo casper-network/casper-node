@@ -59,7 +59,7 @@ impl<S: Stream> Demultiplexer<S> {
         const WAKERS_INIT: Option<Waker> = None;
         Demultiplexer {
             // We fuse the stream in case its unsafe to call it after yielding `Poll::Ready(None)`
-            stream: stream,
+            stream,
             is_finished: false,
             // Initially, we have no next frame
             next_frame: None,

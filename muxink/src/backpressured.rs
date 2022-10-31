@@ -425,20 +425,20 @@ where
                 self_mut.last_received += 1;
                 // Yield the item along with a ticket to be released when
                 // the processing of said item is done.
-                return Poll::Ready(Some(Ok((
+                Poll::Ready(Some(Ok((
                     next_item,
                     Ticket::new(self_mut.ack_sender.clone()),
-                ))));
+                ))))
             }
             Some(Err(err)) => {
                 // Return the error on the underlying stream.
-                return Poll::Ready(Some(Err(BackpressuredStreamError::Stream(err))));
+                Poll::Ready(Some(Err(BackpressuredStreamError::Stream(err))))
             }
             None => {
                 // If the underlying stream is closed, the `BackpressuredStream`
                 // is also considered closed. Polling the stream after this point
                 // is undefined behavior.
-                return Poll::Ready(None);
+                Poll::Ready(None)
             }
         }
     }
