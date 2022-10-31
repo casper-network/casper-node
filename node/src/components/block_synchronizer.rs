@@ -712,10 +712,10 @@ impl BlockSynchronizer {
         block_hash: BlockHash,
         result: Result<Option<Digest>, engine_state::Error>,
     ) -> Effects<Event> {
-        let execution_results_root_hash = match result {
+        let execution_results_checksum = match result {
             Ok(Some(digest)) => {
                 debug!(
-                    "BlockSynchronizer: got execution_results_root_hash for {:?}",
+                    "BlockSynchronizer: got execution_results_checksum for {:?}",
                     block_hash
                 );
                 ExecutionResultsChecksum::Checkable(digest)

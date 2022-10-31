@@ -784,7 +784,7 @@ impl BlockAcquisitionState {
                             Err(Error::InvalidAttemptToAcquireExecutionResults)
                         }
                         ExecutionResultsAcquisition::Needed { .. } => {
-                            Ok(BlockAcquisitionAction::execution_results_root_hash(
+                            Ok(BlockAcquisitionAction::execution_results_checksum(
                                 *block.hash(),
                                 *block.state_root_hash(),
                             ))

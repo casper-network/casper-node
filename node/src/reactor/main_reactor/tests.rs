@@ -684,7 +684,7 @@ async fn empty_block_validation_regression() {
         .expect("network initialization failed");
     let malicious_validator = stakes.keys().next().unwrap().clone();
     info!("Malicious validator: {:?}", malicious_validator);
-    let everyone_else: Vec<_> = stakes
+    let _everyone_else: Vec<_> = stakes
         .keys()
         .filter(|pub_key| **pub_key != malicious_validator)
         .cloned()
@@ -702,10 +702,10 @@ async fn empty_block_validation_regression() {
                 responder,
             }) => {
                 info!("Accusing everyone else!");
-                todo!(); // accusations = everyone_else.clone();
+                // todo!: Accuse everyone else!
                 Either::Right(MainEvent::DeployBufferRequest(
                     DeployBufferRequest::GetAppendableBlock {
-                        timestamp: Timestamp::now(),
+                        timestamp,
                         responder,
                     },
                 ))
