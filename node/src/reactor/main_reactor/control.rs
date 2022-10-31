@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
@@ -81,11 +81,11 @@ impl MainReactor {
                     (Duration::ZERO, utils::new_shutdown_effect(msg))
                 }
                 CatchUpInstruction::Do(wait, effects) => {
-                    trace!("CatchUp: node is processing effects");
+                    debug!("CatchUp: node is processing effects");
                     (wait, effects)
                 }
                 CatchUpInstruction::CheckLater(msg, wait) => {
-                    trace!("CatchUp: {}", msg);
+                    debug!("CatchUp: {}", msg);
                     (wait, Effects::new())
                 }
             },
@@ -106,11 +106,11 @@ impl MainReactor {
                         (Duration::ZERO, Effects::new())
                     }
                     KeepUpInstruction::Do(wait, effects) => {
-                        trace!("KeepUp: node is processing effects");
+                        debug!("KeepUp: node is processing effects");
                         (wait, effects)
                     }
                     KeepUpInstruction::CheckLater(msg, wait) => {
-                        trace!("KeepUp: {}", msg);
+                        debug!("KeepUp: {}", msg);
                         (wait, Effects::new())
                     }
                 }
@@ -118,12 +118,13 @@ impl MainReactor {
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
                 ValidateInstruction::NonSwitchBlock => (Duration::ZERO, Effects::new()),
                 ValidateInstruction::KeepUp => {
+                    info!("Validate: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
                     self.block_synchronizer.resume();
                     (Duration::ZERO, Effects::new())
                 }
                 ValidateInstruction::Do(wait, effects) => {
-                    trace!("Validate: node is processing effects");
+                    debug!("Validate: node is processing effects");
                     (wait, effects)
                 }
             },
@@ -411,7 +412,7 @@ impl MainReactor {
                         ..
                     } => {
                         debug!("CatchUp: sync leap received: {:?}", best_available);
-                        trace!(
+                        info!(
                             "CatchUp: sync leap received for: {:?}",
                             best_available.trusted_block_header.block_hash()
                         );
@@ -510,7 +511,7 @@ impl MainReactor {
         );
         let starting_with = match maybe_executable_block_id {
             Some((block_hash, block_height)) => {
-                trace!("KeepUp: executable block: {}", block_hash);
+                debug!("KeepUp: executable block: {}", block_hash);
                 StartingWith::ExecutableBlock(block_hash, block_height)
             }
             None => {
@@ -523,14 +524,14 @@ impl MainReactor {
         debug!("KeepUp: sync_instruction {:?}", sync_instruction);
         match sync_instruction {
             SyncInstruction::Leap { block_hash } => {
-                trace!("KeepUp: Leap: {:?}", block_hash);
+                debug!("KeepUp: Leap: {:?}", block_hash);
                 KeepUpInstruction::CatchUp
             }
             SyncInstruction::BlockSync {
                 block_hash,
                 should_fetch_execution_state,
             } => {
-                trace!("KeepUp: BlockSync: {:?}", block_hash);
+                debug!("KeepUp: BlockSync: {:?}", block_hash);
                 self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     should_fetch_execution_state,
@@ -548,11 +549,11 @@ impl MainReactor {
                 block_hash,
                 next_block_hash,
             } => {
-                trace!("KeepUp: BlockExec: {:?}", block_hash);
+                debug!("KeepUp: BlockExec: {:?}", block_hash);
                 match self.enqueue_executable_block(effect_builder) {
                     Ok(effects) => {
                         if let Some(block_hash) = next_block_hash {
-                            trace!("KeepUp: BlockSync: {:?}", block_hash);
+                            debug!("KeepUp: BlockSync: {:?}", block_hash);
                             self.block_synchronizer.register_block_by_hash(
                                 block_hash,
                                 false,
@@ -594,7 +595,6 @@ impl MainReactor {
                 if last_progress > self.last_progress {
                     self.last_progress = last_progress;
                 }
-                debug!("Validate: staying in this mode");
                 ValidateInstruction::Do(Duration::ZERO, effects)
             }
             Ok(None) => {
@@ -605,7 +605,6 @@ impl MainReactor {
                 // the keep up logic will handle putting them back
                 // to catch up if necessary, or back to validate
                 // if they become able to validate again
-                debug!("Validate: switching to KeepUp");
                 ValidateInstruction::KeepUp
             }
             Err(msg) => {
