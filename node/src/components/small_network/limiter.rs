@@ -90,16 +90,25 @@ impl Limiter {
         }
     }
 
-    pub(super) fn is_validator_in_era(&self, era: EraId, peer_id: &NodeId) -> Option<bool> {
+    pub(super) fn is_validator_in_era(&self, era: EraId, peer_id: &NodeId) -> bool {
         let public_key = match self.data.connected_validators.read() {
-            Ok(connected_validators) => connected_validators.get(peer_id)?.clone(),
+            Ok(connected_validators) => match connected_validators.get(peer_id) {
+                None => return false,
+                Some(public_key) => public_key.clone(),
+            },
             Err(_) => {
                 error!("could not read from connected_validators of limiter, lock poisoned");
-                return None;
+                return false;
             }
         };
 
-        self.validator_matrix.is_validator_in_era(era, &public_key)
+        match self.validator_matrix.is_validator_in_era(era, &public_key) {
+            None => {
+                error!(%era, "missing validator weights for given era");
+                false
+            }
+            Some(is_validator) => is_validator,
+        }
     }
 }
 

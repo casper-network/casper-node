@@ -379,9 +379,8 @@ where
     fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
         self.net_metrics.broadcast_requests.inc();
         for peer_id in self.outgoing_manager.connected_peers() {
-            match self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
-                Some(true) => self.send_message(peer_id, msg.clone(), None),
-                Some(false) | None => (),
+            if self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+                self.send_message(peer_id, msg.clone(), None)
             }
         }
     }
@@ -407,10 +406,7 @@ where
                     GossipTarget::All => true,
                     GossipTarget::NonValidators(era_id) => {
                         // If the peer isn't a validator, include it.
-                        match self.outgoing_limiter.is_validator_in_era(era_id, peer_id) {
-                            Some(false) | None => true,
-                            Some(true) => false,
-                        }
+                        !self.outgoing_limiter.is_validator_in_era(era_id, peer_id)
                     }
                 }
             })

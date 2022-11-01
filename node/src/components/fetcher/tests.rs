@@ -40,8 +40,8 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        ApprovalsHashes, Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        EmptyValidationMetadata, FinalitySignature, Item, NodeId,
+        Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, EmptyValidationMetadata,
+        FinalitySignature, Item, NodeId,
     },
     utils::WithDir,
 };
@@ -117,8 +117,6 @@ enum Event {
     GossiperIncomingDeploy(GossiperIncoming<Deploy>),
     #[from]
     GossiperIncomingBlock(GossiperIncoming<Block>),
-    #[from]
-    GossiperIncomingApprovalsHashes(GossiperIncoming<ApprovalsHashes>),
     #[from]
     GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
     #[from]
@@ -245,7 +243,6 @@ impl ReactorTrait for Reactor {
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)
             | Event::GossiperIncomingBlock(_)
-            | Event::GossiperIncomingApprovalsHashes(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
             | Event::TrieRequestIncoming(_)

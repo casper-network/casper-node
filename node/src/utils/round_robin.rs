@@ -281,6 +281,26 @@ where
         events
     }
 
+    /// Drains all events from all queues.
+    #[cfg(test)]
+    pub async fn drain_queues(&self) -> Vec<I> {
+        let mut events = Vec::new();
+        let keys: Vec<K> = self.queues.keys().cloned().collect();
+
+        for kind in keys {
+            events.extend(self.drain_queue(kind).await);
+        }
+        events
+    }
+
+    /// Seals the queue, preventing it from accepting any more items.
+    ///
+    /// Items pushed into the queue via `push` will be dropped immediately.
+    #[cfg(test)]
+    pub fn seal(&self) {
+        self.sealed.store(true, Ordering::SeqCst);
+    }
+
     /// Returns the number of events currently in the queue.
     #[cfg(test)]
     pub(crate) fn item_count(&self) -> usize {
