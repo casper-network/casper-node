@@ -2,10 +2,10 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     iter,
+    sync::Arc,
 };
 
 use datasize::DataSize;
-use derive_more::Display;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -19,7 +19,8 @@ use crate::{
     components::linear_chain::{self, BlockSignatureError},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights, FetcherItem, Item, Tag,
+        BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights, FetcherItem,
+        Item, Tag,
     },
 };
 
@@ -129,38 +130,27 @@ impl Item for SyncLeap {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Debug, Display)]
-pub(crate) struct FinalityThresholdFraction(Ratio<u64>);
-
-impl DataSize for FinalityThresholdFraction {
-    const IS_DYNAMIC: bool = false;
-    const STATIC_HEAP_SIZE: usize = 0;
-    fn estimate_heap_size(&self) -> usize {
-        0
-    }
-}
-
-impl From<Ratio<u64>> for FinalityThresholdFraction {
-    fn from(ratio: Ratio<u64>) -> Self {
-        FinalityThresholdFraction(ratio)
-    }
-}
-
 impl FetcherItem for SyncLeap {
     type ValidationError = SyncLeapValidationError;
-    type ValidationMetadata = FinalityThresholdFraction;
+    type ValidationMetadata = Arc<Chainspec>;
 
-    fn validate(
-        &self,
-        finality_threshold_fraction: &FinalityThresholdFraction,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self, chainspec: &Arc<Chainspec>) -> Result<(), Self::ValidationError> {
         if self.trusted_ancestor_headers.is_empty() && self.trusted_block_header.height() > 0 {
             return Err(SyncLeapValidationError::MissingTrustedAncestors);
         }
 
-        // All headers must have the same protocol versions: sync leaps across upgrade boundaries
-        // are not supported.
-        let protocol_version = self.trusted_block_header.protocol_version();
+        // The difference between the highest header's and the trusted header's era cannot be
+        // greater than recent_era_count. We add one, as the highest block could be a non-switch
+        // block.
+        if self.signed_block_headers.len() as u64
+            > chainspec.core_config.recent_era_count().saturating_add(1)
+        {
+            return Err(SyncLeapValidationError::TooManySwitchBlocks);
+        }
+
+        if self.trusted_ancestor_headers.len() as u64 > chainspec.max_blocks_per_era() {
+            return Err(SyncLeapValidationError::TooManyTrustedAncestors);
+        }
 
         for signed_header in &self.signed_block_headers {
             signed_header
@@ -180,11 +170,12 @@ impl FetcherItem for SyncLeap {
                 .push(&signed_header.block_signatures);
         }
 
+        let protocol_version = chainspec.protocol_version();
         if headers
-            .iter()
-            .any(|(_, header)| header.protocol_version() != protocol_version)
+            .values()
+            .any(|header| header.protocol_version() != protocol_version)
         {
-            return Err(SyncLeapValidationError::MultipleProtocolVersions);
+            return Err(SyncLeapValidationError::WrongProtocolVersion);
         }
 
         let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.block_hash()];
@@ -197,7 +188,7 @@ impl FetcherItem for SyncLeap {
                         for sigs in era_sigs {
                             if let Err(err) = linear_chain::check_sufficient_block_signatures(
                                 validator_weights,
-                                finality_threshold_fraction.0,
+                                chainspec.highway_config.finality_threshold_fraction,
                                 Some(sigs),
                             ) {
                                 return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(
@@ -498,8 +489,8 @@ mod tests {
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
-    #[error("The provided headers have different protocol versions.")]
-    MultipleProtocolVersions,
+    #[error("The provided headers don't have the current protocol version.")]
+    WrongProtocolVersion,
     #[error("No ancestors of the trusted block provided.")]
     MissingTrustedAncestors,
     #[error("The SyncLeap does not contain proof that all its headers are on the right chain.")]
@@ -510,4 +501,8 @@ pub(crate) enum SyncLeapValidationError {
     Crypto(crypto::Error),
     #[error(transparent)]
     BlockWithMetadata(BlockHeaderWithMetadataValidationError),
+    #[error("Too many switch blocks: leaping across that many eras is not allowed.")]
+    TooManySwitchBlocks,
+    #[error("Too many trusted ancestor headers: no more than one era's worth is needed.")]
+    TooManyTrustedAncestors,
 }

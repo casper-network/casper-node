@@ -20,8 +20,8 @@ pub(crate) enum Error<T: FetcherItem> {
     CouldNotConstructGetRequest { id: T::Id, peer: NodeId },
 
     #[error(
-        "ongoing fetch for {id} from {peer} has different validation metadata ({current}) to that \
-        given in new fetch attempt ({new})"
+        "ongoing fetch for {id} from {peer} has different validation metadata ({current:?}) to \
+        that given in new fetch attempt ({new:?})"
     )]
     ValidationMetadataMismatch {
         id: T::Id,

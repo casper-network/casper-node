@@ -140,6 +140,22 @@ impl Chainspec {
             chainspec_registry,
         ))
     }
+
+    /// The maximum number of blocks per era, based on minimum block time, era duration and era height.
+    pub(crate) fn max_blocks_per_era(&self) -> u64 {
+        let era_millis = self.core_config.era_duration.millis();
+        let round_millis = self.highway_config.min_round_length().millis();
+        // If the last block was above minimum era height, its predecessor's timestamp must have
+        // been less than era_millis, if the era start was at 0.
+        let latest_timestamp = era_millis.saturating_add(round_millis).saturating_sub(1);
+        // Its timestamp determines the maximum number of rounds.
+        let max_blocks_by_time = latest_timestamp
+            .saturating_div(round_millis)
+            .saturating_add(1); // Avoid the fencepost error! First block could be at 0.
+
+        // We produce at least minimum_era_height blocks, even after era_duration has passed.
+        max_blocks_by_time.max(self.core_config.minimum_era_height)
+    }
 }
 
 #[cfg(test)]
