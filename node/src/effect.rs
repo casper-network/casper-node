@@ -844,6 +844,23 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announces that a gossiper has received a full item, where the item's ID is NOT the complete
+    /// item.
+    pub(crate) async fn announce_item_body_received_via_gossip<T: GossiperItem>(
+        self,
+        item: Box<T>,
+        sender: NodeId,
+    ) where
+        REv: From<GossiperAnnouncement<T>>,
+    {
+        self.event_queue
+            .schedule(
+                GossiperAnnouncement::NewItemBody { item, sender },
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
     /// Announces that the block accumulator has received and stored a new block.
     pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
     where

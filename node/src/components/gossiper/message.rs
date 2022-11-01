@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    boxed::Box,
+    fmt::{self, Display, Formatter},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +18,8 @@ pub(crate) enum Message<T: GossiperItem> {
         item_id: T::Id,
         is_already_held: bool,
     },
+    GetItem(T::Id),
+    Item(Box<T>),
 }
 
 impl<T: GossiperItem> Display for Message<T> {
@@ -29,6 +34,8 @@ impl<T: GossiperItem> Display for Message<T> {
                 "gossip-response({}, {})",
                 item_id, is_already_held
             ),
+            Message::GetItem(item_id) => write!(formatter, "gossip-get-item({})", item_id),
+            Message::Item(item) => write!(formatter, "gossip-item({})", item.id()),
         }
     }
 }

@@ -495,6 +495,12 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::Network(small_network::Event::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+                ..
+            }) => {
+                // Should not be reachable.
+                Effects::new()
+            }
             MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
                 // We don't care about completion of gossiping an address.
                 Effects::new()
@@ -704,6 +710,20 @@ impl reactor::Reactor for MainReactor {
                 error!(%gossiped_block_id, "gossiper should not announce new block");
                 Effects::new()
             }
+            MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+                item,
+                sender,
+            }) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::ReceivedBlock {
+                        block: item,
+                        sender,
+                    },
+                ),
+            ),
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_id,
             )) => Effects::new(),
@@ -748,6 +768,19 @@ impl reactor::Reactor for MainReactor {
                 error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
                 Effects::new()
             }
+            MainEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::NewItemBody { item, sender },
+            ) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::ReceivedFinalitySignature {
+                        finality_signature: item,
+                        sender,
+                    },
+                ),
+            ),
             MainEvent::FinalitySignatureGossiperAnnouncement(
                 GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
             ) => Effects::new(),
@@ -803,16 +836,31 @@ impl reactor::Reactor for MainReactor {
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
                 error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
                 Effects::new()
             }
-            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
-                    .handle_event(effect_builder, rng, incoming.into()),
+            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+                item,
+                sender,
+            }) => reactor::wrap_effects(
+                MainEvent::DeployAcceptor,
+                self.deploy_acceptor.handle_event(
+                    effect_builder,
+                    rng,
+                    deploy_acceptor::Event::Accept {
+                        deploy: item,
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    },
+                ),
             ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_deploy_id,
