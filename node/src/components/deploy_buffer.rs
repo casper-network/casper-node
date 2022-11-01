@@ -52,8 +52,6 @@ pub(crate) struct DeployBuffer {
     // will become eligible to propose again.
     hold: BTreeMap<Timestamp, HashSet<DeployHash>>,
     // deploy_hashes that should not be proposed, ever
-    // todo!(): Make a note of the finalization timestamp, and prune after entering an era whose
-    //          start is more than one max TTL later.
     dead: HashSet<DeployHash>,
     // block_height and block_time of blocks added to the local chain
     // needed to ensure we have seen sufficient blocks
