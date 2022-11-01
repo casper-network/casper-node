@@ -10,13 +10,12 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, EraId, Key, StoredValue};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
     components::contract_runtime::APPROVALS_CHECKSUM_NAME,
-    effect::GossipTarget,
-    types::{self, ApprovalsHash, DeployId, FetcherItem, GossiperItem, Item, Tag},
+    types::{self, ApprovalsHash, DeployId, FetcherItem, Item, Tag},
     utils::ds,
 };
 
@@ -25,9 +24,6 @@ use crate::{
 pub(crate) struct ApprovalsHashes {
     // Hash of the block that contains deploys that are relevant to the approvals.
     block_hash: BlockHash,
-    // Era id of the block that contains deploys that are relevant to the approvals.
-    // todo!(): Is this needed at all?
-    era_id: EraId,
     /// The set of all deploys' finalized approvals' hashes.
     approvals_hashes: Vec<ApprovalsHash>,
     /// The Merkle proof of the checksum registry containing the checksum of
@@ -42,13 +38,11 @@ pub(crate) struct ApprovalsHashes {
 impl ApprovalsHashes {
     pub(crate) fn new(
         block_hash: &BlockHash,
-        era_id: EraId,
         approvals_hashes: Vec<ApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
             block_hash: *block_hash,
-            era_id,
             approvals_hashes,
             merkle_proof_approvals,
             is_verified: OnceCell::new(),
@@ -58,13 +52,6 @@ impl ApprovalsHashes {
     fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
-        }
-
-        if self.era_id != block.header().era_id {
-            return Err(ApprovalsHashesValidationError::EraMismatch {
-                block_era_id: block.header().era_id(),
-                approvals_era_id: self.era_id,
-            });
         }
 
         let proof_state_root_hash = self
@@ -146,14 +133,6 @@ impl FetcherItem for ApprovalsHashes {
     }
 }
 
-impl GossiperItem for ApprovalsHashes {
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    fn target(&self) -> GossipTarget {
-        GossipTarget::NonValidators(self.era_id)
-    }
-}
-
 impl Display for ApprovalsHashes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "approvals hashes for block: {}", self.block_hash)
@@ -186,12 +165,6 @@ pub(crate) enum ApprovalsHashesValidationError {
     /// An error while computing the checksum of the approvals.
     #[error("failed to compute checksum of the approvals")]
     ApprovalsChecksum(bytesrepr::Error),
-
-    #[error("approvals hashes era mismatch: block_era_id={block_era_id} approvals_era_id={approvals_era_id}")]
-    EraMismatch {
-        block_era_id: EraId,
-        approvals_era_id: EraId,
-    },
 
     /// The approvals checksum provided doesn't match one calculated from the approvals.
     #[error("provided approvals checksum doesn't match one calculated from the approvals")]
