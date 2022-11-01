@@ -468,4 +468,26 @@ mod tests {
         // With equal hashes
         assert_eq!(chainspec.hash(), chainspec_unordered.hash());
     }
+
+    #[test]
+    fn should_compute_max_blocks_per_era() {
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        chainspec.core_config.era_duration = TimeDiff::from(3);
+        chainspec.core_config.minimum_era_height = 3;
+        // Round length 4.
+        chainspec.highway_config.minimum_round_exponent = 2;
+        // Minimum height is the limiting factor: Three rounds don't fit in 3 ms.
+        assert_eq!(3, chainspec.max_blocks_per_era());
+
+        chainspec.core_config.era_duration = TimeDiff::from(12);
+        // The block timestamps could be 0, 4, 8, 12. The fourth would be the last one, since it
+        // is exactly at the minimum era duration.
+        assert_eq!(4, chainspec.max_blocks_per_era());
+
+        chainspec.core_config.era_duration = TimeDiff::from(13);
+        // The block timestamps could be 0, 4, 8, 12, 16. The fifth would be the last one, since
+        // it is the first to exceed the minimum era duration.
+        assert_eq!(5, chainspec.max_blocks_per_era());
+    }
 }
