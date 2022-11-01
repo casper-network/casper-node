@@ -1618,12 +1618,7 @@ impl Storage {
             None => return Ok(None),
             Some(block) => block,
         };
-        let deploy_hashes = block
-            .deploy_hashes()
-            .iter()
-            .chain(block.transfer_hashes())
-            .copied()
-            .collect_vec();
+        let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect_vec();
         Ok(self
             .get_deploys_with_finalized_approvals(&mut txn, &deploy_hashes)?
             .into_iter()
@@ -2413,7 +2408,7 @@ impl Storage {
 
         Ok(self
             .get_single_block(&mut txn, &block_hash)?
-            .map(|block| block.body().transaction_hashes().cloned().collect()))
+            .map(|block| block.body().deploy_and_transfer_hashes().copied().collect()))
     }
 
     fn read_block_execution_results_or_chunk(
@@ -2448,7 +2443,7 @@ impl Storage {
         };
 
         let mut execution_results = vec![];
-        for deploy_hash in block_body.transaction_hashes() {
+        for deploy_hash in block_body.deploy_and_transfer_hashes() {
             match self.get_deploy_metadata(&mut txn, deploy_hash)? {
                 None => {
                     // We have the block and the body but not the deploy. This could happen
@@ -2554,18 +2549,13 @@ fn insert_to_deploy_index(
     block_body: &BlockBody,
     block_height: u64,
 ) -> Result<(), FatalStorageError> {
-    if let Some(hash) = block_body
-        .deploy_hashes()
-        .iter()
-        .chain(block_body.transfer_hashes().iter())
-        .find(|hash| {
-            deploy_hash_index
-                .get(hash)
-                .map_or(false, |old_block_hash_and_height| {
-                    old_block_hash_and_height.block_hash != block_hash
-                })
-        })
-    {
+    if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
+        deploy_hash_index
+            .get(hash)
+            .map_or(false, |old_block_hash_and_height| {
+                old_block_hash_and_height.block_hash != block_hash
+            })
+    }) {
         return Err(FatalStorageError::DuplicateDeployIndex {
             deploy_hash: *hash,
             first: deploy_hash_index[hash],
@@ -2573,11 +2563,7 @@ fn insert_to_deploy_index(
         });
     }
 
-    for hash in block_body
-        .deploy_hashes()
-        .iter()
-        .chain(block_body.transfer_hashes().iter())
-    {
+    for hash in block_body.deploy_and_transfer_hashes() {
         deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
     }
 

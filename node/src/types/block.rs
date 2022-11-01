@@ -263,6 +263,11 @@ impl BlockPayload {
         self.transfers.iter().map(|dwa| dwa.deploy_hash())
     }
 
+    /// The list of deploy hashes chained with the list of transfer hashes.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes().chain(self.transfer_hashes())
+    }
+
     /// Returns an iterator over all deploys and transfers.
     pub(crate) fn deploys_and_transfers_iter(
         &self,
@@ -469,18 +474,6 @@ impl FinalizedBlock {
 
     pub(crate) fn proposer(&self) -> Box<PublicKey> {
         self.proposer.clone()
-    }
-
-    /// Returns the WebAssembly-deploy hashes for the finalized block. These correspond to complex
-    /// smart contract operations that require a WebAssembly VM in the execution engine.
-    pub(crate) fn deploy_hashes(&self) -> &[DeployHash] {
-        &self.deploy_hashes
-    }
-
-    /// Returns the transfer hashes for the finalized block. These correspond to simple token
-    /// transfers that do not require a VM as part of their execution.
-    pub(crate) fn transfer_hashes(&self) -> &[DeployHash] {
-        &self.transfer_hashes
     }
 
     /// The list of deploy hashes chained with the list of transfer hashes.
@@ -1066,7 +1059,7 @@ impl BlockBody {
     }
 
     /// Returns deploy hashes of transactions in an order in which they were executed.
-    pub(crate) fn transaction_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes()
             .iter()
             .chain(self.transfer_hashes().iter())
@@ -1308,10 +1301,7 @@ impl Block {
 
     /// The list of deploy hashes chained with the list of transfer hashes.
     pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.body
-            .deploy_hashes
-            .iter()
-            .chain(&self.body.transfer_hashes)
+        self.body.deploy_and_transfer_hashes()
     }
 
     /// The height of a block.

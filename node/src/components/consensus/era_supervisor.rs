@@ -1132,9 +1132,7 @@ async fn execute_finalized_block<REv>(
     let deploys = match get_deploys(
         effect_builder,
         finalized_block
-            .deploy_hashes()
-            .iter()
-            .chain(finalized_block.transfer_hashes())
+            .deploy_and_transfer_hashes()
             .cloned()
             .collect_vec(),
     )

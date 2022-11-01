@@ -161,12 +161,7 @@ impl DeployBuffer {
 
     fn register_block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
         if let Some(hold_set) = self.hold.get_mut(&proposed_block.context().timestamp()) {
-            hold_set.extend(
-                proposed_block
-                    .value()
-                    .deploy_hashes()
-                    .chain(proposed_block.value().transfer_hashes()),
-            )
+            hold_set.extend(proposed_block.value().deploy_and_transfer_hashes())
         }
     }
 
