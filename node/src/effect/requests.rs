@@ -225,9 +225,10 @@ pub(crate) enum NetworkInfoRequest {
         /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, String>>,
     },
-    /// Get the peers in random order.
+    /// Get up to `count` fully-connected peers in random order.
     FullyConnectedPeers {
-        /// Responder to be called with all connected in random order peers.
+        count: usize,
+        /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,
     },
     /// Get only non-syncing peers in random order.
@@ -243,8 +244,11 @@ impl Display for NetworkInfoRequest {
             NetworkInfoRequest::Peers { responder: _ } => {
                 write!(formatter, "get peers-to-socket-address map")
             }
-            NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
-                write!(formatter, "get fully connected peers")
+            NetworkInfoRequest::FullyConnectedPeers {
+                count,
+                responder: _,
+            } => {
+                write!(formatter, "get up to {} fully connected peers", count)
             }
             NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
                 write!(formatter, "get fully connected non-syncing peers")

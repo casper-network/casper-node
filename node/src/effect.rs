@@ -774,13 +774,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network peers in random order.
-    pub async fn get_fully_connected_peers(self) -> Vec<NodeId>
+    /// Gets up to `count` fully-connected network peers in random order.
+    pub async fn get_fully_connected_peers(self, count: usize) -> Vec<NodeId>
     where
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::FullyConnectedPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedPeers { count, responder },
             QueueKind::Regular,
         )
         .await

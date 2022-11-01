@@ -174,6 +174,9 @@ impl FetcherItem for SyncLeap {
         if headers
             .values()
             .any(|header| header.protocol_version() != protocol_version)
+            && !chainspec
+                .protocol_config
+                .is_last_block_before_activation(&self.trusted_block_header)
         {
             return Err(SyncLeapValidationError::WrongProtocolVersion);
         }

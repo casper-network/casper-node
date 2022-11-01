@@ -2156,9 +2156,11 @@ impl Storage {
                         if block.header().era_id() != era_id {
                             return true;
                         }
-                        if self
-                            .block_has_sufficient_finality_signatures(&key, era_validator_weights)
-                            == false
+                        if self.block_has_sufficient_finality_signatures(
+                            &mut txn,
+                            &key,
+                            era_validator_weights,
+                        ) == false
                         {
                             return false;
                         }
@@ -2173,25 +2175,24 @@ impl Storage {
     }
 
     /// Determines if a given block has sufficient finality signatures for its era.
-    pub(crate) fn block_has_sufficient_finality_signatures(
+    pub(crate) fn block_has_sufficient_finality_signatures<Tx: Transaction>(
         &self,
+        txn: &mut Tx,
         block_hash: &BlockHash,
         era_validator_weights: &EraValidatorWeights,
     ) -> bool {
         let era_id = era_validator_weights.era_id();
-        if let Ok(mut txn) = self.env.begin_ro_txn() {
-            if let Ok(Some(block_signatures)) = self.get_block_signatures(&mut txn, block_hash) {
-                if block_signatures.era_id != era_id {
-                    return false;
-                }
-                if let Some(validator_keys) = block_signatures.public_keys() {
-                    match era_validator_weights.has_sufficient_weight(validator_keys.iter()) {
-                        SignatureWeight::Sufficient => {
-                            return true;
-                        }
-                        SignatureWeight::Insufficient | SignatureWeight::Weak => {
-                            return false;
-                        }
+        if let Ok(Some(block_signatures)) = self.get_block_signatures(txn, block_hash) {
+            if block_signatures.era_id != era_id {
+                return false;
+            }
+            if let Some(validator_keys) = block_signatures.public_keys() {
+                match era_validator_weights.has_sufficient_weight(validator_keys.iter()) {
+                    SignatureWeight::Sufficient => {
+                        return true;
+                    }
+                    SignatureWeight::Insufficient | SignatureWeight::Weak => {
+                        return false;
                     }
                 }
             }

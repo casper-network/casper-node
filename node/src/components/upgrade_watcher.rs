@@ -44,7 +44,7 @@ use crate::{
     NodeRng,
 };
 
-const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]

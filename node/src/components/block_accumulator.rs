@@ -125,8 +125,16 @@ impl BlockAccumulator {
             };
         }
 
-        if starting_with.is_local_tip() {
+        if let StartingWith::LocalTip {
+            block_hash,
+            block_height,
+            is_last_block_before_activation,
+        } = starting_with
+        {
             self.register_local_tip(block_height);
+            if is_last_block_before_activation {
+                return SyncInstruction::Leap { block_hash };
+            }
         }
 
         if self.should_sync(block_height) {
@@ -164,7 +172,7 @@ impl BlockAccumulator {
         SyncInstruction::Leap { block_hash }
     }
 
-    fn should_sync(&mut self, starting_with_block_height: u64) -> bool {
+    fn should_sync(&self, starting_with_block_height: u64) -> bool {
         match self.highest_usable_block_height() {
             Some(highest_usable_block_height) => {
                 let height_diff =
@@ -175,9 +183,9 @@ impl BlockAccumulator {
         }
     }
 
-    fn next_syncable_block_hash(&mut self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+    fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
-        let block_acceptor = self.block_acceptors.get_mut(child_hash)?;
+        let block_acceptor = self.block_acceptors.get(child_hash)?;
         if block_acceptor.has_sufficient_finality() {
             Some(block_acceptor.block_hash())
         } else {
@@ -354,9 +362,9 @@ impl BlockAccumulator {
             .retain(|_parent, child| false == purged.contains(child));
     }
 
-    fn highest_usable_block_height(&mut self) -> Option<u64> {
+    fn highest_usable_block_height(&self) -> Option<u64> {
         let mut ret: Option<u64> = self.local_tip;
-        for block_acceptor in &mut self.block_acceptors.values_mut() {
+        for block_acceptor in &mut self.block_acceptors.values() {
             if false == block_acceptor.has_sufficient_finality() {
                 continue;
             }
