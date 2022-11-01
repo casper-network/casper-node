@@ -2,7 +2,7 @@ mod config;
 mod event;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     mem,
 };
 
@@ -23,22 +23,27 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Deploy, DeployHash, DeployHashWithApprovals, FinalizedBlock,
+        Approval, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
+type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
+
 #[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
     status: ComponentStatus,
     cfg: Config,
     deploy_config: DeployConfig,
-    // keeps track of all deploys the buffer is currently aware of
-    // hold and dead are used to filter it on demand as necessary
-    // items are removed via a self-perpetuating expire event
-    buffer: HashMap<DeployHash, Deploy>,
+    // Keeps track of all deploys the buffer is currently aware of.
+    //
+    // `hold` and `dead` are used to filter it on demand as necessary.
+    //
+    // The timestamp is the time when the deploy expires.
+    // Expired items are removed via a self-perpetuating expire event.
+    buffer: HashMap<DeployHash, (Timestamp, Option<FootprintAndApprovals>)>,
     // when a maybe-block is in flight, we pause inclusion
     // of the deploys within it in other proposed blocks
     // if the maybe-block becomes an actual block the
@@ -101,10 +106,10 @@ impl DeployBuffer {
     where
         REv: From<Event> + From<DeployBufferAnnouncement> + Send,
     {
-        let earliest_acceptable_timestamp = Timestamp::now() - self.deploy_config.max_ttl;
+        let now = Timestamp::now();
         let (buffer, freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
             .into_iter()
-            .partition(|(_, deploy)| deploy.header().timestamp() >= earliest_acceptable_timestamp);
+            .partition(|(_, (expiry_time, _))| *expiry_time >= now);
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold.iter_mut().for_each(|(_, held_deploys)| {
@@ -141,7 +146,17 @@ impl DeployBuffer {
             debug!(?deploy_hash, "attempt to register already held deploy");
             return;
         }
-        self.buffer.insert(*deploy_hash, deploy);
+        let footprint = match deploy.footprint() {
+            Ok(footprint) => footprint,
+            Err(err) => {
+                error!(%deploy_hash, %err, "tried to register invalid deploy");
+                return;
+            }
+        };
+        let expiry_time = deploy.header().expires();
+        let approvals = deploy.approvals().clone();
+        self.buffer
+            .insert(*deploy_hash, (expiry_time, Some((footprint, approvals))));
     }
 
     fn register_block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
@@ -159,10 +174,15 @@ impl DeployBuffer {
         self.chain_index
             .insert(finalized_block.height(), finalized_block.timestamp());
         // all deploys in the finalized block must not be included in future proposals
-        self.dead
-            .extend(finalized_block.deploy_hashes().iter().copied());
-        self.dead
-            .extend(finalized_block.transfer_hashes().iter().copied());
+        for hash in finalized_block.deploy_and_transfer_hashes() {
+            if !self.buffer.contains_key(hash) {
+                let expiry_time = finalized_block
+                    .timestamp()
+                    .saturating_add(self.deploy_config.max_ttl);
+                self.buffer.insert(*hash, (expiry_time, None));
+            }
+            self.dead.insert(*hash);
+        }
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
@@ -170,31 +190,25 @@ impl DeployBuffer {
         self.hold = hold;
     }
 
-    fn proposable(&self) -> Vec<Deploy> {
+    fn proposable(&self) -> Vec<(DeployHash, DeployFootprint, BTreeSet<Approval>)> {
         // a deploy hash that is not in dead or hold is proposable
         self.buffer
             .iter()
             .filter(|(k, _)| !self.hold.values().any(|hs| hs.contains(k)))
             .filter(|(k, _)| !self.dead.contains(k))
-            .map(|(_, v)| v.clone())
+            .filter_map(|(k, (_, maybe_data))| {
+                maybe_data
+                    .as_ref()
+                    .map(|(footprint, approvals)| (*k, footprint.clone(), approvals.clone()))
+            })
             .collect()
     }
 
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
         let mut holds = vec![];
-        for deploy in self.proposable() {
-            let deploy_hash = *deploy.hash();
-            let footprint = match deploy.footprint() {
-                Ok(deploy_footprint) => deploy_footprint,
-                Err(_) => {
-                    error!(%deploy_hash, "invalid deploy in the proposable set");
-                    self.dead.insert(deploy_hash);
-                    continue;
-                }
-            };
-            let with_approvals =
-                DeployHashWithApprovals::new(deploy_hash, deploy.approvals().clone());
+        for (deploy_hash, footprint, approvals) in self.proposable() {
+            let with_approvals = DeployHashWithApprovals::new(deploy_hash, approvals);
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     holds.push(deploy_hash);

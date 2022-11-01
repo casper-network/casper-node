@@ -68,8 +68,7 @@ impl DeployHeader {
 
     /// Has this deploy expired?
     pub fn expired(&self, current_instant: Timestamp) -> bool {
-        let lifespan = self.timestamp.saturating_add(self.ttl);
-        lifespan < current_instant
+        self.expires() < current_instant
     }
 
     /// Price per gas unit for this deploy.

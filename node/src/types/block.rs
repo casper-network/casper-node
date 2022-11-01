@@ -483,6 +483,11 @@ impl FinalizedBlock {
         &self.transfer_hashes
     }
 
+    /// The list of deploy hashes chained with the list of transfer hashes.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes.iter().chain(&self.transfer_hashes)
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
