@@ -2823,11 +2823,8 @@ dependencies = [
 name = "muxink"
 version = "0.1.0"
 dependencies = [
- "bincode",
  "bytes",
- "casper-types 1.5.0",
  "futures",
- "serde",
  "thiserror",
  "tokio",
  "tokio-stream",
