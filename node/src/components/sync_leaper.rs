@@ -2,10 +2,9 @@
 mod error;
 mod event;
 
-use std::{cmp::Ordering, collections::HashMap};
+use std::{cmp::Ordering, collections::HashMap, sync::Arc};
 
 use datasize::DataSize;
-use num_rational::Ratio;
 use tracing::{error, info, warn};
 
 use crate::{
@@ -14,7 +13,7 @@ use crate::{
         Component,
     },
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockHash, NodeId, SyncLeap},
+    types::{BlockHash, Chainspec, NodeId, SyncLeap},
     NodeRng,
 };
 pub(crate) use error::LeapActivityError;
@@ -160,15 +159,14 @@ impl LeapActivity {
 #[derive(Debug, DataSize)]
 pub(crate) struct SyncLeaper {
     leap_activity: Option<LeapActivity>,
-    #[data_size(skip)]
-    finality_threshold_fraction: Ratio<u64>,
+    chainspec: Arc<Chainspec>,
 }
 
 impl SyncLeaper {
-    pub(crate) fn new(finality_threshold_fraction: Ratio<u64>) -> SyncLeaper {
+    pub(crate) fn new(chainspec: Arc<Chainspec>) -> SyncLeaper {
         SyncLeaper {
             leap_activity: None,
-            finality_threshold_fraction,
+            chainspec,
         }
     }
 
@@ -214,11 +212,7 @@ impl SyncLeaper {
                 if false == leap_activity.peers.contains_key(&peer) {
                     effects.extend(
                         effect_builder
-                            .fetch::<SyncLeap>(
-                                block_hash,
-                                peer,
-                                self.finality_threshold_fraction.into(),
-                            )
+                            .fetch::<SyncLeap>(block_hash, peer, self.chainspec.clone())
                             .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                                 block_hash,
                                 fetch_result,
@@ -235,11 +229,7 @@ impl SyncLeaper {
             .map(|peer| {
                 effects.extend(
                     effect_builder
-                        .fetch::<SyncLeap>(
-                            block_hash,
-                            peer,
-                            self.finality_threshold_fraction.into(),
-                        )
+                        .fetch::<SyncLeap>(block_hash, peer, self.chainspec.clone())
                         .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                             block_hash,
                             fetch_result,

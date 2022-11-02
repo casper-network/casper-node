@@ -100,14 +100,8 @@ impl ApprovalsHashes {
             .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
     }
 
-    #[allow(dead_code)]
     pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
         self.approvals_hashes.as_ref()
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn merkle_proof_approvals(&self) -> &TrieMerkleProof<Key, StoredValue> {
-        &self.merkle_proof_approvals
     }
 
     pub(crate) fn block_hash(&self) -> &BlockHash {

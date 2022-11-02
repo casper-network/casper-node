@@ -149,6 +149,19 @@ pub enum FatalStorageError {
     /// `ToBytes` deserialization failure of an item that should never fail to serialize.
     #[error("unexpected deserialization failure: {0}")]
     UnexpectedDeserializationFailure(bytesrepr::Error),
+    /// Stored finalized approvals hashes count doesn't match number of deploys.
+    #[error(
+        "stored finalized approvals hashes count doesn't match number of deploys: \
+        block hash: {block_hash}, expected: {expected}, actual: {actual}"
+    )]
+    ApprovalsHashesLengthMismatch {
+        /// The block hash.
+        block_hash: BlockHash,
+        /// The number of deploys in the block.
+        expected: usize,
+        /// The number of approvals hashes.
+        actual: usize,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.

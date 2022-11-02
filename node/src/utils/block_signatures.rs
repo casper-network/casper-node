@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
 use num::rational::Ratio;
+use thiserror::Error;
 
 use casper_types::{PublicKey, U512};
 
-use super::error::BlockSignatureError;
 use crate::types::BlockSignatures;
 
 /// Computes the quorum for the fraction of weight of signatures that will be considered
@@ -109,6 +109,37 @@ pub(crate) fn check_sufficient_block_signatures(
         block_signatures,
         quorum_fraction,
     )
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum BlockSignatureError {
+    #[error(
+        "Block signatures contain bogus validator. \
+         trusted validator weights: {trusted_validator_weights:?}, \
+         block signatures: {block_signatures:?}, \
+         bogus validator public keys: {bogus_validators:?}"
+    )]
+    BogusValidators {
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
+        block_signatures: Box<BlockSignatures>,
+        bogus_validators: Vec<PublicKey>,
+    },
+
+    #[error(
+        "Insufficient weight for finality. \
+         trusted validator weights: {trusted_validator_weights:?}, \
+         block signatures: {block_signatures:?}, \
+         signature weight: {signature_weight:?}, \
+         total validator weight: {total_validator_weight}, \
+         fault tolerance fraction: {fault_tolerance_fraction}"
+    )]
+    InsufficientWeightForFinality {
+        trusted_validator_weights: BTreeMap<PublicKey, U512>,
+        block_signatures: Option<Box<BlockSignatures>>,
+        signature_weight: Option<Box<U512>>,
+        total_validator_weight: Box<U512>,
+        fault_tolerance_fraction: Ratio<u64>,
+    },
 }
 
 #[cfg(test)]

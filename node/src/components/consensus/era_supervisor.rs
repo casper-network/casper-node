@@ -5,9 +5,6 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
-// todo! drop all eras when reverting to CatchUp mode? (Or don't!? Highway won't remember state.)
-// todo! do we need to distinguish between blocks being executed vs gossiped
-
 pub(super) mod debug;
 mod era;
 
@@ -1132,9 +1129,7 @@ async fn execute_finalized_block<REv>(
     let deploys = match get_deploys(
         effect_builder,
         finalized_block
-            .deploy_hashes()
-            .iter()
-            .chain(finalized_block.transfer_hashes())
+            .deploy_and_transfer_hashes()
             .cloned()
             .collect_vec(),
     )

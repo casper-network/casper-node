@@ -5,6 +5,7 @@ use std::{
     fs::{self, File},
     iter,
     rc::Rc,
+    sync::Arc,
 };
 
 use num_rational::Ratio;
@@ -28,10 +29,11 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FetcherItem, FinalitySignature, LegacyDeploy,
+        BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        LegacyDeploy,
     },
-    utils::WithDir,
+    utils::{Loadable, WithDir},
 };
 
 const RECENT_ERA_COUNT: u64 = 7;
@@ -1443,6 +1445,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 
 #[test]
 fn should_get_sync_leap() {
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
     let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
@@ -1466,11 +1469,12 @@ fn should_get_sync_leap() {
         vec![6, 9, 11]
     );
 
-    assert!(sync_leap.validate(&Ratio::new(1, 3).into()).is_ok());
+    assert!(sync_leap.validate(&Arc::new(chainspec)).is_ok());
 }
 
 #[test]
 fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let (storage, blocks) = create_sync_leap_test_chain(&[], false);
 
     let requested_block_hash = blocks.get(11).unwrap().header().block_hash();
@@ -1491,11 +1495,12 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     );
     assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
 
-    assert!(sync_leap.validate(&Ratio::new(1, 3).into()).is_ok());
+    assert!(sync_leap.validate(&Arc::new(chainspec)).is_ok());
 }
 
 #[test]
 fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let (storage, blocks) = create_sync_leap_test_chain(&[], true);
 
     let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
@@ -1516,7 +1521,7 @@ fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block()
     );
     assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
 
-    assert!(sync_leap.validate(&Ratio::new(1, 3).into()).is_ok());
+    assert!(sync_leap.validate(&Arc::new(chainspec)).is_ok());
 }
 
 #[test]

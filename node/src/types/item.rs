@@ -78,7 +78,7 @@ impl Display for EmptyValidationMetadata {
 pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug + Display;
-    type ValidationMetadata: Eq + Clone + Serialize + Debug + Display + DataSize + Send;
+    type ValidationMetadata: Eq + Clone + Serialize + Debug + DataSize + Send;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;
