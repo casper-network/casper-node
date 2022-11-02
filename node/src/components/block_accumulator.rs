@@ -270,7 +270,7 @@ impl BlockAccumulator {
             + From<ControlAnnouncement>
             + Send,
     {
-        // todo!: Also ignore signatures for blocks older than the highest complete one?
+        // todo!: Also register local tip's era ID; for older signatures, don't create acceptor.
 
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;

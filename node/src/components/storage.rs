@@ -1296,13 +1296,11 @@ impl Storage {
         match self.read_approvals_hashes(block.hash())? {
             Some(finalized_approvals) => {
                 if deploys.len() != finalized_approvals.approvals_hashes().len() {
-                    // todo!() - probably unrecoverable, consider node shut down
-                    error!(
-                        deploy_count = deploys.len(),
-                        finalized_approvals_count = finalized_approvals.approvals_hashes().len(),
-                        "approvals length mismatch"
-                    );
-                    return Ok(None);
+                    return Err(FatalStorageError::ApprovalsHashesLengthMismatch {
+                        block_hash: *block_hash,
+                        expected: deploys.len(),
+                        actual: finalized_approvals.approvals_hashes().len(),
+                    });
                 }
 
                 for (deploy, hash) in deploys.iter().zip(finalized_approvals.approvals_hashes()) {
