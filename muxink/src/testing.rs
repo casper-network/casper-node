@@ -91,13 +91,13 @@ impl<T> Stream for TestStream<T> {
             panic!("polled a TestStream after completion");
         }
         if let Some(t) = self.items.pop_front() {
-            return Poll::Ready(Some(t));
+            Poll::Ready(Some(t))
         } else {
             // Before we return None, make sure we set finished to true so that calling this
             // again will result in a panic, as the specification for `Stream` tells us is
             // possible with an arbitrary implementation.
             self.finished = true;
-            return Poll::Ready(None);
+            Poll::Ready(None)
         }
     }
 }

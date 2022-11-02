@@ -36,7 +36,7 @@ impl TestEncodeable for char {
     }
 
     fn decode(raw: &Bytes) -> Self {
-        let s = std::str::from_utf8(&raw).expect("invalid utf8");
+        let s = std::str::from_utf8(raw).expect("invalid utf8");
         let mut chars = s.chars();
         let c = chars.next().expect("no chars in string");
         assert!(chars.next().is_none());
@@ -92,7 +92,7 @@ pub(crate) trait EncodeAndSend {
     /// let encoded = value.encode();
     /// sink.send(encoded)
     /// ```
-    fn encode_and_send<'a, T>(&'a mut self, value: T) -> futures::sink::Send<'a, Self, Bytes>
+    fn encode_and_send<T>(&mut self, value: T) -> futures::sink::Send<'_, Self, Bytes>
     where
         T: TestEncodeable;
 }
@@ -101,7 +101,7 @@ impl<S> EncodeAndSend for S
 where
     S: Sink<Bytes> + Unpin,
 {
-    fn encode_and_send<'a, T>(&'a mut self, value: T) -> futures::sink::Send<'a, Self, Bytes>
+    fn encode_and_send<T>(&mut self, value: T) -> futures::sink::Send<'_, Self, Bytes>
     where
         T: TestEncodeable,
     {

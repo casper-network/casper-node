@@ -299,7 +299,7 @@ mod tests {
     /// Builds a sequence of frames that could have been read from the network.
     fn build_frame_input(frames: &[&'static [u8]]) -> Vec<io::Result<Bytes>> {
         frames
-            .into_iter()
+            .iter()
             .map(|&x| Bytes::from(x))
             .map(Result::Ok)
             .collect()
@@ -355,7 +355,7 @@ mod tests {
         {
             let mut fragmentizer = Fragmentizer::new(FRAGMENT_SIZE.try_into().unwrap(), sender);
             fragmentizer
-                .send(frame.clone())
+                .send(frame)
                 .now_or_never()
                 .expect("Couldn't send frame")
                 .unwrap();

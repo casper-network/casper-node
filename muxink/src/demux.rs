@@ -298,7 +298,7 @@ mod tests {
 
         // We make two handles, one for the 0 channel and another for the 1 channel
         let mut zero_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 0).unwrap();
-        let mut one_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 1).unwrap();
+        let mut one_handle = Demultiplexer::create_handle::<IoError>(demux, 1).unwrap();
 
         // We know the order that these things have to be awaited, so we can make sure that exactly
         // what we expects happens using the `now_or_never` function.
@@ -383,7 +383,7 @@ mod tests {
             Err(DemultiplexerError::ChannelUnavailable(0)) => {}
             _ => panic!("Channel 0 was available even though we already have a handle to it"),
         }
-        assert!(Demultiplexer::create_handle::<IoError>(demux.clone(), 1).is_ok());
+        assert!(Demultiplexer::create_handle::<IoError>(demux, 1).is_ok());
     }
 
     #[tokio::test]

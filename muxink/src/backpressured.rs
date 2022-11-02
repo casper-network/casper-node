@@ -520,6 +520,7 @@ mod tests {
     ///
     /// The resulting `client` sends byte frames across to the `server`, with ACKs flowing through
     /// the associated ACK pipe.
+    #[allow(clippy::type_complexity)]
     struct TwoWayFixtures {
         client: BackpressuredSink<
             Box<dyn Sink<Bytes, Error = Infallible> + Send + Unpin>,
@@ -680,7 +681,7 @@ mod tests {
 
         // Sanity check: Attempting to send another item will be refused by the client side's
         // limiter to avoid exceeding the allowed window.
-        assert!(client.encode_and_send(99 as u8).now_or_never().is_none());
+        assert!(client.encode_and_send(99_u8).now_or_never().is_none());
 
         let mut items = VecDeque::new();
         let mut tickets = VecDeque::new();

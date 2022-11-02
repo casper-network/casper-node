@@ -359,7 +359,7 @@ where
             self_mut.waker = Some(cx.waker().clone());
             Poll::Pending
         } else {
-            if let Poll::Pending = self_mut.poll_ready_unpin(cx) {
+            if self_mut.poll_ready_unpin(cx).is_pending() {
                 return Poll::Pending;
             }
             while let Some(item) = self_mut.buffer.pop_front() {
