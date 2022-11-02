@@ -114,7 +114,7 @@ impl Display for SyncLeap {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "sync leap message for trusted hash {}",
+            "sync leap message for trusted {}",
             self.trusted_block_header.block_hash()
         )
     }
