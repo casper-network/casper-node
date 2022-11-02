@@ -18,7 +18,11 @@ pub(crate) enum Message<T: GossiperItem> {
         item_id: T::Id,
         is_already_held: bool,
     },
+    // Request to get an item we were previously told about, but the peer timed out and we never
+    // received it.
     GetItem(T::Id),
+    // Response to either a `GossipResponse` with `is_already_held` set to `false` or to a
+    // `GetItem` message. Contains the actual item requested.
     Item(Box<T>),
 }
 

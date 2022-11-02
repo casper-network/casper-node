@@ -25,7 +25,6 @@ use crate::{
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    protocol::Message as NodeMessage,
     types::{
         Block, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId, GossiperItem,
         Item, NodeId,
@@ -542,7 +541,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item_id: T::Id,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        (self.get_from_holder)(effect_builder, item_id.clone(), requester)
+        (self.get_from_holder)(effect_builder, item_id, requester)
     }
 
     fn handle_item_received_from_peer(
