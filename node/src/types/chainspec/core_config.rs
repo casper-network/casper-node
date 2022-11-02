@@ -41,7 +41,7 @@ pub struct CoreConfig {
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
     /// How many peers to simultaneously ask when sync leaping.
-    pub(crate) sync_leap_simultaneous_peer_requests: u32,
+    pub(crate) simultaneous_peer_requests: u32,
 }
 
 impl CoreConfig {
@@ -108,7 +108,7 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            sync_leap_simultaneous_peer_requests: maximum_simultaneous_peer_requests,
+            simultaneous_peer_requests: maximum_simultaneous_peer_requests,
         }
     }
 }
@@ -128,7 +128,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
-        buffer.extend(self.sync_leap_simultaneous_peer_requests.to_bytes()?);
+        buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
         Ok(buffer)
     }
 
@@ -145,9 +145,7 @@ impl ToBytes for CoreConfig {
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.strict_argument_checking.serialized_length()
-            + self
-                .sync_leap_simultaneous_peer_requests
-                .serialized_length()
+            + self.simultaneous_peer_requests.serialized_length()
     }
 }
 
@@ -179,7 +177,7 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            sync_leap_simultaneous_peer_requests: maximum_simultaneous_peer_requests,
+            simultaneous_peer_requests: maximum_simultaneous_peer_requests,
         };
         Ok((config, remainder))
     }

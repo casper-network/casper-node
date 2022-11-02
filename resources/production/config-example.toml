@@ -388,7 +388,6 @@ gossip_request_timeout = '30sec'
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout = '5sec'
 
-
 # ================================================
 # Configuration options for the block accumulator
 # ================================================
@@ -399,6 +398,9 @@ attempt_execution_threshold = 3
 
 # Accepted time interval for inactivity in block accumulator.
 dead_air_interval = '180sec'
+
+# Time after which the block acceptors are considered old and can be purged.
+purge_interval = '6hrs'
 
 # ================================================
 # Configuration options for the block synchronizer

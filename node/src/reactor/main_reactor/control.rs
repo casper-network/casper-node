@@ -386,9 +386,7 @@ impl MainReactor {
                         }
                         let peers_to_ask = self.small_network.peers_random_vec(
                             rng,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests,
+                            self.chainspec.core_config.simultaneous_peer_requests,
                         );
                         let effects = effect_builder.immediately().event(move |_| {
                             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
@@ -426,9 +424,7 @@ impl MainReactor {
                             &*best_available,
                             from_peers,
                             true,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests,
+                            self.chainspec.core_config.simultaneous_peer_requests,
                         );
                         self.block_accumulator.handle_validators(effect_builder);
                         let effects = effect_builder.immediately().event(|_| {
@@ -443,9 +439,7 @@ impl MainReactor {
                     block_hash,
                     true,
                     true,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
+                    self.chainspec.core_config.simultaneous_peer_requests,
                 );
 
                 // once started NeedNext should perpetuate until nothing is needed
@@ -540,9 +534,7 @@ impl MainReactor {
                     block_hash,
                     false,
                     true,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
+                    self.chainspec.core_config.simultaneous_peer_requests,
                 );
                 let effects = effect_builder.immediately().event(|_| {
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
@@ -562,9 +554,7 @@ impl MainReactor {
                                 sync_block_hash,
                                 false,
                                 true,
-                                self.chainspec
-                                    .core_config
-                                    .sync_leap_simultaneous_peer_requests,
+                                self.chainspec.core_config.simultaneous_peer_requests,
                             );
                         }
                         if effects.is_empty() {
