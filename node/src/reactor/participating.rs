@@ -5,8 +5,7 @@
 mod config;
 mod error;
 mod memory_metrics;
-#[cfg(test)]
-mod tests;
+// #[cfg(test)] mod tests;
 
 use std::{
     fmt::{self, Debug, Display, Formatter},
@@ -1465,7 +1464,7 @@ impl reactor::Reactor for Reactor {
     fn maybe_exit(&self) -> Option<ReactorExit> {
         self.linear_chain
             .stop_for_upgrade()
-            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
+            .then_some(ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
 }
 
