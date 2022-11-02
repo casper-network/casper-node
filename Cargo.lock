@@ -2823,7 +2823,6 @@ dependencies = [
 name = "muxink"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bincode",
  "bytes",
  "casper-types 1.5.0",

@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.57"
 bincode = { version = "1.3.3", optional = true }
 bytes = "1.1.0"
 futures = "0.3.21"
@@ -18,3 +17,5 @@ casper-types = { path = "../types", optional = true }
 [dev-dependencies]
 tokio-stream = "0.1.8"
 tokio-util = { version = "0.7.2", features = [ "compat" ] }
+
+[features]
