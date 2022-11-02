@@ -443,27 +443,21 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::VecDeque,
-        convert::{Infallible, TryInto},
-        io,
-        sync::Arc,
-    };
+    use std::{collections::VecDeque, convert::Infallible, sync::Arc};
 
     use bytes::Bytes;
     use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
-    use tokio::sync::mpsc::UnboundedSender;
-    use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
+    use tokio_stream::wrappers::ReceiverStream;
     use tokio_util::sync::PollSender;
 
     use crate::testing::{
-        collect_buf, collect_bufs,
+        collect_bufs,
         encoding::{EncodeAndSend, TestEncodeable},
-        testing_sink::{BufferingClogAdapter, TestingSink, TestingSinkRef},
+        testing_sink::{TestingSink, TestingSinkRef},
     };
 
     use super::{
-        BackpressureError, BackpressuredSink, BackpressuredStream, BackpressuredStreamError, Ticket,
+        BackpressureError, BackpressuredSink, BackpressuredStream, BackpressuredStreamError,
     };
 
     /// Window size used in tests.
@@ -481,7 +475,7 @@ mod tests {
         let stream = ReceiverStream::new(recv).map(Ok);
 
         let sink =
-            PollSender::new(send).sink_map_err(|err| panic!("did not expect a `PollSendError`"));
+            PollSender::new(send).sink_map_err(|_err| panic!("did not expect a `PollSendError`"));
 
         (sink, stream)
     }
@@ -884,7 +878,7 @@ mod tests {
         let mut in_progress = Vec::new();
         for _ in 0..=WINDOW_SIZE {
             let received = server.next().now_or_never().unwrap().unwrap();
-            let (bytes, ticket) = received.unwrap();
+            let (_bytes, ticket) = received.unwrap();
 
             // We need to keep the tickets around to simulate the server being busy.
             in_progress.push(ticket);
