@@ -38,7 +38,11 @@ fn setup() -> LmdbWasmTestBuilder {
     };
     let transfer_request_1 =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     builder
 }
 
@@ -54,7 +58,11 @@ fn exec_and_assert_costs(
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(caller.main_purse());
 

@@ -25,8 +25,16 @@ fn should_run_mint_purse_contract() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit().expect_success();
-    builder.exec(exec_request_2).commit().expect_success();
+    builder
+        .exec(exec_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(exec_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }
 
 #[ignore]
@@ -42,6 +50,7 @@ fn should_not_allow_non_system_accounts_to_mint() {
     assert!(LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .is_error());
 }

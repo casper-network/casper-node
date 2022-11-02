@@ -106,7 +106,11 @@ fn withdraw_bid(
         withdraw_bid_args,
     )
     .build();
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec(withdraw_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 fn undelegate(
@@ -129,7 +133,11 @@ fn undelegate(
         undelegate_args,
     )
     .build();
-    builder.exec(undelegate_request).expect_success().commit();
+    builder
+        .exec(undelegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 fn get_delegator_staked_amount(
@@ -258,7 +266,11 @@ fn should_distribute_delegation_rate_zero() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -531,7 +543,11 @@ fn should_withdraw_bids_after_distribute() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -841,7 +857,11 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert_eq!(total_payout, expected_total_reward_1_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -1273,7 +1293,11 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert_eq!(total_payout_1, expected_total_reward_1_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -1684,7 +1708,11 @@ fn should_distribute_delegation_rate_half() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -1919,7 +1947,11 @@ fn should_distribute_delegation_rate_full() {
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..5 {
@@ -1943,7 +1975,11 @@ fn should_distribute_delegation_rate_full() {
     )
     .build();
 
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .exec(distribute_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
@@ -2115,7 +2151,11 @@ fn should_distribute_uneven_delegation_rate_zero() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -2352,7 +2392,11 @@ fn should_distribute_by_factor() {
     assert_eq!(expected_total_reward_integer, total_payout);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -2578,7 +2622,11 @@ fn should_distribute_by_factor_regardless_of_stake() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -2805,7 +2853,11 @@ fn should_distribute_by_factor_uneven() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -3107,7 +3159,11 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -3420,7 +3476,11 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..=builder.get_auction_delay() {
@@ -3876,7 +3936,11 @@ fn should_increase_total_supply_after_distribute() {
     let initial_supply = builder.total_supply(None);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     let post_genesis_supply = builder.total_supply(None);
@@ -3916,7 +3980,11 @@ fn should_increase_total_supply_after_distribute() {
     )
     .build();
 
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .exec(distribute_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let post_distribute_supply = builder.total_supply(None);
     assert!(
@@ -4055,7 +4123,11 @@ fn should_not_create_purses_during_distribute() {
     let initial_supply = builder.total_supply(None);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     let post_genesis_supply = builder.total_supply(None);
@@ -4095,7 +4167,11 @@ fn should_not_create_purses_during_distribute() {
 
     let number_of_purses_before_distribute = builder.get_balance_keys().len();
 
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .exec(distribute_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let number_of_purses_after_distribute = builder.get_balance_keys().len();
 
@@ -4218,7 +4294,11 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let expected_total_reward_integer = expected_total_reward_before.to_integer();
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     for _ in 0..5 {
@@ -4242,7 +4322,11 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     )
     .build();
 
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .exec(distribute_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let validator_1_stake_before = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
@@ -4331,7 +4415,11 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         Ratio::new(numer.into(), denom.into())
     };
 
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .exec(distribute_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 
@@ -4413,7 +4501,8 @@ fn should_not_restake_after_full_unbond() {
     builder
         .exec(validator_1_fund_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4428,7 +4517,8 @@ fn should_not_restake_after_full_unbond() {
     builder
         .exec(delegator_1_fund_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -4444,7 +4534,8 @@ fn should_not_restake_after_full_unbond() {
     builder
         .exec(validator_1_add_bid_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -4460,7 +4551,8 @@ fn should_not_restake_after_full_unbond() {
     builder
         .exec(delegator_1_validator_1_delegate_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder.advance_era(vec![]);
 
@@ -4543,7 +4635,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder
         .exec(validator_1_fund_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4558,7 +4651,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder
         .exec(delegator_1_fund_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -4574,7 +4668,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder
         .exec(validator_1_add_bid_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -4590,7 +4685,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder
         .exec(delegator_1_validator_1_delegate_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // first step after funding, adding bid and delegating.
     builder.advance_era(vec![]);

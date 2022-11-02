@@ -15,7 +15,10 @@ use serde::{
 };
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Key, StoredValue,
+};
 use datasize::DataSize;
 
 #[cfg(test)]
@@ -30,7 +33,7 @@ pub(crate) const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
 pub(crate) const RADIX: usize = 256;
 
 /// A parent is represented as a pair of a child index and a node or extension.
-pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
+pub type Parents = Vec<(u8, Trie)>;
 
 /// Represents a pointer to the next object in a Merkle Trie
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -471,14 +474,15 @@ impl Display for TrieOrChunkId {
 }
 
 /// Represents a Merkle Trie.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Trie<K, V> {
+pub enum Trie {
     /// Trie leaf.
     Leaf {
         /// Leaf key.
-        key: K,
+        key: Key,
         /// Leaf value.
-        value: V,
+        value: StoredValue,
     },
     /// Trie node.
     Node {
@@ -494,17 +498,13 @@ pub enum Trie<K, V> {
     },
 }
 
-impl<K, V> Display for Trie<K, V>
-where
-    K: Debug,
-    V: Debug,
-{
+impl Display for Trie {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl<K, V> Trie<K, V> {
+impl Trie {
     pub(crate) const LEAF_TAG: u8 = 0;
     const NODE_TAG: u8 = 1;
     const EXTENSION_TAG: u8 = 2;
@@ -518,7 +518,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Constructs a [`Trie::Leaf`] from a given key and value.
-    pub fn leaf(key: K, value: V) -> Self {
+    pub fn leaf(key: Key, value: StoredValue) -> Self {
         Trie::Leaf { key, value }
     }
 
@@ -538,7 +538,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Gets a reference to the root key of this Trie.
-    pub fn key(&self) -> Option<&K> {
+    pub fn key(&self) -> Option<&Key> {
         match self {
             Trie::Leaf { key, .. } => Some(key),
             _ => None,
@@ -566,7 +566,7 @@ impl<K, V> Trie<K, V> {
     /// Returns an iterator over descendants of the trie.
     pub fn iter_descendants(&self) -> DescendantsIterator {
         match self {
-            Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
+            Trie::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
             Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
                 iter: pointer_block.0.iter().flatten(),
             },
@@ -601,11 +601,7 @@ impl<'a> Iterator for DescendantsIterator<'a> {
     }
 }
 
-impl<K, V> ToBytes for Trie<K, V>
-where
-    K: ToBytes,
-    V: ToBytes,
-{
+impl ToBytes for Trie {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut ret)?;
@@ -640,13 +636,13 @@ where
     }
 }
 
-impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
+impl FromBytes for Trie {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
             Self::LEAF_TAG => {
-                let (key, rem) = K::from_bytes(rem)?;
-                let (value, rem) = V::from_bytes(rem)?;
+                let (key, rem) = Key::from_bytes(rem)?;
+                let (value, rem) = StoredValue::from_bytes(rem)?;
                 Ok((Trie::Leaf { key, value }, rem))
             }
             Self::NODE_TAG => {
@@ -676,9 +672,8 @@ pub(crate) mod operations {
 
     /// Creates a tuple containing an empty root hash and an empty root (a node
     /// with an empty pointer block)
-    pub fn create_hashed_empty_trie<K: ToBytes, V: ToBytes>(
-    ) -> Result<(Digest, Trie<K, V>), bytesrepr::Error> {
-        let root: Trie<K, V> = Trie::Node {
+    pub fn create_hashed_empty_trie() -> Result<(Digest, Trie), bytesrepr::Error> {
+        let root: Trie = Trie::Node {
             pointer_block: Default::default(),
         };
         let root_bytes: Vec<u8> = root.to_bytes()?;

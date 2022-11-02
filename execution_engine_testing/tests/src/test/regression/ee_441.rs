@@ -37,7 +37,8 @@ fn do_pass(pass: &str) -> (URef, URef) {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

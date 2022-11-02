@@ -83,9 +83,13 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(1)

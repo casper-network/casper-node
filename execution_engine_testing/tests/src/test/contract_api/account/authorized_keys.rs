@@ -41,7 +41,8 @@ fn should_deploy_with_authorized_identity_key() {
     LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 }
 
@@ -74,7 +75,8 @@ fn should_raise_auth_failure_with_invalid_key() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let deploy_result = builder
         .get_exec_result_owned(0)
@@ -124,7 +126,8 @@ fn should_raise_auth_failure_with_invalid_keys() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let deploy_result = builder
         .get_exec_result_owned(0)
@@ -186,18 +189,22 @@ fn should_raise_deploy_authorization_failure() {
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_3)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         // This should execute successfully - change deploy and key management
         // thresholds.
         .exec(exec_request_4)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let exec_request_5 = {
         let deploy = DeployItemBuilder::new()
@@ -219,7 +226,11 @@ fn should_raise_deploy_authorization_failure() {
 
     // With deploy threshold == 3 using single secondary key
     // with weight == 2 should raise deploy authorization failure.
-    builder.clear_results().exec(exec_request_5).commit();
+    builder
+        .clear_results()
+        .exec(exec_request_5)
+        .apply()
+        .commit_to_disk();
 
     {
         let deploy_result = builder
@@ -258,7 +269,8 @@ fn should_raise_deploy_authorization_failure() {
         .clear_results()
         .exec(exec_request_6)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let exec_request_7 = {
         let deploy = DeployItemBuilder::new()
@@ -281,7 +293,11 @@ fn should_raise_deploy_authorization_failure() {
     // deployment threshold is now 4
     // failure: KEY_2 weight + KEY_1 weight < deployment threshold
     // let result4 = builder.clear_results()
-    builder.clear_results().exec(exec_request_7).commit();
+    builder
+        .clear_results()
+        .exec(exec_request_7)
+        .apply()
+        .commit_to_disk();
 
     {
         let deploy_result = builder
@@ -322,7 +338,8 @@ fn should_raise_deploy_authorization_failure() {
     builder
         .clear_results()
         .exec(exec_request_8)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 }
 
@@ -353,10 +370,12 @@ fn should_authorize_deploy_with_multiple_keys() {
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // KEY_1 (w: 2) KEY_2 (w: 2) each passes default threshold of 1
 
@@ -377,7 +396,11 @@ fn should_authorize_deploy_with_multiple_keys() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -422,11 +445,20 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let exec_request_3 = {
         let deploy = DeployItemBuilder::new()
@@ -448,7 +480,11 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    builder.clear_results().exec(exec_request_3).commit();
+    builder
+        .clear_results()
+        .exec(exec_request_3)
+        .apply()
+        .commit_to_disk();
     let deploy_result = builder
         .get_exec_result_owned(0)
         .expect("should have exec response")
@@ -508,14 +544,20 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         // Reusing a test contract that would add new key
         .exec(add_key_1_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(add_key_2_request).expect_success().commit();
+    builder
+        .exec(add_key_2_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(update_thresholds_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // KEY_1 (w: 2) DEFAULT_ACCOUNT (w: 1) does not pass deploy threshold of 5
     let id: Option<u64> = None;
@@ -535,7 +577,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(transfer_request_1).commit();
+    builder.exec(transfer_request_1).apply().commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(3)
@@ -567,5 +609,9 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec(transfer_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

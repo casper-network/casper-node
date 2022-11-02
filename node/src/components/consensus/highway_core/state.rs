@@ -241,7 +241,7 @@ impl<C: Context> State<C> {
         }
         let cumulative_w_leaders = weights
             .enumerate()
-            .map(|(idx, weight)| can_propose[idx].then(|| *weight).unwrap_or(Weight(0)))
+            .map(|(idx, weight)| if can_propose[idx] { *weight } else { Weight(0) })
             .fold(vec![], sums)
             .into();
         let pings = iter::repeat(params.start_timestamp())

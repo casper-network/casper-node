@@ -1,13 +1,12 @@
 use std::{
     collections::HashMap,
     mem,
-    ops::Deref,
     sync::{Arc, RwLock},
 };
 
 use tracing::error;
 
-use casper_hashing::{ChunkWithProof, Digest};
+use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
 
 use crate::global_state::{
@@ -15,21 +14,16 @@ use crate::global_state::{
     storage::{
         error,
         state::{CommitError, CommitProvider, StateProvider, StateReader},
-        store::Store,
-        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
-        trie_store::{
-            lmdb::LmdbTrieStore,
-            operations::{
-                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
-            },
-        },
+        trie::{merkle_proof::TrieMerkleProof, TrieOrChunk, TrieOrChunkId},
+        trie_store::operations::{self, ReadResult},
     },
 };
 
+use super::lmdb::{LmdbGlobalState, LmdbGlobalStateView};
+
 type SharedCache = Arc<RwLock<Cache>>;
 
-struct Cache {
+pub struct Cache {
     cached_values: HashMap<Key, (bool, StoredValue)>,
 }
 
@@ -54,7 +48,7 @@ impl Cache {
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
+    pub fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
         self.cached_values
             .into_iter()
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
@@ -63,49 +57,53 @@ impl Cache {
 }
 
 /// Global state implemented against LMDB as a backing data store.
+#[derive(Clone)]
 pub struct ScratchGlobalState {
     /// Underlying, cached stored values.
     cache: SharedCache,
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) trie_store: Arc<LmdbTrieStore>,
-    // TODO: make this a lazy-static
-    /// Empty root hash used for a new trie.
-    pub(crate) empty_root_hash: Digest,
+    /// Underlying uncached global state which is delegated to for reads.
+    state: Arc<LmdbGlobalState>,
 }
 
 /// Represents a "view" of global state at a particular root hash.
+#[derive(Clone)]
 pub struct ScratchGlobalStateView {
+    /// tnderlying cached stored values.
     cache: SharedCache,
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) trie_store: Arc<LmdbTrieStore>,
-    /// Root hash of this "view".
-    pub(crate) root_hash: Digest,
+    /// Underlying uncached global state which is delegated to for reads.
+    view: Arc<LmdbGlobalStateView>,
 }
 
 impl ScratchGlobalState {
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
-    pub fn new(
-        environment: Arc<LmdbEnvironment>,
-        trie_store: Arc<LmdbTrieStore>,
-        empty_root_hash: Digest,
-    ) -> Self {
+    pub fn new(state: Arc<LmdbGlobalState>) -> Self {
         ScratchGlobalState {
             cache: Arc::new(RwLock::new(Cache::new())),
-            environment,
-            trie_store,
-            empty_root_hash,
+            state,
         }
     }
 
-    /// Consume self and return inner cache.
-    pub fn into_inner(self) -> HashMap<Key, StoredValue> {
+    // Write cached changes to the underlying data store.
+    pub fn write_to_disk(&self, prestate_hash: Digest) -> Result<Digest, error::Error> {
+        let cache = self.take_cache();
+        let writes = cache.into_dirty_writes();
+        let new_state_root =
+            self.state
+                .put_stored_values(CorrelationId::new(), prestate_hash, writes)?;
+        if self.state.environment().is_manual_sync_enabled() {
+            self.state.environment().sync()?
+        }
+        Ok(new_state_root)
+    }
+
+    pub fn take_cache(&self) -> Cache {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
-        cache.into_dirty_writes()
+        cache
+    }
+
+    pub fn lmdb(&self) -> &LmdbGlobalState {
+        self.state.as_ref()
     }
 }
 
@@ -120,22 +118,13 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         if let Some(value) = self.cache.read().unwrap().get(key) {
             return Ok(Some(value.clone()));
         }
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            key,
-        )? {
-            ReadResult::Found(value) => {
-                self.cache.write().unwrap().insert_read(*key, value.clone());
-                Some(value)
-            }
-            ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"),
-        };
-        txn.commit()?;
+        let ret = self.view.read(correlation_id, key)?;
+        if let Some(value) = ret.as_ref() {
+            self.cache
+                .write()
+                .map_err(|_| error::Error::Poison)?
+                .insert_read(*key, value.clone());
+        }
         Ok(ret)
     }
 
@@ -143,27 +132,8 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         &self,
         correlation_id: CorrelationId,
         key: &Key,
-    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read_with_proof::<
-            Key,
-            StoredValue,
-            lmdb::RoTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            key,
-        )? {
-            ReadResult::Found(value) => Some(value),
-            ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),
-        };
-        txn.commit()?;
-        Ok(ret)
+    ) -> Result<Option<TrieMerkleProof>, Self::Error> {
+        self.view.read_with_proof(correlation_id, key)
     }
 
     fn keys_with_prefix(
@@ -171,23 +141,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         correlation_id: CorrelationId,
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            prefix,
-        );
-        let mut ret = Vec::new();
-        for result in keys_iter {
-            match result {
-                Ok(key) => ret.push(key),
-                Err(error) => return Err(error),
-            }
-        }
-        txn.commit()?;
-        Ok(ret)
+        self.view.keys_with_prefix(correlation_id, prefix)
     }
 }
 
@@ -200,6 +154,7 @@ impl CommitProvider for ScratchGlobalState {
         state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
+        let scratch_trie = self.state.get_scratch_store();
         for (key, transform) in effects.into_iter() {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let value = match (cached_value, transform) {
@@ -207,17 +162,10 @@ impl CommitProvider for ScratchGlobalState {
                 (None, transform) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
-                    let txn = self.environment.create_read_txn()?;
-                    let updated_value = match read::<
-                        Key,
-                        StoredValue,
-                        lmdb::RoTransaction,
-                        LmdbTrieStore,
-                        Self::Error,
-                    >(
+                    match operations::read::<_, _, Self::Error>(
                         correlation_id,
-                        &txn,
-                        self.trie_store.deref(),
+                        &scratch_trie,
+                        &scratch_trie,
                         &state_hash,
                         &key,
                     )? {
@@ -242,9 +190,7 @@ impl CommitProvider for ScratchGlobalState {
                             error!(root_hash=?state_hash, "root not found");
                             return Err(CommitError::ReadRootNotFound(state_hash).into());
                         }
-                    };
-                    txn.commit()?;
-                    updated_value
+                    }
                 }
                 (Some(current_value), transform) => match transform.apply(current_value.clone()) {
                     Ok(updated_value) => updated_value,
@@ -267,74 +213,37 @@ impl StateProvider for ScratchGlobalState {
     type Reader = ScratchGlobalStateView;
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
+        let maybe_view = self.state.checkout(state_hash)?;
+        let maybe_state = maybe_view.map(|view| ScratchGlobalStateView {
             cache: Arc::clone(&self.cache),
-            environment: Arc::clone(&self.environment),
-            trie_store: Arc::clone(&self.trie_store),
-            root_hash: state_hash,
+            view: Arc::new(view),
         });
-        txn.commit()?;
         Ok(maybe_state)
     }
 
     fn empty_root(&self) -> Digest {
-        self.empty_root_hash
+        self.state.empty_root_hash
     }
 
     fn get_trie(
         &self,
-        _correlation_id: CorrelationId,
+        correlation_id: CorrelationId,
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, Self::Error> {
-        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
-
-        let maybe_trie_or_chunk = bytes.map_or_else(
-            || Ok(None),
-            |bytes| {
-                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes)))
-                } else {
-                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
-                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
-                }
-            },
-        );
-
-        txn.commit()?;
-        maybe_trie_or_chunk
+        self.state.get_trie(correlation_id, trie_or_chunk_id)
     }
 
     fn get_trie_full(
         &self,
-        _correlation_id: CorrelationId,
+        correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
-        txn.commit()?;
-        Ok(ret)
+        self.state.get_trie_full(correlation_id, trie_key)
     }
 
     fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash = put_trie::<
-            Key,
-            StoredValue,
-            lmdb::RwTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &mut txn, &self.trie_store, trie)?;
-        txn.commit()?;
-        Ok(trie_hash)
+        // ScratchGlobalState should always write tries directly to disk.
+        self.state.put_trie(correlation_id, trie)
     }
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values
@@ -343,34 +252,25 @@ impl StateProvider for ScratchGlobalState {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys,
-                &Default::default(),
-            )?;
-        txn.commit()?;
-        Ok(missing_descendants)
+        self.state.missing_trie_keys(correlation_id, trie_keys)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use lmdb::DatabaseFlags;
+    use lmdb::{DatabaseFlags, Transaction};
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
     use casper_types::{account::AccountHash, CLValue};
 
-    use super::*;
     use crate::global_state::storage::{
-        state::{lmdb::LmdbGlobalState, CommitProvider},
-        trie_store::operations::{write, WriteResult},
+        transaction_source::{lmdb::LmdbEnvironment, TransactionSource},
+        trie_store::{lmdb::LmdbTrieStore, operations::WriteResult},
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
+
+    use super::*;
 
     #[derive(Debug, Clone)]
     struct TestPair {
@@ -451,7 +351,7 @@ mod tests {
             let mut txn = state.environment.create_read_write_txn().unwrap();
 
             for TestPair { key, value } in &create_test_pairs() {
-                match write::<_, _, _, LmdbTrieStore, error::Error>(
+                match operations::write::<_, LmdbTrieStore, error::Error>(
                     correlation_id,
                     &mut txn,
                     &state.trie_store,
@@ -512,7 +412,7 @@ mod tests {
             .keys_with_prefix(correlation_id, &[])
             .unwrap();
 
-        let stored_values = scratch.into_inner();
+        let stored_values = scratch.take_cache().into_dirty_writes();
         assert_eq!(all_keys.len(), stored_values.len());
 
         for key in all_keys {

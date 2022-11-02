@@ -54,7 +54,7 @@ fn store_payment_to_account_context(builder: &mut LmdbWasmTestBuilder) -> (Accou
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -107,7 +107,11 @@ fn should_exec_non_stored_code() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -147,7 +151,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -180,7 +184,10 @@ fn should_fail_if_calling_non_existent_entry_point() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_stored_payment).commit();
+    builder
+        .exec(exec_request_stored_payment)
+        .apply()
+        .commit_to_disk();
 
     assert!(
         builder.is_error(),
@@ -248,7 +255,10 @@ fn should_exec_stored_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec(exec_request_stored_payment).commit();
+        builder
+            .exec(exec_request_stored_payment)
+            .apply()
+            .commit_to_disk();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -321,7 +331,8 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     builder
         .exec(exec_request_stored_payment)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -394,7 +405,8 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
         builder
             .exec(exec_request_stored_payment)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -484,7 +496,10 @@ fn should_exec_stored_code_by_named_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec(exec_request_stored_payment).commit();
+        builder
+            .exec(exec_request_stored_payment)
+            .apply()
+            .commit_to_disk();
     }
 
     let (motes_bravo, modified_balance_bravo) = {
@@ -532,7 +547,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -584,7 +599,10 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
             .build()
     };
 
-    builder.exec(exec_request_stored_payment).commit();
+    builder
+        .exec(exec_request_stored_payment)
+        .apply()
+        .commit_to_disk();
 
     assert!(
         builder.is_error(),
@@ -616,7 +634,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -665,7 +683,10 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .build()
     };
 
-    builder.exec(exec_request_stored_payment).commit();
+    builder
+        .exec(exec_request_stored_payment)
+        .apply()
+        .commit_to_disk();
 
     assert!(
         builder.is_error(),
@@ -697,7 +718,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -706,7 +727,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -765,7 +786,10 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
             .build()
     };
 
-    builder.exec(exec_request_stored_payment).commit();
+    builder
+        .exec(exec_request_stored_payment)
+        .apply()
+        .commit_to_disk();
 
     assert!(
         builder.is_error(),
@@ -797,7 +821,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -852,7 +876,10 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
             .build()
     };
 
-    builder.exec(exec_request_stored_payment).commit();
+    builder
+        .exec(exec_request_stored_payment)
+        .apply()
+        .commit_to_disk();
 
     assert!(
         builder.is_error(),
@@ -887,7 +914,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -896,7 +923,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -950,7 +977,10 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
             .build()
     };
 
-    builder.exec(exec_request_stored_payment).commit();
+    builder
+        .exec(exec_request_stored_payment)
+        .apply()
+        .commit_to_disk();
 
     assert!(
         builder.is_error(),
@@ -1010,9 +1040,17 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     .build();
 
     // store both contracts
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // query both stored contracts by their named keys
     let query_result = builder
@@ -1056,5 +1094,6 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         .clear_results()
         .exec(exec_request_stored_payment)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

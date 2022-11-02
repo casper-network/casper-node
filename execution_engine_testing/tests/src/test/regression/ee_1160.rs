@@ -52,7 +52,8 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
     builder
         .exec(no_wasm_transfer_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let last_result = builder.get_exec_result_owned(0).unwrap();
     let last_result = &last_result[0];
@@ -105,7 +106,10 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 
@@ -166,7 +170,10 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 

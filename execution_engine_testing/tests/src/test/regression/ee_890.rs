@@ -54,7 +54,8 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
-        .commit();
+        .apply()
+        .commit_to_disk();
     let message = builder.exec_error_message(0).expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
@@ -82,7 +83,8 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
-        .commit();
+        .apply()
+        .commit_to_disk();
     let message = builder.exec_error_message(0).expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),

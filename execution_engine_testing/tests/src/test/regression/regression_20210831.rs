@@ -60,7 +60,11 @@ fn setup() -> LmdbWasmTestBuilder {
     let transfer_request_1 =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transfer_args_2 = runtime_args! {
         mint::ARG_TARGET => *ACCOUNT_2_ADDR,
@@ -71,7 +75,11 @@ fn setup() -> LmdbWasmTestBuilder {
     let transfer_request_2 =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_2).build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec(transfer_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -88,7 +96,11 @@ fn setup() -> LmdbWasmTestBuilder {
     let transfer_request_1 =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transfer_args_2 = runtime_args! {
         mint::ARG_TARGET => *ACCOUNT_2_ADDR,
@@ -99,7 +111,11 @@ fn setup() -> LmdbWasmTestBuilder {
     let transfer_request_2 =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_2).build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec(transfer_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let install_request_1 = ExecuteRequestBuilder::standard(
         *ACCOUNT_2_ADDR,
@@ -108,7 +124,11 @@ fn setup() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.exec(install_request_1).expect_success().commit();
+    builder
+        .exec(install_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }
@@ -153,7 +173,7 @@ fn regression_20210831_should_fail_to_add_bid() {
     )
     .build();
 
-    builder.exec(add_bid_request_2).commit();
+    builder.exec(add_bid_request_2).apply().commit_to_disk();
 
     let error_2 = builder
         .get_error()
@@ -182,7 +202,11 @@ fn regression_20210831_should_fail_to_delegate() {
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let sender = *ACCOUNT_2_ADDR;
     let delegate_args = runtime_args! {
@@ -219,7 +243,7 @@ fn regression_20210831_should_fail_to_delegate() {
     )
     .build();
 
-    builder.exec(delegate_request_2).commit();
+    builder.exec(delegate_request_2).apply().commit_to_disk();
 
     let error_2 = builder
         .get_error()
@@ -248,7 +272,11 @@ fn regression_20210831_should_fail_to_withdraw_bid() {
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids = builder.get_bids();
     let account_1_bid_before = bids.get(&*ACCOUNT_1_PUBLIC_KEY).expect("should have bid");
@@ -276,7 +304,7 @@ fn regression_20210831_should_fail_to_withdraw_bid() {
     )
     .build();
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
 
     let error_1 = builder
         .get_error()
@@ -296,7 +324,7 @@ fn regression_20210831_should_fail_to_withdraw_bid() {
     )
     .build();
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
 
     let error_2 = builder
         .get_error()
@@ -345,8 +373,16 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
-    builder.exec(delegate_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(delegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids = builder.get_bids();
     let default_account_bid_before = bids
@@ -377,7 +413,7 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
     )
     .build();
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
 
     let error_1 = builder
         .get_error()
@@ -397,7 +433,7 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
     )
     .build();
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
 
     let error_2 = builder
         .get_error()
@@ -436,7 +472,11 @@ fn regression_20210831_should_fail_to_activate_bid() {
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids = builder.get_bids();
     let bid = bids
@@ -455,7 +495,11 @@ fn regression_20210831_should_fail_to_activate_bid() {
     )
     .build();
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec(withdraw_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids = builder.get_bids();
     let bid = bids
@@ -496,7 +540,10 @@ fn regression_20210831_should_fail_to_activate_bid() {
     )
     .build();
 
-    builder.exec(activate_bid_request_2).commit();
+    builder
+        .exec(activate_bid_request_2)
+        .apply()
+        .commit_to_disk();
 
     let error_2 = builder
         .get_error()

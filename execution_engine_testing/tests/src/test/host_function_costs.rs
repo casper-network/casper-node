@@ -32,7 +32,11 @@ fn should_measure_gas_cost() {
     // Create Accounts
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -58,7 +62,11 @@ fn should_measure_gas_cost() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let do_nothing_cost = builder.last_exec_gas_cost().value();
 
@@ -73,7 +81,11 @@ fn should_measure_gas_cost() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let do_something_cost = builder.last_exec_gas_cost().value();
     assert!(
@@ -100,7 +112,11 @@ fn should_measure_nested_host_function_call_cost() {
     // Create Accounts
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -126,7 +142,11 @@ fn should_measure_nested_host_function_call_cost() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let level_1_cost = builder.last_exec_gas_cost().value();
 
     assert!(
@@ -146,7 +166,11 @@ fn should_measure_nested_host_function_call_cost() {
     )
     .build();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let level_2_cost = builder.last_exec_gas_cost().value();
 
     assert!(
@@ -178,7 +202,11 @@ fn should_measure_argument_size_in_host_function_call() {
     // Create Accounts
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -205,7 +233,11 @@ fn should_measure_argument_size_in_host_function_call() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let call_1_cost = builder.last_exec_gas_cost().value();
 
     assert!(
@@ -225,7 +257,11 @@ fn should_measure_argument_size_in_host_function_call() {
     )
     .build();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let call_2_cost = builder.last_exec_gas_cost().value();
 
     assert!(

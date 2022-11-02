@@ -1,4 +1,6 @@
 mod partial_tries {
+    use casper_types::Key;
+
     use crate::global_state::{
         shared::CorrelationId,
         storage::{
@@ -6,7 +8,7 @@ mod partial_tries {
             trie::Trie,
             trie_store::operations::{
                 self,
-                tests::{LmdbTestContext, TestKey, TestValue, TEST_LEAVES, TEST_TRIE_GENERATORS},
+                tests::{LmdbTestContext, TEST_LEAVES, TEST_TRIE_GENERATORS},
             },
         },
     };
@@ -25,20 +27,16 @@ mod partial_tries {
                     .iter()
                     .filter_map(Trie::key)
                     .cloned()
-                    .collect::<Vec<TestKey>>();
+                    .collect::<Vec<Key>>();
                 tmp.sort();
                 tmp
             };
             let actual = {
                 let txn = context.environment.create_read_txn().unwrap();
-                let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
-                    correlation_id,
-                    &txn,
-                    &context.store,
-                    &root_hash,
-                )
-                .filter_map(Result::ok)
-                .collect::<Vec<TestKey>>();
+                let mut tmp =
+                    operations::keys::<_, _>(correlation_id, &txn, &context.store, &root_hash)
+                        .filter_map(Result::ok)
+                        .collect::<Vec<Key>>();
                 txn.commit().unwrap();
                 tmp.sort();
                 tmp
@@ -50,6 +48,7 @@ mod partial_tries {
 
 mod full_tries {
     use casper_hashing::Digest;
+    use casper_types::Key;
 
     use crate::global_state::{
         shared::CorrelationId,
@@ -59,8 +58,7 @@ mod full_tries {
             trie_store::operations::{
                 self,
                 tests::{
-                    LmdbTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
-                    TEST_TRIE_GENERATORS,
+                    LmdbTestContext, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES, TEST_TRIE_GENERATORS,
                 },
             },
         },
@@ -86,20 +84,16 @@ mod full_tries {
                         .iter()
                         .filter_map(Trie::key)
                         .cloned()
-                        .collect::<Vec<TestKey>>();
+                        .collect::<Vec<Key>>();
                     tmp.sort();
                     tmp
                 };
                 let actual = {
                     let txn = context.environment.create_read_txn().unwrap();
-                    let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
-                        correlation_id,
-                        &txn,
-                        &context.store,
-                        state,
-                    )
-                    .filter_map(Result::ok)
-                    .collect::<Vec<TestKey>>();
+                    let mut tmp =
+                        operations::keys::<_, _>(correlation_id, &txn, &context.store, state)
+                            .filter_map(Result::ok)
+                            .collect::<Vec<Key>>();
                     txn.commit().unwrap();
                     tmp.sort();
                     tmp
@@ -123,8 +117,7 @@ mod keys_iterator {
             trie_store::operations::{
                 self,
                 tests::{
-                    hash_test_tries, HashedTestTrie, HashedTrie, LmdbTestContext, TestKey,
-                    TestValue, TEST_LEAVES,
+                    hash_test_tries, HashedTestTrie, HashedTrie, LmdbTestContext, TEST_LEAVES,
                 },
             },
         },
@@ -182,13 +175,8 @@ mod keys_iterator {
         let correlation_id = CorrelationId::new();
         let context = return_on_err!(LmdbTestContext::new(&tries));
         let txn = return_on_err!(context.environment.create_read_txn());
-        let _tmp = operations::keys::<TestKey, TestValue, _, _>(
-            correlation_id,
-            &txn,
-            &context.store,
-            &root_hash,
-        )
-        .collect::<Vec<_>>();
+        let _tmp = operations::keys::<_, _>(correlation_id, &txn, &context.store, &root_hash)
+            .collect::<Vec<_>>();
     }
 
     #[test]
@@ -214,6 +202,8 @@ mod keys_iterator {
 }
 
 mod keys_with_prefix_iterator {
+    use casper_types::{bytesrepr::ToBytes, Key};
+
     use crate::global_state::{
         shared::CorrelationId,
         storage::{
@@ -221,18 +211,18 @@ mod keys_with_prefix_iterator {
             trie::Trie,
             trie_store::operations::{
                 self,
-                tests::{create_6_leaf_trie, LmdbTestContext, TestKey, TestValue, TEST_LEAVES},
+                tests::{create_6_leaf_trie, LmdbTestContext, TEST_LEAVES},
             },
         },
     };
 
-    fn expected_keys(prefix: &[u8]) -> Vec<TestKey> {
+    fn expected_keys(prefix: &[u8]) -> Vec<Key> {
         let mut tmp = TEST_LEAVES
             .iter()
             .filter_map(Trie::key)
-            .filter(|key| key.0.starts_with(prefix))
+            .filter(|key| key.to_bytes().unwrap().starts_with(prefix))
             .cloned()
-            .collect::<Vec<TestKey>>();
+            .collect::<Vec<Key>>();
         tmp.sort();
         tmp
     }
@@ -246,7 +236,7 @@ mod keys_with_prefix_iterator {
             .create_read_txn()
             .expect("should create a read txn");
         let expected = expected_keys(prefix);
-        let mut actual = operations::keys_with_prefix::<TestKey, TestValue, _, _>(
+        let mut actual = operations::keys_with_prefix::<_, _>(
             correlation_id,
             &txn,
             &context.store,

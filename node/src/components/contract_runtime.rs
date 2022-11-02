@@ -37,7 +37,7 @@ use casper_storage::{
     global_state::{
         shared::CorrelationId,
         storage::{
-            state::lmdb::LmdbGlobalState,
+            state::{lmdb::LmdbGlobalState, scratch::ScratchGlobalState},
             transaction_source::lmdb::LmdbEnvironment,
             trie::{TrieOrChunk, TrieOrChunkId},
             trie_store::lmdb::LmdbTrieStore,
@@ -196,7 +196,7 @@ impl Display for Event {
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+    engine_state: Arc<EngineState<DataAccessLayer>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
 
@@ -646,6 +646,7 @@ impl ContractRuntime {
             )?);
 
             let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+            let global_state = ScratchGlobalState::new(Arc::new(global_state));
 
             let block_store = BlockStore::new();
 
@@ -783,7 +784,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+        engine_state: Arc<EngineState<DataAccessLayer>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -873,7 +874,7 @@ impl ContractRuntime {
     }
 
     fn do_get_trie(
-        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
+        engine_state: &EngineState<DataAccessLayer>,
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
@@ -885,7 +886,7 @@ impl ContractRuntime {
     }
 
     fn get_trie_full(
-        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
+        engine_state: &EngineState<DataAccessLayer>,
         metrics: &Metrics,
         trie_key: Digest,
     ) -> Result<Option<Bytes>, engine_state::Error> {
@@ -898,7 +899,7 @@ impl ContractRuntime {
 
     /// Returns the engine state, for testing only.
     #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer>> {
         &self.engine_state
     }
 }

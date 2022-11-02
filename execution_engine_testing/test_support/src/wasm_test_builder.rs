@@ -19,19 +19,16 @@ use num_rational::Ratio;
 use num_traits::CheckedMul;
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            era_validators::GetEraValidatorsRequest,
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry,
-            UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
-        },
-        execution,
+    core::engine_state::{
+        self,
+        era_validators::GetEraValidatorsRequest,
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResult,
+        run_genesis_request::RunGenesisRequest,
+        step::{StepRequest, StepSuccess},
+        BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
+        QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry, UpgradeConfig,
+        UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
     shared::{
         execution_journal::ExecutionJournal,
@@ -47,10 +44,7 @@ use casper_hashing::Digest;
 use casper_storage::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
-        state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
-        },
+        state::{lmdb::LmdbGlobalState, scratch::ScratchGlobalState, StateReader},
         transaction_source::lmdb::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::lmdb::LmdbTrieStore,
@@ -92,16 +86,14 @@ pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
-/// Wasm test builder where state is held in LMDB.
-pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>;
+/// Legacy/deprecated type alias
+pub type LmdbWasmTestBuilder = WasmTestBuilder;
 
-/// Wasm test builder where Lmdb state is held in a automatically cleaned up temporary directory.
-// pub type TempLmdbWasmTestBuilder = WasmTestBuilder<TemporaryLmdbGlobalState>;
-
+#[derive(Clone)]
 /// Builder for simple WASM test
-pub struct WasmTestBuilder<S> {
-    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
-    engine_state: Rc<EngineState<S>>,
+pub struct WasmTestBuilder {
+    /// Engine state for execution.
+    engine_state: EngineState<DataAccessLayer>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
@@ -116,8 +108,6 @@ pub struct WasmTestBuilder<S> {
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
-    /// Scratch global state used for in-memory execution and commit optimization.
-    scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry
     system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
@@ -126,7 +116,7 @@ pub struct WasmTestBuilder<S> {
     temp_dir: Option<Rc<TempDir>>,
 }
 
-impl<S> WasmTestBuilder<S> {
+impl WasmTestBuilder {
     fn initialize_logging() {
         let log_settings = Settings::new(LevelFilter::Error).with_style(Style::HumanReadable);
         let _ = logging::initialize(log_settings);
@@ -136,27 +126,6 @@ impl<S> WasmTestBuilder<S> {
 impl Default for LmdbWasmTestBuilder {
     fn default() -> Self {
         Self::new_temporary_with_chainspec(&*PRODUCTION_PATH)
-    }
-}
-
-// TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
-// implemented by hand here.  Try to derive in the future with a different compiler version.
-impl<S> Clone for WasmTestBuilder<S> {
-    fn clone(&self) -> Self {
-        WasmTestBuilder {
-            engine_state: Rc::clone(&self.engine_state),
-            exec_results: self.exec_results.clone(),
-            upgrade_results: self.upgrade_results.clone(),
-            genesis_hash: self.genesis_hash,
-            post_state_hash: self.post_state_hash,
-            transforms: self.transforms.clone(),
-            genesis_account: self.genesis_account.clone(),
-            genesis_transforms: self.genesis_transforms.clone(),
-            scratch_engine_state: None,
-            system_contract_registry: self.system_contract_registry.clone(),
-            global_state_dir: self.global_state_dir.clone(),
-            temp_dir: self.temp_dir.clone(),
-        }
     }
 }
 
@@ -177,7 +146,7 @@ impl GlobalStateMode {
     }
 }
 
-impl LmdbWasmTestBuilder {
+impl WasmTestBuilder {
     /// Returns an [`LmdbWasmTestBuilder`] with configuration.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
@@ -206,12 +175,12 @@ impl LmdbWasmTestBuilder {
 
         let data_access_layer = DataAccessLayer {
             block_store: BlockStore::new(),
-            state: global_state,
+            state: ScratchGlobalState::new(Arc::new(global_state)),
         };
         let engine_state = EngineState::new(data_access_layer, engine_config);
 
         WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
+            engine_state,
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
             genesis_hash: None,
@@ -219,7 +188,6 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
             temp_dir: None,
@@ -257,12 +225,6 @@ impl LmdbWasmTestBuilder {
     /// the production chainspec.
     pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
         Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
-    }
-
-    /// Flushes the LMDB environment to disk.
-    pub fn flush_environment(&self) {
-        let engine_state = &*self.engine_state;
-        engine_state.flush_environment().unwrap();
     }
 
     /// Returns a new [`LmdbWasmTestBuilder`].
@@ -320,12 +282,12 @@ impl LmdbWasmTestBuilder {
 
         let data_access_layer = DataAccessLayer {
             block_store: BlockStore::new(),
-            state: global_state,
+            state: ScratchGlobalState::new(Arc::new(global_state)),
         };
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
         WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
+            engine_state,
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
             genesis_hash: None,
@@ -333,7 +295,6 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
@@ -426,85 +387,9 @@ impl LmdbWasmTestBuilder {
         }
         None
     }
-
-    /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_db to flush these changes to LmdbGlobalState.
-    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
-        if self.scratch_engine_state.is_none() {
-            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
-        }
-
-        let cached_state = self
-            .scratch_engine_state
-            .as_ref()
-            .expect("scratch state should exist");
-
-        // Scratch still requires that one deploy be executed and committed at a time.
-        let exec_request = {
-            let hash = self.post_state_hash.expect("expected post_state_hash");
-            exec_request.parent_state_hash = hash;
-            exec_request
-        };
-
-        let mut exec_results = Vec::new();
-        // First execute the request against our scratch global state.
-        let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
-        for execution_result in maybe_exec_results.unwrap() {
-            let journal = execution_result.execution_journal().clone();
-            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
-            let _post_state_hash = cached_state
-                .apply_effect(
-                    CorrelationId::new(),
-                    self.post_state_hash.expect("requires a post_state_hash"),
-                    transforms,
-                )
-                .expect("should commit");
-
-            // Save transforms and execution results for WasmTestBuilder.
-            self.transforms.push(journal);
-            exec_results.push(Rc::new(execution_result))
-        }
-        self.exec_results.push(exec_results);
-        self
-    }
-
-    /// Commit scratch to global state, and reset the scratch cache.
-    pub fn write_scratch_to_db(&mut self) -> &mut Self {
-        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
-        if let Some(scratch) = self.scratch_engine_state.take() {
-            let new_state_root = self
-                .engine_state
-                .write_scratch_to_db(prestate_hash, scratch.into_inner())
-                .unwrap();
-            self.post_state_hash = Some(new_state_root);
-        }
-        self
-    }
-
-    /// run step against scratch global state.
-    pub fn step_with_scratch(&mut self, step_request: StepRequest) -> &mut Self {
-        if self.scratch_engine_state.is_none() {
-            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
-        }
-
-        let cached_state = self
-            .scratch_engine_state
-            .as_ref()
-            .expect("scratch state should exist");
-
-        cached_state
-            .commit_step(CorrelationId::new(), step_request)
-            .expect("unable to run step request against scratch global state");
-        self
-    }
 }
 
-impl<S> WasmTestBuilder<S>
-where
-    S: StateProvider + CommitProvider,
-    engine_state::Error: From<S::Error>,
-    S::Error: Into<execution::Error>,
-{
+impl WasmTestBuilder {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
@@ -594,7 +479,7 @@ where
         maybe_post_state: Option<Digest>,
         base_key: Key,
         path: &[String],
-    ) -> Result<(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>), String> {
+    ) -> Result<(StoredValue, Vec<TrieMerkleProof>), String> {
         let post_state = maybe_post_state
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
@@ -714,27 +599,36 @@ where
         self
     }
 
-    /// Commit effects of previous exec call on the latest post-state hash.
-    pub fn commit(&mut self) -> &mut Self {
+    /// Apply effects of previous exec call on the latest post-state hash.
+    pub fn apply(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
 
         let effects = self.transforms.last().cloned().unwrap_or_default();
 
-        self.commit_transforms(prestate_hash, effects.into())
+        self.apply_transforms(prestate_hash, effects.into())
     }
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
-    pub fn commit_transforms(
+    pub fn apply_transforms(
         &mut self,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> &mut Self {
-        let post_state_hash = self
+        // We ignore the "state root hash" generated because it isn't modified by the cache layer.
+        // Instead, this must be retrieved from the commit_to_disk() method.
+        let _ = self
             .engine_state
             .apply_effect(CorrelationId::new(), pre_state_hash, effects)
             .expect("should commit");
-        self.post_state_hash = Some(post_state_hash);
+        self
+    }
+
+    /// Commit cached changes to disk. This must be called for executed changes to be persisted.
+    pub fn commit_to_disk(&mut self) -> &mut Self {
+        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
+        let new_state_root = self.engine_state.commit_to_disk(prestate_hash).unwrap();
+        self.post_state_hash = Some(new_state_root);
         self
     }
 
@@ -747,12 +641,14 @@ where
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
+        let engine_state = &mut self.engine_state;
         engine_state.update_config(engine_config);
 
         let result = self
             .engine_state
             .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
+
+        self.commit_to_disk();
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
@@ -790,7 +686,10 @@ where
             },
         )
         .build();
-        self.exec(run_request).commit().expect_success()
+        self.exec(run_request)
+            .apply()
+            .commit_to_disk()
+            .expect_success()
     }
 
     /// Increments engine state.
@@ -946,7 +845,7 @@ where
     }
 
     /// Returns the engine state.
-    pub fn get_engine_state(&self) -> &EngineState<S> {
+    pub fn get_engine_state(&self) -> &EngineState<DataAccessLayer> {
         &self.engine_state
     }
 
@@ -1431,7 +1330,7 @@ where
     }
 
     /// Returns a trie by hash.
-    pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie<Key, StoredValue>> {
+    pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie> {
         self.engine_state
             .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()

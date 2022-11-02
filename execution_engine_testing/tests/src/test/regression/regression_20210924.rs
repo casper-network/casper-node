@@ -74,7 +74,7 @@ fn should_charge_minimum_for_do_nothing_session() {
 
     let account_balance_before = builder.get_purse_balance(account.main_purse());
 
-    builder.exec(do_nothing_request).commit();
+    builder.exec(do_nothing_request).apply().commit_to_disk();
 
     let error = builder.get_error().unwrap();
     assert!(
@@ -130,7 +130,11 @@ fn should_execute_do_minimum_session() {
 
     let account_balance_before = builder.get_purse_balance(account.main_purse());
 
-    builder.exec(do_minimum_request).expect_success().commit();
+    builder
+        .exec(do_minimum_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let gas = builder.last_exec_gas_cost();
     assert_eq!(gas, Gas::from(DEFAULT_NOP_COST));
@@ -185,7 +189,7 @@ fn should_charge_minimum_for_do_nothing_payment() {
 
     let account_balance_before = builder.get_purse_balance(account.main_purse());
 
-    builder.exec(do_nothing_request).commit();
+    builder.exec(do_nothing_request).apply().commit_to_disk();
 
     let error = builder.get_error().unwrap();
     assert!(

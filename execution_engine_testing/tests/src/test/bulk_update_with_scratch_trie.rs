@@ -17,7 +17,6 @@ fn should_run_transfers_and_auction_producing_expected_number_of_tries_only() {
         transfers_per_block,
         purse_count,
         true,
-        true,
         block_count,
         delegator_count,
         validator_count,

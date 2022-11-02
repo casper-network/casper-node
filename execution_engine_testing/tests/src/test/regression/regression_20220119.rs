@@ -19,5 +19,9 @@ fn should_create_purse() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

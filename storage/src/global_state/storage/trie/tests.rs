@@ -50,7 +50,7 @@ mod proptests {
     use proptest::prelude::*;
 
     use casper_hashing::Digest;
-    use casper_types::{bytesrepr, gens::key_arb, Key, StoredValue};
+    use casper_types::{bytesrepr, gens::key_arb};
 
     use crate::global_state::storage::trie::{gens::*, PointerBlock, Trie};
 
@@ -100,21 +100,21 @@ mod proptests {
         #[test]
         fn serde_roundtrip_trie_leaf(trie_leaf in trie_leaf_arb()) {
              let json_str = serde_json::to_string(&trie_leaf)?;
-             let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
+             let deserialized_trie: Trie = serde_json::from_str(&json_str)?;
              assert_eq!(trie_leaf, deserialized_trie)
         }
 
         #[test]
         fn serde_roundtrip_trie_node(trie_node in trie_node_arb()) {
              let json_str = serde_json::to_string(&trie_node)?;
-             let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
+             let deserialized_trie: Trie = serde_json::from_str(&json_str)?;
              assert_eq!(trie_node, deserialized_trie)
         }
 
         #[test]
         fn serde_roundtrip_trie_extension(trie_extension in trie_extension_arb()) {
              let json_str = serde_json::to_string(&trie_extension)?;
-             let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str)?;
+             let deserialized_trie: Trie = serde_json::from_str(&json_str)?;
              assert_eq!(trie_extension, deserialized_trie)
         }
 

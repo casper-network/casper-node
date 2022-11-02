@@ -12,7 +12,7 @@ use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
-        storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        storage::state::{CommitProvider, StateProvider},
     },
 };
 
@@ -39,7 +39,7 @@ use super::SpeculativeExecutionState;
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
+    engine_state: &EngineState<DataAccessLayer>,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
@@ -67,9 +67,6 @@ pub fn execute_finalized_block(
     let start = Instant::now();
     let maybe_deploy_approvals_root_hash = compute_approvals_root_hash(&deploys, &transfers)?;
 
-    // Create a new EngineState that reads from LMDB but only caches changes in memory.
-    let scratch_state = engine_state.get_scratch_engine_state();
-
     for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
@@ -86,12 +83,12 @@ pub fn execute_finalized_block(
         // mapping between deploy_hash and execution result, and this outer logic is
         // enriching it with the deploy hash. If we were passing multiple deploys per exec
         // the relation between the deploy and the execution results would be lost.
-        let result = execute(&scratch_state, metrics.clone(), execute_request)?;
+        let result = execute(engine_state, metrics.clone(), execute_request)?;
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
         let (state_hash, execution_result) = commit_execution_effects(
-            &scratch_state,
+            engine_state,
             metrics.clone(),
             state_root_hash,
             deploy_hash.into(),
@@ -126,7 +123,7 @@ pub fn execute_finalized_block(
                     .into(),
             ),
         );
-        scratch_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+        engine_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
     }
 
     if let Some(metrics) = metrics.as_ref() {
@@ -141,7 +138,7 @@ pub fn execute_finalized_block(
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
             } = commit_step(
-                &scratch_state, // engine_state
+                engine_state, // engine_state
                 metrics.clone(),
                 protocol_version,
                 state_root_hash,
@@ -150,8 +147,7 @@ pub fn execute_finalized_block(
                 finalized_block.era_id().successor(),
             )?;
 
-            state_root_hash =
-                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+            state_root_hash = engine_state.commit_to_disk(state_root_hash)?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -169,13 +165,9 @@ pub fn execute_finalized_block(
         } else {
             // Finally, the new state-root-hash from the cumulative changes to global state is
             // returned when they are written to LMDB.
-            state_root_hash =
-                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+            state_root_hash = engine_state.commit_to_disk(state_root_hash)?;
             None
         };
-
-    // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
 
     // Update the metric.
     if let Some(metrics) = metrics.as_ref() {

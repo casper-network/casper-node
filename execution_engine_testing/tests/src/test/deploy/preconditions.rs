@@ -38,7 +38,8 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)
@@ -69,7 +70,8 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)
@@ -107,7 +109,8 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)

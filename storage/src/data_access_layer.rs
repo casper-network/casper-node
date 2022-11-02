@@ -3,8 +3,11 @@ use casper_types::EraId;
 use crate::global_state::{
     shared,
     storage::{
-        self,
-        state::{CommitProvider, StateProvider},
+        self, error,
+        state::{
+            scratch::{ScratchGlobalState, ScratchGlobalStateView},
+            CommitProvider, StateProvider,
+        },
     },
 };
 
@@ -21,7 +24,7 @@ pub trait BlockProvider {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct BlockStore(());
 
 impl BlockStore {
@@ -31,24 +34,32 @@ impl BlockStore {
 }
 
 // We're currently putting it here, but in future it needs to move to its own crate.
-pub struct DataAccessLayer<S> {
+#[derive(Clone)]
+pub struct DataAccessLayer {
     pub block_store: BlockStore,
-    pub state: S,
+    pub state: ScratchGlobalState,
 }
 
-impl<S> DataAccessLayer<S> {
-    pub fn state(&self) -> &S {
+impl std::fmt::Debug for DataAccessLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataAccessLayer").finish()
+    }
+}
+
+impl DataAccessLayer {
+    pub fn new(state: ScratchGlobalState, block_store: BlockStore) -> Self {
+        Self { state, block_store }
+    }
+
+    pub fn state(&self) -> &ScratchGlobalState {
         &self.state
     }
 }
 
-impl<S> StateProvider for DataAccessLayer<S>
-where
-    S: StateProvider,
-{
-    type Error = S::Error;
+impl StateProvider for DataAccessLayer {
+    type Error = error::Error;
 
-    type Reader = S::Reader;
+    type Reader = ScratchGlobalStateView;
 
     fn checkout(
         &self,
@@ -94,10 +105,7 @@ where
     }
 }
 
-impl<S> CommitProvider for DataAccessLayer<S>
-where
-    S: CommitProvider,
-{
+impl CommitProvider for DataAccessLayer {
     fn commit(
         &self,
         correlation_id: shared::CorrelationId,

@@ -5,7 +5,7 @@ use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::bytesrepr::ToBytes;
 
 use crate::global_state::storage::{
     store::tests as store_tests,
@@ -29,7 +29,7 @@ fn get_range() -> RangeInclusive<usize> {
     RangeInclusive::new(start, end)
 }
 
-fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
+fn lmdb_roundtrip_succeeds(inputs: Vec<Trie>) -> bool {
     use crate::global_state::storage::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     };
@@ -44,7 +44,7 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
-    let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
+    let inputs: BTreeMap<Digest, Trie> = inputs
         .into_iter()
         .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
         .collect();

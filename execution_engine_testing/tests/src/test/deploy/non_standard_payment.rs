@@ -47,10 +47,12 @@ fn should_charge_non_main_purse() {
     builder
         .exec(setup_exec_request)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(create_purse_exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // get account_1
     let account_1 = builder
@@ -91,7 +93,8 @@ fn should_charge_non_main_purse() {
     builder
         .exec(account_payment_exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 

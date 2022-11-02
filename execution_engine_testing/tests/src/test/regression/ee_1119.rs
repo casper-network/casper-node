@@ -80,7 +80,8 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     builder
         .exec(fund_system_exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let auction = builder.get_auction_contract_hash();
 
@@ -102,7 +103,8 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     builder
         .exec(delegate_exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let bids: Bids = builder.get_bids();
     let validator_1_bid = bids.get(&VALIDATOR_1).expect("should have bid");
@@ -141,7 +143,8 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     .build();
     builder
         .exec(undelegate_exec_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     //
@@ -158,7 +161,11 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec(withdraw_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
@@ -202,7 +209,11 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(slash_request_1).expect_success().commit();
+    builder
+        .exec(slash_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let unbond_purses_noop: UnbondingPurses = builder.get_unbonds();
     assert_eq!(
@@ -230,7 +241,11 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(slash_request_2).expect_success().commit();
+    builder
+        .exec(slash_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);

@@ -114,7 +114,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
     let upgraded_chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
         &chainspec_bytes,
         cfg.with_global_state_bytes
-            .then(|| global_state_bytes.as_slice()),
+            .then_some(global_state_bytes.as_slice()),
     );
 
     let mut upgrade_request = {

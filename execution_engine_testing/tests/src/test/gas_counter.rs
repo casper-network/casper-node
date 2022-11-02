@@ -58,7 +58,7 @@ fn should_fail_to_overflow_gas_counter() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let responses = builder
         .get_exec_result_owned(0)
@@ -166,7 +166,11 @@ fn should_correctly_measure_gas_for_opcodes() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let gas_cost = builder.last_exec_gas_cost();
     let expected_cost = accounted_opcodes.clone().into_iter().map(Gas::from).sum();

@@ -61,7 +61,8 @@ fn store_contract(builder: &mut LmdbWasmTestBuilder, session_filename: &str) {
             .build();
     builder
         .exec(store_contract_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 }
 
@@ -368,7 +369,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -400,7 +405,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -439,7 +448,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -477,7 +490,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -517,7 +534,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -556,7 +577,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -594,7 +619,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -630,7 +659,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -662,7 +695,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -701,7 +738,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -739,7 +780,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -771,7 +816,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -813,7 +862,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -848,7 +897,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -882,7 +931,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -913,7 +962,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -945,7 +994,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -980,7 +1033,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             let transforms = builder.get_execution_journals().last().unwrap().clone();
 
@@ -1024,7 +1081,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1059,7 +1120,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1094,7 +1159,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1129,7 +1198,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             let transforms = builder.get_execution_journals().last().unwrap().clone();
 
@@ -1173,7 +1246,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1207,7 +1284,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1244,7 +1325,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1274,7 +1355,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1303,7 +1384,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1333,7 +1414,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1362,7 +1443,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1392,7 +1473,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1420,7 +1501,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1448,7 +1529,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1487,7 +1568,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1525,7 +1606,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1562,7 +1643,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1596,7 +1677,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1634,7 +1715,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1670,7 +1751,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1705,7 +1786,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1737,7 +1818,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -1769,7 +1850,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1804,7 +1889,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1839,7 +1928,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1874,7 +1967,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1909,7 +2006,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1944,7 +2045,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1978,7 +2083,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2012,7 +2121,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2047,7 +2160,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2082,7 +2199,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2117,7 +2238,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2152,7 +2277,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2187,7 +2316,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2222,7 +2355,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2256,7 +2393,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2290,7 +2431,11 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2336,7 +2481,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2374,7 +2519,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2411,7 +2556,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2445,7 +2590,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2483,7 +2628,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2519,7 +2664,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2554,7 +2699,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2586,7 +2731,7 @@ mod session {
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2652,7 +2797,11 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -2699,7 +2848,11 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -2745,7 +2898,11 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -2789,7 +2946,11 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -2839,7 +3000,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2882,7 +3043,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2924,7 +3085,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -2963,7 +3124,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -3009,7 +3170,11 @@ mod payment {
 
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3054,7 +3219,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3103,7 +3272,11 @@ mod payment {
 
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3148,7 +3321,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3197,7 +3374,11 @@ mod payment {
 
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3242,7 +3423,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3286,7 +3471,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3330,7 +3519,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3374,7 +3567,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3418,7 +3615,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3462,7 +3663,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3506,7 +3711,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3551,7 +3760,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3596,7 +3809,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3640,7 +3857,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3684,7 +3905,11 @@ mod payment {
                     .build();
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -3740,7 +3965,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -3788,7 +4013,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -3835,7 +4060,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -3879,7 +4104,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -3928,7 +4153,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -3975,7 +4200,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -4021,7 +4246,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }
@@ -4064,7 +4289,7 @@ mod payment {
                 ExecuteRequestBuilder::new().push_deploy(deploy).build()
             };
 
-            builder.exec(execute_request).commit();
+            builder.exec(execute_request).apply().commit_to_disk();
 
             super::assert_invalid_context(&mut builder, *len);
         }

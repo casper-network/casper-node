@@ -40,5 +40,9 @@ fn should_list_named_keys() {
     )
     .build();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }

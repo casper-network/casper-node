@@ -90,7 +90,8 @@ fn main() {
         .run_genesis(&run_genesis_request)
         .exec(exec_request)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .get_post_state_hash();
     println!("{:?}", post_state_hash);
 }

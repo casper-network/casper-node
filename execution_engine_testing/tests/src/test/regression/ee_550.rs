@@ -45,10 +45,12 @@ fn should_run_ee_550_remove_with_saturated_threshold_regression() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -82,8 +84,10 @@ fn should_run_ee_550_update_with_saturated_threshold_regression() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

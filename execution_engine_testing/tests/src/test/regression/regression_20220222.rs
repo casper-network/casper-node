@@ -23,7 +23,11 @@ fn regression_20220222_escalate() {
     )
     .build();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let alice = builder
         .get_account(ALICE_ADDR)

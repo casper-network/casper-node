@@ -102,7 +102,11 @@ fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }
 
 #[ignore]
@@ -116,7 +120,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -137,7 +141,11 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }
 
 #[ignore]
@@ -151,7 +159,11 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }
 
 #[ignore]
@@ -168,7 +180,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -191,7 +203,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -212,7 +224,7 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -235,7 +247,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let results = &builder
         .get_exec_result_owned(0)
@@ -258,7 +270,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
 
     //
     // This request should fail - as it's exceeding default memory limit
@@ -305,5 +317,9 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request_2).commit().expect_success();
+    builder
+        .exec(exec_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }

@@ -55,8 +55,16 @@ fn regression_20211110() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(transfer_request).expect_success().commit();
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec(transfer_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(install_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     funds = funds.checked_sub(INSTALL_COST).unwrap();
 

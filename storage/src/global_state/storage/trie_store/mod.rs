@@ -13,4 +13,4 @@ use crate::global_state::storage::{store::Store, trie::Trie};
 const NAME: &str = "TRIE_STORE";
 
 /// An entity which persists [`Trie`] values at their hashes.
-pub trait TrieStore<K, V>: Store<Digest, Trie<K, V>> {}
+pub trait TrieStore: Store<Digest, Trie> {}

@@ -13,13 +13,18 @@ fn should_query_contract_package() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let install_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_NAME, RuntimeArgs::new())
             .build();
 
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec(install_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let contract_package_hash = builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)

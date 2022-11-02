@@ -1,6 +1,6 @@
 //! Types for balance queries.
 use casper_hashing::Digest;
-use casper_types::{Key, StoredValue, URef, U512};
+use casper_types::{URef, U512};
 
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 
@@ -14,7 +14,7 @@ pub enum BalanceResult {
         /// Purse balance.
         motes: U512,
         /// A proof that the given value is present in the Merkle trie.
-        proof: Box<TrieMerkleProof<Key, StoredValue>>,
+        proof: Box<TrieMerkleProof>,
     },
 }
 
@@ -28,7 +28,7 @@ impl BalanceResult {
     }
 
     /// Returns the Merkle proof for a given [`BalanceResult::Success`] variant.
-    pub fn proof(self) -> Option<TrieMerkleProof<Key, StoredValue>> {
+    pub fn proof(self) -> Option<TrieMerkleProof> {
         match self {
             BalanceResult::Success { proof, .. } => Some(*proof),
             _ => None,

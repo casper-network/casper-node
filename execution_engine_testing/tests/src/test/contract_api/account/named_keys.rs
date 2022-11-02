@@ -29,7 +29,11 @@ fn run_command(builder: &mut LmdbWasmTestBuilder, command: &str) {
         runtime_args! { ARG_COMMAND => command },
     )
     .build();
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }
 
 fn read_value<T: CLTyped + FromBytes>(builder: &mut LmdbWasmTestBuilder, key: Key) -> T {

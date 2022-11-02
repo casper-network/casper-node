@@ -217,7 +217,11 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let withdraw_bid_request_1 = {
         let sender = *DEFAULT_PROPOSER_ADDR;
@@ -264,7 +268,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
     builder
         .exec(withdraw_bid_request_1)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -301,7 +306,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
     builder
         .exec(withdraw_bid_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -365,7 +371,11 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let era_end_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
@@ -404,7 +414,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
     builder
         .exec(withdraw_bid_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[cfg(feature = "fixture-generators")]

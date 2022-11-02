@@ -49,14 +49,14 @@ pub trait TrackingCopyExt<R> {
         &self,
         correlation_id: CorrelationId,
         purse_key: Key,
-    ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error>;
+    ) -> Result<(Key, TrieMerkleProof), Self::Error>;
 
     /// Gets the balance at a given balance key and provides a Merkle proof
     fn get_purse_balance_with_proof(
         &self,
         correlation_id: CorrelationId,
         balance_key: Key,
-    ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
+    ) -> Result<(Motes, TrieMerkleProof), Self::Error>;
 
     /// Gets a contract by Key
     fn get_contract_wasm(
@@ -156,11 +156,11 @@ where
         &self,
         correlation_id: CorrelationId,
         purse_key: Key,
-    ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error> {
+    ) -> Result<(Key, TrieMerkleProof), Self::Error> {
         let balance_key: Key = purse_key
             .uref_to_hash()
             .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
-        let proof: TrieMerkleProof<Key, StoredValue> = self
+        let proof: TrieMerkleProof = self
             .read_with_proof(correlation_id, &balance_key) // Key::Hash, so no need to normalize
             .map_err(Into::into)?
             .ok_or(execution::Error::KeyNotFound(purse_key))?;
@@ -177,8 +177,8 @@ where
         &self,
         correlation_id: CorrelationId,
         key: Key,
-    ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error> {
-        let proof: TrieMerkleProof<Key, StoredValue> = self
+    ) -> Result<(Motes, TrieMerkleProof), Self::Error> {
+        let proof: TrieMerkleProof = self
             .read_with_proof(correlation_id, &key.normalize())
             .map_err(Into::into)?
             .ok_or(execution::Error::KeyNotFound(key))?;

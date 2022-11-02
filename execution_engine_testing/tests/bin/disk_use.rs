@@ -15,7 +15,6 @@ fn main() {
         transfers_per_block,
         purse_count,
         true,
-        true,
         block_count,
         delegator_count,
         validator_count,

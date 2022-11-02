@@ -48,7 +48,11 @@ fn should_call_group_restricted_session() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -87,7 +91,11 @@ fn should_call_group_restricted_session() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -113,7 +121,11 @@ fn should_call_group_restricted_session_caller() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -150,7 +162,11 @@ fn should_call_group_restricted_session_caller() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -183,9 +199,17 @@ fn should_not_call_restricted_session_from_wrong_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -221,7 +245,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -262,9 +286,17 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -302,7 +334,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -336,7 +368,11 @@ fn should_call_group_restricted_contract() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -377,7 +413,11 @@ fn should_call_group_restricted_contract() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -409,8 +449,16 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -451,7 +499,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -478,7 +526,11 @@ fn should_call_group_unrestricted_contract_caller() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -515,7 +567,11 @@ fn should_call_group_unrestricted_contract_caller() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -545,8 +601,16 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -587,7 +651,11 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -612,8 +680,16 @@ fn should_call_group_restricted_contract_as_session() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -654,7 +730,11 @@ fn should_call_group_restricted_contract_as_session() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -679,8 +759,16 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -721,7 +809,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -748,7 +836,11 @@ fn should_not_call_uncallable_contract_from_deploy() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -789,7 +881,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let response = builder
         .get_last_exec_results()
         .expect("should have last response");
@@ -818,7 +910,11 @@ fn should_not_call_uncallable_contract_from_deploy() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -837,7 +933,11 @@ fn should_not_call_uncallable_session_from_deploy() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -878,7 +978,7 @@ fn should_not_call_uncallable_session_from_deploy() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let response = builder
         .get_last_exec_results()
         .expect("should have last response");
@@ -906,7 +1006,11 @@ fn should_not_call_uncallable_session_from_deploy() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[test]
@@ -933,9 +1037,17 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -975,7 +1087,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -1016,9 +1128,17 @@ fn should_call_group_restricted_stored_payment_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -1059,5 +1179,9 @@ fn should_call_group_restricted_stored_payment_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

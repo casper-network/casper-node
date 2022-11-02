@@ -11,7 +11,7 @@ mod empty_tries {
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, error::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -30,7 +30,7 @@ mod empty_tries {
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, error::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -54,12 +54,12 @@ mod partial_tries {
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<TestKey, TestValue>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         // Check that the expected set of leaves is in the trie
-        check_leaves::<_, _, _, _, E>(
+        check_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
@@ -69,7 +69,7 @@ mod partial_tries {
         )?;
 
         // Rewrite that set of leaves
-        let write_results = write_leaves::<_, _, _, _, E>(
+        let write_results = write_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
@@ -82,7 +82,7 @@ mod partial_tries {
             .all(|result| *result == WriteResult::AlreadyExists));
 
         // Check that the expected set of leaves is in the trie
-        check_leaves::<_, _, _, _, E>(
+        check_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
@@ -120,14 +120,14 @@ mod partial_tries {
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<TestKey, TestValue>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut states = states.to_owned();
 
         // Check that the expected set of leaves is in the trie
-        check_leaves::<_, _, _, _, E>(
+        check_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
@@ -149,7 +149,7 @@ mod partial_tries {
 
             let root_hash = {
                 let current_root = states.last().unwrap();
-                let results = write_leaves::<_, _, _, _, E>(
+                let results = write_leaves::<_, _, E>(
                     correlation_id,
                     environment,
                     store,
@@ -166,7 +166,7 @@ mod partial_tries {
             states.push(root_hash);
 
             // Check that the expected set of leaves is in the trie
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,
@@ -211,13 +211,13 @@ mod full_tries {
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<TestKey, TestValue>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,
@@ -228,7 +228,7 @@ mod full_tries {
         }
 
         // Rewrite that set of leaves
-        let write_results = write_leaves::<_, _, _, _, E>(
+        let write_results = write_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
@@ -242,7 +242,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,
@@ -286,7 +286,7 @@ mod full_tries {
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<TestKey, TestValue>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
@@ -294,7 +294,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,
@@ -305,7 +305,7 @@ mod full_tries {
         }
 
         // Write set of leaves to the trie
-        let hashes = write_leaves::<_, _, _, _, E>(
+        let hashes = write_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
@@ -344,7 +344,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,
@@ -387,7 +387,7 @@ mod full_tries {
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<TestKey, TestValue>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
@@ -396,7 +396,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,
@@ -407,12 +407,12 @@ mod full_tries {
         }
 
         // Write set of leaves to the trie
-        let hashes = write_leaves::<_, _, _, _, E>(
+        let hashes = write_leaves::<_, _, E>(
             correlation_id,
             environment,
             store,
             states.last().unwrap(),
-            &TEST_LEAVES_ADJACENTS,
+            &*TEST_LEAVES_ADJACENTS,
         )?
         .iter()
         .map(|result| match result {
@@ -446,7 +446,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, E>(
                 correlation_id,
                 environment,
                 store,

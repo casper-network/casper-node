@@ -52,14 +52,18 @@ fn regression_test_genesis_hash_mismatch() {
     // This is trie's post state hash after committing genesis effects on top of
     // empty trie. Step 1b)
     let genesis_transforms_hash = builder
-        .commit_transforms(empty_root_hash, genesis_transforms)
+        .apply_transforms(empty_root_hash, genesis_transforms)
         .get_post_state_hash();
 
     // They should match.
     assert_eq!(genesis_run_hash, genesis_transforms_hash);
 
     // Step 2.
-    builder.exec(exec_request_1).commit().expect_success();
+    builder
+        .exec(exec_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     // No step 3.
     // Step 4.
@@ -71,7 +75,7 @@ fn regression_test_genesis_hash_mismatch() {
 
     // Step 4b)
     let second_genesis_transforms_hash = builder
-        .commit_transforms(empty_root_hash, second_genesis_transforms)
+        .apply_transforms(empty_root_hash, second_genesis_transforms)
         .get_post_state_hash();
 
     assert_eq!(second_genesis_run_hash, second_genesis_transforms_hash);

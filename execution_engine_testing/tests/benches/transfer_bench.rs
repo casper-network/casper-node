@@ -57,7 +57,8 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
 }
@@ -76,7 +77,11 @@ fn create_purses(
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Return creates purses for given account by filtering named keys
     let query_result = builder
@@ -121,7 +126,7 @@ fn transfer_to_account_multiple_execs(
 
         let builder = builder.exec(exec_request).expect_success();
         if should_commit {
-            builder.commit();
+            builder.apply().commit_to_disk();
         }
     }
 }
@@ -155,7 +160,7 @@ fn transfer_to_account_multiple_deploys(
 
     let builder = builder.exec(exec_request).expect_success();
     if should_commit {
-        builder.commit();
+        builder.apply().commit_to_disk();
     }
 }
 
@@ -178,7 +183,7 @@ fn transfer_to_purse_multiple_execs(
 
         let builder = builder.exec(exec_request).expect_success();
         if should_commit {
-            builder.commit();
+            builder.apply().commit_to_disk();
         }
     }
 }
@@ -209,7 +214,7 @@ fn transfer_to_purse_multiple_deploys(
 
     let builder = builder.exec(exec_request).expect_success();
     if should_commit {
-        builder.commit();
+        builder.apply().commit_to_disk();
     }
 }
 
@@ -255,7 +260,6 @@ pub fn multiple_native_transfers<M>(
     group: &mut BenchmarkGroup<M>,
     transfer_count: usize,
     purse_count: usize,
-    use_scratch: bool,
 ) where
     M: Measurement,
 {
@@ -310,21 +314,10 @@ pub fn multiple_native_transfers<M>(
 
     group.bench_function(
         format!(
-            "type:{}/transfers:{}/purses:{}/metric:{}",
-            if use_scratch { "scratch" } else { "lmdb" },
-            transfer_count,
-            purse_count,
-            criterion_metric_name,
+            "transfers:{}/purses:{}/metric:{}",
+            transfer_count, purse_count, criterion_metric_name,
         ),
-        |b| {
-            b.iter(|| {
-                transfer_to_account_multiple_native_transfers(
-                    &mut builder,
-                    &exec_requests,
-                    use_scratch,
-                )
-            })
-        },
+        |b| b.iter(|| transfer_to_account_multiple_native_transfers(&mut builder, &exec_requests)),
     );
 }
 
@@ -332,7 +325,6 @@ pub fn multiple_native_transfers<M>(
 fn transfer_to_account_multiple_native_transfers(
     builder: &mut LmdbWasmTestBuilder,
     execute_requests: &[ExecuteRequest],
-    use_scratch: bool,
 ) {
     for exec_request in execute_requests {
         let request = ExecuteRequest::new(
@@ -342,18 +334,10 @@ fn transfer_to_account_multiple_native_transfers(
             exec_request.protocol_version,
             exec_request.proposer.clone(),
         );
-        if use_scratch {
-            builder.scratch_exec_and_commit(request).expect_success();
-        } else {
-            builder.exec(request).expect_success();
-            builder.commit();
-        }
+        builder.exec(request).expect_success();
+        builder.apply().commit_to_disk();
     }
-    if use_scratch {
-        builder.write_scratch_to_db();
-    }
-    // flush to disk only after entire block (simulates manual_sync_enabled=true config entry)
-    builder.flush_environment();
+    builder.commit_to_disk();
 
     // WasmTestBuilder holds on to all execution results. This needs to be cleared to reduce
     // overhead in this test - it will likely OOM without.
@@ -428,8 +412,7 @@ where
     for purse_count in [50, 100] {
         for transfer_count in [500, 1500, 2500usize] {
             // baseline, one deploy per exec request
-            multiple_native_transfers(&mut group, transfer_count, purse_count, true);
-            multiple_native_transfers(&mut group, transfer_count, purse_count, false);
+            multiple_native_transfers(&mut group, transfer_count, purse_count);
         }
     }
 

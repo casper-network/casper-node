@@ -86,13 +86,29 @@ fn should_enforce_intended_execution_contexts() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder
+        .exec(exec_request_4)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -183,13 +199,29 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder
+        .exec(exec_request_4)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -228,7 +260,11 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -283,11 +319,23 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder
+        .exec(exec_request_4)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -326,7 +374,11 @@ fn should_not_call_session_from_contract() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -361,7 +413,7 @@ fn should_not_call_session_from_contract() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
 
     let response = builder
         .get_last_exec_results()

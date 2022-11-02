@@ -39,7 +39,11 @@ fn should_run_purse_to_account_transfer() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let new_account = builder
         .get_account(account_1_account_hash)
@@ -69,7 +73,11 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_failure().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     // Get transforms output for genesis account
     let default_account = builder

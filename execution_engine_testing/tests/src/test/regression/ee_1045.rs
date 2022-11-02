@@ -122,7 +122,11 @@ fn should_run_ee_1045_squash_validators() {
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let auction_contract = builder.get_auction_contract_hash();
 
@@ -155,7 +159,11 @@ fn should_run_ee_1045_squash_validators() {
     //
     // ROUND 1
     //
-    builder.exec(squash_request_1).expect_success().commit();
+    builder
+        .exec(squash_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // new_era_id += 1;
     assert!(builder.get_validator_weights(new_era_id).is_none());
@@ -180,7 +188,11 @@ fn should_run_ee_1045_squash_validators() {
     //
     // ROUND 2
     //
-    builder.exec(squash_request_2).expect_success().commit();
+    builder
+        .exec(squash_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     new_era_id += 1;
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());

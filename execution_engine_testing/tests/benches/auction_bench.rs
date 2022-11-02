@@ -88,7 +88,7 @@ fn run_genesis_and_create_initial_accounts(
     )
     .build();
     builder.exec(transfer);
-    builder.expect_success().commit();
+    builder.expect_success().apply().commit_to_disk();
 
     for delegator_account in delegator_accounts {
         let transfer = ExecuteRequestBuilder::transfer(
@@ -101,7 +101,7 @@ fn run_genesis_and_create_initial_accounts(
         )
         .build();
         builder.exec(transfer);
-        builder.expect_success().commit();
+        builder.expect_success().apply().commit_to_disk();
     }
     builder
 }
@@ -175,7 +175,7 @@ fn setup_bench_run_auction(
         );
         builder.exec(delegate);
         builder.expect_success();
-        builder.commit();
+        builder.apply().commit_to_disk();
         builder.clear_results();
     }
 

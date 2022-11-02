@@ -20,7 +20,6 @@
     clippy::all
 )]
 #![forbid(
-    const_err,
     arithmetic_overflow,
     invalid_type_param_default,
     macro_expanded_macro_exports_accessed_by_absolute_paths,

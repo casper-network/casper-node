@@ -33,5 +33,9 @@ fn should_run_ee_1225_verify_finalize_payment_invariants() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

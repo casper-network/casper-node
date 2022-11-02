@@ -45,11 +45,16 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder
+        .exec(fund_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(install_contract_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     let account = builder
@@ -149,7 +154,8 @@ fn should_modify_with_owned_access_rights() {
 
     builder
         .exec(modify_write_request_1)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     let stored_value = builder
@@ -178,7 +184,8 @@ fn should_modify_with_owned_access_rights() {
 
     builder
         .exec(modify_write_request_2)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     let stored_value = builder
@@ -209,7 +216,7 @@ fn should_not_write_with_read_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let exec_results = builder
         .get_last_exec_results()
@@ -244,7 +251,11 @@ fn should_read_with_read_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).expect_success().commit();
+    builder
+        .exec(call_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -263,7 +274,7 @@ fn should_not_read_with_write_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let exec_results = builder
         .get_last_exec_results()
@@ -299,7 +310,7 @@ fn should_write_with_write_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let contract = builder
         .get_contract(contract_hash)
@@ -349,7 +360,7 @@ fn should_not_write_with_forged_uref() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let exec_results = builder
         .get_last_exec_results()
@@ -390,7 +401,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -429,7 +440,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -471,8 +482,15 @@ fn dictionary_put_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
-    builder.exec(install_contract_request).commit();
+    builder
+        .exec(fund_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(install_contract_request)
+        .apply()
+        .commit_to_disk();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -514,8 +532,15 @@ fn dictionary_get_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
-    builder.exec(install_contract_request).commit();
+    builder
+        .exec(fund_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(install_contract_request)
+        .apply()
+        .commit_to_disk();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -561,9 +586,16 @@ fn should_query_dictionary_items_with_test_builder() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    builder
+        .run_genesis(&run_genesis_request)
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -665,7 +697,8 @@ fn should_be_able_to_perform_dictionary_read() {
     builder
         .exec(dictionary_session_call)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -681,5 +714,6 @@ fn should_be_able_to_perform_read_from_key() {
     builder
         .exec(read_from_key_session_call)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

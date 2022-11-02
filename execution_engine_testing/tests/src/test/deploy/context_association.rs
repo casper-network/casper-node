@@ -34,7 +34,8 @@ fn should_put_system_contract_hashes_to_account_context() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

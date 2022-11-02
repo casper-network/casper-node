@@ -18,7 +18,7 @@ fn check_scan<'a, R, S, E>(
 ) -> Result<(), E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<TestKey, TestValue>,
+    S: TrieStore,
     S::Error: From<R::Error> + std::fmt::Debug,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
@@ -26,13 +26,8 @@ where
     let root = store
         .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
-    let TrieScan { mut tip, parents } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
-        correlation_id,
-        &txn,
-        store,
-        key,
-        &root,
-    )?;
+    let TrieScan { mut tip, parents } =
+        scan::<R::ReadTransaction, S, E>(correlation_id, &txn, store, key, &root)?;
 
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {

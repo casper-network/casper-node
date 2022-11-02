@@ -39,7 +39,7 @@ use crate::{
 pub enum TrackingCopyQueryResult {
     Success {
         value: StoredValue,
-        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
+        proofs: Vec<TrieMerkleProof>,
     },
     ValueNotFound(String),
     CircularReference(String),
@@ -566,7 +566,7 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
         &self,
         correlation_id: CorrelationId,
         key: &Key,
-    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+    ) -> Result<Option<TrieMerkleProof>, Self::Error> {
         self.reader.read_with_proof(correlation_id, key)
     }
 
@@ -636,7 +636,7 @@ impl From<bytesrepr::Error> for ValidationError {
 /// Returns [`ValidationError`] for any of
 pub fn validate_query_proof(
     hash: &Digest,
-    proofs: &[TrieMerkleProof<Key, StoredValue>],
+    proofs: &[TrieMerkleProof],
     expected_first_key: &Key,
     path: &[String],
     expected_value: &StoredValue,
@@ -693,7 +693,7 @@ pub fn validate_query_proof(
 /// Validates a proof of a balance request.
 pub fn validate_balance_proof(
     hash: &Digest,
-    balance_proof: &TrieMerkleProof<Key, StoredValue>,
+    balance_proof: &TrieMerkleProof,
     expected_purse_key: Key,
     expected_motes: &U512,
 ) -> Result<(), ValidationError> {

@@ -23,7 +23,8 @@ fn should_run_get_caller_contract() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -43,7 +44,8 @@ fn should_run_get_caller_contract_other_account() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(
@@ -55,7 +57,8 @@ fn should_run_get_caller_contract_other_account() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -75,7 +78,8 @@ fn should_run_get_caller_subcall_contract() {
                 .build(),
             )
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
     }
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -90,7 +94,8 @@ fn should_run_get_caller_subcall_contract() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder
         .exec(
             ExecuteRequestBuilder::standard(
@@ -101,5 +106,6 @@ fn should_run_get_caller_subcall_contract() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

@@ -20,7 +20,8 @@ fn should_run_ee_771_regression() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)

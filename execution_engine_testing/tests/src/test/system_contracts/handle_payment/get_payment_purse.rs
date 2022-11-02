@@ -26,7 +26,8 @@ fn should_run_get_payment_purse_contract_default_account() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -50,8 +51,10 @@ fn should_run_get_payment_purse_contract_account_1() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

@@ -65,7 +65,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -84,7 +88,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids: Bids = builder.get_bids();
     let default_account_bid = bids
@@ -119,7 +127,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_balance_before = builder.get_purse_balance(unbonding_purse);
 
@@ -178,7 +190,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    builder.exec(exec_request_5).expect_success().commit();
+    builder
+        .exec(exec_request_5)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert!(unbond_purses
@@ -218,7 +234,11 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     let exec_request =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let new_validator_account = builder
         .get_account(new_validator_hash)
@@ -287,9 +307,10 @@ fn should_fail_bonding_with_insufficient_funds() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(1)
@@ -347,7 +368,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
     )
     .build();
 
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)
@@ -383,7 +404,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)
@@ -428,7 +449,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -445,7 +470,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids: Bids = builder.get_bids();
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
@@ -479,7 +508,11 @@ fn should_run_successful_bond_and_unbond_with_release() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
@@ -604,7 +637,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let _default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -622,7 +659,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids: Bids = builder.get_bids();
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
@@ -657,7 +698,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_balance_before_auction = builder.get_purse_balance(unbonding_purse);
 

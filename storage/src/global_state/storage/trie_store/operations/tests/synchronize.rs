@@ -1,5 +1,5 @@
 use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{bytesrepr, Key, StoredValue};
 
 use crate::global_state::{
     shared::CorrelationId,
@@ -7,17 +7,13 @@ use crate::global_state::{
         error,
         transaction_source::{Transaction, TransactionSource},
         trie_store::{
-            operations::{
-                self,
-                tests::{LmdbTestContext, TestKey, TestValue},
-                ReadResult,
-            },
+            operations::{self, tests::LmdbTestContext, ReadResult},
             TrieStore,
         },
     },
 };
 
-fn copy_state<'a, K, V, R, S, E>(
+fn copy_state<'a, R, S, E>(
     correlation_id: CorrelationId,
     source_environment: &'a R,
     source_store: &S,
@@ -26,17 +22,15 @@ fn copy_state<'a, K, V, R, S, E>(
     root: &Digest,
 ) -> Result<(), E>
 where
-    K: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy + Clone + Ord,
-    V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<K, V>,
+    S: TrieStore,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     // Make sure no missing nodes in source
     {
         let txn: R::ReadTransaction = source_environment.create_read_txn()?;
-        let missing_from_source = operations::missing_trie_keys::<_, _, _, _, E>(
+        let missing_from_source = operations::missing_trie_keys::<_, _, E>(
             correlation_id,
             &txn,
             source_store,
@@ -60,7 +54,7 @@ where
             target_store.put_raw(&mut target_txn, &trie_key, trie_bytes_to_insert.as_ref())?;
 
             // Now that we've added in `trie_to_insert`, queue up its children
-            let new_keys = operations::missing_trie_keys::<_, _, _, _, E>(
+            let new_keys = operations::missing_trie_keys::<_, _, E>(
                 correlation_id,
                 &target_txn,
                 target_store,
@@ -77,7 +71,7 @@ where
     // After the copying process above there should be no missing entries in the target
     {
         let target_txn: R::ReadWriteTransaction = target_environment.create_read_write_txn()?;
-        let missing_from_target = operations::missing_trie_keys::<_, _, _, _, E>(
+        let missing_from_target = operations::missing_trie_keys::<_, _, E>(
             correlation_id,
             &target_txn,
             target_store,
@@ -92,17 +86,11 @@ where
     {
         let source_txn: R::ReadTransaction = source_environment.create_read_txn()?;
         let target_txn: R::ReadTransaction = target_environment.create_read_txn()?;
-        let target_keys =
-            operations::keys::<_, _, _, _>(correlation_id, &target_txn, target_store, root)
-                .collect::<Result<Vec<K>, S::Error>>()?;
+        let target_keys = operations::keys::<_, _>(correlation_id, &target_txn, target_store, root)
+            .collect::<Result<Vec<Key>, S::Error>>()?;
         for key in target_keys {
-            let maybe_value: ReadResult<V> = operations::read::<_, _, _, _, E>(
-                correlation_id,
-                &source_txn,
-                source_store,
-                root,
-                &key,
-            )?;
+            let maybe_value: ReadResult<StoredValue> =
+                operations::read::<_, _, E>(correlation_id, &source_txn, source_store, root, &key)?;
             assert!(maybe_value.is_found())
         }
         source_txn.commit()?;
@@ -113,17 +101,11 @@ where
     {
         let source_txn: R::ReadTransaction = source_environment.create_read_txn()?;
         let target_txn: R::ReadTransaction = target_environment.create_read_txn()?;
-        let source_keys =
-            operations::keys::<_, _, _, _>(correlation_id, &source_txn, source_store, root)
-                .collect::<Result<Vec<K>, S::Error>>()?;
+        let source_keys = operations::keys::<_, _>(correlation_id, &source_txn, source_store, root)
+            .collect::<Result<Vec<Key>, S::Error>>()?;
         for key in source_keys {
-            let maybe_value: ReadResult<V> = operations::read::<_, _, _, _, E>(
-                correlation_id,
-                &target_txn,
-                target_store,
-                root,
-                &key,
-            )?;
+            let maybe_value: ReadResult<StoredValue> =
+                operations::read::<_, _, E>(correlation_id, &target_txn, target_store, root, &key)?;
             assert!(maybe_value.is_found())
         }
         source_txn.commit()?;
@@ -138,9 +120,9 @@ fn lmdb_copy_state() {
     let correlation_id = CorrelationId::new();
     let (root_hash, tries) = super::create_6_leaf_trie().unwrap();
     let source = LmdbTestContext::new(&tries).unwrap();
-    let target = LmdbTestContext::new::<TestKey, TestValue>(&[]).unwrap();
+    let target = LmdbTestContext::new(&[]).unwrap();
 
-    copy_state::<TestKey, TestValue, _, _, error::Error>(
+    copy_state::<_, _, error::Error>(
         correlation_id,
         &source.environment,
         &source.store,

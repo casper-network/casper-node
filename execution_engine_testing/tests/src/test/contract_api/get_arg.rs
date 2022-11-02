@@ -19,7 +19,8 @@ fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     if !builder.is_error() {
         return Ok(());

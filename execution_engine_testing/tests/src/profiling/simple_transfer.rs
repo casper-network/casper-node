@@ -122,7 +122,11 @@ fn main() {
 
     let mut test_builder = LmdbWasmTestBuilder::open(&args.data_dir, engine_config, root_hash);
 
-    test_builder.exec(exec_request).expect_success().commit();
+    test_builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     if args.verbose {
         println!("{:#?}", test_builder.get_execution_journals());

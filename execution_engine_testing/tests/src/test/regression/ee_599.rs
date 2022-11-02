@@ -39,10 +39,12 @@ fn setup() -> LmdbWasmTestBuilder {
     ctx.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .clear_results();
     ctx
 }
@@ -83,7 +85,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -143,7 +145,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -211,7 +213,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -273,7 +275,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder.exec(exec_request_3).apply().commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 

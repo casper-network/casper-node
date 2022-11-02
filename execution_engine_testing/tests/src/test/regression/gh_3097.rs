@@ -36,7 +36,8 @@ fn should_run_regression() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -86,17 +87,20 @@ fn should_run_regression() {
     builder
         .exec(direct_call_latest_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(direct_call_v2_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(direct_call_v1_request)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -143,17 +147,20 @@ fn should_run_regression() {
     builder
         .exec(direct_call_latest_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(direct_call_v2_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(direct_call_v1_request)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -203,17 +210,20 @@ fn should_run_regression() {
     builder
         .exec(session_call_latest_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(session_call_v2_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(session_call_v1_request)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -241,7 +251,8 @@ fn should_run_regression() {
     builder
         .exec(call_by_hash_v2_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let call_by_name_v2_request = ExecuteRequestBuilder::contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
@@ -253,7 +264,8 @@ fn should_run_regression() {
     builder
         .exec(call_by_name_v2_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // This direct contract by name/hash should fail
     let call_by_hash_v1_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -266,7 +278,8 @@ fn should_run_regression() {
     builder
         .exec(call_by_hash_v1_request)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -292,7 +305,8 @@ fn should_run_regression() {
     builder
         .exec(call_by_name_v1_request)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -332,7 +346,8 @@ fn should_run_regression() {
     builder
         .exec(session_call_hash_v1_request)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -350,5 +365,6 @@ fn should_run_regression() {
     builder
         .exec(session_call_hash_v2_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

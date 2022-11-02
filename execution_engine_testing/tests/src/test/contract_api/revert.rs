@@ -15,6 +15,7 @@ fn should_revert() {
     LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .is_error();
 }

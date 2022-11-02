@@ -1,7 +1,7 @@
 use lmdb::DatabaseFlags;
 use tempfile::tempdir;
 
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use casper_types::bytesrepr;
 
 use super::TestData;
 use crate::global_state::storage::{
@@ -13,15 +13,13 @@ use crate::global_state::storage::{
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
-fn put_succeeds<'a, K, V, S, X, E>(
+fn put_succeeds<'a, S, X, E>(
     store: &S,
     transaction_source: &'a X,
-    items: &[TestData<K, V>],
+    items: &[TestData],
 ) -> Result<(), E>
 where
-    K: ToBytes,
-    V: ToBytes,
-    S: TrieStore<K, V>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error>,
@@ -46,20 +44,18 @@ fn lmdb_put_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = &super::create_data()[0..1];
 
-    assert!(put_succeeds::<_, _, _, _, error::Error>(&store, &env, data).is_ok());
+    assert!(put_succeeds::<_, _, error::Error>(&store, &env, data).is_ok());
 
     tmp_dir.close().unwrap();
 }
 
-fn put_get_succeeds<'a, K, V, S, X, E>(
+fn put_get_succeeds<'a, S, X, E>(
     store: &S,
     transaction_source: &'a X,
-    items: &[TestData<K, V>],
-) -> Result<Vec<Option<Trie<K, V>>>, E>
+    items: &[TestData],
+) -> Result<Vec<Option<Trie>>, E>
 where
-    K: ToBytes + FromBytes,
-    V: ToBytes + FromBytes,
-    S: TrieStore<K, V>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error>,
@@ -86,14 +82,14 @@ fn lmdb_put_get_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
+    let expected: Vec<Trie> = data.iter().cloned().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
         expected,
-        put_get_succeeds::<_, _, _, _, error::Error>(&store, &env, data)
+        put_get_succeeds::<_, _, error::Error>(&store, &env, data)
             .expect("put_get_succeeds failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
+            .collect::<Option<Vec<Trie>>>()
             .expect("one of the outputs was empty")
     );
 
@@ -113,29 +109,27 @@ fn lmdb_put_get_many_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = super::create_data();
 
-    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
+    let expected: Vec<Trie> = data.iter().cloned().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
         expected,
-        put_get_succeeds::<_, _, _, _, error::Error>(&store, &env, &data)
+        put_get_succeeds::<_, _, error::Error>(&store, &env, &data)
             .expect("put_get failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
+            .collect::<Option<Vec<Trie>>>()
             .expect("one of the outputs was empty")
     );
 
     tmp_dir.close().unwrap();
 }
 
-fn uncommitted_read_write_txn_does_not_persist<'a, K, V, S, X, E>(
+fn uncommitted_read_write_txn_does_not_persist<'a, S, X, E>(
     store: &S,
     transaction_source: &'a X,
-    items: &[TestData<K, V>],
-) -> Result<Vec<Option<Trie<K, V>>>, E>
+    items: &[TestData],
+) -> Result<Vec<Option<Trie>>, E>
 where
-    K: ToBytes + FromBytes,
-    V: ToBytes + FromBytes,
-    S: TrieStore<K, V>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error>,
@@ -169,12 +163,10 @@ fn lmdb_uncommitted_read_write_txn_does_not_persist() {
 
     assert_eq!(
         None,
-        uncommitted_read_write_txn_does_not_persist::<_, _, _, _, error::Error>(
-            &store, &env, &data,
-        )
-        .expect("uncommitted_read_write_txn_does_not_persist failed")
-        .into_iter()
-        .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
+        uncommitted_read_write_txn_does_not_persist::<_, _, error::Error>(&store, &env, &data,)
+            .expect("uncommitted_read_write_txn_does_not_persist failed")
+            .into_iter()
+            .collect::<Option<Vec<Trie>>>()
     );
 
     tmp_dir.close().unwrap();
@@ -210,7 +202,7 @@ fn lmdb_read_write_transaction_does_not_block_read_transaction() {
 
 fn reads_are_isolated<'a, S, X, E>(store: &S, env: &'a X) -> Result<(), E>
 where
-    S: TrieStore<Bytes, Bytes>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -260,7 +252,7 @@ fn lmdb_reads_are_isolated() {
 
 fn reads_are_isolated_2<'a, S, X, E>(store: &S, env: &'a X) -> Result<(), E>
 where
-    S: TrieStore<Bytes, Bytes>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -314,7 +306,7 @@ fn lmdb_reads_are_isolated_2() {
 
 fn dbs_are_isolated<'a, S, X, E>(env: &'a X, store_a: &S, store_b: &S) -> Result<(), E>
 where
-    S: TrieStore<Bytes, Bytes>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -378,7 +370,7 @@ fn transactions_can_be_used_across_sub_databases<'a, S, X, E>(
     store_b: &S,
 ) -> Result<(), E>
 where
-    S: TrieStore<Bytes, Bytes>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -433,7 +425,7 @@ fn uncommitted_transactions_across_sub_databases_do_not_persist<'a, S, X, E>(
     store_b: &S,
 ) -> Result<(), E>
 where
-    S: TrieStore<Bytes, Bytes>,
+    S: TrieStore,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,

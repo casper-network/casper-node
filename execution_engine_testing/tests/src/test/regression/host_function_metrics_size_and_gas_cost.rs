@@ -146,9 +146,11 @@ fn setup() -> LmdbWasmTestBuilder {
         .run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(create_account_exec_request(ACCOUNT0_ADDR))
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(create_account_exec_request(ACCOUNT1_ADDR))
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder
 }

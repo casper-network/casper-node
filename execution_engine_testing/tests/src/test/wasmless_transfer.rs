@@ -192,7 +192,8 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     builder
         .exec(no_wasm_transfer_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
     let wasmless_transfer_cost = Motes::from_gas(
@@ -623,7 +624,8 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     builder
         .exec(no_wasm_transfer_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -675,7 +677,8 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(create_account_1_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     if !create_account_2 {
         return builder;
@@ -694,7 +697,8 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
 
     builder
         .exec(create_account_2_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     let new_named_uref_request = ExecuteRequestBuilder::standard(
@@ -708,7 +712,8 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
 
     builder
         .exec(new_named_uref_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder
@@ -763,7 +768,8 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     builder
         .exec(no_wasm_transfer_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -800,7 +806,10 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_2).commit();
+    builder
+        .exec(no_wasm_transfer_request_2)
+        .apply()
+        .commit_to_disk();
 
     let exec_result = &builder.get_last_exec_results().unwrap()[0];
     let error = exec_result
@@ -863,7 +872,8 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     builder
         .exec(no_wasm_transfer_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -902,7 +912,8 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
 
     builder
         .exec(no_wasm_transfer_request_2)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 }
 
@@ -919,7 +930,11 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
         runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
     )
     .build();
-    builder.exec(create_purse_request).commit().expect_success();
+    builder
+        .exec(create_purse_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -955,7 +970,10 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .apply()
+        .commit_to_disk();
 
     let exec_result = &builder.get_last_exec_results().unwrap()[0];
     let error = exec_result.as_error().expect("should have error");
@@ -1055,7 +1073,8 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     builder
         .exec(no_wasm_transfer_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
 

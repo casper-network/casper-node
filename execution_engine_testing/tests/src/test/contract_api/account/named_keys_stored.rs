@@ -22,7 +22,11 @@ fn should_run_stored_named_keys_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -38,7 +42,11 @@ fn should_run_stored_named_keys_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -53,7 +61,11 @@ fn should_run_stored_named_keys_contract_to_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -69,7 +81,11 @@ fn should_run_stored_named_keys_module_bytes_to_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -85,7 +101,11 @@ fn should_run_stored_named_keys_module_bytes_to_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -101,7 +121,11 @@ fn should_run_stored_named_keys_module_bytes_to_contract_to_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -117,7 +141,11 @@ fn should_run_stored_named_keys_module_bytes_to_session_to_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 fn setup() -> LmdbWasmTestBuilder {
@@ -129,6 +157,10 @@ fn setup() -> LmdbWasmTestBuilder {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     builder
 }

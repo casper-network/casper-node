@@ -91,9 +91,17 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
 
     if empty_wasm_in_payment {
         // Special case: We expect success, since default payment will be used instead.
-        builder.exec(do_minimum_request).expect_success().commit();
+        builder
+            .exec(do_minimum_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     } else {
-        builder.exec(do_minimum_request).expect_failure().commit();
+        builder
+            .exec(do_minimum_request)
+            .expect_failure()
+            .apply()
+            .commit_to_disk();
 
         let actual_error = builder.get_error().expect("should have error").to_string();
         assert!(actual_error.contains(expected_error_message));

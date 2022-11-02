@@ -24,7 +24,8 @@ fn should_run_ee_532_get_uref_regression_test() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let deploy_result = builder
         .get_exec_result_owned(0)

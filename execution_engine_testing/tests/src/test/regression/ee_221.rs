@@ -23,5 +23,6 @@ fn should_run_ee_221_get_uref_regression_test() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

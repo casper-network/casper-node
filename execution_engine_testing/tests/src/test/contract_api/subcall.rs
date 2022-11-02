@@ -43,11 +43,23 @@ fn should_charge_gas_for_subcall() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(do_nothing_request).expect_success().commit();
+    builder
+        .exec(do_nothing_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(do_something_request).expect_success().commit();
+    builder
+        .exec(do_something_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(no_subcall_request).expect_success().commit();
+    builder
+        .exec(no_subcall_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let do_nothing_cost = builder.exec_costs(0)[0];
 
@@ -135,19 +147,23 @@ fn should_add_all_gas_for_subcall() {
     builder
         .exec(add_zero_gas_from_session_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder
         .exec(add_some_gas_from_session_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder
         .exec(add_zero_gas_via_subcall_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder
         .exec(add_some_gas_via_subcall_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let add_zero_gas_from_session_cost = builder.exec_costs(0)[0];
     let add_some_gas_from_session_cost = builder.exec_costs(1)[0];
@@ -195,12 +211,14 @@ fn expensive_subcall_should_cost_more() {
     builder
         .exec(store_do_nothing_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(store_calculation_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -235,12 +253,14 @@ fn expensive_subcall_should_cost_more() {
     builder
         .exec(call_do_nothing_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(call_expensive_calculation_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let do_nothing_cost = builder.exec_costs(2)[0];
 

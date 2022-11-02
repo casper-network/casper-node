@@ -22,7 +22,11 @@ fn should_run_ee_1071_regression() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -48,7 +52,11 @@ fn should_run_ee_1071_regression() {
         .get_contract(contract_hash)
         .expect("should have account");
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let contract_after = builder
         .get_contract(contract_hash)

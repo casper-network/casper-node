@@ -43,7 +43,8 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
@@ -53,7 +54,8 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 
     let account_1_response = builder
         .exec(account_1_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .get_exec_result_owned(1)
         .expect("there should be a response");
 
@@ -103,7 +105,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -172,7 +174,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -245,7 +247,8 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)
@@ -285,7 +288,8 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -353,7 +357,7 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -403,7 +407,11 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -460,7 +468,11 @@ fn should_finalize_to_rewards_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let modified_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -499,7 +511,8 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(setup_exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let exec_request_from_genesis = {
         let deploy = DeployItemBuilder::new()
@@ -529,10 +542,12 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     builder
         .exec(exec_request_from_genesis)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_from_account_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let transforms = builder.get_execution_journals();
     let transforms_from_genesis = &transforms[1];

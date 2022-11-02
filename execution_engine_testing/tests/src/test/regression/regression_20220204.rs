@@ -34,7 +34,7 @@ fn regression_20220204_as_contract() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -68,7 +68,7 @@ fn regression_20220204_as_contract_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -97,7 +97,7 @@ fn regression_20220204_as_contract_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -135,7 +135,7 @@ fn regression_20220204_as_contract_by_hash() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -165,7 +165,7 @@ fn regression_20220204_nontrivial_arg_as_contract() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -203,7 +203,7 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -232,7 +232,7 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -261,7 +261,7 @@ fn regression_20220204_as_session() {
         },
     )
     .build();
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_1).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -290,7 +290,7 @@ fn regression_20220204_as_session_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder.exec(exec_request_2).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     println!("{:?}", error);
     assert!(
@@ -324,7 +324,7 @@ fn regression_20220204_as_session_by_hash() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -357,7 +357,7 @@ fn regression_20220204_as_session_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -385,7 +385,7 @@ fn regression_20220204_as_session_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -413,7 +413,7 @@ fn regression_20220204_main_purse_as_session() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     // This test fails because mint's transfer in a StoredSession is disabled for security reasons
     // introduced as part of EE-1217. This assertion will serve as a reference point when the
@@ -444,7 +444,7 @@ fn regression_20220204_main_purse_as_session_by_hash() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     // This test fails because mint's transfer in a StoredSession is disabled for security reasons
     // introduced as part of EE-1217. This assertion will serve as a reference point when the
@@ -471,7 +471,11 @@ fn setup() -> LmdbWasmTestBuilder {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec(install_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }

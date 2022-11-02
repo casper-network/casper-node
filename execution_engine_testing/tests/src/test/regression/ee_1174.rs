@@ -39,7 +39,7 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     )
     .build();
 
-    builder.exec(add_bid_request).commit();
+    builder.exec(add_bid_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()

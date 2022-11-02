@@ -39,7 +39,11 @@ fn get_balance_should_work() {
     )
     .build();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let alice_account = builder
         .get_account(*ALICE_ADDR)
@@ -124,7 +128,11 @@ fn get_balance_using_public_key_should_work() {
     )
     .build();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let alice_account = builder
         .get_account(*ALICE_ADDR)

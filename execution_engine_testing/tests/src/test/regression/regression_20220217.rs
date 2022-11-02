@@ -46,7 +46,11 @@ fn regression_20220217_transfer_mint_by_hash_from_main_purse() {
         },
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -96,7 +100,11 @@ fn regression_20220217_transfer_mint_by_package_hash_from_main_purse() {
         },
     )
     .build();
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -142,7 +150,11 @@ fn regression_20220217_mint_by_hash_transfer_from_other_purse() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -180,7 +192,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
     let error = builder.get_error().expect("should have error");
     assert!(
         matches!(
@@ -223,7 +235,11 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
         },
     )
     .build();
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -282,10 +298,23 @@ fn setup() -> LmdbWasmTestBuilder {
     builder
         .exec(fund_account_1_request)
         .expect_success()
-        .commit();
-    builder.exec(fund_purse_1_request).expect_success().commit();
-    builder.exec(fund_purse_2_request).expect_success().commit();
-    builder.exec(fund_purse_3_request).expect_success().commit();
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(fund_purse_1_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(fund_purse_2_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(fund_purse_3_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     builder
 }
 
@@ -318,7 +347,11 @@ fn regression_20220217_auction_add_bid_directly() {
         },
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -362,7 +395,11 @@ fn regression_20220217_() {
         },
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(

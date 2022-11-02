@@ -97,7 +97,11 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transfer_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -109,7 +113,11 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec(transfer_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let auction = builder.get_auction_contract_hash();
 
@@ -151,17 +159,20 @@ fn should_run_ee_1120_slash_delegators() {
     builder
         .exec(delegate_exec_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(delegate_exec_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(delegate_exec_request_3)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // Ensure that initial bid entries exist for validator 1 and validator 2
     let initial_bids: Bids = builder.get_bids();
@@ -209,9 +220,21 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(undelegate_request_1).commit().expect_success();
-    builder.exec(undelegate_request_2).commit().expect_success();
-    builder.exec(undelegate_request_3).commit().expect_success();
+    builder
+        .exec(undelegate_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(undelegate_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(undelegate_request_3)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     // Check unbonding purses before slashing
 
@@ -289,7 +312,11 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(slash_request_1).expect_success().commit();
+    builder
+        .exec(slash_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Compare bids after slashing validator 2
     let bids_after: Bids = builder.get_bids();
@@ -346,7 +373,11 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(slash_request_2).expect_success().commit();
+    builder
+        .exec(slash_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let bids_after: Bids = builder.get_bids();
     assert_eq!(bids_after.len(), 2);

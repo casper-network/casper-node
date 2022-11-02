@@ -341,7 +341,7 @@ where
                 // the immediate switch block, and for an emergency upgrade that list is the same as
                 // its own `next_era_validators` collection.
                 let maybe_switch_block_header_before_upgrade =
-                    (!is_emergency_upgrade).then(|| switch_block_header_before_upgrade);
+                    (!is_emergency_upgrade).then_some(switch_block_header_before_upgrade);
 
                 self.execute_immediate_switch_block(
                     effect_builder,

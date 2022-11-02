@@ -1,51 +1,49 @@
+use casper_types::Key;
+
 use super::*;
 use crate::global_state::storage::{
     transaction_source::Writable, trie_store::operations::DeleteResult,
 };
 
-fn checked_delete<K, V, T, S, E>(
+fn checked_delete<T, S, E>(
     correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
-    key_to_delete: &K,
+    key_to_delete: &Key,
 ) -> Result<DeleteResult, E>
 where
-    K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
-    V: ToBytes + FromBytes + Clone + std::fmt::Debug,
     T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
+    S: TrieStore,
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete)
+    operations::delete::<T, S, E>(correlation_id, txn, store, root, key_to_delete)
 }
 
 mod partial_tries {
     use super::*;
     use crate::global_state::storage::trie_store::operations::DeleteResult;
 
-    fn delete_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
+    fn delete_from_partial_trie_had_expected_results<'a, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         root: &Digest,
-        key_to_delete: &K,
+        key_to_delete: &Key,
         expected_root_after_delete: &Digest,
-        expected_tries_after_delete: &[HashedTrie<K, V>],
+        expected_tries_after_delete: &[HashedTrie],
     ) -> Result<(), E>
     where
-        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-        V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
         // The assert below only works with partial tries
         assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
-        let root_after_delete = match checked_delete::<K, V, _, _, E>(
+        let root_after_delete = match checked_delete::<_, _, E>(
             correlation_id,
             &mut txn,
             store,
@@ -72,7 +70,7 @@ mod partial_tries {
             let key_to_delete = &TEST_LEAVES[i];
             let context = LmdbTestContext::new(&initial_tries).unwrap();
 
-            delete_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
+            delete_from_partial_trie_had_expected_results::<_, _, error::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -85,24 +83,21 @@ mod partial_tries {
         }
     }
 
-    fn delete_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, K, V, R, S, E>(
+    fn delete_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         root: &Digest,
-        key_to_delete: &K,
+        key_to_delete: &Key,
     ) -> Result<(), E>
     where
-        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-        V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
-        match checked_delete::<K, V, _, _, E>(correlation_id, &mut txn, store, root, key_to_delete)?
-        {
+        match checked_delete::<_, _, E>(correlation_id, &mut txn, store, root, key_to_delete)? {
             DeleteResult::Deleted(_) => panic!("should not delete"),
             DeleteResult::DoesNotExist => Ok(()),
             DeleteResult::RootNotFound => panic!("root should be found"),
@@ -118,8 +113,6 @@ mod partial_tries {
             let context = LmdbTestContext::new(&initial_tries).unwrap();
 
             delete_non_existent_key_from_partial_trie_should_return_does_not_exist::<
-                TestKey,
-                TestValue,
                 _,
                 _,
                 error::Error,
@@ -138,10 +131,11 @@ mod partial_tries {
 mod full_tries {
     use std::ops::RangeInclusive;
 
+    use once_cell::sync::Lazy;
     use proptest::{collection, proptest};
 
     use casper_types::{
-        bytesrepr::{self, FromBytes, ToBytes},
+        bytesrepr,
         gens::{colliding_key_arb, stored_value_arb},
         Key, StoredValue,
     };
@@ -153,8 +147,8 @@ mod full_tries {
             transaction_source::TransactionSource,
             trie_store::{
                 operations::{
-                    delete,
-                    tests::{LmdbTestContext, TestKey, TestValue, TEST_TRIE_GENERATORS},
+                    delete, test_key, test_value,
+                    tests::{LmdbTestContext, TEST_TRIE_GENERATORS},
                     write, DeleteResult, WriteResult,
                 },
                 TrieStore,
@@ -163,18 +157,16 @@ mod full_tries {
     };
     use casper_hashing::Digest;
 
-    fn serially_insert_and_delete<'a, K, V, R, S, E>(
+    fn serially_insert_and_delete<'a, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         root: &Digest,
-        pairs: &[(K, V)],
+        pairs: &[(Key, StoredValue)],
     ) -> Result<(), E>
     where
-        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-        V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
@@ -182,7 +174,7 @@ mod full_tries {
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs {
-            if let WriteResult::Written(new_root) = write::<K, V, _, _, E>(
+            if let WriteResult::Written(new_root) = write::<_, _, E>(
                 correlation_id,
                 &mut txn,
                 store,
@@ -199,7 +191,7 @@ mod full_tries {
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
         for (key, _value) in pairs.iter().rev() {
             if let DeleteResult::Deleted(new_root) =
-                delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &current_root, key)?
+                delete::<_, _, E>(correlation_id, &mut txn, store, &current_root, key)?
             {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
@@ -216,42 +208,43 @@ mod full_tries {
         let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
         let context = LmdbTestContext::new(&empty_trie).unwrap();
 
-        serially_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
+        serially_insert_and_delete::<_, _, error::Error>(
             correlation_id,
             &context.environment,
             &context.store,
             &empty_root_hash,
             &[
-                (TestKey([1u8; 7]), TestValue([1u8; 6])),
-                (TestKey([0u8; 7]), TestValue([0u8; 6])),
-                (TestKey([0u8, 1, 1, 1, 1, 1, 1]), TestValue([2u8; 6])),
-                (TestKey([2u8; 7]), TestValue([2u8; 6])),
+                (test_key([1u8; 7]), test_value([1u8; 6])),
+                (test_key([0u8; 7]), test_value([0u8; 6])),
+                (test_key([0u8, 1, 1, 1, 1, 1, 1]), test_value([2u8; 6])),
+                (test_key([2u8; 7]), test_value([2u8; 6])),
             ],
         )
         .unwrap();
     }
 
-    const INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1: [(TestKey, TestValue); 3] = [
-        (TestKey([1u8; 7]), TestValue([1u8; 6])),
-        (TestKey([0u8; 7]), TestValue([0u8; 6])),
-        (TestKey([0u8, 1, 1, 1, 1, 1, 1]), TestValue([2u8; 6])),
-    ];
+    const INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1: Lazy<[(Key, StoredValue); 3]> =
+        Lazy::new(|| {
+            [
+                (test_key([1u8; 7]), test_value([1u8; 6])),
+                (test_key([0u8; 7]), test_value([0u8; 6])),
+                (test_key([0u8, 1, 1, 1, 1, 1, 1]), test_value([2u8; 6])),
+            ]
+        });
 
-    const INTERLEAVED_DELETE_TEST_KEYS_1: [TestKey; 1] = [TestKey([1u8; 7])];
+    const INTERLEAVED_DELETE_TEST_KEYS_1: Lazy<[Key; 1]> = Lazy::new(|| [test_key([1u8; 7])]);
 
-    fn interleaved_insert_and_delete<'a, K, V, R, S, E>(
+    fn interleaved_insert_and_delete<'a, R, S, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         root: &Digest,
-        pairs_to_insert: &[(K, V)],
-        keys_to_delete: &[K],
+        pairs_to_insert: &[(Key, StoredValue)],
+        keys_to_delete: &[Key],
     ) -> Result<(), E>
     where
-        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-        V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
@@ -260,7 +253,7 @@ mod full_tries {
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs_to_insert.iter() {
             if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key, value)?
+                write::<_, _, E>(correlation_id, &mut txn, store, &expected_root, key, value)?
             {
                 expected_root = new_root;
             } else {
@@ -268,7 +261,7 @@ mod full_tries {
             }
         }
         for key in keys_to_delete.iter() {
-            match delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key)? {
+            match delete::<_, _, E>(correlation_id, &mut txn, store, &expected_root, key)? {
                 DeleteResult::Deleted(new_root) => {
                     expected_root = new_root;
                 }
@@ -277,7 +270,7 @@ mod full_tries {
             }
         }
 
-        let pairs_to_insert_less_deleted: Vec<(K, V)> = pairs_to_insert
+        let pairs_to_insert_less_deleted: Vec<(Key, StoredValue)> = pairs_to_insert
             .iter()
             .rev()
             .cloned()
@@ -287,7 +280,7 @@ mod full_tries {
         let mut actual_root = *root;
         for (key, value) in pairs_to_insert_less_deleted.iter() {
             if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(correlation_id, &mut txn, store, &actual_root, key, value)?
+                write::<_, _, E>(correlation_id, &mut txn, store, &actual_root, key, value)?
             {
                 actual_root = new_root;
             } else {
@@ -306,13 +299,13 @@ mod full_tries {
         let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
         let context = LmdbTestContext::new(&empty_trie).unwrap();
 
-        interleaved_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
+        interleaved_insert_and_delete::<_, _, error::Error>(
             correlation_id,
             &context.environment,
             &context.store,
             &empty_root_hash,
-            &INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1,
-            &INTERLEAVED_DELETE_TEST_KEYS_1,
+            &*INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1,
+            &*INTERLEAVED_DELETE_TEST_KEYS_1,
         )
         .unwrap();
     }
@@ -348,7 +341,7 @@ mod full_tries {
                 tmp
             };
 
-            interleaved_insert_and_delete::<Key, StoredValue, _, _, error::Error>(
+            interleaved_insert_and_delete::<_, _, error::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,

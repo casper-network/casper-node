@@ -1,7 +1,10 @@
 use std::collections::VecDeque;
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    Key, StoredValue,
+};
 
 use crate::global_state::storage::trie::{Pointer, Trie, RADIX};
 
@@ -105,15 +108,15 @@ impl FromBytes for TrieMerkleProofStep {
 /// A proof that a node with a specified `key` and `value` is present in the Merkle trie.
 /// Given a state hash `x`, one can validate a proof `p` by checking `x == p.compute_state_hash()`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TrieMerkleProof<K, V> {
-    key: K,
-    value: V,
+pub struct TrieMerkleProof {
+    key: Key,
+    value: StoredValue,
     proof_steps: VecDeque<TrieMerkleProofStep>,
 }
 
-impl<K, V> TrieMerkleProof<K, V> {
+impl TrieMerkleProof {
     /// Constructor for [`TrieMerkleProof`]
-    pub fn new(key: K, value: V, proof_steps: VecDeque<TrieMerkleProofStep>) -> Self {
+    pub fn new(key: Key, value: StoredValue, proof_steps: VecDeque<TrieMerkleProofStep>) -> Self {
         TrieMerkleProof {
             key,
             value,
@@ -122,12 +125,12 @@ impl<K, V> TrieMerkleProof<K, V> {
     }
 
     /// Getter for the key in [`TrieMerkleProof`]
-    pub fn key(&self) -> &K {
+    pub fn key(&self) -> &Key {
         &self.key
     }
 
     /// Getter for the value in [`TrieMerkleProof`]
-    pub fn value(&self) -> &V {
+    pub fn value(&self) -> &StoredValue {
         &self.value
     }
 
@@ -137,16 +140,12 @@ impl<K, V> TrieMerkleProof<K, V> {
     }
 
     /// Transforms a [`TrieMerkleProof`] into the value it contains
-    pub fn into_value(self) -> V {
+    pub fn into_value(self) -> StoredValue {
         self.value
     }
 }
 
-impl<K, V> TrieMerkleProof<K, V>
-where
-    K: ToBytes + Copy + Clone,
-    V: ToBytes + Clone,
-{
+impl TrieMerkleProof {
     /// Recomputes a state root hash from a [`TrieMerkleProof`].
     /// This is done in the following steps:
     ///
@@ -180,10 +179,10 @@ where
                     assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
                     let mut indexed_pointers = indexed_pointers_with_hole.to_owned();
                     indexed_pointers.push((hole_index, pointer));
-                    Trie::<K, V>::node(&indexed_pointers).to_bytes()?
+                    Trie::node(&indexed_pointers).to_bytes()?
                 }
                 TrieMerkleProofStep::Extension { affix } => {
-                    Trie::<K, V>::extension(affix.clone().into(), pointer).to_bytes()?
+                    Trie::extension(affix.clone().into(), pointer).to_bytes()?
                 }
             };
             hash = Digest::hash(&proof_step_bytes);
@@ -192,11 +191,7 @@ where
     }
 }
 
-impl<K, V> ToBytes for TrieMerkleProof<K, V>
-where
-    K: ToBytes,
-    V: ToBytes,
-{
+impl ToBytes for TrieMerkleProof {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret: Vec<u8> = bytesrepr::allocate_buffer(self)?;
         ret.append(&mut self.key.to_bytes()?);
@@ -212,14 +207,10 @@ where
     }
 }
 
-impl<K, V> FromBytes for TrieMerkleProof<K, V>
-where
-    K: FromBytes,
-    V: FromBytes,
-{
+impl FromBytes for TrieMerkleProof {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (key, rem): (K, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (value, rem): (V, &[u8]) = FromBytes::from_bytes(rem)?;
+        let (key, rem): (Key, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (value, rem): (StoredValue, &[u8]) = FromBytes::from_bytes(rem)?;
         let (proof_steps, rem): (VecDeque<TrieMerkleProofStep>, &[u8]) =
             FromBytes::from_bytes(rem)?;
         Ok((
@@ -237,10 +228,7 @@ where
 mod gens {
     use proptest::{collection::vec, prelude::*};
 
-    use casper_types::{
-        gens::{key_arb, stored_value_arb},
-        Key, StoredValue,
-    };
+    use casper_types::gens::{key_arb, stored_value_arb};
 
     use crate::global_state::storage::trie::{
         gens::trie_pointer_arb,
@@ -272,7 +260,7 @@ mod gens {
         ]
     }
 
-    pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, StoredValue>> {
+    pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof> {
         (
             key_arb(),
             stored_value_arb(),

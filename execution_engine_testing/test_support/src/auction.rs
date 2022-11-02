@@ -19,8 +19,8 @@ use casper_storage::global_state::{
     },
 };
 use casper_types::{
-    account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    account::AccountHash, bytesrepr, runtime_args, system::auction, Motes, ProtocolVersion,
+    PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 use rand::Rng;
@@ -56,7 +56,6 @@ const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 pub fn run_blocks_with_transfers_and_step(
     transfer_count: usize,
     purse_count: usize,
-    use_scratch: bool,
     run_auction: bool,
     block_count: usize,
     delegator_count: usize,
@@ -96,7 +95,7 @@ pub fn run_blocks_with_transfers_and_step(
         );
         builder.exec(delegate);
         builder.expect_success();
-        builder.commit();
+        builder.apply().commit_to_disk();
         builder.clear_results();
     }
 
@@ -117,9 +116,15 @@ pub fn run_blocks_with_transfers_and_step(
 
     let mut total_transfers = 0;
     {
+        // TODO: cleanup all the going looking for db interfaces...
         let engine_state = builder.get_engine_state();
-        let lmdb_env = engine_state.get_state().state().environment().env();
-        let db = engine_state.get_state().state().trie_store().get_db();
+        let lmdb_env = engine_state.get_state().state().lmdb().environment().env();
+        let db = engine_state
+            .get_state()
+            .state()
+            .lmdb()
+            .trie_store()
+            .get_db();
 
         let txn = lmdb_env.begin_ro_txn().unwrap();
         let mut cursor = txn.open_ro_cursor(db).unwrap();
@@ -139,24 +144,16 @@ pub fn run_blocks_with_transfers_and_step(
         let start = Instant::now();
         total_transfers += exec_requests.len();
 
-        transfer::transfer_to_account_multiple_native_transfers(
-            &mut builder,
-            &exec_requests,
-            use_scratch,
-        );
+        transfer::transfer_to_account_multiple_native_transfers(&mut builder, &exec_requests);
         let transfer_root = builder.get_post_state_hash();
         let maybe_auction_root = if run_auction {
-            if use_scratch {
-                step_and_run_auction(&mut builder, &validator_keys);
-            } else {
-                builder.advance_era(
-                    validator_keys
-                        .iter()
-                        .cloned()
-                        .map(|id| RewardItem::new(id, 1)),
-                );
-                builder.commit();
-            }
+            builder.advance_era(
+                validator_keys
+                    .iter()
+                    .cloned()
+                    .map(|id| RewardItem::new(id, 1)),
+            );
+            builder.apply().commit_to_disk();
             Some(builder.get_post_state_hash())
         } else {
             None
@@ -178,22 +175,23 @@ pub fn run_blocks_with_transfers_and_step(
 
         let total_tries = {
             let engine_state = builder.get_engine_state();
-            let lmdb_env = engine_state.get_state().state().environment().env();
-            let db = engine_state.get_state().state().trie_store().get_db();
+            let lmdb_env = engine_state.get_state().state().lmdb().environment().env();
+            let db = engine_state
+                .get_state()
+                .state()
+                .lmdb()
+                .trie_store()
+                .get_db();
             let txn = lmdb_env.begin_ro_txn().unwrap();
             let mut cursor = txn.open_ro_cursor(db).unwrap();
             cursor.iter().count()
         };
 
-        if use_scratch {
-            // This assertion is only valid with the scratch trie.
-            assert_eq!(
-                necessary_tries.len(),
-                total_tries,
-                "should not create unnecessary tries"
-            );
-        }
-
+        assert_eq!(
+            necessary_tries.len(),
+            total_tries,
+            "should not create unnecessary tries"
+        );
         writeln!(
             report_writer,
             "{},{},{},{},{},{}",
@@ -242,9 +240,8 @@ fn find_necessary_tries<S>(
             continue;
         }
 
-        let trie: Trie<Key, StoredValue> =
-            bytesrepr::deserialize(trie_bytes.inner_bytes().to_owned())
-                .expect("unable to deserialize");
+        let trie: Trie = bytesrepr::deserialize(trie_bytes.inner_bytes().to_owned())
+            .expect("unable to deserialize");
 
         match trie {
             Trie::Leaf { .. } => continue,
@@ -305,7 +302,7 @@ pub fn run_genesis_and_create_initial_accounts(
     )
     .build();
     builder.exec(transfer);
-    builder.expect_success().commit();
+    builder.expect_success().apply().commit_to_disk();
 
     for (_i, delegator_account) in delegator_accounts.iter().enumerate() {
         let transfer = ExecuteRequestBuilder::transfer(
@@ -318,7 +315,7 @@ pub fn run_genesis_and_create_initial_accounts(
         )
         .build();
         builder.exec(transfer);
-        builder.expect_success().commit();
+        builder.expect_success().apply().commit_to_disk();
     }
 }
 
@@ -397,6 +394,6 @@ pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &
     let step_request = step_request_builder
         .with_next_era_id(builder.get_era().successor())
         .build();
-    builder.step_with_scratch(step_request);
-    builder.write_scratch_to_db();
+    builder.step(step_request).unwrap();
+    builder.commit_to_disk();
 }

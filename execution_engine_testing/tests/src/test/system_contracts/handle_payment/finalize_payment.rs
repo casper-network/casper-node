@@ -48,9 +48,17 @@ fn initialize() -> LmdbWasmTestBuilder {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }
@@ -112,7 +120,11 @@ fn finalize_payment_should_refund_to_specified_purse() {
         .build()
     };
 
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec(create_purse_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let rewards_pre_balance = builder.get_proposer_purse_balance();
 
@@ -146,7 +158,11 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 

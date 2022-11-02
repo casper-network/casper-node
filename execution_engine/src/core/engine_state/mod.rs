@@ -38,9 +38,7 @@ use casper_storage::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
         storage::{
             lmdb,
-            state::{
-                lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            },
+            state::{CommitProvider, StateProvider},
             trie::{TrieOrChunk, TrieOrChunkId},
         },
     },
@@ -118,87 +116,39 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 /// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
 /// Methods implemented on this structure are the external API intended to be used by the users such
 /// as the node, test framework, and others.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EngineState<S> {
     config: EngineConfig,
     state: S,
 }
 
-impl EngineState<ScratchGlobalState> {
-    /// Returns the inner state
-    pub fn into_inner(self) -> ScratchGlobalState {
-        self.state
-    }
-}
-
-impl EngineState<DataAccessLayer<LmdbGlobalState>> {
+impl EngineState<DataAccessLayer> {
     /// Gets underlyng LmdbGlobalState
-    pub fn get_state(&self) -> &DataAccessLayer<LmdbGlobalState> {
+    pub fn get_state(&self) -> &DataAccessLayer {
         &self.state
     }
 
-    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
-        if self.state.state().environment().is_manual_sync_enabled() {
-            self.state.state().environment().sync()?
-        }
-        Ok(())
-    }
-
-    /// Provide a local cached-only version of engine-state.
-    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
-        EngineState {
-            config: self.config,
-            state: self.state.state().create_scratch(),
-        }
-    }
-
-    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
-    pub fn write_scratch_to_db(
-        &self,
-        state_root_hash: Digest,
-        scratch_global_state: ScratchGlobalState,
-    ) -> Result<Digest, Error> {
-        let stored_values = scratch_global_state.into_inner();
+    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB. Also flushes LMDB to
+    /// disk.
+    pub fn commit_to_disk(&self, state_root_hash: Digest) -> Result<Digest, Error> {
         self.state
             .state()
-            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .write_to_disk(state_root_hash)
             .map_err(Into::into)
-    }
-}
-
-impl EngineState<LmdbGlobalState> {
-    /// Gets underlyng LmdbGlobalState
-    pub fn get_state(&self) -> &LmdbGlobalState {
-        &self.state
     }
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
-        if self.state.environment().is_manual_sync_enabled() {
-            self.state.environment().sync()?
+        let env = self.state.state().lmdb().environment();
+        if env.is_manual_sync_enabled() {
+            env.sync()?
         }
         Ok(())
     }
 
-    /// Provide a local cached-only version of engine-state.
-    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
-        EngineState {
-            config: self.config,
-            state: self.state.create_scratch(),
-        }
-    }
-
-    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
-    pub fn write_scratch_to_db(
-        &self,
-        state_root_hash: Digest,
-        scratch_global_state: ScratchGlobalState,
-    ) -> Result<Digest, Error> {
-        let stored_values = scratch_global_state.into_inner();
-        self.state
-            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
-            .map_err(Into::into)
+    /// Creates new engine state.
+    pub fn new(state: DataAccessLayer, config: EngineConfig) -> EngineState<DataAccessLayer> {
+        EngineState { config, state }
     }
 }
 
@@ -207,11 +157,6 @@ where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
-    /// Creates new engine state.
-    pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
-        EngineState { config, state }
-    }
-
     /// Returns engine config.
     pub fn config(&self) -> &EngineConfig {
         &self.config

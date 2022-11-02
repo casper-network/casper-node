@@ -22,6 +22,7 @@ fn should_run_get_blocktime_contract() {
     LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 }

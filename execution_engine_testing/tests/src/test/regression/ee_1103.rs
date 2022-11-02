@@ -164,7 +164,11 @@ fn validator_scores_should_reflect_delegates() {
     builder.run_genesis(&run_genesis_request);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec(request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
     }
 
     let mut era = builder.get_era();
@@ -215,7 +219,8 @@ fn validator_scores_should_reflect_delegates() {
 
         builder
             .exec(delegator_1_delegate_request)
-            .commit()
+            .apply()
+            .commit_to_disk()
             .expect_success();
 
         for _ in 0..=auction_delay {
@@ -265,7 +270,8 @@ fn validator_scores_should_reflect_delegates() {
 
         builder
             .exec(delegator_2_delegate_request)
-            .commit()
+            .apply()
+            .commit_to_disk()
             .expect_success();
 
         for _ in 0..=auction_delay {
@@ -316,7 +322,8 @@ fn validator_scores_should_reflect_delegates() {
 
         builder
             .exec(delegator_3_delegate_request)
-            .commit()
+            .apply()
+            .commit_to_disk()
             .expect_success();
 
         for _ in 0..=auction_delay {

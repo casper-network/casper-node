@@ -33,7 +33,11 @@ fn should_not_transfer_above_approved_limit_in_payment_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(

@@ -76,7 +76,11 @@ fn should_transfer_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Check genesis account balance
 
@@ -129,7 +133,11 @@ fn should_transfer_to_public_key() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Check genesis account balance
 
@@ -171,7 +179,11 @@ fn should_transfer_from_purse_to_public_key() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -201,7 +213,11 @@ fn should_transfer_from_purse_to_public_key() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Check genesis account balance
 
@@ -261,7 +277,11 @@ fn should_transfer_from_account_to_account() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let modified_balance = builder.get_purse_balance(default_account_purse);
 
@@ -292,7 +312,11 @@ fn should_transfer_from_account_to_account() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
@@ -351,7 +375,11 @@ fn should_transfer_to_existing_account() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Exec transfer contract
 
@@ -390,7 +418,11 @@ fn should_transfer_to_existing_account() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -448,14 +480,17 @@ fn should_fail_when_insufficient_funds() {
         // Exec transfer contract
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         // Exec transfer contract
         .exec(exec_request_2)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         // Exec transfer contract
         .exec(exec_request_3)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let exec_results = builder
         .get_exec_result_owned(2)
@@ -489,9 +524,17 @@ fn should_transfer_total_amount() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).commit().expect_success();
+    builder
+        .exec(exec_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)

@@ -241,7 +241,7 @@ impl ChainspecLoader {
                 .event(|_| Event::CheckForNextUpgrade),
         );
 
-        let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
+        let reactor_exit = should_stop.then_some(ReactorExit::ProcessShouldExit(ExitCode::Success));
 
         let chainspec_loader = ChainspecLoader {
             chainspec,
@@ -263,12 +263,14 @@ impl ChainspecLoader {
         REv: Send,
     {
         self.reactor_exit = Some(
-            Self::should_exit_for_upgrade(
+            if Self::should_exit_for_upgrade(
                 maybe_highest_block,
                 self.next_upgrade_activation_point(),
-            )
-            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
-            .unwrap_or(ReactorExit::ProcessShouldContinue),
+            ) {
+                ReactorExit::ProcessShouldExit(ExitCode::Success)
+            } else {
+                ReactorExit::ProcessShouldContinue
+            },
         );
         Effects::new()
     }

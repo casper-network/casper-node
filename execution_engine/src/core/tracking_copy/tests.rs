@@ -68,7 +68,7 @@ impl StateReader<Key, StoredValue> for CountingDb {
         &self,
         _correlation_id: CorrelationId,
         _key: &Key,
-    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+    ) -> Result<Option<TrieMerkleProof>, Self::Error> {
         Ok(None)
     }
 

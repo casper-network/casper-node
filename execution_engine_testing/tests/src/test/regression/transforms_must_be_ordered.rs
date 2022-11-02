@@ -40,7 +40,8 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let contract_hash: ContractHash = match builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
@@ -89,7 +90,8 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
             .build(),
         )
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let exec_result = builder.get_exec_result_owned(1).unwrap();
     assert_eq!(exec_result.len(), 1);

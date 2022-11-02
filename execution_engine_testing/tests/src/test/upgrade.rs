@@ -52,7 +52,11 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // Calling initial version from contract package hash, should have no effects
@@ -68,7 +72,11 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account_1 = builder
@@ -92,7 +100,11 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // Calling upgraded version, expecting purse creation
@@ -111,7 +123,11 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account_1 = builder
@@ -144,7 +160,11 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account_1 = builder
@@ -177,7 +197,11 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
             ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, args).build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account_1 = builder
@@ -201,7 +225,11 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let stored_contract_package_hash = account_1
@@ -224,7 +252,11 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
             ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, args).build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account_1 = builder
@@ -258,7 +290,11 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account = builder
@@ -312,7 +348,11 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // version should change after upgrade
@@ -357,7 +397,11 @@ fn should_support_extending_functionality() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account = builder
@@ -395,7 +439,11 @@ fn should_support_extending_functionality() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // verify known uref actually exists prior to upgrade
@@ -421,7 +469,11 @@ fn should_support_extending_functionality() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // verify uref still exists in named_keys after upgrade:
@@ -465,7 +517,11 @@ fn should_support_extending_functionality() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // verify known urefs no longer include removed purse
@@ -500,7 +556,11 @@ fn should_maintain_named_keys_across_upgrade() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account = builder
@@ -539,7 +599,11 @@ fn should_maintain_named_keys_across_upgrade() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
 
         // verify known uref actually exists prior to upgrade
         let contract = builder
@@ -565,7 +629,11 @@ fn should_maintain_named_keys_across_upgrade() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     // verify all urefs still exist in named_keys after upgrade
@@ -604,7 +672,11 @@ fn should_fail_upgrade_for_locked_contract() {
             .build()
         };
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account = builder

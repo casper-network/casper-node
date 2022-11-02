@@ -96,7 +96,8 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     builder
         .exec(system_contract_hashes_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -124,7 +125,11 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let transaction_fee_1 =
@@ -166,7 +171,11 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec(withdraw_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -242,7 +251,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     builder
         .exec(system_contract_hashes_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -271,7 +281,11 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -308,7 +322,11 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec(withdraw_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let transaction_fee_2 =
@@ -360,7 +378,8 @@ fn delegate_and_undelegate_have_expected_costs() {
     builder
         .exec(system_contract_hashes_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -388,7 +407,11 @@ fn delegate_and_undelegate_have_expected_costs() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(delegate_request).expect_success().commit();
+    builder
+        .exec(delegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -428,7 +451,11 @@ fn delegate_and_undelegate_have_expected_costs() {
     )
     .build();
 
-    builder.exec(redelegate_request).expect_success().commit();
+    builder
+        .exec(redelegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let expected_call_cost = U512::from(
         builder
@@ -463,7 +490,11 @@ fn delegate_and_undelegate_have_expected_costs() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(undelegate_request).expect_success().commit();
+    builder
+        .exec(undelegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let transaction_fee_2 =
@@ -564,7 +595,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     builder
         .exec(system_contract_hashes_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -592,7 +624,11 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
-    builder.exec(delegate_request).expect_success().commit();
+    builder
+        .exec(delegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let transaction_fee_1 =
@@ -625,7 +661,11 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(redelegate_request).expect_success().commit();
+    builder
+        .exec(redelegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let expected_call_cost = U512::from(NEW_UNDELEGATE_COST);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
@@ -654,7 +694,11 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(undelegate_request).expect_success().commit();
+    builder
+        .exec(undelegate_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let transaction_fee_2 =
@@ -682,7 +726,11 @@ fn mint_transfer_has_expected_costs() {
     )
     .build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -719,7 +767,11 @@ fn mint_transfer_has_expected_costs() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec(transfer_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
     let balance_after = builder.get_purse_balance(source);
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
@@ -837,7 +889,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 
         let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-        builder.exec(exec_request).commit();
+        builder.exec(exec_request).apply().commit_to_disk();
 
         let _error = builder
             .get_last_exec_results()
@@ -893,7 +945,11 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(do_nothing_request).commit().expect_success();
+    builder
+        .exec(do_nothing_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
@@ -1046,7 +1102,11 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 

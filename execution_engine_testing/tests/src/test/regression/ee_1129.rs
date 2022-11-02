@@ -97,7 +97,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -161,7 +161,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 
     let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -207,9 +207,13 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -255,9 +259,13 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -301,9 +309,13 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -354,9 +366,13 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -405,9 +421,13 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()
@@ -462,7 +482,7 @@ fn should_not_panic_when_calling_module_without_memory() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder
         .get_last_exec_results()

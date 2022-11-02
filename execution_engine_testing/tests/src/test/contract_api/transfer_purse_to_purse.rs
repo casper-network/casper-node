@@ -35,7 +35,8 @@ fn should_run_purse_to_purse_transfer() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -99,7 +100,8 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

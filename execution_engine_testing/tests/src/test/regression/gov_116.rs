@@ -114,7 +114,11 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.exec(fund_request).expect_success().commit();
+    builder
+        .exec(fund_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }
@@ -155,7 +159,11 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
         .build()
     };
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec(withdraw_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder.run_auction(VESTING_WEEKS[1], Vec::new());
 
@@ -198,7 +206,11 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder.run_auction(VESTING_WEEKS[2], Vec::new());
 
@@ -274,7 +286,11 @@ fn should_retain_genesis_validator_slot_protection() {
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder.run_auction(VESTING_BASE + WEEK_MILLIS, Vec::new());
 

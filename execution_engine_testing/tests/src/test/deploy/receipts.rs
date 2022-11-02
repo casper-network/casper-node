@@ -75,7 +75,11 @@ fn should_record_wasmless_transfer() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -141,7 +145,11 @@ fn should_record_wasm_transfer() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -207,7 +215,11 @@ fn should_record_wasm_transfer_with_id() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -283,7 +295,11 @@ fn should_record_wasm_transfers() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -429,8 +445,16 @@ fn should_record_wasm_transfers_with_subcall() {
         deploy_items[0]
     };
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(transfer_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

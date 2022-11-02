@@ -32,7 +32,11 @@ fn should_run_main_purse_contract_default_account() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -51,7 +55,8 @@ fn should_run_main_purse_contract_account_1() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account_1 = builder
         .get_account(ACCOUNT_1_ADDR)
@@ -64,5 +69,9 @@ fn should_run_main_purse_contract_account_1() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

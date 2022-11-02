@@ -40,7 +40,7 @@ fn should_charge_for_user_error(
     let purse_balance_before = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_before = builder.get_proposer_purse_balance();
 
-    builder.exec(request).commit();
+    builder.exec(request).apply().commit_to_disk();
 
     let purse_balance_after = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();
@@ -119,8 +119,13 @@ fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
     builder
         .exec(create_account_request)
         .expect_success()
-        .commit();
-    builder.exec(transfer_request).expect_success().commit();
+        .apply()
+        .commit_to_disk();
+    builder
+        .exec(transfer_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -160,7 +165,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     let purse_balance_before = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_before = builder.get_proposer_purse_balance();
 
-    builder.exec(transfer_request).commit();
+    builder.exec(transfer_request).apply().commit_to_disk();
 
     let purse_balance_after = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();

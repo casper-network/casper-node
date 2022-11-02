@@ -106,7 +106,8 @@ fn should_fail_to_add_into_existing_bid_over_the_approved_amount() {
     builder
         .exec(validator_1_add_bid_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder.exec(validator_1_add_bid_request_2).expect_failure();
 
     let error = builder.get_error().expect("should have returned an error");
@@ -140,7 +141,8 @@ fn should_fail_to_add_new_delegator_over_the_approved_amount() {
     builder
         .exec(validator_1_add_bid_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let delegator_1_delegate_requestr = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -156,7 +158,8 @@ fn should_fail_to_add_new_delegator_over_the_approved_amount() {
     builder
         .exec(delegator_1_delegate_requestr)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -211,17 +214,20 @@ fn should_fail_to_update_existing_delegator_over_the_approved_amount() {
     builder
         .exec(validator_1_add_bid_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(delegator_1_delegate_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     builder
         .exec(delegator_1_delegate_request_2)
         .expect_failure()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -258,7 +264,11 @@ fn should_fail_to_mint_transfer_over_the_limit() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_REGRESSION_TRANSFER, args)
             .build();
 
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .exec(transfer_request_1)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -298,9 +308,14 @@ fn setup() -> LmdbWasmTestBuilder {
     builder
         .exec(validator_1_fund_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec(create_purse_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }

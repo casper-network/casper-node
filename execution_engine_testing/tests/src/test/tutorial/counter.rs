@@ -37,7 +37,11 @@ fn should_run_counter_example() {
     )
     .build();
 
-    builder.exec(install_request_1).expect_success().commit();
+    builder
+        .exec(install_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let query_result = builder
         .query(
@@ -53,7 +57,11 @@ fn should_run_counter_example() {
         panic!("Stored value is not an i32: {:?}", query_result);
     };
 
-    builder.exec(inc_request_1).expect_success().commit();
+    builder
+        .exec(inc_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let query_result = builder
         .query(
@@ -72,5 +80,9 @@ fn should_run_counter_example() {
     let counter_diff = counter_after - counter_before;
     assert_eq!(counter_diff, 1);
 
-    builder.exec(call_request_1).expect_success().commit();
+    builder
+        .exec(call_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

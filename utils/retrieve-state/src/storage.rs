@@ -18,7 +18,8 @@ use casper_node::{
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::storage::{
-        state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        state::{lmdb::LmdbGlobalState, scratch::ScratchGlobalState},
+        transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -68,13 +69,7 @@ pub fn load_execution_engine(
     default_max_db_size: usize,
     state_root_hash: Digest,
     manual_sync_enabled: bool,
-) -> Result<
-    (
-        Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-        Arc<LmdbEnvironment>,
-    ),
-    anyhow::Error,
-> {
+) -> Result<(Arc<EngineState<DataAccessLayer>>, Arc<LmdbEnvironment>), anyhow::Error> {
     let lmdb_data_file = ee_lmdb_path.as_ref().join("data.lmdb");
     if !ee_lmdb_path.as_ref().join("data.lmdb").exists() {
         return Err(anyhow::anyhow!(
@@ -85,15 +80,13 @@ pub fn load_execution_engine(
     let lmdb_environment =
         create_lmdb_environment(&ee_lmdb_path, default_max_db_size, manual_sync_enabled)?;
     let lmdb_trie_store = Arc::new(LmdbTrieStore::open(&lmdb_environment, None)?);
-    let global_state = LmdbGlobalState::new(
+    let state = LmdbGlobalState::new(
         Arc::clone(&lmdb_environment),
         lmdb_trie_store,
         state_root_hash,
     );
-    let data_access_layer = DataAccessLayer {
-        block_store: BlockStore::new(),
-        state: global_state,
-    };
+    let state = ScratchGlobalState::new(Arc::new(state));
+    let data_access_layer = DataAccessLayer::new(state, BlockStore::new());
     Ok((
         Arc::new(EngineState::new(data_access_layer, EngineConfig::default())),
         lmdb_environment,
@@ -105,7 +98,7 @@ pub fn create_execution_engine(
     ee_lmdb_path: impl AsRef<Path>,
     default_max_db_size: usize,
     manual_sync_enabled: bool,
-) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
+) -> Result<(Arc<EngineState<DataAccessLayer>>, Arc<LmdbEnvironment>), anyhow::Error> {
     if !ee_lmdb_path.as_ref().exists() {
         info!(
             "creating new lmdb data dir {}",
@@ -124,6 +117,8 @@ pub fn create_execution_engine(
         DatabaseFlags::empty(),
     )?);
     let global_state = LmdbGlobalState::empty(Arc::clone(&lmdb_environment), lmdb_trie_store)?;
+    let global_state = ScratchGlobalState::new(Arc::new(global_state));
+    let global_state = DataAccessLayer::new(global_state, BlockStore::new());
 
     Ok((
         Arc::new(EngineState::new(global_state, EngineConfig::default())),

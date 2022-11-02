@@ -721,7 +721,11 @@ fn should_increase_max_associated_keys_after_upgrade() {
         .with_protocol_version(new_protocol_version)
         .build();
 
-        builder.exec(add_request).expect_success().commit();
+        builder
+            .exec(add_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let account = builder

@@ -200,7 +200,11 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -230,7 +234,11 @@ fn should_verify_isolated_auction_storage_is_free() {
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -261,7 +269,11 @@ fn should_verify_isolated_auction_storage_is_free() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -296,7 +308,11 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     assert!(!builder.last_exec_gas_cost().value().is_zero());
 
@@ -331,7 +347,8 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         builder_a
             .exec(small_write_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_a.last_exec_gas_cost()
     };
@@ -372,7 +389,8 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         builder_b
             .exec(large_write_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_b.last_exec_gas_cost()
     };
@@ -410,7 +428,11 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     )
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -442,7 +464,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         builder_a
             .exec(small_write_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_a.last_exec_gas_cost()
     };
@@ -482,7 +505,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         builder_b
             .exec(large_write_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_b.last_exec_gas_cost()
     };
@@ -520,7 +544,11 @@ fn should_measure_gas_cost_for_storage_usage_add() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // let mut builder_a = builder.clone();
 
@@ -555,7 +583,8 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         builder_a
             .exec(small_add_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_a.last_exec_gas_cost()
     };
@@ -596,7 +625,8 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         builder_b
             .exec(large_write_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_b.last_exec_gas_cost()
     };
@@ -636,7 +666,11 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     )
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // let mut builder_a = builder.clone();
 
@@ -670,7 +704,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         builder_a
             .exec(small_add_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_a.last_exec_gas_cost()
     };
@@ -710,7 +745,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         builder_b
             .exec(large_write_exec_request)
             .expect_success()
-            .commit();
+            .apply()
+            .commit_to_disk();
 
         builder_b.last_exec_gas_cost()
     };
@@ -748,7 +784,11 @@ fn should_verify_new_uref_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -773,7 +813,11 @@ fn should_verify_new_uref_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -793,7 +837,11 @@ fn should_verify_put_key_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -818,7 +866,11 @@ fn should_verify_put_key_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -838,7 +890,11 @@ fn should_verify_remove_key_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -863,7 +919,11 @@ fn should_verify_remove_key_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -883,7 +943,11 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -908,7 +972,11 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -928,7 +996,11 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -953,7 +1025,11 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -970,7 +1046,11 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -987,7 +1067,11 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -1007,7 +1091,11 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(install_exec_request).expect_success().commit();
+    builder
+        .exec(install_exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -1031,7 +1119,11 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -1047,7 +1139,11 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
@@ -1063,7 +1159,11 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 

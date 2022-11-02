@@ -89,7 +89,7 @@ where
         .map(|outcome| match outcome {
             Outcome::StoreBlockSignatures(block_signatures, should_upgrade) => effect_builder
                 .put_signatures_to_storage(block_signatures)
-                .events(move |_| should_upgrade.then(|| Event::Upgrade).into_iter()),
+                .events(move |_| should_upgrade.then_some(Event::Upgrade).into_iter()),
             Outcome::StoreBlock(block, execution_results) => async move {
                 let block_hash = *block.hash();
                 effect_builder.put_block_to_storage(block.clone()).await;

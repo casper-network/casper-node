@@ -35,9 +35,17 @@ fn should_insert_account_into_named_keys() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_1 = builder
         .get_account(ACCOUNT_1_ADDR)
@@ -70,10 +78,12 @@ fn should_create_usable_purse() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
+        .apply()
+        .commit_to_disk()
         .exec(exec_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let account_1 = builder
         .get_account(ACCOUNT_1_ADDR)

@@ -22,7 +22,11 @@ fn should_run_hello_world() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, HELLO_WORLD_CONTRACT, session_args)
             .build()
     };
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let stored_message = builder
         .query(None, Key::from(*DEFAULT_ACCOUNT_ADDR), &[KEY.into()])

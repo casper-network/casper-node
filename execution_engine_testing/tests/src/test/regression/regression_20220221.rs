@@ -75,7 +75,11 @@ fn regression_20220221_should_distribute_to_many_validators() {
     let engine_config = EngineConfig::default();
     builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
 
-    builder.exec(fund_request).expect_success().commit();
+    builder
+        .exec(fund_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Add validators
     for _ in 0..DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT {
@@ -92,7 +96,11 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
-        builder.exec(transfer_request).commit().expect_success();
+        builder
+            .exec(transfer_request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
 
         let delegation_rate: DelegationRate = 10;
 
@@ -111,7 +119,11 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
-        builder.exec(execute_request).expect_success().commit();
+        builder
+            .exec(execute_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     let mut timestamp_millis =

@@ -25,5 +25,6 @@ fn should_run_ee_539_serialize_action_thresholds_regression() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }

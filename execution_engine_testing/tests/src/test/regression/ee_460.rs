@@ -23,7 +23,8 @@ fn should_run_ee_460_no_side_effects_on_error_regression() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     // In this regression test it is verified that no new urefs are created on the
     // mint uref, which should mean no new purses are created in case of

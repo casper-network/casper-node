@@ -3,7 +3,6 @@ use std::{
     thread,
 };
 
-use casper_types::bytesrepr::Bytes;
 use tempfile::tempdir;
 
 use super::TestData;
@@ -44,8 +43,7 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
         handles.push(thread::spawn(move || {
             {
                 let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Bytes, Bytes>> =
-                    reader_store.get(&txn, &leaf_1_hash).unwrap();
+                let result: Option<Trie> = reader_store.get(&txn, &leaf_1_hash).unwrap();
                 assert_eq!(result, None);
                 txn.commit().unwrap();
             }
@@ -56,8 +54,7 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
             reader_barrier.wait();
             {
                 let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Bytes, Bytes>> =
-                    reader_store.get(&txn, &leaf_1_hash).unwrap();
+                let result: Option<Trie> = reader_store.get(&txn, &leaf_1_hash).unwrap();
                 txn.commit().unwrap();
                 result.unwrap() == leaf_1
             }

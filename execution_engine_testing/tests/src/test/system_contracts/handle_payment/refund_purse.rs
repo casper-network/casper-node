@@ -54,7 +54,11 @@ fn transfer(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash, amount
         .build()
     };
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 fn refund_tests(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash) {
@@ -83,11 +87,13 @@ fn refund_tests(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash) {
     builder
         .exec(create_purse_request_1)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
     builder
         .exec(create_purse_request_2)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let refund_purse_request = {
         let deploy = DeployItemBuilder::new()
@@ -109,5 +115,9 @@ fn refund_tests(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash) {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(refund_purse_request).expect_success().commit();
+    builder
+        .exec(refund_purse_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

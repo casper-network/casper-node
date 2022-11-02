@@ -11,7 +11,10 @@ use rand::RngCore;
 
 use casper_storage::global_state::{
     shared::{transform::Transform, CorrelationId},
-    storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
+    storage::state::{
+        lmdb::{make_temporary_global_state, LmdbGlobalStateView},
+        StateProvider,
+    },
 };
 use casper_types::{
     account::{
@@ -45,7 +48,7 @@ fn new_tracking_copy(
     init_account: Account,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) =
-        state::make_temporary_global_state([(init_key, init_account.into())]);
+        make_temporary_global_state([(init_key, init_account.into())]);
 
     let reader = global_state
         .checkout(state_root_hash)

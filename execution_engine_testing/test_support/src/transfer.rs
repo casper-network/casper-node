@@ -48,7 +48,8 @@ pub fn create_initial_accounts_and_run_genesis(
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 /// Creates a request that will call the create_accounts.wasm and create test accounts using the
@@ -80,7 +81,11 @@ pub fn create_test_purses(
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     // Return creates purses for given account by filtering named keys
     let query_result = builder
@@ -125,7 +130,7 @@ pub fn transfer_to_account_multiple_execs(
 
         let builder = builder.exec(exec_request).expect_success();
         if should_commit {
-            builder.commit();
+            builder.apply().commit_to_disk();
         }
     }
 }
@@ -159,7 +164,7 @@ pub fn transfer_to_account_multiple_deploys(
 
     let builder = builder.exec(exec_request).expect_success();
     if should_commit {
-        builder.commit();
+        builder.apply().commit_to_disk();
     }
 }
 
@@ -182,7 +187,7 @@ pub fn transfer_to_purse_multiple_execs(
 
         let builder = builder.exec(exec_request).expect_success();
         if should_commit {
-            builder.commit();
+            builder.apply().commit_to_disk();
         }
     }
 }
@@ -213,7 +218,7 @@ pub fn transfer_to_purse_multiple_deploys(
 
     let builder = builder.exec(exec_request).expect_success();
     if should_commit {
-        builder.commit();
+        builder.apply().commit_to_disk();
     }
 }
 
@@ -221,7 +226,6 @@ pub fn transfer_to_purse_multiple_deploys(
 pub fn transfer_to_account_multiple_native_transfers(
     builder: &mut LmdbWasmTestBuilder,
     execute_requests: &[ExecuteRequest],
-    use_scratch: bool,
 ) {
     for exec_request in execute_requests {
         let request = ExecuteRequest::new(
@@ -231,18 +235,10 @@ pub fn transfer_to_account_multiple_native_transfers(
             exec_request.protocol_version,
             exec_request.proposer.clone(),
         );
-        if use_scratch {
-            builder.scratch_exec_and_commit(request).expect_success();
-        } else {
-            builder.exec(request).expect_success();
-            builder.commit();
-        }
+        builder.exec(request).expect_success();
+        builder.apply().commit_to_disk();
     }
-    if use_scratch {
-        builder.write_scratch_to_db();
-    }
-    // flush to disk only after entire block (simulates manual_sync_enabled=true config entry)
-    builder.flush_environment();
+    builder.commit_to_disk();
 
     // WasmTestBuilder holds on to all execution results. This needs to be cleared to reduce
     // overhead in this test - it will likely OOM without.

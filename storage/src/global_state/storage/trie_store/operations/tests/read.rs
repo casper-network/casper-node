@@ -28,7 +28,7 @@ mod partial_tries {
             let test_leaves = TEST_LEAVES;
             let (used, unused) = test_leaves.split_at(num_leaves);
 
-            check_leaves::<_, _, _, _, error::Error>(
+            check_leaves::<_, _, error::Error>(
                 correlation_id,
                 &context.environment,
                 &context.store,
@@ -65,7 +65,7 @@ mod full_tries {
             for (num_leaves, state) in states[..state_index].iter().enumerate() {
                 let test_leaves = TEST_LEAVES;
                 let (used, unused) = test_leaves.split_at(num_leaves);
-                check_leaves::<_, _, _, _, error::Error>(
+                check_leaves::<_, _, error::Error>(
                     correlation_id,
                     &context.environment,
                     &context.store,

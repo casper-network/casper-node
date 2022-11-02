@@ -45,7 +45,8 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     builder
         .run_genesis(&run_genesis_request)
         .exec(exec_request)
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_exec_result_owned(0)

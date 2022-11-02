@@ -60,7 +60,10 @@ fn test_check_transfer_success_with_source_only() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    builder
+        .run_genesis(&run_genesis_request)
+        .apply()
+        .commit_to_disk();
 
     // we need this to figure out what the transfer fee is.
     let proposer_starting_balance = builder.get_proposer_purse_balance();
@@ -70,7 +73,11 @@ fn test_check_transfer_success_with_source_only() {
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
@@ -123,7 +130,10 @@ fn test_check_transfer_success_with_source_only_errors() {
 
     // Set up test builder and run genesis.
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    builder
+        .run_genesis(&run_genesis_request)
+        .apply()
+        .commit_to_disk();
 
     // compare proposer balance before and after the transaction to get the tx fee.
     let proposer_starting_balance = builder.get_proposer_purse_balance();
@@ -131,7 +141,11 @@ fn test_check_transfer_success_with_source_only_errors() {
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
@@ -179,7 +193,10 @@ fn test_check_transfer_success_with_source_and_target() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    builder
+        .run_genesis(&run_genesis_request)
+        .apply()
+        .commit_to_disk();
 
     // we need this to figure out what the transfer fee is.
     let proposer_starting_balance = builder.get_proposer_purse_balance();
@@ -189,7 +206,11 @@ fn test_check_transfer_success_with_source_and_target() {
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec(exec_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))

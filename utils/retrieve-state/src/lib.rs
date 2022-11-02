@@ -28,7 +28,7 @@ use casper_node::{
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
     utils::work_queue::WorkQueue,
 };
-use casper_storage::global_state::{shared::CorrelationId, storage::state::lmdb::LmdbGlobalState};
+use casper_storage::{data_access_layer::DataAccessLayer, global_state::shared::CorrelationId};
 use casper_types::{bytesrepr, bytesrepr::Bytes};
 use futures_channel::{mpsc::UnboundedSender, oneshot};
 use futures_util::SinkExt;
@@ -388,7 +388,7 @@ pub enum PeerMsg {
 pub async fn download_trie_channels(
     client: &Client,
     peers: &[SocketAddr],
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer>>,
     state_root_hash: Digest,
     peer_mailbox_size: usize,
 ) -> Result<(), anyhow::Error> {
@@ -702,7 +702,7 @@ fn spawn_peer(
 pub async fn download_trie_work_queue(
     client: &Client,
     peers: &[SocketAddr],
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer>>,
     state_root_hash: Digest,
     peer_mailbox_size: usize,
 ) -> Result<(), anyhow::Error> {
@@ -760,7 +760,7 @@ async fn check_peers_for_get_trie_endpoint(
 
 // worker pool related
 async fn sync_trie_store(
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer>>,
     state_root_hash: Digest,
     client: Client,
     peers: &[SocketAddr],
@@ -810,7 +810,7 @@ async fn sync_trie_store_worker(
     worker_id: usize,
     err_tx: mpsc::Sender<anyhow::Error>,
     queue: Arc<WorkQueue<Digest>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer>>,
     client: Client,
     address: SocketAddr,
     bps_counter: Arc<Mutex<(Instant, usize)>>,
@@ -872,7 +872,7 @@ async fn sync_trie_store_worker(
 
 // fetch a trie, store it, and if we didn't get any bytes then return None
 async fn fetch_and_store_trie(
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer>>,
     client: &Client,
     address: SocketAddr,
     trie_key: Digest,

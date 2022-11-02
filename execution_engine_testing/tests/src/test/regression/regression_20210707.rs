@@ -102,8 +102,16 @@ fn should_transfer_funds_from_contract_to_new_account() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -122,7 +130,11 @@ fn should_transfer_funds_from_contract_to_new_account() {
     )
     .build();
 
-    builder.exec(call_request).commit().expect_success();
+    builder
+        .exec(call_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 }
 
 #[ignore]
@@ -146,9 +158,21 @@ fn should_transfer_funds_from_contract_to_existing_account() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -165,7 +189,11 @@ fn should_transfer_funds_from_contract_to_existing_account() {
     )
     .build();
 
-    builder.exec(call_request).expect_success().commit();
+    builder
+        .exec(call_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -183,8 +211,16 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let take_from = builder.get_expected_account(*ALICE_ADDR);
     let alice_main_purse = take_from.main_purse();
@@ -201,7 +237,7 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
     };
 
-    builder.exec(transfer_request).commit();
+    builder.exec(transfer_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -229,9 +265,21 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -251,7 +299,7 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -273,8 +321,16 @@ fn should_not_transfer_funds_into_bob_purse() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -294,7 +350,7 @@ fn should_not_transfer_funds_into_bob_purse() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -316,8 +372,16 @@ fn should_not_transfer_from_hardcoded_purse() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -333,7 +397,7 @@ fn should_not_transfer_from_hardcoded_purse() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -361,9 +425,21 @@ fn should_not_refund_to_bob_and_charge_alice() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -389,7 +465,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -417,9 +493,21 @@ fn should_not_charge_alice_for_execution() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -445,7 +533,7 @@ fn should_not_charge_alice_for_execution() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -473,9 +561,21 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
         MINIMUM_ACCOUNT_CREATION_BALANCE,
     );
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder
+        .exec(store_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_1)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(fund_request_2)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 
@@ -497,7 +597,7 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(call_request).commit();
+    builder.exec(call_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 

@@ -119,7 +119,7 @@ fn test_match(
             .build();
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     match builder.get_error() {
         Some(Error::Exec(execution::Error::Revert(ApiError::User(USER_ERROR_ASSERTION)))) => false,
@@ -159,8 +159,16 @@ fn setup() -> LmdbWasmTestBuilder {
             ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
         };
 
-        builder.exec(add_key_request).expect_success().commit();
-        builder.exec(transfer_request).expect_success().commit();
+        builder
+            .exec(add_key_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
+        builder
+            .exec(transfer_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 
     builder

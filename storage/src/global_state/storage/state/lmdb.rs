@@ -64,7 +64,7 @@ impl LmdbGlobalState {
         trie_store: Arc<LmdbTrieStore>,
     ) -> Result<Self, error::Error> {
         let root_hash: Digest = {
-            let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
+            let (root_hash, root) = create_hashed_empty_trie()?;
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
@@ -91,11 +91,19 @@ impl LmdbGlobalState {
 
     /// Creates an in-memory cache for changes written.
     pub fn create_scratch(&self) -> ScratchGlobalState {
-        ScratchGlobalState::new(
-            Arc::clone(&self.environment),
-            Arc::clone(&self.trie_store),
-            self.empty_root_hash,
-        )
+        // TODO: don't clone LmdbGlobalState - instead compose it
+        impl Clone for LmdbGlobalState {
+            fn clone(&self) -> Self {
+                Self {
+                    environment: self.environment.clone(),
+                    trie_store: self.trie_store.clone(),
+                    empty_root_hash: self.empty_root_hash,
+                    digests_without_missing_descendants: RwLock::new(HashSet::new()),
+                }
+            }
+        }
+
+        ScratchGlobalState::new(Arc::new(self.clone()))
     }
 
     /// Write stored values to LMDB.
@@ -118,7 +126,7 @@ impl LmdbGlobalState {
     }
 
     /// Gets a scratch trie store.
-    fn get_scratch_store(&self) -> ScratchTrieStore {
+    pub(crate) fn get_scratch_store(&self) -> ScratchTrieStore {
         ScratchTrieStore::new(Arc::clone(&self.trie_store), Arc::clone(&self.environment))
     }
 
@@ -144,7 +152,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+        let ret = match read::<lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
             correlation_id,
             &txn,
             self.store.deref(),
@@ -163,15 +171,9 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         &self,
         correlation_id: CorrelationId,
         key: &Key,
-    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+    ) -> Result<Option<TrieMerkleProof>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret = match read_with_proof::<
-            Key,
-            StoredValue,
-            lmdb::RoTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(
+        let ret = match read_with_proof::<lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
             correlation_id,
             &txn,
             self.store.deref(),
@@ -192,7 +194,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
+        let keys_iter = keys_with_prefix::<_, _>(
             correlation_id,
             &txn,
             self.store.deref(),
@@ -236,7 +238,7 @@ impl StateProvider for LmdbGlobalState {
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
+        let maybe_root: Option<Trie> = self.trie_store.get(&txn, &state_hash)?;
         let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
             environment: Arc::clone(&self.environment),
             store: Arc::clone(&self.trie_store),
@@ -257,11 +259,7 @@ impl StateProvider for LmdbGlobalState {
     ) -> Result<Option<TrieOrChunk>, Self::Error> {
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
         let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
+        let bytes = Store::get_raw(&*self.trie_store, &txn, &trie_key)?;
 
         let maybe_trie_or_chunk = bytes.map_or_else(
             || Ok(None),
@@ -285,8 +283,7 @@ impl StateProvider for LmdbGlobalState {
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
+        let ret: Option<Bytes> = Store::<Digest, Trie>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?;
         Ok(ret)
     }
@@ -325,22 +322,17 @@ impl StateProvider for LmdbGlobalState {
             Ok(vec![])
         } else {
             let txn = self.environment.create_read_txn()?;
-            let missing_descendants = missing_trie_keys::<
-                Key,
-                StoredValue,
-                lmdb::RoTransaction,
-                LmdbTrieStore,
-                Self::Error,
-            >(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys.clone(),
-                &self
-                    .digests_without_missing_descendants
-                    .read()
-                    .expect("digest cache read lock"),
-            )?;
+            let missing_descendants =
+                missing_trie_keys::<lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+                    correlation_id,
+                    &txn,
+                    self.trie_store.deref(),
+                    trie_keys.clone(),
+                    &self
+                        .digests_without_missing_descendants
+                        .read()
+                        .expect("digest cache read lock"),
+                )?;
             if missing_descendants.is_empty() {
                 // There were no missing descendants on `trie_keys`, let's add them *and all of
                 // their descendants* to the cache.
@@ -348,8 +340,6 @@ impl StateProvider for LmdbGlobalState {
                 let mut all_descendants: HashSet<Digest> = HashSet::new();
                 all_descendants.extend(&trie_keys);
                 all_descendants.extend(descendant_trie_keys::<
-                    Key,
-                    StoredValue,
                     lmdb::RoTransaction,
                     LmdbTrieStore,
                     Self::Error,
@@ -622,8 +612,7 @@ mod tests {
             .flat_map(|chunk| chunk.into_chunk())
             .collect();
 
-        let trie: Trie<Key, StoredValue> =
-            bytesrepr::deserialize(data).expect("trie should deserialize correctly");
+        let trie: Trie = bytesrepr::deserialize(data).expect("trie should deserialize correctly");
 
         // should be deserialized to a leaf
         assert!(matches!(trie, Trie::Leaf { .. }));
@@ -632,7 +621,7 @@ mod tests {
     fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
         let next_hash = if let TrieOrChunk::Trie(trie_bytes) = trie_or_chunk {
             if let Trie::Node { pointer_block } =
-                bytesrepr::deserialize::<Trie<Key, StoredValue>>(Vec::<u8>::from(trie_bytes))
+                bytesrepr::deserialize::<Trie>(Vec::<u8>::from(trie_bytes))
                     .expect("Could not parse trie bytes")
             {
                 if pointer_block.child_count() == 0 {

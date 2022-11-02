@@ -52,11 +52,11 @@ fn should_transfer_to_account_with_correct_balances() {
         },
     ));
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .exec(exec_builder.build())
+        .apply()
+        .commit_to_disk()
+        .commit_to_disk()
         .expect_success();
-
-    builder.write_scratch_to_db();
-    builder.flush_environment();
 
     assert_ne!(
         pre_state_hash,
@@ -111,7 +111,10 @@ fn should_transfer_from_default_and_then_to_another_account() {
         },
     ));
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .exec(exec_builder.build())
+        .apply()
+        .commit_to_disk()
+        .commit_to_disk()
         .expect_success();
 
     let mut exec_builder = ExecuteRequestBuilder::new();
@@ -125,7 +128,10 @@ fn should_transfer_from_default_and_then_to_another_account() {
     ));
 
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .exec(exec_builder.build())
+        .apply()
+        .commit_to_disk()
+        .commit_to_disk()
         .expect_success();
 
     // Double spend test for account 1
@@ -140,11 +146,11 @@ fn should_transfer_from_default_and_then_to_another_account() {
     ));
 
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .exec(exec_builder.build())
+        .apply()
+        .commit_to_disk()
+        .commit_to_disk()
         .expect_failure();
-
-    builder.write_scratch_to_db();
-    builder.flush_environment();
 
     assert_ne!(
         pre_state_hash,

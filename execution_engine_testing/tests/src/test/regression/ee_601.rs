@@ -60,7 +60,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         "payment and session code should not create same uref"
     );
 
-    builder.commit();
+    builder.apply().commit_to_disk();
 
     let payment_value: StoredValue = builder
         .query(None, *pay_uref, &[])

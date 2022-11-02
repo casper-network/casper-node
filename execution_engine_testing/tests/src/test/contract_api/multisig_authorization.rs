@@ -162,7 +162,7 @@ fn test_multisig_auth(
             .build();
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     match builder.get_error() {
         Some(Error::Exec(execution::Error::Revert(ApiError::User(
@@ -194,7 +194,11 @@ fn setup() -> LmdbWasmTestBuilder {
             .build()
         };
 
-        builder.exec(add_key_request).expect_success().commit();
+        builder
+            .exec(add_key_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -203,7 +207,11 @@ fn setup() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec(install_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }

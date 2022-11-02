@@ -18,7 +18,8 @@ fn should_not_fail_deserializing() {
     let is_error = LmdbWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .is_error();
 
     assert!(is_error);

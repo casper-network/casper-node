@@ -1,114 +1,10 @@
 //! An LMDB-backed trie store.
-//!
-//! # Usage
-//!
-//! ```
-//! use casper_storage::global_state::storage::store::Store;
-//! use casper_storage::global_state::storage::transaction_source::{Transaction, TransactionSource};
-//! use casper_storage::global_state::storage::transaction_source::lmdb::LmdbEnvironment;
-//! use casper_storage::global_state::storage::trie::{Pointer, PointerBlock, Trie};
-//! use casper_storage::global_state::storage::trie_store::lmdb::LmdbTrieStore;
-//! use casper_hashing::Digest;
-//! use casper_types::bytesrepr::{ToBytes, Bytes};
-//! use lmdb::DatabaseFlags;
-//! use tempfile::tempdir;
-//!
-//! // Create some leaves
-//! let leaf_1 = Trie::Leaf { key: Bytes::from(vec![0u8, 0, 0]), value: Bytes::from(b"val_1".to_vec()) };
-//! let leaf_2 = Trie::Leaf { key: Bytes::from(vec![1u8, 0, 0]), value: Bytes::from(b"val_2".to_vec()) };
-//!
-//! // Get their hashes
-//! let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
-//! let leaf_2_hash = Digest::hash(&leaf_2.to_bytes().unwrap());
-//!
-//! // Create a node
-//! let node: Trie<Bytes, Bytes> = {
-//!     let mut pointer_block = PointerBlock::new();
-//!     pointer_block[0] = Some(Pointer::LeafPointer(leaf_1_hash));
-//!     pointer_block[1] = Some(Pointer::LeafPointer(leaf_2_hash));
-//!     let pointer_block = Box::new(pointer_block);
-//!     Trie::Node { pointer_block }
-//! };
-//!
-//! // Get its hash
-//! let node_hash = Digest::hash(&node.to_bytes().unwrap());
-//!
-//! // Create the environment and the store. For both the in-memory and
-//! // LMDB-backed implementations, the environment is the source of
-//! // transactions.
-//! let tmp_dir = tempdir().unwrap();
-//! let map_size = 4096 * 2560;  // map size should be a multiple of OS page size
-//! let max_readers = 512;
-//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers, true).unwrap();
-//! let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
-//!
-//! // First let's create a read-write transaction, persist the values, but
-//! // forget to commit the transaction.
-//! {
-//!     // Create a read-write transaction
-//!     let mut txn = env.create_read_write_txn().unwrap();
-//!
-//!     // Put the values in the store
-//!     store.put(&mut txn, &leaf_1_hash, &leaf_1).unwrap();
-//!     store.put(&mut txn, &leaf_2_hash, &leaf_2).unwrap();
-//!     store.put(&mut txn, &node_hash, &node).unwrap();
-//!
-//!     // Here we forget to commit the transaction before it goes out of scope
-//! }
-//!
-//! // Now let's check to see if the values were stored
-//! {
-//!     // Create a read transaction
-//!     let txn = env.create_read_txn().unwrap();
-//!
-//!     // Observe that nothing has been persisted to the store
-//!     for hash in vec![&leaf_1_hash, &leaf_2_hash, &node_hash].iter() {
-//!         // We need to use a type annotation here to help the compiler choose
-//!         // a suitable FromBytes instance
-//!         let maybe_trie: Option<Trie<Bytes, Bytes>> = store.get(&txn, hash).unwrap();
-//!         assert!(maybe_trie.is_none());
-//!     }
-//!
-//!     // Commit the read transaction.  Not strictly necessary, but better to be hygienic.
-//!     txn.commit().unwrap();
-//! }
-//!
-//! // Now let's try that again, remembering to commit the transaction this time
-//! {
-//!     // Create a read-write transaction
-//!     let mut txn = env.create_read_write_txn().unwrap();
-//!
-//!     // Put the values in the store
-//!     store.put(&mut txn, &leaf_1_hash, &leaf_1).unwrap();
-//!     store.put(&mut txn, &leaf_2_hash, &leaf_2).unwrap();
-//!     store.put(&mut txn, &node_hash, &node).unwrap();
-//!
-//!     // Commit the transaction.
-//!     txn.commit().unwrap();
-//! }
-//!
-//! // Now let's check to see if the values were stored again
-//! {
-//!     // Create a read transaction
-//!     let txn = env.create_read_txn().unwrap();
-//!
-//!     // Get the values in the store
-//!     assert_eq!(Some(leaf_1), store.get(&txn, &leaf_1_hash).unwrap());
-//!     assert_eq!(Some(leaf_2), store.get(&txn, &leaf_2_hash).unwrap());
-//!     assert_eq!(Some(node), store.get(&txn, &node_hash).unwrap());
-//!
-//!     // Commit the read transaction.
-//!     txn.commit().unwrap();
-//! }
-//!
-//! tmp_dir.close().unwrap();
-//! ```
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::bytesrepr;
 use lmdb::{Database, DatabaseFlags, Transaction};
 
 use casper_hashing::Digest;
@@ -161,7 +57,7 @@ impl LmdbTrieStore {
     }
 }
 
-impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
+impl Store<Digest, Trie> for LmdbTrieStore {
     type Error = error::Error;
 
     type Handle = Database;
@@ -171,12 +67,12 @@ impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
     }
 }
 
-impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
+impl TrieStore for LmdbTrieStore {}
 
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
 /// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
 /// it was 2) A deserialized trie
-pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie<Key, StoredValue>)>>>;
+pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie)>>>;
 
 /// Cached version of the trie store.
 #[derive(Clone)]
@@ -234,7 +130,7 @@ impl ScratchTrieStore {
     }
 }
 
-impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
+impl Store<Digest, Trie> for ScratchTrieStore {
     type Error = error::Error;
 
     type Handle = ScratchTrieStore;
@@ -245,12 +141,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
 
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
-    fn put<T>(
-        &self,
-        _txn: &mut T,
-        digest: &Digest,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error>
+    fn put<T>(&self, _txn: &mut T, digest: &Digest, trie: &Trie) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
         Self::Error: From<T::Error>,
@@ -264,11 +155,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
 
     /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
-    fn get<T>(
-        &self,
-        txn: &T,
-        digest: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
+    fn get<T>(&self, txn: &T, digest: &Digest) -> Result<Option<Trie>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
         Self::Error: From<T::Error>,
@@ -286,7 +173,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
                 let raw = self.get_raw(txn, digest)?;
                 match raw {
                     Some(bytes) => {
-                        let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
+                        let value: Trie = bytesrepr::deserialize(bytes.into())?;
                         {
                             let store =
                                 &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
@@ -303,4 +190,4 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
     }
 }
 
-impl TrieStore<Key, StoredValue> for ScratchTrieStore {}
+impl TrieStore for ScratchTrieStore {}

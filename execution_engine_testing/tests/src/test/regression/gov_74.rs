@@ -81,7 +81,7 @@ fn should_verify_interpreter_stack_limit() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec).expect_failure().commit();
+    builder.exec(exec).expect_failure().apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -115,7 +115,11 @@ fn should_observe_stack_height_limit() {
         .build()
     };
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     {
         // We need to perform an upgrade to be able to observe new max wasm stack height.
@@ -160,7 +164,11 @@ fn should_observe_stack_height_limit() {
         .build()
     };
 
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec(exec_request_2)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -182,5 +190,9 @@ fn should_observe_stack_height_limit() {
         .build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec(exec_request_3)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }

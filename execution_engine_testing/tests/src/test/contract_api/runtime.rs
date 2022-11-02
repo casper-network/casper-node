@@ -63,7 +63,11 @@ fn should_return_different_random_bytes_on_different_phases() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(execute_request).commit().expect_success();
+    builder
+        .exec(execute_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     let session_generated_bytes = get_value::<RANDOM_BYTES_COUNT>(&builder, RANDOM_BYTES_RESULT);
     let payment_generated_bytes =
@@ -90,7 +94,11 @@ fn should_return_different_random_bytes_on_each_call() {
             )
             .build();
 
-            builder.exec(exec_request).commit().expect_success();
+            builder
+                .exec(exec_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
 
             get_value::<RANDOM_BYTES_COUNT>(&builder, RANDOM_BYTES_RESULT)
         })
@@ -123,7 +131,11 @@ fn should_hash() {
         )
         .build();
 
-        builder.exec(exec_request).commit().expect_success();
+        builder
+            .exec(exec_request)
+            .apply()
+            .commit_to_disk()
+            .expect_success();
 
         let digest = get_value::<BLAKE2B_DIGEST_LENGTH>(&builder, HASH_RESULT);
         let expected_digest = crypto::blake2b(&input);

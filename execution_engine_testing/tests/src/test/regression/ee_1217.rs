@@ -61,7 +61,8 @@ fn should_fail_to_add_bid_from_stored_session_code() {
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder.exec(add_bid_request);
@@ -103,7 +104,8 @@ fn should_fail_to_add_bid_from_stored_contract_code() {
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder.exec(add_bid_request);
@@ -154,11 +156,16 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder.exec(withdraw_bid_request);
@@ -209,11 +216,16 @@ fn should_fail_to_withdraw_bid_from_stored_contract_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder.exec(withdraw_bid_request);
@@ -286,14 +298,20 @@ fn should_fail_to_delegate_from_stored_session_code() {
 
     builder
         .exec(validator_fund_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder.exec(delegate_request);
@@ -366,14 +384,20 @@ fn should_fail_to_delegate_from_stored_contract_code() {
 
     builder
         .exec(validator_fund_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     builder.exec(delegate_request);
@@ -458,19 +482,29 @@ fn should_fail_to_undelegate_from_stored_session_code() {
 
     builder
         .exec(validator_fund_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
-    builder.exec(delegate_request).commit().expect_success();
+    builder
+        .exec(delegate_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
-    builder.exec(undelegate_request).commit();
+    builder.exec(undelegate_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -552,17 +586,27 @@ fn should_fail_to_undelegate_from_stored_contract_code() {
 
     builder
         .exec(validator_fund_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
-    builder.exec(add_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
-    builder.exec(delegate_request).commit().expect_success();
+    builder
+        .exec(delegate_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder.exec(undelegate_request);
 
@@ -611,12 +655,21 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
-    builder.exec(withdraw_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(withdraw_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     let activate_bid_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
@@ -677,12 +730,21 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
-    builder.exec(withdraw_bid_request).commit().expect_success();
+    builder
+        .exec(add_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
+    builder
+        .exec(withdraw_bid_request)
+        .apply()
+        .commit_to_disk()
+        .expect_success();
 
     builder
         .exec(store_call_auction_request)
-        .commit()
+        .apply()
+        .commit_to_disk()
         .expect_success();
 
     let activate_bid_request = ExecuteRequestBuilder::versioned_contract_call_by_name(

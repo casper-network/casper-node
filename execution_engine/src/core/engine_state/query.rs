@@ -24,7 +24,7 @@ pub enum QueryResult {
         /// Stored value under a path.
         value: Box<StoredValue>,
         /// Merkle proof of the query.
-        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
+        proofs: Vec<TrieMerkleProof>,
     },
 }
 

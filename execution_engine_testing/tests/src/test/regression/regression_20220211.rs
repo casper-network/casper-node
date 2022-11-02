@@ -40,7 +40,11 @@ fn setup() -> LmdbWasmTestBuilder {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec(install_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     builder
 }
@@ -58,7 +62,7 @@ fn test(entrypoint: &str) {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(

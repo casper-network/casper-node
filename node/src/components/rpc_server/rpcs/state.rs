@@ -1056,10 +1056,7 @@ impl RpcWithParams for GetTrie {
     }
 }
 
-type QuerySuccess = (
-    DomainStoredValue,
-    Vec<TrieMerkleProof<Key, DomainStoredValue>>,
-);
+type QuerySuccess = (DomainStoredValue, Vec<TrieMerkleProof>);
 
 /// Runs a global state query and returns a tuple of the domain stored value and merkle proof of the
 /// value.

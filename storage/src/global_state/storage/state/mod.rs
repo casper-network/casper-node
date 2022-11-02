@@ -13,7 +13,6 @@ use tracing::error;
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
 
-pub use self::lmdb::make_temporary_global_state;
 use crate::global_state::{
     shared::{
         transform::{self, Transform},
@@ -42,7 +41,7 @@ pub trait StateReader<K, V> {
         &self,
         correlation_id: CorrelationId,
         key: &K,
-    ) -> Result<Option<TrieMerkleProof<K, V>>, Self::Error>;
+    ) -> Result<Option<TrieMerkleProof>, Self::Error>;
 
     /// Returns the keys in the trie matching `prefix`.
     fn keys_with_prefix(
@@ -136,19 +135,19 @@ pub fn put_stored_values<'a, R, S, E>(
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<Key, StoredValue>,
+    S: TrieStore,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
-    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
+    let maybe_root: Option<Trie> = store.get(&txn, &state_root)?;
     if maybe_root.is_none() {
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
     for (key, value) in stored_values.iter() {
         let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, key, value)?;
+            write::<_, _, E>(correlation_id, &mut txn, store, &state_root, key, value)?;
         match write_result {
             WriteResult::Written(root_hash) => {
                 state_root = root_hash;
@@ -174,7 +173,7 @@ pub fn commit<'a, R, S, H, E>(
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<Key, StoredValue>,
+    S: TrieStore,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
     H: BuildHasher,
@@ -182,14 +181,14 @@ where
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
 
-    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
+    let maybe_root: Option<Trie> = store.get(&txn, &state_root)?;
 
     if maybe_root.is_none() {
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
     for (key, transform) in effects.into_iter() {
-        let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
+        let read_result = read::<_, _, E>(correlation_id, &txn, store, &state_root, &key)?;
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
@@ -226,7 +225,7 @@ where
         };
 
         let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
+            write::<_, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
 
         match write_result {
             WriteResult::Written(root_hash) => {

@@ -341,7 +341,7 @@ impl Serialize for Digest {
         } else {
             // This is to keep backwards compatibility with how HexForm encodes
             // byte arrays. HexForm treats this like a slice.
-            (&self.0[..]).serialize(serializer)
+            self.0[..].serialize(serializer)
         }
     }
 }

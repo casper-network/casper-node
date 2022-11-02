@@ -58,7 +58,11 @@ fn setup() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.exec(transfer).expect_success().commit();
+    builder
+        .exec(transfer)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -129,7 +133,11 @@ fn gh_1470_call_contract_should_verify_group_access() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_stored_value = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -163,7 +171,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, GH_1470_REGRESSION_CALL, args).build()
     };
 
-    builder.exec(call_contract_request).commit();
+    builder.exec(call_contract_request).apply().commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -183,7 +191,10 @@ fn gh_1470_call_contract_should_verify_group_access() {
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, GH_1470_REGRESSION_CALL, args).build()
     };
 
-    builder.exec(call_versioned_contract_request).commit();
+    builder
+        .exec(call_versioned_contract_request)
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -334,7 +345,11 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_stored_value = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -372,7 +387,8 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     builder
         .exec(call_contract_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -386,7 +402,8 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     builder
         .exec(call_versioned_contract_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -401,7 +418,11 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_stored_value = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -439,7 +460,8 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     builder
         .exec(call_contract_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -453,7 +475,8 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     builder
         .exec(call_versioned_contract_request)
         .expect_success()
-        .commit();
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -468,7 +491,11 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_stored_value = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -503,7 +530,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
             .build()
     };
 
-    builder.exec(call_contract_request).commit();
+    builder.exec(call_contract_request).apply().commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -524,7 +551,10 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
             .build()
     };
 
-    builder.exec(call_versioned_contract_request).commit();
+    builder
+        .exec(call_versioned_contract_request)
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -575,7 +605,11 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec(exec_request_1)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 
     let account_stored_value = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -611,7 +645,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
             .build()
     };
 
-    builder.exec(call_contract_request).commit();
+    builder.exec(call_contract_request).apply().commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -632,7 +666,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
             .build()
     };
 
-    builder.exec(call_versioned_contract_request).commit();
+    builder
+        .exec(call_versioned_contract_request)
+        .apply()
+        .commit_to_disk();
 
     let response = builder
         .get_last_exec_results()
@@ -709,7 +746,11 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
         .with_protocol_version(new_protocol_version)
         .build();
-    builder.exec(transfer).expect_success().commit();
+    builder
+        .exec(transfer)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -751,7 +792,11 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
         .with_protocol_version(new_protocol_version)
         .build();
-    builder.exec(transfer).expect_success().commit();
+    builder
+        .exec(transfer)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -797,7 +842,11 @@ fn should_add_bid_after_major_bump() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -846,7 +895,11 @@ fn should_add_bid_after_minor_bump() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec(add_bid_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -891,7 +944,11 @@ fn should_wasm_transfer_after_major_bump() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(wasm_transfer).expect_success().commit();
+    builder
+        .exec(wasm_transfer)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -939,7 +996,11 @@ fn should_wasm_transfer_after_minor_bump() {
     .with_protocol_version(new_protocol_version)
     .build();
 
-    builder.exec(wasm_transfer).expect_success().commit();
+    builder
+        .exec(wasm_transfer)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
