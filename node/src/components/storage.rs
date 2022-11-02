@@ -76,7 +76,7 @@ use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt
 use object_pool::ObjectPool;
 
 use crate::{
-    components::{fetcher::FetchResponse, linear_chain, Component},
+    components::{fetcher::FetchResponse, Component},
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{
@@ -96,7 +96,7 @@ use crate::{
         FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
         ValueOrChunk,
     },
-    utils::{display_error, WithDir},
+    utils::{self, display_error, WithDir},
     NodeRng,
 };
 
@@ -1887,7 +1887,7 @@ impl Storage {
                 None => return Ok(None),
             };
 
-            if linear_chain::check_sufficient_block_signatures(
+            if utils::check_sufficient_block_signatures(
                 next_era_validator_weights,
                 self.fault_tolerance_fraction,
                 Some(&block.block_signatures),

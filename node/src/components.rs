@@ -58,8 +58,6 @@ pub(crate) mod gossiper;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
-#[allow(unused)]
-pub(crate) mod linear_chain;
 pub(crate) mod metrics;
 pub(crate) mod rest_server;
 pub mod rpc_server;

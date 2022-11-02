@@ -1139,10 +1139,6 @@ impl BlockSignatures {
         self.proofs.insert(public_key, signature)
     }
 
-    pub(crate) fn has_proof(&self, public_key: &PublicKey) -> bool {
-        self.proofs.contains_key(public_key)
-    }
-
     /// Verify the signatures contained within.
     pub(crate) fn verify(&self) -> Result<(), crypto::Error> {
         for (public_key, signature) in self.proofs.iter() {

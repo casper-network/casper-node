@@ -16,12 +16,12 @@ use casper_types::{crypto, EraId};
 use tracing::error;
 
 use crate::{
-    components::linear_chain::{self, BlockSignatureError},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights, FetcherItem,
         Item, Tag,
     },
+    utils::{self, BlockSignatureError},
 };
 
 /// Headers and signatures required to prove that if a given trusted block hash is on the correct
@@ -186,7 +186,7 @@ impl FetcherItem for SyncLeap {
                 if let Some(validator_weights) = header.next_era_validator_weights() {
                     if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
                         for sigs in era_sigs {
-                            if let Err(err) = linear_chain::check_sufficient_block_signatures(
+                            if let Err(err) = utils::check_sufficient_block_signatures(
                                 validator_weights,
                                 chainspec.highway_config.finality_threshold_fraction,
                                 Some(sigs),

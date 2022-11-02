@@ -1,6 +1,7 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
+mod block_signatures;
 mod display_error;
 pub(crate) mod ds;
 mod external;
@@ -36,6 +37,7 @@ use thiserror::Error;
 use tracing::{error, warn};
 
 use crate::types::NodeId;
+pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
 pub(crate) use display_error::display_error;
 pub(crate) use external::External;
 #[cfg(test)]
