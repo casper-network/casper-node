@@ -428,7 +428,7 @@ where
                 }),
             ) => match self.speculative_exec {
                 Some(_) => {
-                    self.handle_execute_deploy(effect_builder, block_header, *deploy, responder)
+                    self.handle_execute_deploy(effect_builder, *block_header, *deploy, responder)
                 }
                 None => Effects::new(),
             },

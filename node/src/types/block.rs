@@ -785,7 +785,7 @@ impl DocExample for EraEnd {
 }
 
 /// The header portion of a [`Block`](struct.Block.html).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     state_root_hash: Digest,
@@ -798,6 +798,9 @@ pub struct BlockHeader {
     era_id: EraId,
     height: u64,
     protocol_version: ProtocolVersion,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    block_hash: OnceCell<BlockHash>,
 }
 
 impl BlockHeader {
@@ -887,9 +890,18 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn block_hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(self)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(Digest::hash(&serialized_header))
+        *self.block_hash.get_or_init(|| {
+            let serialized_header = Self::serialize(self)
+                .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+            BlockHash::new(Digest::hash(&serialized_header))
+        })
+    }
+
+    /// Sets the block hash without recomputing it.
+    ///
+    /// Must only be called with the correct hash.
+    pub(crate) fn set_block_hash(&self, block_hash: BlockHash) {
+        self.block_hash.get_or_init(|| block_hash);
     }
 
     /// Returns true if block is Genesis.
@@ -977,6 +989,7 @@ impl FromBytes for BlockHeader {
             era_id,
             height,
             protocol_version,
+            block_hash: OnceCell::new(),
         };
         Ok((block_header, remainder))
     }
@@ -1193,7 +1206,7 @@ impl Display for BlockSignatures {
 
 /// A proposed block after execution, with the resulting post-state-hash.  This is the core
 /// component of the Casper linear blockchain.
-#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
@@ -1243,6 +1256,7 @@ impl Block {
             era_id: finalized_block.era_id,
             height: finalized_block.height,
             protocol_version,
+            block_hash: OnceCell::new(),
         };
 
         Ok(Block {
@@ -1530,7 +1544,7 @@ impl GossiperItem for Block {
 }
 
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockWithMetadata {
     pub block: Block,
     pub block_signatures: BlockSignatures,
@@ -1571,7 +1585,7 @@ fn validate_block_header_and_signature_hash(
     Ok(())
 }
 
-#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 /// Wrapper around block and its deploys.
 pub struct BlockAndDeploys {
     /// Block part.
@@ -1893,6 +1907,7 @@ pub(crate) mod json_compatibility {
                 era_id: block_header.era_id,
                 height: block_header.height,
                 protocol_version: block_header.protocol_version,
+                block_hash: OnceCell::new(),
             }
         }
     }

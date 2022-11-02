@@ -897,7 +897,7 @@ pub(crate) enum RpcRequest {
     /// Does not commit the effects. This is a "read-only" action.
     SpeculativeDeployExecute {
         /// Block header representing the state on top of which we will run the deploy.
-        block_header: BlockHeader,
+        block_header: Box<BlockHeader>,
         /// Deploy to execute.
         deploy: Box<Deploy>,
         /// Responder.
