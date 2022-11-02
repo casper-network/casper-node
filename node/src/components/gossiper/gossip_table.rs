@@ -10,7 +10,7 @@ use std::{
 use datasize::DataSize;
 #[cfg(test)]
 use fake_instant::FakeClock as Instant;
-use tracing::{debug, error, warn};
+use tracing::{error, trace, warn};
 
 use super::Config;
 use crate::{effect::GossipTarget, types::NodeId, utils::DisplayIter};
@@ -232,7 +232,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
-            debug!(item=%data_id, "no further action: item already finished");
+            trace!(item=%data_id, "no further action: item already finished");
             return GossipAction::Noop;
         }
 
@@ -241,7 +241,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         };
 
         if let Some(action) = self.update_current(data_id, update) {
-            debug!(item=%data_id, %action, "item is currently being gossiped");
+            trace!(item=%data_id, %action, "item is currently being gossiped");
             return action;
         }
 
@@ -251,7 +251,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         let is_new = true;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
         let _ = self.current.insert(data_id.clone(), state);
-        debug!(item=%data_id, %action, "gossiping new item should begin");
+        trace!(item=%data_id, %action, "gossiping new item should begin");
         action
     }
 
@@ -271,7 +271,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
-            debug!(item=%data_id, "no further action: item already finished");
+            trace!(item=%data_id, "no further action: item already finished");
             return GossipAction::Noop;
         }
 
@@ -281,7 +281,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         };
 
         if let Some(action) = self.update_current(data_id, update) {
-            debug!(item=%data_id, %action, "item is currently being gossiped");
+            trace!(item=%data_id, %action, "item is currently being gossiped");
             return action;
         }
 
@@ -291,7 +291,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         let is_new = true;
         let action = state.action(self.infection_target, self.holders_limit, is_new);
         let _ = self.current.insert(data_id.clone(), state);
-        debug!(item=%data_id, %action, "gossiping new item should begin");
+        trace!(item=%data_id, %action, "gossiping new item should begin");
         action
     }
 
@@ -348,7 +348,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     pub(crate) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) -> bool {
         let should_finish = if let Some(state) = self.current.get_mut(data_id) {
             state.in_flight_count = state.in_flight_count.saturating_sub(reduce_by);
-            debug!(
+            trace!(
                 item=%data_id,
                 in_flight_count=%state.in_flight_count,
                 "reduced in-flight count for item"
@@ -359,7 +359,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         };
 
         if should_finish {
-            debug!(item=%data_id, "finished gossiping since no more peers to gossip to");
+            trace!(item=%data_id, "finished gossiping since no more peers to gossip to");
             return self.force_finish(data_id);
         }
 
@@ -408,17 +408,17 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         if let Some(mut state) = self.current.remove(data_id) {
             if !state.held_by_us {
                 let _ = state.holders.remove(&peer);
-                debug!(item=%data_id, %peer, "removed peer as a holder of the item");
+                trace!(item=%data_id, %peer, "removed peer as a holder of the item");
                 if state.holders.is_empty() {
                     // We don't hold the full data, and we don't know any holders - remove the entry
-                    debug!(item=%data_id, "no further action: item now removed as no holders");
+                    trace!(item=%data_id, "no further action: item now removed as no holders");
                     return GossipAction::Noop;
                 }
             }
             let is_new = !state.held_by_us;
             let action = state.action(self.infection_target, self.holders_limit, is_new);
             let _ = self.current.insert(data_id.clone(), state);
-            debug!(item=%data_id, %action, "assuming peer response did not timeout");
+            trace!(item=%data_id, %action, "assuming peer response did not timeout");
             return action;
         }
 

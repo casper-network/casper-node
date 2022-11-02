@@ -15,7 +15,7 @@ use std::{
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use crate::{
     components::{fetcher::FetchResponse, Component},
@@ -389,10 +389,9 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             self.table.new_partial_data(&item_id, sender)
         };
 
-        debug!(item=%item_id, %sender, %action, "received gossip request");
-
         match action {
             GossipAction::ShouldGossip(should_gossip) => {
+                debug!(item=%item_id, %sender, %should_gossip, "received gossip request");
                 self.metrics.items_received.inc();
                 // Gossip the item ID.
                 let mut effects = self.gossip(
@@ -422,6 +421,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 effects
             }
             GossipAction::GetRemainder { .. } => {
+                debug!(item=%item_id, %sender, %action, "received gossip request");
                 self.metrics.items_received.inc();
                 // Send a response to the sender indicating we want the full item from them, and set
                 // a timeout for this response.
@@ -443,6 +443,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             GossipAction::Noop
             | GossipAction::AwaitingRemainder
             | GossipAction::AnnounceFinished => {
+                trace!(item=%item_id, %sender, %action, "received gossip request");
                 // Send a response to the sender indicating we already hold the item.
                 let reply = Message::GossipResponse {
                     item_id: item_id.clone(),
