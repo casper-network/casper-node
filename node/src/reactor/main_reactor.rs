@@ -311,7 +311,7 @@ impl reactor::Reactor for MainReactor {
             attempts: 0,
             last_progress: Timestamp::now(),
             max_attempts: 3,
-            idle_tolerance: TimeDiff::from_seconds(1200),
+            idle_tolerance: config.node.idle_tolerance,
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,

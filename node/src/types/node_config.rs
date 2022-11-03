@@ -13,6 +13,7 @@ const DEFAULT_MAX_PARALLEL_BLOCK_FETCHES: u32 = 50;
 const DEFAULT_MAX_SYNC_FETCH_ATTEMPTS: u32 = 5;
 const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
+const DEFAULT_IDLE_TOLERANCE: &str = "20min";
 
 /// Node fast-sync configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
@@ -45,6 +46,9 @@ pub struct NodeConfig {
     /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
     /// and global state) back to genesis.
     pub sync_to_genesis: bool,
+
+    /// Idle time after which the syncing process is considered stalled.
+    pub idle_tolerance: TimeDiff,
 }
 
 impl Default for NodeConfig {
@@ -57,6 +61,7 @@ impl Default for NodeConfig {
             max_sync_fetch_attempts: DEFAULT_MAX_SYNC_FETCH_ATTEMPTS,
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
             sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,
+            idle_tolerance: DEFAULT_IDLE_TOLERANCE.parse().unwrap(),
             sync_to_genesis: false,
         }
     }
