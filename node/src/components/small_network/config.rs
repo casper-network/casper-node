@@ -111,7 +111,7 @@ pub struct Config {
     pub max_in_flight_demands: u32,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
-    /// Node is considered a validator if it was a validator in latest N eras.
+    /// Peer is considered a validator if it was a validator in this number of latest eras.
     pub eras_to_determine_if_validator: usize,
     /// Small network identity configuration option.
     ///

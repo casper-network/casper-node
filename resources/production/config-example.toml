@@ -199,7 +199,7 @@ tarpit_chance = 0.2
 # How long peers remain blocked after they get blacklisted.
 blocklist_retain_duration = '10min'
 
-# Node is considered a validator if it was a validator in latest N eras.
+# Peer is considered a validator if it was a validator in this number of latest eras.
 eras_to_determine_if_validator = 3
 
 # Weights for impact estimation of incoming messages, used in combination with
