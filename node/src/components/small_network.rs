@@ -52,7 +52,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Weak,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use datasize::DataSize;
@@ -94,7 +94,7 @@ use self::{
     limiter::Limiter,
     message::ConsensusKeyPair,
     metrics::Metrics,
-    outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
+    outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager, OutgoingState},
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
@@ -114,7 +114,7 @@ use crate::{
         ValidationError,
     },
     types::NodeId,
-    utils::{self, display_error, Source, WithDir},
+    utils::{self, display_error, Source, TimeAnchor, WithDir},
     NodeRng,
 };
 
@@ -1153,26 +1153,100 @@ pub(crate) struct NetworkInsights {
     priviledged_upcoming_outgoing_nodes: Option<HashSet<PublicKey>>,
     /// The amount of bandwidth allowance currently buffered, ready to be spent.
     unspent_bandwidth_allowance_bytes: Option<i64>,
-    // TODO: Add connection state.
-    /// List of outgoing connections.
-    outgoing_connections: HashMap<NodeId, SocketAddr>,
+    /// Map of outgoing connections, along with their current state.
+    outgoing_connections: HashMap<SocketAddr, OutgoingStateInsight>,
     incoming_connections: HashMap<NodeId, SocketAddr>,
     seen_symmetry: HashMap<NodeId, ()>,
 }
 
 #[derive(Debug, Serialize)]
-enum OutgoingStateInsight {}
+struct OutgoingInsight {
+    unforgettable: bool,
+    state: OutgoingStateInsight,
+}
+
+#[derive(Debug, Serialize)]
+enum OutgoingStateInsight {
+    Connecting {
+        failures_so_far: u8,
+        since: SystemTime,
+    },
+    Waiting {
+        failures_so_far: u8,
+        error: Option<String>,
+        last_failure: SystemTime,
+    },
+    Connected {
+        peer_id: NodeId,
+        peer_addr: SocketAddr,
+    },
+    Blocked {
+        since: SystemTime,
+    },
+    Loopback,
+}
+
+impl OutgoingStateInsight {
+    fn from_outgoing_state<P>(
+        anchor: &TimeAnchor,
+        state: &OutgoingState<OutgoingHandle<P>, ConnectionError>,
+    ) -> Self {
+        match state {
+            OutgoingState::Connecting {
+                failures_so_far,
+                since,
+            } => OutgoingStateInsight::Connecting {
+                failures_so_far: *failures_so_far,
+                since: anchor.convert(*since),
+            },
+            OutgoingState::Waiting {
+                failures_so_far,
+                error,
+                last_failure,
+            } => OutgoingStateInsight::Waiting {
+                failures_so_far: *failures_so_far,
+                error: error.as_ref().map(ToString::to_string),
+                last_failure: anchor.convert(*last_failure),
+            },
+            OutgoingState::Connected { peer_id, handle } => OutgoingStateInsight::Connected {
+                peer_id: *peer_id,
+                peer_addr: handle.peer_addr,
+            },
+            OutgoingState::Blocked { since } => OutgoingStateInsight::Blocked {
+                since: anchor.convert(*since),
+            },
+            OutgoingState::Loopback => OutgoingStateInsight::Loopback,
+        }
+    }
+}
 
 impl NetworkInsights {
     fn collect_from_component<REv, P>(net: &SmallNetwork<REv, P>) -> Self
     where
         P: Payload,
     {
+        // Since we are at the top level of the component, we gain access to inner values of the
+        // respective structs. We abuse this to gain debugging insights. Note: If limiters are no
+        // longer a `trait`, the trait methods can be removed as well in favor of direct access.
         let (priviledged_active_outgoing_nodes, priviledged_upcoming_outgoing_nodes) = net
             .outgoing_limiter
             .debug_inspect_validators()
             .map(|(a, b)| (Some(a), Some(b)))
             .unwrap_or_default();
+
+        let anchor = TimeAnchor::now();
+
+        let outgoing_connections = net
+            .outgoing_manager
+            .outgoing
+            .iter()
+            .map(|(addr, outgoing)| {
+                (
+                    *addr,
+                    OutgoingStateInsight::from_outgoing_state(&anchor, &outgoing.state),
+                )
+            })
+            .collect();
 
         NetworkInsights {
             net_active_era: net.active_era,
@@ -1181,7 +1255,7 @@ impl NetworkInsights {
             unspent_bandwidth_allowance_bytes: net
                 .outgoing_limiter
                 .debug_inspect_unspent_allowance(),
-            outgoing_connections: Default::default(),
+            outgoing_connections,
             incoming_connections: Default::default(),
             seen_symmetry: Default::default(),
         }

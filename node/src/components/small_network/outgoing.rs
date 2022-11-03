@@ -116,9 +116,9 @@ where
     E: DataSize,
 {
     /// Whether or not the address is unforgettable, see `learn_addr` for details.
-    is_unforgettable: bool,
+    pub(super) is_unforgettable: bool,
     /// The current state the connection/address is in.
-    state: OutgoingState<H, E>,
+    pub(super) state: OutgoingState<H, E>,
 }
 
 /// Active state for a connection/address.
@@ -292,7 +292,7 @@ where
     /// Outgoing connections subsystem configuration.
     config: OutgoingConfig,
     /// Mapping of address to their current connection state.
-    outgoing: HashMap<SocketAddr, Outgoing<H, E>>,
+    pub(super) outgoing: HashMap<SocketAddr, Outgoing<H, E>>,
     /// Routing table.
     ///
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
