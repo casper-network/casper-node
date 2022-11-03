@@ -129,6 +129,7 @@ pub(crate) struct MainReactor {
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
+    control_logic_default_delay: TimeDiff,
     recent_switch_block_headers: Vec<BlockHeader>,
 }
 
@@ -271,7 +272,8 @@ impl reactor::Reactor for MainReactor {
         let block_synchronizer =
             BlockSynchronizer::new(config.block_synchronizer, validator_matrix.clone());
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
-        let upgrade_watcher = UpgradeWatcher::new(chainspec.as_ref(), &root_dir)?;
+        let upgrade_watcher =
+            UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
         let era_count = chainspec.number_of_past_switch_blocks_needed();
@@ -310,8 +312,9 @@ impl reactor::Reactor for MainReactor {
             state: ReactorState::Initialize {},
             attempts: 0,
             last_progress: Timestamp::now(),
-            max_attempts: 3,
-            idle_tolerance: TimeDiff::from_seconds(1200),
+            max_attempts: config.node.max_attempts,
+            idle_tolerance: config.node.idle_tolerance,
+            control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,
