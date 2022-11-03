@@ -228,10 +228,10 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
-    /// Switches the active validator to a new round exponent.
-    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+    /// Switches the active validator to a new round length.
+    pub(crate) fn set_round_len(&mut self, new_round_len: TimeDiff) {
         if let Some(ref mut av) = self.active_validator {
-            av.set_round_exp(new_round_exp);
+            av.set_round_len(new_round_len);
         }
     }
 

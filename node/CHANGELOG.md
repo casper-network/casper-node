@@ -289,6 +289,7 @@ All notable changes to this project will be documented in this file.  The format
 * Initialize consensus round success meter with current timestamp.
 * Era Supervisor now accounts for the last emergency restart.
 * Upgrade dependencies, in particular tokio.
+* Use `minimum_block_time` and `maximum_round_length` in Highway, instead of `minimum_round_exponent` and `maximum_round_exponent`. The minimum round length doesn't have to be a power of two in milliseconds anymore.
 
 ### Removed
 * Remove `impl Sub<Timestamp> for Timestamp` to help avoid panicking in non-obvious edge cases.

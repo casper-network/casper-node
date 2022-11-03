@@ -32,9 +32,9 @@ pub(crate) const HANNA: ValidatorIndex = ValidatorIndex(7);
 pub(crate) const N: Observation<TestContext> = Observation::None;
 pub(crate) const F: Observation<TestContext> = Observation::Faulty;
 
-const TEST_MIN_ROUND_EXP: u8 = 4;
-const TEST_MAX_ROUND_EXP: u8 = 19;
-const TEST_INIT_ROUND_EXP: u8 = 4;
+const TEST_MIN_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 4);
+const TEST_MAX_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 19);
+const TEST_INIT_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 4);
 const TEST_ERA_HEIGHT: u64 = 5;
 
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -123,9 +123,9 @@ pub(crate) fn test_params(seed: u64) -> Params {
         seed,
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
-        TEST_MIN_ROUND_EXP,
-        TEST_MAX_ROUND_EXP,
-        TEST_INIT_ROUND_EXP,
+        TEST_MIN_ROUND_LEN,
+        TEST_MAX_ROUND_LEN,
+        TEST_INIT_ROUND_LEN,
         TEST_ERA_HEIGHT,
         Timestamp::from(0),
         Timestamp::from(0),
@@ -170,9 +170,9 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     //          \  /
     // Carol:    c0
     let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
-    let b0 = add_unit!(state, BOB, 48, 4u8, 0xB; N, N, N)?;
-    let c0 = add_unit!(state, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_unit!(state, BOB, 49, 4u8, None; N, b0, c0)?;
+    let b0 = add_unit!(state, BOB, 48, 0u8, 0xB; N, N, N)?;
+    let c0 = add_unit!(state, CAROL, 49, 0u8, None; N, b0, N)?;
+    let b1 = add_unit!(state, BOB, 49, 0u8, None; N, b0, c0)?;
     let _a1 = add_unit!(state, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
@@ -183,7 +183,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         value: None,
         seq_number: 3,
         timestamp: 51.into(),
-        round_exp: 4u8,
+        round_exp: 0u8,
         endorsed: BTreeSet::new(),
     };
     let unit = SignedWireUnit::new(wunit.clone().into_hashed(), &BOB_SEC);
@@ -198,18 +198,18 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     // Inconsistent panorama: If you see b1, you have to see c0, too.
     let maybe_err = add_unit!(state, CAROL, None; N, b1, N).err().map(unit_err);
     assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), maybe_err);
-    // And you can't make the round exponent too small
-    let maybe_err = add_unit!(state, CAROL, 50, 5u8, None; N, b1, c0)
+    // You can't change the round length within a round.
+    let maybe_err = add_unit!(state, CAROL, 50, 1u8, None; N, b1, c0)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), maybe_err);
-    // And you can't make the round exponent too big
-    let maybe_err = add_unit!(state, CAROL, 50, 40u8, None; N, b1, c0)
+    assert_eq!(Some(UnitError::RoundLengthChangedWithinRound), maybe_err);
+    // And you can't make the round length too big
+    let maybe_err = add_unit!(state, CAROL, 50, 36u8, None; N, b1, c0)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), maybe_err);
+    assert_eq!(Some(UnitError::RoundLengthGreaterThanMaximum), maybe_err);
     // After the round from 48 to 64 has ended, the exponent can change.
-    let c1 = add_unit!(state, CAROL, 65, 5u8, None; N, b1, c0)?;
+    let c1 = add_unit!(state, CAROL, 65, 1u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -241,9 +241,9 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         0,
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
-        4,
-        19,
-        4,
+        TimeDiff::from(1 << 4),
+        TimeDiff::from(1 << 19),
+        TimeDiff::from(1 << 4),
         u64::MAX,
         Timestamp::zero(),
         Timestamp::from(u64::MAX),

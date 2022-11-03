@@ -32,13 +32,14 @@ where
     I: IntoIterator<Item = T>,
     T: Into<state::Weight>,
 {
+    #[allow(clippy::integer_arithmetic)] // Left shift with small enough constants.
     let params = state::Params::new(
         seed,
         highway_testing::TEST_BLOCK_REWARD,
         highway_testing::TEST_BLOCK_REWARD / 5,
-        14,
-        19,
-        4,
+        TimeDiff::from(1 << 14),
+        TimeDiff::from(1 << 19),
+        TimeDiff::from(1 << 14),
         u64::MAX,
         0.into(),
         Timestamp::MAX,
@@ -149,7 +150,7 @@ fn send_a_valid_wire_unit() {
         value: Some(Arc::new(BlockPayload::new(vec![], vec![], vec![], false))),
         seq_number,
         timestamp: now,
-        round_exp: 14,
+        round_exp: 0,
         endorsed: BTreeSet::new(),
     };
     let alice_keypair: Keypair = Keypair::from(Arc::clone(&*ALICE_SECRET_KEY));
@@ -197,7 +198,7 @@ fn detect_doppelganger() {
     let panorama: Panorama<ClContext> = Panorama::from(vec![N, N]);
     let seq_number = panorama.next_seq_num(&state, creator);
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
-    let round_exp = 14;
+    let round_exp = 0;
     let now = Timestamp::zero();
     let value = Arc::new(BlockPayload::new(vec![], vec![], vec![], false));
     let wunit: WireUnit<ClContext> = WireUnit {

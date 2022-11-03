@@ -54,7 +54,7 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 /// Default round seigniorage rate represented as a fractional number.
 ///
 /// Annual issuance: 2%
-/// Minimum round exponent: 14
+/// Minimum round length: 2^14 ms
 /// Ticks per year: 31536000000
 ///
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.

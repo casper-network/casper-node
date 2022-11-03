@@ -33,7 +33,7 @@ era_duration = '41seconds'
 # minimum height.
 minimum_era_height = 10
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '4seconds'
+minimum_block_time = '4096ms'
 # Number of slots available in validator auction.
 validator_slots = 5
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -51,7 +51,7 @@ unbonding_delay = 14
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 2%
-# Minimum round exponent: 12
+# Minimum block time: 12^12 milliseconds
 # Ticks per year: 31536000000
 #
 # (1+0.02)^((2^12)/31536000000)-1 is expressed as a fractional number below.
@@ -68,13 +68,8 @@ strict_argument_checking = false
 consensus_protocol = 'Zug'
 
 [highway]
-# Integer between 0 and 255.  The power of two that is the number of milliseconds in the minimum round length, and
-# therefore the minimum delay between a block and its child.  E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
-minimum_round_exponent = 12
-# Integer between 0 and 255.  Must be greater than `minimum_round_exponent`.  The power of two that is the number of
-# milliseconds in the maximum round length, and therefore the maximum delay between a block and its child.  E.g. 19
-# means 2^19 milliseconds, i.e. about 8.7 minutes.
-maximum_round_exponent = 19
+# Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
+maximum_round_length = '525seconds'
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]

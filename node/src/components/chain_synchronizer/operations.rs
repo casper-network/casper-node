@@ -2020,7 +2020,7 @@ fn verify_trusted_block_header<REv>(ctx: &ChainSyncContext<'_, REv>) -> Result<(
     }
 
     let era_duration: TimeDiff = cmp::max(
-        ctx.config.min_round_length() * ctx.config.min_era_height(),
+        ctx.config.min_block_time() * ctx.config.min_era_height(),
         ctx.config.era_duration(),
     );
 
@@ -2411,7 +2411,7 @@ fn is_current_era_given_current_timestamp(
         .saturating_sub(highest_synced_block.height() - *height);
     let time_since_highest_synced_block =
         current_timestamp.saturating_diff(highest_synced_block.timestamp());
-    time_since_highest_synced_block < config.min_round_length() * remaining_blocks_in_this_era
+    time_since_highest_synced_block < config.min_block_time() * remaining_blocks_in_this_era
 }
 
 #[cfg(test)]
@@ -2490,10 +2490,10 @@ mod tests {
             .activation_point
             .genesis_timestamp()
             .expect("test expects genesis timestamp in chainspec");
-        let min_round_length = chainspec.highway_config.min_round_length();
+        let min_block_time = chainspec.core_config.minimum_block_time;
 
         // Configure eras to have at least 10 blocks but to last at least 20 minimum-length rounds.
-        let era_duration = min_round_length * 20;
+        let era_duration = min_block_time * 20;
         let minimum_era_height = 10;
         chainspec.core_config.era_duration = era_duration;
         chainspec.core_config.minimum_era_height = minimum_era_height;
@@ -2544,7 +2544,7 @@ mod tests {
         // also still current. There are still five blocks missing but only four rounds have
         // passed.
         let block_time = era6_start + era_duration * 2;
-        let now = block_time + min_round_length * 4;
+        let now = block_time + min_block_time * 4;
         let block = create_block(
             block_time,
             EraId::from(6),
@@ -2561,7 +2561,7 @@ mod tests {
 
         // If both criteria are satisfied, the era could have ended.
         let block_time = era6_start + era_duration * 2;
-        let now = block_time + min_round_length * 5;
+        let now = block_time + min_block_time * 5;
         let block = create_block(
             block_time,
             EraId::from(6),

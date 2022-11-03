@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 /// The number of most recent rounds we will be keeping track of.
 pub(crate) const NUM_ROUNDS_TO_CONSIDER: usize = 40;
 /// The number of successful rounds that triggers us to slow down: With this many or fewer
-/// successes per `NUM_ROUNDS_TO_CONSIDER`, we increase our round exponent.
+/// successes per `NUM_ROUNDS_TO_CONSIDER`, we increase our round length.
 pub(crate) const NUM_ROUNDS_SLOWDOWN: usize = 10;
 /// The number of successful rounds that triggers us to speed up: With this many or more successes
-/// per `NUM_ROUNDS_TO_CONSIDER`, we decrease our round exponent.
+/// per `NUM_ROUNDS_TO_CONSIDER`, we decrease our round length.
 pub(crate) const NUM_ROUNDS_SPEEDUP: usize = 32;
-/// We will try to accelerate (decrease our round exponent) every `ACCELERATION_PARAMETER` rounds if
+/// We will try to accelerate (decrease our round length) every `ACCELERATION_PARAMETER` rounds if
 /// we have few enough failures.
 pub(crate) const ACCELERATION_PARAMETER: u64 = 40;
 /// The FTT, as a percentage (i.e. `THRESHOLD = 1` means 1% of the validators' total weight), which

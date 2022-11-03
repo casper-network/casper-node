@@ -113,8 +113,8 @@ impl Config {
         self.chainspec.deploy_config.max_ttl
     }
 
-    pub(super) fn min_round_length(&self) -> TimeDiff {
-        self.chainspec.highway_config.min_round_length()
+    pub(super) fn min_block_time(&self) -> TimeDiff {
+        self.chainspec.core_config.minimum_block_time
     }
 
     pub(super) fn network_name(&self) -> &str {

@@ -43,12 +43,10 @@ where
     pub(crate) timestamp: Timestamp,
     /// Original signature of the `SignedWireUnit`.
     pub(crate) signature: C::Signature,
-    /// The round exponent of the current round, that this message belongs to.
+    /// The length of the current round, that this message belongs to.
     ///
-    /// The current round consists of all timestamps that agree with this one in all but the last
-    /// `round_exp` bits. All cited units by `creator` in the same round must have the same round
-    /// exponent.
-    pub(crate) round_exp: u8,
+    /// All cited units by `creator` in the same round must have the same round length.
+    pub(crate) round_len: TimeDiff,
     /// Units that this one claims are endorsed.
     /// All of these must be cited (directly or indirectly) by the panorama.
     pub(crate) endorsed: BTreeSet<C::Hash>,
@@ -85,6 +83,9 @@ impl<C: Context> Unit<C> {
                 skip_idx.push(old_unit.skip_idx[i]);
             }
         }
+        #[allow(clippy::integer_arithmetic)] // Only called with valid units.
+        let round_len =
+            TimeDiff::from(state.params().min_round_length().millis() << wunit.round_exp);
         let unit = Unit {
             panorama: wunit.panorama,
             seq_number: wunit.seq_number,
@@ -93,7 +94,7 @@ impl<C: Context> Unit<C> {
             skip_idx,
             timestamp: wunit.timestamp,
             signature,
-            round_exp: wunit.round_exp,
+            round_len,
             endorsed: wunit.endorsed,
         };
         (unit, wunit.value)
@@ -106,12 +107,12 @@ impl<C: Context> Unit<C> {
 
     /// Returns the time at which the round containing this unit began.
     pub(crate) fn round_id(&self) -> Timestamp {
-        state::round_id(self.timestamp, self.round_exp)
+        state::round_id(self.timestamp, self.round_len)
     }
 
     /// Returns the length of the round containing this unit.
     pub(crate) fn round_len(&self) -> TimeDiff {
-        state::round_len(self.round_exp)
+        self.round_len
     }
 
     /// Returns whether `unit` cites a new unit from `vidx` in the last panorama.

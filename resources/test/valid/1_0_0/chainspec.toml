@@ -12,7 +12,7 @@ maximum_net_message_size = 23_068_672
 [core]
 era_duration = '3minutes'
 minimum_era_height = 9
-minimum_block_time = '4seconds'
+minimum_block_time = '16seconds'
 validator_slots = 5
 finality_threshold_fraction = [2, 25]
 auction_delay = 3
@@ -26,8 +26,7 @@ strict_argument_checking = false
 consensus_protocol = 'Zug'
 
 [highway]
-minimum_round_exponent = 14
-maximum_round_exponent = 19
+maximum_round_length = '525seconds'
 reduced_reward_multiplier = [1, 5]
 
 [deploys]
