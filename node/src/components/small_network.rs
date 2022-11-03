@@ -553,8 +553,11 @@ where
                     tasks::message_reader(
                         self.context.clone(),
                         stream,
-                        self.incoming_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
+                        self.incoming_limiter.create_handle(
+                            peer_id,
+                            peer_consensus_public_key,
+                            self.cfg.eras_to_determine_if_validator,
+                        ),
                         self.channel_management().close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
@@ -720,8 +723,11 @@ where
                     tasks::message_sender(
                         receiver,
                         sink,
-                        self.outgoing_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
+                        self.outgoing_limiter.create_handle(
+                            peer_id,
+                            peer_consensus_public_key,
+                            self.cfg.eras_to_determine_if_validator,
+                        ),
                         self.net_metrics.queued_messages.clone(),
                     )
                     .instrument(span)
