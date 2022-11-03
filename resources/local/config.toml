@@ -32,6 +32,9 @@ sync_to_genesis = true
 # Idle time after which the syncing process is considered stalled.
 idle_tolerance = '20min'
 
+# When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
+max_attempts = 3
+
 
 # =================================
 # Configuration options for logging

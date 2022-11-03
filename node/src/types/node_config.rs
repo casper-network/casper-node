@@ -14,6 +14,7 @@ const DEFAULT_MAX_SYNC_FETCH_ATTEMPTS: u32 = 5;
 const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
 const DEFAULT_IDLE_TOLERANCE: &str = "20min";
+const DEFAULT_MAX_ATTEMPTS: usize = 3;
 
 /// Node fast-sync configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
@@ -49,6 +50,9 @@ pub struct NodeConfig {
 
     /// Idle time after which the syncing process is considered stalled.
     pub idle_tolerance: TimeDiff,
+
+    /// When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
+    pub max_attempts: usize,
 }
 
 impl Default for NodeConfig {
@@ -62,6 +66,7 @@ impl Default for NodeConfig {
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
             sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,
             idle_tolerance: DEFAULT_IDLE_TOLERANCE.parse().unwrap(),
+            max_attempts: DEFAULT_MAX_ATTEMPTS,
             sync_to_genesis: false,
         }
     }

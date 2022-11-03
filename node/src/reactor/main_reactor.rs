@@ -310,7 +310,7 @@ impl reactor::Reactor for MainReactor {
             state: ReactorState::Initialize {},
             attempts: 0,
             last_progress: Timestamp::now(),
-            max_attempts: 3,
+            max_attempts: config.node.max_attempts,
             idle_tolerance: config.node.idle_tolerance,
             trusted_hash,
             validator_matrix,
