@@ -15,7 +15,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::Into;
-use hex_fmt::HexList;
 use itertools::Itertools;
 use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
@@ -287,11 +286,11 @@ impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
-            HexList(self.deploy_hashes()),
-            HexList(self.transfer_hashes()),
-            self.accusations,
+            "block payload: {} deploys, {} transfers, random bit {}, accusations {}",
+            self.deploys.len(),
+            self.transfers.len(),
             self.random_bit,
+            DisplayIter::new(&self.accusations),
         )
     }
 }
@@ -587,14 +586,12 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block in era {:?}, height {}, deploys {:10}, transfers {:10}, \
-            random bit {}, timestamp {}",
-            self.era_id,
+            "finalized block #{} in {}, timestamp {}, {} deploys, {} transfers",
             self.height,
-            HexList(&self.deploy_hashes),
-            HexList(&self.transfer_hashes),
-            self.random_bit,
+            self.era_id,
             self.timestamp,
+            self.deploy_hashes.len(),
+            self.transfer_hashes.len(),
         )?;
         if let Some(ee) = *self.era_report.clone() {
             write!(formatter, ", era_end: {}", ee)?;
@@ -644,7 +641,7 @@ impl BlockHash {
 
 impl Display for BlockHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "block-hash({})", self.0,)
+        write!(formatter, "block hash {}", self.0)
     }
 }
 
@@ -712,7 +709,7 @@ impl Display for BlockHashAndHeight {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "hash: {}, height {} ",
+            "{}, height {} ",
             self.block_hash, self.block_height
         )
     }
@@ -774,7 +771,7 @@ impl FromBytes for EraEnd {
 
 impl Display for EraEnd {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "era_report: {} ", self.era_report)
+        write!(formatter, "era end: {} ", self.era_report)
     }
 }
 
@@ -785,7 +782,7 @@ impl DocExample for EraEnd {
 }
 
 /// The header portion of a [`Block`](struct.Block.html).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     state_root_hash: Digest,
@@ -798,6 +795,9 @@ pub struct BlockHeader {
     era_id: EraId,
     height: u64,
     protocol_version: ProtocolVersion,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    block_hash: OnceCell<BlockHash>,
 }
 
 impl BlockHeader {
@@ -887,9 +887,18 @@ impl BlockHeader {
 
     /// Hash of the block header.
     pub fn block_hash(&self) -> BlockHash {
-        let serialized_header = Self::serialize(self)
-            .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-        BlockHash::new(Digest::hash(&serialized_header))
+        *self.block_hash.get_or_init(|| {
+            let serialized_header = Self::serialize(self)
+                .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
+            BlockHash::new(Digest::hash(&serialized_header))
+        })
+    }
+
+    /// Sets the block hash without recomputing it.
+    ///
+    /// Must only be called with the correct hash.
+    pub(crate) fn set_block_hash(&self, block_hash: BlockHash) {
+        self.block_hash.get_or_init(|| block_hash);
     }
 
     /// Returns true if block is Genesis.
@@ -908,14 +917,17 @@ impl Display for BlockHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block header parent hash {}, post-state hash {}, body hash {}, \
-            random bit {}, accumulated seed {}, timestamp {}",
+            "block header #{}, {}, timestamp {}, {}, parent {}, post-state hash {}, body hash {}, \
+             random bit {}, protocol version: {}",
+            self.height,
+            self.block_hash(),
+            self.timestamp,
+            self.era_id,
             self.parent_hash.inner(),
             self.state_root_hash,
             self.body_hash,
             self.random_bit,
-            self.accumulated_seed,
-            self.timestamp,
+            self.protocol_version,
         )?;
         if let Some(ee) = &self.era_end {
             write!(formatter, ", era_end: {}", ee)?;
@@ -977,6 +989,7 @@ impl FromBytes for BlockHeader {
             era_id,
             height,
             protocol_version,
+            block_hash: OnceCell::new(),
         };
         Ok((block_header, remainder))
     }
@@ -1008,7 +1021,7 @@ pub struct BlockHeaderWithMetadata {
 
 impl Display for BlockHeaderWithMetadata {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{} and {}", self.block_header, self.block_signatures)
+        write!(f, "{}, and {}", self.block_header, self.block_signatures)
     }
 }
 
@@ -1076,7 +1089,13 @@ impl BlockBody {
 
 impl Display for BlockBody {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{:?}", self)?;
+        write!(
+            formatter,
+            "block body proposed by {}, {} deploys, {} transfers",
+            self.proposer,
+            self.deploy_hashes.len(),
+            self.transfer_hashes.len()
+        )?;
         Ok(())
     }
 }
@@ -1183,7 +1202,7 @@ impl Display for BlockSignatures {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block signatures for hash: {} in era_id: {} with {} proofs",
+            "block signatures for {} in {} with {} proofs",
             self.block_hash,
             self.era_id,
             self.proofs.len()
@@ -1193,7 +1212,7 @@ impl Display for BlockSignatures {
 
 /// A proposed block after execution, with the resulting post-state-hash.  This is the core
 /// component of the Casper linear blockchain.
-#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
@@ -1243,6 +1262,7 @@ impl Block {
             era_id: finalized_block.era_id,
             height: finalized_block.height,
             protocol_version,
+            block_hash: OnceCell::new(),
         };
 
         Ok(Block {
@@ -1457,16 +1477,16 @@ impl Display for Block {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "executed block {}, parent hash {}, post-state hash {}, body hash {}, \
-             random bit {}, timestamp {}, era_id {}, height {}, protocol version: {}",
-            self.hash.inner(),
+            "executed block #{}, {}, timestamp {}, {}, parent {}, post-state hash {}, body hash {}, \
+             random bit {}, protocol version: {}",
+            self.header.height,
+            self.hash,
+            self.header.timestamp,
+            self.header.era_id,
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
             self.header.body_hash,
             self.header.random_bit,
-            self.header.timestamp,
-            self.header.era_id.value(),
-            self.header.height,
             self.header.protocol_version
         )?;
         if let Some(ee) = &self.header.era_end {
@@ -1530,7 +1550,7 @@ impl GossiperItem for Block {
 }
 
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockWithMetadata {
     pub block: Block,
     pub block_signatures: BlockSignatures,
@@ -1540,7 +1560,7 @@ impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Block at {} with hash {} with {} block signatures.",
+            "block #{}, {}, with {} block signatures",
             self.block.height(),
             self.block.hash(),
             self.block_signatures.proofs.len()
@@ -1571,7 +1591,7 @@ fn validate_block_header_and_signature_hash(
     Ok(())
 }
 
-#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 /// Wrapper around block and its deploys.
 pub struct BlockAndDeploys {
     /// Block part.
@@ -1582,7 +1602,7 @@ pub struct BlockAndDeploys {
 
 impl Display for BlockAndDeploys {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block {} and deploys", self.block.hash())
+        write!(f, "block {} and deploys", self.block.hash().inner())
     }
 }
 
@@ -1660,8 +1680,8 @@ impl Display for BlockExecutionResultsOrChunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "block execution results (or chunk) for block with hash={}",
-            self.block_hash
+            "block execution results (or chunk) for block {}",
+            self.block_hash.inner()
         )
     }
 }
@@ -1726,8 +1746,8 @@ impl Display for BlockExecutionResultsOrChunkId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "BlockExecutionResultsOrChunkId({}, {})",
-            self.chunk_index, self.block_hash
+            "execution results for {} or chunk #{}",
+            self.block_hash, self.chunk_index
         )
     }
 }
@@ -1893,6 +1913,7 @@ pub(crate) mod json_compatibility {
                 era_id: block_header.era_id,
                 height: block_header.height,
                 protocol_version: block_header.protocol_version,
+                block_hash: OnceCell::new(),
             }
         }
     }
@@ -2175,8 +2196,8 @@ impl Display for FinalitySignature {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "finality signature for block hash {}, from {}",
-            &self.block_hash, &self.public_key
+            "finality signature for {}, from {}",
+            self.block_hash, self.public_key
         )
     }
 }
@@ -2222,7 +2243,7 @@ impl Display for FinalitySignatureId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "finality signature id for block hash {}, from {}",
+            "finality signature id for {}, from {}",
             self.block_hash, self.public_key
         )
     }

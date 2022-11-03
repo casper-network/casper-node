@@ -141,7 +141,8 @@ impl Chainspec {
         ))
     }
 
-    /// The maximum number of blocks per era, based on minimum block time, era duration and era height.
+    /// The maximum number of blocks per era, based on minimum block time, era duration and era
+    /// height.
     pub(crate) fn max_blocks_per_era(&self) -> u64 {
         let era_millis = self.core_config.era_duration.millis();
         let round_millis = self.highway_config.min_round_length().millis();

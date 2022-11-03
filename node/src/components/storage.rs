@@ -1814,7 +1814,7 @@ impl Storage {
             return Ok(None);
         }
 
-        self.validate_block_header_hash(&block_header, block_hash)?;
+        block_header.set_block_hash(*block_hash);
         Ok(Some(block_header))
     }
 
@@ -1927,7 +1927,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        self.validate_block_header_hash(&block_header, block_hash)?;
+        block_header.set_block_hash(*block_hash);
         Ok(Some(block_header))
     }
 
@@ -1952,23 +1952,6 @@ impl Storage {
             block_header,
             block_signatures,
         }))
-    }
-
-    /// Validates the block header hash against the expected block hash.
-    fn validate_block_header_hash(
-        &self,
-        block_header: &BlockHeader,
-        block_hash: &BlockHash,
-    ) -> Result<(), FatalStorageError> {
-        let found_block_header_hash = block_header.block_hash();
-        if found_block_header_hash != *block_hash {
-            return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
-                queried_block_hash_bytes: block_hash.as_ref().to_vec(),
-                found_block_header_hash,
-                block_header: Box::new(block_header.clone()),
-            });
-        };
-        Ok(())
     }
 
     /// Checks whether a block at the given height exists in the block height index (and, since the

@@ -1,7 +1,9 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use casper_execution_engine::storage::trie::TrieRaw;
+use casper_types::ExecutionResult;
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -73,15 +75,30 @@ impl<V> ValueOrChunk<V> {
     }
 }
 
-impl<V: Debug> Display for ValueOrChunk<V> {
+impl Display for ValueOrChunk<TrieRaw> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ValueOrChunk::Value(data) => f.debug_tuple("Value").field(data).finish(),
-            ValueOrChunk::ChunkWithProof(chunk) => f
-                .debug_struct("ChunkWithProof")
-                .field("index", &chunk.proof().index())
-                .field("hash", &chunk.proof().root_hash())
-                .finish(),
+            ValueOrChunk::Value(data) => write!(f, "value {:10}", HexFmt(data.inner())),
+            ValueOrChunk::ChunkWithProof(chunk) => write!(
+                f,
+                "chunk #{} with proof, root hash {}",
+                chunk.proof().index(),
+                chunk.proof().root_hash()
+            ),
+        }
+    }
+}
+
+impl Display for ValueOrChunk<Vec<ExecutionResult>> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            ValueOrChunk::Value(data) => write!(f, "value: {} execution results", data.len()),
+            ValueOrChunk::ChunkWithProof(chunk) => write!(
+                f,
+                "chunk #{} with proof, root hash {}",
+                chunk.proof().index(),
+                chunk.proof().root_hash()
+            ),
         }
     }
 }
