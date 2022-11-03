@@ -28,6 +28,12 @@ use crate::{
     NodeRng,
 };
 
+/// Cranking delay when encountered a non-switch block when checking the validator status.
+const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
+
+/// Allow the runner to shut down cleanly before shutting down the reactor.
+const DELAY_BEFORE_SHUTDOWN: Duration = Duration::from_secs(2);
+
 impl MainReactor {
     pub(super) fn crank(
         &mut self,
@@ -51,8 +57,6 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
-        const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
-
         match self.state {
             ReactorState::Initialize => match self.initialize_next_component() {
                 Some(effects) => (Duration::ZERO, effects),
@@ -133,7 +137,7 @@ impl MainReactor {
             },
             ReactorState::Upgrade => {
                 // noop ... patiently wait for the runner to shut down cleanly
-                (Duration::from_secs(1), Effects::new())
+                (DELAY_BEFORE_SHUTDOWN, Effects::new())
             }
         }
     }
