@@ -51,6 +51,8 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
+        const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
+
         match self.state {
             ReactorState::Initialize => match self.initialize_next_component() {
                 Some(effects) => (Duration::ZERO, effects),
@@ -111,7 +113,9 @@ impl MainReactor {
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
-                ValidateInstruction::NonSwitchBlock => (Duration::from_secs(2), Effects::new()),
+                ValidateInstruction::NonSwitchBlock => {
+                    (VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK, Effects::new())
+                }
                 ValidateInstruction::KeepUp => {
                     info!("Validate: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
