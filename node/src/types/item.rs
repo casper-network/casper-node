@@ -9,8 +9,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use thiserror::Error;
 
-use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
+use casper_storage::global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
 use crate::types::{BlockHash, BlockHeader};
 

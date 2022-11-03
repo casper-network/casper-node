@@ -1,7 +1,7 @@
+use casper_types::{account::AccountHash, U512};
 use clap::ArgMatches;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_types::{account::AccountHash, U512};
 
 use crate::{
     generic::{

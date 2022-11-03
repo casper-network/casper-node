@@ -381,8 +381,8 @@ name = "casper-engine-test-support"
 version = "2.2.0"
 dependencies = [
  "casper-execution-engine",
- "casper-global-state",
  "casper-hashing",
+ "casper-storage",
  "casper-types 1.5.0",
  "filesize",
  "humantime",
@@ -406,8 +406,8 @@ dependencies = [
  "casper-contract 1.4.4",
  "casper-engine-test-support",
  "casper-execution-engine",
- "casper-global-state",
  "casper-hashing",
+ "casper-storage",
  "casper-types 1.5.0",
  "clap 2.34.0",
  "criterion",
@@ -442,8 +442,8 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "base16",
- "casper-global-state",
  "casper-hashing",
+ "casper-storage",
  "casper-types 1.5.0",
  "criterion",
  "datasize",
@@ -474,27 +474,6 @@ dependencies = [
  "tracing",
  "uint",
  "wasmi",
-]
-
-[[package]]
-name = "casper-global-state"
-version = "1.4.3"
-dependencies = [
- "anyhow",
- "bincode",
- "casper-hashing",
- "casper-types 1.5.0",
- "datasize",
- "lmdb",
- "num",
- "proptest",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -553,10 +532,10 @@ dependencies = [
  "bincode",
  "bytes",
  "casper-execution-engine",
- "casper-global-state",
  "casper-hashing",
  "casper-json-rpc",
  "casper-node-macros",
+ "casper-storage",
  "casper-types 1.5.0",
  "datasize",
  "derive_more",
@@ -639,6 +618,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "casper-storage"
+version = "1.4.3"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "casper-hashing",
+ "casper-types 1.5.0",
+ "datasize",
+ "lmdb",
+ "num",
+ "proptest",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2160,8 +2160,8 @@ dependencies = [
  "base64",
  "casper-engine-test-support",
  "casper-execution-engine",
- "casper-global-state",
  "casper-hashing",
+ "casper-storage",
  "casper-types 1.5.0",
  "clap 2.34.0",
  "lmdb",
@@ -3946,9 +3946,9 @@ dependencies = [
  "anyhow",
  "casper-contract 1.4.4",
  "casper-execution-engine",
- "casper-global-state",
  "casper-hashing",
  "casper-node",
+ "casper-storage",
  "casper-types 1.5.0",
  "env_logger 0.9.0",
  "futures",

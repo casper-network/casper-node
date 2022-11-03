@@ -8,10 +8,14 @@ use casper_execution_engine::core::engine_state::{
     ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
     StepRequest, StepSuccess,
 };
-use casper_global_state::{
-    shared::{transform::Transform, AdditiveMap, CorrelationId},
-    storage::global_state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+use casper_storage::{
+    data_access_layer::DataAccessLayer,
+    global_state::{
+        shared::{transform::Transform, AdditiveMap, CorrelationId},
+        storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+    },
 };
+
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::ToBytes, CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion,
@@ -35,7 +39,7 @@ use super::SpeculativeExecutionState;
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,

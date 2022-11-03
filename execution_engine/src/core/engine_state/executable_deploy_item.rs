@@ -18,8 +18,8 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use casper_global_state::{shared::CorrelationId, storage::global_state::StateReader};
 use casper_hashing::Digest;
+use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, NamedKeys, DEFAULT_ENTRY_POINT_NAME},

@@ -25,8 +25,8 @@ use casper_execution_engine::core::engine_state::{
     query::{QueryRequest, QueryResult},
     UpgradeConfig, UpgradeSuccess,
 };
-use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
+use casper_storage::global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
     PublicKey, TimeDiff, Transfer, URef,

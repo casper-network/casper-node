@@ -4,7 +4,7 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use casper_global_state::storage::trie::TrieOrChunkIdDisplay;
+use casper_storage::global_state::storage::trie::TrieOrChunkIdDisplay;
 use datasize::DataSize;
 use serde::Serialize;
 

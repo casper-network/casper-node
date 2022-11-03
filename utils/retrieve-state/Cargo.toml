@@ -8,7 +8,7 @@ edition = "2018"
 anyhow = "1"
 casper-contract = { path = "../../smart_contracts/contract", default-features = false }
 casper-execution-engine = { path = "../../execution_engine" }
-casper-global-state = { version = "1.4.3", path = "../../global_state" }
+casper-storage = { version = "1.4.3", path = "../../storage" }
 casper-hashing = { path = "../../hashing" }
 casper-node = { path = "../../node" }
 casper-types = { path = "../../types", features = ["std"] }

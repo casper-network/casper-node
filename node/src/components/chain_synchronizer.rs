@@ -11,7 +11,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, info};
 
-use casper_global_state::storage::trie::TrieOrChunk;
+use casper_storage::global_state::storage::trie::TrieOrChunk;
 
 use crate::{
     components::{

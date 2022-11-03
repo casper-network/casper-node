@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use casper_global_state::shared::transform::Transform;
+use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
     bytesrepr::FromBytes, CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };

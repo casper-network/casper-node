@@ -20,7 +20,7 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-global-state = { version = "1.4.3", path = "../global_state" }
+casper-storage = { version = "1.4.3", path = "../storage" }
 casper-execution-engine = { version = "2.0.1", path = "../execution_engine" }
 casper-hashing = { version = "1.4.3", path = "../hashing" }
 casper-json-rpc = { version = "0.1.0", path = "../json_rpc" }

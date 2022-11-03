@@ -22,8 +22,8 @@ use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
+use casper_storage::global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_types::{bytesrepr::Bytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
