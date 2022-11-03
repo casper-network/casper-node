@@ -144,8 +144,9 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
 
 impl<Item, A, S, AckErr> Sink<Item> for BackpressuredSink<S, A, Item>
 where
-    // TODO: `Unpin` trait bounds can be
-    // removed by using `map_unchecked` if
+    // TODO: `Unpin` trait bounds
+    // can be removed by using
+    // `map_unchecked` if
     // necessary.
     S: Sink<Item> + Unpin,
     Self: Unpin,
@@ -704,7 +705,8 @@ mod tests {
         assert_eq!(server.last_received, 4);
         assert_eq!(server.items_processed, 2);
 
-        // Send another item. ACKs will be received at the start, so while it looks like as if we cannot send the item initially, the incoming ACK(2) will fix this.
+        // Send another item. ACKs will be received at the start, so while it looks like as if we
+        // cannot send the item initially, the incoming ACK(2) will fix this.
         assert_eq!(client.last_request, 4);
         assert_eq!(client.received_ack, 0);
         client.encode_and_send(4u8).now_or_never().unwrap().unwrap();
