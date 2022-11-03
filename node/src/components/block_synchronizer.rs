@@ -16,7 +16,7 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -98,8 +98,8 @@ impl<REv> ReactorEvent for REv where
 #[derive(Debug)]
 pub(crate) enum BlockSynchronizerProgress {
     Idle,
-    Syncing(BlockHash, Option<u64>, Timestamp),
-    Synced(BlockHash, u64),
+    Syncing(BlockHash, Option<u64>, Option<EraId>, Timestamp),
+    Synced(BlockHash, u64, Option<EraId>),
 }
 
 #[derive(DataSize, Debug)]
@@ -149,6 +149,7 @@ impl BlockSynchronizer {
                             return BlockSynchronizerProgress::Synced(
                                 builder.block_hash(),
                                 block_height,
+                                builder.era_id(),
                             )
                         }
                     }
@@ -156,6 +157,7 @@ impl BlockSynchronizer {
                 BlockSynchronizerProgress::Syncing(
                     builder.block_hash(),
                     builder.block_height(),
+                    builder.era_id(),
                     builder.last_progress_time().max(
                         self.global_sync
                             .last_progress()
@@ -178,6 +180,7 @@ impl BlockSynchronizer {
                             return BlockSynchronizerProgress::Synced(
                                 builder.block_hash(),
                                 block_height,
+                                builder.era_id(),
                             )
                         }
                     }
@@ -185,6 +188,7 @@ impl BlockSynchronizer {
                 BlockSynchronizerProgress::Syncing(
                     builder.block_hash(),
                     builder.block_height(),
+                    builder.era_id(),
                     builder.last_progress_time().max(
                         self.global_sync
                             .last_progress()

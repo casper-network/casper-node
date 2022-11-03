@@ -243,7 +243,11 @@ impl MainReactor {
                                 if block.header().is_switch_block() {
                                     self.switch_block = Some(block.id());
                                 }
-                                StartingWith::LocalTip(*block.hash(), block.height())
+                                StartingWith::LocalTip(
+                                    *block.hash(),
+                                    block.height(),
+                                    block.header().era_id(),
+                                )
                             }
                             Ok(None) if self.switch_block.is_none() => {
                                 if let ActivationPoint::Genesis(timestamp) =
@@ -300,15 +304,18 @@ impl MainReactor {
                                     Ok(Some(block)) => {
                                         // ++ : leap w/ the higher of local tip or trusted hash
                                         let trusted_height = trusted_header.height();
+                                        let trusted_era_id = trusted_header.era_id();
                                         if trusted_height > block.height() {
                                             StartingWith::BlockIdentifier(
                                                 trusted_hash,
                                                 trusted_height,
+                                                Some(trusted_era_id),
                                             )
                                         } else {
                                             StartingWith::BlockIdentifier(
                                                 *block.hash(),
                                                 block.height(),
+                                                Some(block.header().era_id()),
                                             )
                                         }
                                     }
@@ -340,7 +347,12 @@ impl MainReactor {
                     }
                 }
             }
-            BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
+            BlockSynchronizerProgress::Syncing(
+                block_hash,
+                maybe_block_height,
+                maybe_era_id,
+                last_progress,
+            ) => {
                 // do idleness / reattempt checking
                 if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
                     self.attempts += 1;
@@ -358,11 +370,13 @@ impl MainReactor {
                 }
                 match maybe_block_height {
                     None => StartingWith::Hash(block_hash),
-                    Some(block_height) => StartingWith::BlockIdentifier(block_hash, block_height),
+                    Some(block_height) => {
+                        StartingWith::BlockIdentifier(block_hash, block_height, maybe_era_id)
+                    }
                 }
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
-                StartingWith::SyncedBlockIdentifier(block_hash, block_height)
+            BlockSynchronizerProgress::Synced(block_hash, block_height, maybe_era_id) => {
+                StartingWith::SyncedBlockIdentifier(block_hash, block_height, maybe_era_id)
             }
         };
         debug!("CatchUp: starting with {:?}", starting_with);
@@ -496,7 +510,9 @@ impl MainReactor {
 
         let starting_with = match self.block_synchronizer.keep_up_progress() {
             BlockSynchronizerProgress::Idle => match self.storage.read_highest_complete_block() {
-                Ok(Some(block)) => StartingWith::LocalTip(block.id(), block.height()),
+                Ok(Some(block)) => {
+                    StartingWith::LocalTip(block.id(), block.height(), block.header().era_id())
+                }
                 Ok(None) => {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
                     return KeepUpInstruction::CatchUp;
@@ -511,7 +527,7 @@ impl MainReactor {
                     )
                 }
             },
-            BlockSynchronizerProgress::Syncing(block_hash, block_height, last_progress) => {
+            BlockSynchronizerProgress::Syncing(block_hash, block_height, era_id, last_progress) => {
                 // do idleness / reattempt checking
                 if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
                     self.attempts += 1;
@@ -525,12 +541,12 @@ impl MainReactor {
                 }
                 match block_height {
                     None => StartingWith::Hash(block_hash),
-                    Some(height) => StartingWith::BlockIdentifier(block_hash, height),
+                    Some(height) => StartingWith::BlockIdentifier(block_hash, height, era_id),
                 }
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+            BlockSynchronizerProgress::Synced(block_hash, block_height, maybe_era_id) => {
                 debug!("KeepUp: executable block: {}", block_hash);
-                StartingWith::ExecutableBlock(block_hash, block_height)
+                StartingWith::ExecutableBlock(block_hash, block_height, maybe_era_id)
             }
         };
 

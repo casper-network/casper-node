@@ -263,11 +263,20 @@ impl reactor::Reactor for MainReactor {
 
         // chain / deploy management
         let highest_block_height = storage.read_highest_block_height();
+        let highest_block_era_id = if let Some(height) = highest_block_height {
+            storage
+                .read_block_header_by_height(height)?
+                .map(|header| header.era_id())
+        } else {
+            None
+        };
 
         let block_accumulator = BlockAccumulator::new(
             config.block_accumulator,
             validator_matrix.clone(),
             highest_block_height,
+            highest_block_era_id,
+            chainspec.core_config.unbonding_delay,
         );
         let block_synchronizer =
             BlockSynchronizer::new(config.block_synchronizer, validator_matrix.clone());

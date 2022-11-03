@@ -51,7 +51,9 @@ impl Display for Event {
             Event::ValidatorMatrixUpdated => {
                 write!(f, "validator matrix updated")
             }
-            Event::RegisterPeer { block_hash, sender, .. } => {
+            Event::RegisterPeer {
+                block_hash, sender, ..
+            } => {
                 write!(
                     f,
                     "registering peer {} after gossip: {}",
