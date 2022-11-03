@@ -280,7 +280,7 @@ impl MainReactor {
                                 return CatchUpInstruction::CheckLater(
                                     "CatchUp: waiting for genesis immediate switch block to be stored"
                                         .to_string(),
-                                    Duration::from_secs(1),
+                                    self.control_logic_default_delay.into()
                                 );
                             }
                             Err(err) => {
@@ -403,12 +403,15 @@ impl MainReactor {
                             })
                         });
                         info!("CatchUp: initiating sync leap for: {}", block_hash);
-                        return CatchUpInstruction::Do(Duration::from_secs(1), effects);
+                        return CatchUpInstruction::Do(
+                            self.control_logic_default_delay.into(),
+                            effects,
+                        );
                     }
                     LeapStatus::Awaiting { .. } => {
                         return CatchUpInstruction::CheckLater(
                             "sync leaper is awaiting response".to_string(),
-                            Duration::from_secs(2),
+                            self.control_logic_default_delay.into(),
                         );
                     }
                     LeapStatus::Received {
@@ -568,7 +571,7 @@ impl MainReactor {
                         if effects.is_empty() {
                             KeepUpInstruction::CheckLater(
                                 "KeepUp is keeping up".to_string(),
-                                Duration::from_secs(1),
+                                self.control_logic_default_delay.into(),
                             )
                         } else {
                             KeepUpInstruction::Do(Duration::ZERO, effects)
@@ -581,7 +584,7 @@ impl MainReactor {
             }
             SyncInstruction::CaughtUp => KeepUpInstruction::CheckLater(
                 "KeepUp: at perceived tip of chain".to_string(),
-                Duration::from_secs(1),
+                self.control_logic_default_delay.into(),
             ),
         }
     }
@@ -604,7 +607,7 @@ impl MainReactor {
                 if effects.is_empty() {
                     ValidateInstruction::CheckLater(
                         "consensus state is up to date".to_string(),
-                        Duration::from_secs(2),
+                        self.control_logic_default_delay.into(),
                     )
                 } else {
                     ValidateInstruction::Do(Duration::ZERO, effects)

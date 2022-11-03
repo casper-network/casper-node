@@ -129,6 +129,7 @@ pub(crate) struct MainReactor {
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
+    control_logic_default_delay: TimeDiff,
     recent_switch_block_headers: Vec<BlockHeader>,
 }
 
@@ -312,6 +313,7 @@ impl reactor::Reactor for MainReactor {
             last_progress: Timestamp::now(),
             max_attempts: config.node.max_attempts,
             idle_tolerance: config.node.idle_tolerance,
+            control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,

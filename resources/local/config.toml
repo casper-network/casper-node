@@ -35,6 +35,8 @@ idle_tolerance = '20min'
 # When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
 max_attempts = 3
 
+# Default delay for the control events that have no dedicated delay requirements.
+control_logic_default_delay = '1sec'
 
 # =================================
 # Configuration options for logging

@@ -15,6 +15,7 @@ const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
 const DEFAULT_IDLE_TOLERANCE: &str = "20min";
 const DEFAULT_MAX_ATTEMPTS: usize = 3;
+const DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY: &str = "1sec";
 
 /// Node fast-sync configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
@@ -51,8 +52,12 @@ pub struct NodeConfig {
     /// Idle time after which the syncing process is considered stalled.
     pub idle_tolerance: TimeDiff,
 
-    /// When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
+    /// When the syncing process is considered stalled, it'll be retried up to `max_attempts`
+    /// times.
     pub max_attempts: usize,
+
+    /// Default delay for the control events that have no dedicated delay requirements.
+    pub control_logic_default_delay: TimeDiff,
 }
 
 impl Default for NodeConfig {
@@ -67,6 +72,7 @@ impl Default for NodeConfig {
             sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,
             idle_tolerance: DEFAULT_IDLE_TOLERANCE.parse().unwrap(),
             max_attempts: DEFAULT_MAX_ATTEMPTS,
+            control_logic_default_delay: DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY.parse().unwrap(),
             sync_to_genesis: false,
         }
     }
