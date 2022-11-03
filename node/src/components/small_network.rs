@@ -1031,9 +1031,9 @@ where
 
                     responder.respond(symmetric_validator_peers).ignore()
                 }
-                NetworkInfoRequest::Insight { responder } => {
-                    responder.respond(NetworkInsights { dummy: 1234 }).ignore()
-                }
+                NetworkInfoRequest::Insight { responder } => responder
+                    .respond(NetworkInsights::collect_from_component(self))
+                    .ignore(),
             },
             Event::PeerAddressReceived(gossiped_address) => {
                 let requests = self.outgoing_manager.learn_addr(
@@ -1145,7 +1145,47 @@ where
 
 #[derive(Debug, Serialize)]
 pub(crate) struct NetworkInsights {
-    dummy: u32,
+    /// The active era as seen by the networking component.
+    net_active_era: EraId,
+    /// The list of node IDs that are being preferred due to being active validators.
+    priviledged_active_outgoing_nodes: Option<HashSet<PublicKey>>,
+    /// The list of node IDs that are being preferred due to being upcoming validators.
+    priviledged_upcoming_outgoing_nodes: Option<HashSet<PublicKey>>,
+    /// The amount of bandwidth allowance currently buffered, ready to be spent.
+    unspent_bandwidth_allowance_bytes: Option<i64>,
+    // TODO: Add connection state.
+    /// List of outgoing connections.
+    outgoing_connections: HashMap<NodeId, SocketAddr>,
+    incoming_connections: HashMap<NodeId, SocketAddr>,
+    seen_symmetry: HashMap<NodeId, ()>,
+}
+
+#[derive(Debug, Serialize)]
+enum OutgoingStateInsight {}
+
+impl NetworkInsights {
+    fn collect_from_component<REv, P>(net: &SmallNetwork<REv, P>) -> Self
+    where
+        P: Payload,
+    {
+        let (priviledged_active_outgoing_nodes, priviledged_upcoming_outgoing_nodes) = net
+            .outgoing_limiter
+            .debug_inspect_validators()
+            .map(|(a, b)| (Some(a), Some(b)))
+            .unwrap_or_default();
+
+        NetworkInsights {
+            net_active_era: net.active_era,
+            priviledged_active_outgoing_nodes,
+            priviledged_upcoming_outgoing_nodes,
+            unspent_bandwidth_allowance_bytes: net
+                .outgoing_limiter
+                .debug_inspect_unspent_allowance(),
+            outgoing_connections: Default::default(),
+            incoming_connections: Default::default(),
+            seen_symmetry: Default::default(),
+        }
+    }
 }
 
 impl Display for NetworkInsights {
