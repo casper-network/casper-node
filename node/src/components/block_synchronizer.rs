@@ -10,8 +10,6 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
-use std::time::Duration;
-
 use datasize::DataSize;
 use either::Either;
 use tracing::{debug, error, warn};
@@ -111,6 +109,7 @@ pub(crate) struct BlockSynchronizer {
     timeout: TimeDiff,
     peer_refresh_interval: TimeDiff,
     need_next_interval: TimeDiff,
+    disconnect_dishonest_peers_interval: TimeDiff,
     // we pause block_syncing if a node is actively validating
     paused: bool,
 
@@ -130,6 +129,7 @@ impl BlockSynchronizer {
             timeout: config.timeout(),
             peer_refresh_interval: config.peer_refresh_interval(),
             need_next_interval: config.need_next_interval(),
+            disconnect_dishonest_peers_interval: config.disconnect_dishonest_peers_interval(),
             paused: false,
             forward: None,
             historical: None,
@@ -894,7 +894,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 self.status = ComponentStatus::Initialized;
                 // start dishonest peer management on initialization
                 effect_builder
-                    .set_timeout(Duration::from_secs(10))
+                    .set_timeout(self.disconnect_dishonest_peers_interval.into())
                     .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
             }
             (ComponentStatus::Uninitialized, _) => {
@@ -928,9 +928,13 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                             })
                             .collect();
                         self.flush_dishonest_peers();
-                        effects.extend(effect_builder.set_timeout(Duration::from_secs(10)).event(
-                            move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers),
-                        ));
+                        effects.extend(
+                            effect_builder
+                                .set_timeout(self.disconnect_dishonest_peers_interval.into())
+                                .event(move |_| {
+                                    Event::Request(BlockSynchronizerRequest::DishonestPeers)
+                                }),
+                        );
                         effects
                     }
 
