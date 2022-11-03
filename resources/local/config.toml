@@ -499,3 +499,12 @@ socket_path = "debug.socket"
 # socket to be only accessible by the user the node runs as. A more relaxed variant is `0o007`,
 # which allows for group access as well.
 socket_umask = 0o077
+
+
+# =============================================
+# Configuration options for the upgrade watcher
+# =============================================
+[upgrade_watcher]
+
+# How often to scan file system for available upgrades.
+upgrade_check_interval = '30sec'
