@@ -29,6 +29,14 @@ sync_peer_redemption_interval = 0
 # Whether to synchronize all data back to genesis when joining.
 sync_to_genesis = true
 
+# Idle time after which the syncing process is considered stalled.
+idle_tolerance = '20min'
+
+# When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
+max_attempts = 3
+
+# Default delay for the control events that have no dedicated delay requirements.
+control_logic_default_delay = '1sec'
 
 # =================================
 # Configuration options for logging
@@ -190,6 +198,9 @@ tarpit_chance = 0.2
 
 # How long peers remain blocked after they get blacklisted.
 blocklist_retain_duration = '10min'
+
+# Node is considered a validator if it was a validator in latest N eras.
+eras_to_determine_if_validator = 3
 
 # Weights for impact estimation of incoming messages, used in combination with
 # `max_incoming_message_rate_non_validators`.
@@ -421,6 +432,10 @@ peer_refresh_interval = '90sec'
 # Time interval for the node to check what the block synchronizer needs to acquire next.
 need_next_interval = '30ms'
 
+# Time interval for recurring disconnection of dishonest peers.
+disconnect_dishonest_peers_interval = '10sec'
+
+
 # =================================
 # Configuration options for fetcher
 # =================================
@@ -484,3 +499,12 @@ socket_path = "debug.socket"
 # socket to be only accessible by the user the node runs as. A more relaxed variant is `0o007`,
 # which allows for group access as well.
 socket_umask = 0o077
+
+
+# =============================================
+# Configuration options for the upgrade watcher
+# =============================================
+[upgrade_watcher]
+
+# How often to scan file system for available upgrades.
+upgrade_check_interval = '30sec'

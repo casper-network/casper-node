@@ -454,7 +454,7 @@ get_from_peer_timeout = '10sec'
 
 # Optional maximum size of the database to use for the global state store.
 #
-# If unset, defaults to 32,212,254,720 == 30 GiB.
+# If unset, defaults to 805,306,368,000 == 750 GiB.
 #
 # The size should be a multiple of the OS page size.
 max_global_state_size = 32_212_254_720
