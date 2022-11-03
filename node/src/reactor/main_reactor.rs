@@ -488,6 +488,14 @@ impl reactor::Reactor for MainReactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
+                item_id: gossiped_address,
+                ..
+            }) => {
+                error!(%gossiped_address, "gossiper should not announce gossiped address");
+                // Unreachable as well.
+                Effects::new()
+            }
             MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
             )) => {
@@ -704,6 +712,21 @@ impl reactor::Reactor for MainReactor {
                 self.block_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
+                item_id: gossiped_block_id,
+                sender,
+            }) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::RegisterPeer {
+                        block_hash: gossiped_block_id,
+                        era_id: None,
+                        sender,
+                    },
+                ),
+            ),
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_block_id,
             )) => {
@@ -761,6 +784,23 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::FinalitySignatureGossiper,
                 self.finality_signature_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::FinalitySignatureGossiperAnnouncement(
+                GossiperAnnouncement::GossipReceived {
+                    item_id: gossiped_finality_signature_id,
+                    sender,
+                },
+            ) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::RegisterPeer {
+                        block_hash: gossiped_finality_signature_id.block_hash,
+                        era_id: Some(gossiped_finality_signature_id.era_id),
+                        sender,
+                    },
+                ),
             ),
             MainEvent::FinalitySignatureGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
@@ -841,6 +881,13 @@ impl reactor::Reactor for MainReactor {
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
+            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
+                item_id: gossiped_deploy_id,
+                ..
+            }) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce gossiped deploy");
+                Effects::new()
+            }
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {

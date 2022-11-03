@@ -940,6 +940,20 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that we have finished gossiping the indicated item.
+    pub(crate) async fn announce_gossip_received<T>(self, item_id: T::Id, sender: NodeId)
+    where
+        REv: From<GossiperAnnouncement<T>>,
+        T: GossiperItem,
+    {
+        self.event_queue
+            .schedule(
+                GossiperAnnouncement::GossipReceived { item_id, sender },
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that we have finished gossiping the indicated item.
     pub(crate) async fn announce_finished_gossiping<T>(self, item_id: T::Id)
     where
         REv: From<GossiperAnnouncement<T>>,

@@ -291,6 +291,9 @@ impl Display for PeerBehaviorAnnouncement {
 /// A Gossiper announcement.
 #[derive(Debug)]
 pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
+    /// A new gossip has been received, but not necessarily the full item.
+    GossipReceived { item_id: T::Id, sender: NodeId },
+
     /// A new item has been received, where the item's ID is the complete item.
     NewCompleteItem(T::Id),
 
@@ -304,6 +307,9 @@ pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
 impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            GossiperAnnouncement::GossipReceived { item_id, sender } => {
+                write!(f, "new gossiped item {} from sender {}", item_id, sender)
+            }
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
             GossiperAnnouncement::NewItemBody { item, sender } => {
                 write!(f, "new item body {} from {}", item.id(), sender)

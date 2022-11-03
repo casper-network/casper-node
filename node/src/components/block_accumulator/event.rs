@@ -1,10 +1,11 @@
 use std::fmt::{self, Display, Formatter};
 
+use casper_types::EraId;
 use derive_more::From;
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, FinalitySignature, NodeId},
+    types::{Block, BlockHash, FinalitySignature, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -12,6 +13,11 @@ pub(crate) enum Event {
     #[from]
     Request(BlockAccumulatorRequest),
     ValidatorMatrixUpdated,
+    RegisterPeer {
+        block_hash: BlockHash,
+        era_id: Option<EraId>,
+        sender: NodeId,
+    },
     ReceivedBlock {
         block: Box<Block>,
         sender: NodeId,
@@ -44,6 +50,13 @@ impl Display for Event {
             }
             Event::ValidatorMatrixUpdated => {
                 write!(f, "validator matrix updated")
+            }
+            Event::RegisterPeer { block_hash, sender, .. } => {
+                write!(
+                    f,
+                    "registering peer {} after gossip: {}",
+                    sender, block_hash
+                )
             }
             Event::ReceivedBlock { block, sender } => {
                 write!(f, "received {} from {}", block, sender)

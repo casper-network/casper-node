@@ -11,7 +11,7 @@ use datasize::DataSize;
 use futures::FutureExt;
 use tracing::{debug, error, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{TimeDiff, Timestamp, EraId};
 
 use crate::{
     components::Component,
@@ -45,6 +45,7 @@ pub(crate) struct BlockAccumulator {
     dead_air_interval: TimeDiff,
     purge_interval: TimeDiff,
 
+    // todo!() - Consider a ubound for both the acceptors and the children maps.
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
 
@@ -184,6 +185,25 @@ impl BlockAccumulator {
             Some(block_acceptor.block_hash())
         } else {
             None
+        }
+    }
+
+    fn register_peer(&mut self, block_hash: BlockHash, maybe_era_id: Option<EraId>, sender: NodeId) {
+        // todo!: for old blocks, don't create acceptor.
+        match maybe_era_id {
+            Some(_era_id) => {
+                let acceptor = self
+                    .block_acceptors
+                    .entry(block_hash)
+                    .or_insert_with(|| BlockAcceptor::new(block_hash, vec![]));
+                acceptor.register_peer(sender);  
+            },
+            None => {
+                self
+                    .block_acceptors
+                    .get_mut(&block_hash)
+                    .map(|acceptor| acceptor.register_peer(sender));
+            },
         }
     }
 
@@ -446,6 +466,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
             Event::ValidatorMatrixUpdated => self.handle_validators(effect_builder),
+            Event::RegisterPeer { block_hash, era_id, sender } => {
+                self.register_peer(block_hash, era_id, sender);
+                Effects::new()
+            }
             Event::ReceivedBlock { block, sender } => {
                 self.register_block(effect_builder, *block, Some(sender))
             }

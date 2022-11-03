@@ -376,8 +376,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         } else {
             self.table.new_partial_data(&item_id, sender)
         };
-
-        match action {
+        let mut effects = match action {
             GossipAction::ShouldGossip(should_gossip) => {
                 debug!(item=%item_id, %sender, %should_gossip, "received gossip request");
                 self.metrics.items_received.inc();
@@ -418,11 +417,12 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                     is_already_held: false,
                 };
                 let mut effects = effect_builder.send_message(sender, reply).ignore();
+                let item_id_clone = item_id.clone();
                 effects.extend(
                     effect_builder
                         .set_timeout(self.get_from_peer_timeout)
                         .event(move |_| Event::CheckGetFromPeerTimeout {
-                            item_id,
+                            item_id: item_id_clone,
                             peer: sender,
                         }),
                 );
@@ -440,12 +440,22 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 let mut effects = effect_builder.send_message(sender, reply).ignore();
 
                 if action == GossipAction::AnnounceFinished {
-                    effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
+                    effects.extend(
+                        effect_builder
+                            .announce_finished_gossiping(item_id.clone())
+                            .ignore(),
+                    );
                 }
 
                 effects
             }
-        }
+        };
+        effects.extend(
+            effect_builder
+                .announce_gossip_received(item_id, sender)
+                .ignore(),
+        );
+        effects
     }
 
     /// Handles an incoming gossip response from a peer on the network.
