@@ -10,7 +10,7 @@ The NCTL library can be used to compile the node's binary set, i.e. node, client
 
 ### nctl-compile
 
-Compiles casper node, node launcher, client + client contracts using `make` + `cargo`.  
+Compiles casper node, node launcher, client + client contracts using `make` + `cargo`. Note: this command has an optional -d flag that can be use to compile in debug mode. Both the environment variable, as well as the new command line flag, will allow for debug compilation.
 
 ### nctl-compile-node
 
