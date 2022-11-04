@@ -348,7 +348,7 @@ impl Display for NetworkInsights {
         }
 
         f.write_str("connection symmetries:\n")?;
-        writeln!(f, "peer ID      ")?;
+        writeln!(f, "peer ID      symmetry")?;
         for (peer_id, symmetry) in &self.connection_symmetries {
             write!(f, "{:10}  ", peer_id)?;
             symmetry.fmt_time_relative(now, f)?;
