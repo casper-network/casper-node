@@ -171,12 +171,20 @@ impl FetcherItem for SyncLeap {
         }
 
         let protocol_version = chainspec.protocol_version();
-        if headers
-            .values()
-            .any(|header| header.protocol_version() != protocol_version)
-            && !chainspec
-                .protocol_config
-                .is_last_block_before_activation(&self.trusted_block_header)
+        if self.signed_block_headers.is_empty() {
+            if self.trusted_block_header.protocol_version() != protocol_version
+                && !chainspec
+                    .protocol_config
+                    .is_last_block_before_activation(&self.trusted_block_header)
+            {
+                return Err(SyncLeapValidationError::WrongProtocolVersion);
+            }
+        } else if self
+            .signed_block_headers
+            .iter()
+            .any(|header_with_metadata| {
+                header_with_metadata.block_header.protocol_version() != protocol_version
+            })
         {
             return Err(SyncLeapValidationError::WrongProtocolVersion);
         }

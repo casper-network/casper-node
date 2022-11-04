@@ -82,6 +82,9 @@ use crate::{
 #[derive(Serialize)]
 #[must_use]
 pub(crate) enum ControlAnnouncement {
+    /// The node should shut down with exit code 0 in readiness for the next binary to start.
+    ShutdownForUpgrade,
+
     /// The component has encountered a fatal error and cannot continue.
     ///
     /// This usually triggers a shutdown of the component, reactor or whole application.
@@ -93,7 +96,7 @@ pub(crate) enum ControlAnnouncement {
         /// Error message.
         msg: String,
     },
-    // An external event queue dump has been requested.
+    /// An external event queue dump has been requested.
     QueueDumpRequest {
         /// The format to dump the queue in.
         #[serde(skip)]
@@ -127,13 +130,16 @@ impl QueueDumpFormat {
 impl Debug for ControlAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::FatalError { file, line, msg } => f
+            ControlAnnouncement::ShutdownForUpgrade => write!(f, "ShutdownForUpgrade"),
+            ControlAnnouncement::FatalError { file, line, msg } => f
                 .debug_struct("FatalError")
                 .field("file", file)
                 .field("line", line)
                 .field("msg", msg)
                 .finish(),
-            Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
+            ControlAnnouncement::QueueDumpRequest { .. } => {
+                f.debug_struct("QueueDump").finish_non_exhaustive()
+            }
         }
     }
 }
@@ -141,6 +147,7 @@ impl Debug for ControlAnnouncement {
 impl Display for ControlAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ControlAnnouncement::ShutdownForUpgrade => write!(f, "shutdown for upgrade"),
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
             }

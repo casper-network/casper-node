@@ -2138,36 +2138,34 @@ impl Storage {
     pub(crate) fn era_has_sufficient_finality_signatures(
         &self,
         era_validator_weights: &EraValidatorWeights,
-    ) -> bool {
+    ) -> Result<bool, FatalStorageError> {
         let era_id = era_validator_weights.era_id();
-        if let Some(block_hash) = self.switch_block_era_id_index.get(&era_id) {
-            let mut key = *block_hash;
-            if let Ok(mut txn) = self.env.begin_ro_txn() {
-                loop {
-                    if let Ok(Some(block)) = self.get_single_block(&mut txn, &key) {
-                        if block.header().era_id() != era_id {
-                            return true;
-                        }
-                        if self.block_has_sufficient_finality_signatures(
-                            &mut txn,
-                            &key,
-                            era_validator_weights,
-                        ) == false
-                        {
-                            return false;
-                        }
-                        if let Some(parent_hash) = block.parent() {
-                            key = *parent_hash;
-                        }
+        if let Some(mut block_hash) = self.switch_block_era_id_index.get(&era_id).copied() {
+            let mut txn = self.env.begin_ro_txn()?;
+            loop {
+                if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
+                    if block.header().era_id() != era_id {
+                        return Ok(true);
+                    }
+                    if self.block_has_sufficient_finality_signatures(
+                        &mut txn,
+                        &block_hash,
+                        era_validator_weights,
+                    ) == false
+                    {
+                        return Ok(false);
+                    }
+                    if let Some(parent_hash) = block.parent() {
+                        block_hash = *parent_hash;
                     }
                 }
             }
         }
-        false
+        Ok(false)
     }
 
     /// Determines if a given block has sufficient finality signatures for its era.
-    pub(crate) fn block_has_sufficient_finality_signatures<Tx: Transaction>(
+    fn block_has_sufficient_finality_signatures<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
@@ -2324,6 +2322,9 @@ impl Storage {
                 .cloned()
                 .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
+            // todo! - protocol version check - should return NotProvided if:
+            //       * signed_block_headers is empty & trusted header is not last before upgrade, or
+            //       * any signed block header is not from current PV
             Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_block_header,
                 trusted_ancestor_headers,

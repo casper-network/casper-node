@@ -143,6 +143,9 @@ bind_address = '0.0.0.0:34553'
 # one connection.
 known_addresses = ['127.0.0.1:34553']
 
+# Minimum number of fully-connected peers to consider network component initialized.
+min_peers_for_initialization = 3
+
 # The interval between each fresh round of gossiping the node's public address.
 gossip_interval = '30sec'
 

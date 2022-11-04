@@ -870,6 +870,14 @@ where
             .choose_multiple(rng, count)
     }
 
+    pub(crate) fn has_sufficient_fully_connected_peers(&self) -> bool {
+        self.connection_symmetries
+            .iter()
+            .filter(|(_node_id, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .count()
+            >= self.cfg.min_peers_for_initialization as usize
+    }
+
     #[cfg(test)]
     /// Returns the node id of this network node.
     pub(crate) fn node_id(&self) -> NodeId {

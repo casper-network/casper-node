@@ -59,11 +59,11 @@ use crate::{
     protocol::Message,
     reactor::{
         self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
-        EventQueueHandle, ReactorExit,
+        EventQueueHandle,
     },
     types::{
-        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
-        FinalitySignature, Item, TrieOrChunk, ValidatorMatrix,
+        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
+        Item, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -124,7 +124,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block: Option<BlockHash>,
+    switch_block: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
@@ -334,14 +334,6 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
-    }
-
-    fn maybe_exit(&self) -> Option<ReactorExit> {
-        if self.state == ReactorState::Upgrade {
-            Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
-        } else {
-            None
-        }
     }
 
     fn dispatch_event(
@@ -614,7 +606,7 @@ impl reactor::Reactor for MainReactor {
 
                 // if it is a switch block, get validators
                 if let Some(validator_weights) = block.header().next_era_validator_weights() {
-                    self.switch_block = Some(block.id());
+                    self.switch_block = Some(block.header().clone());
                     let era_id = block.header().era_id();
                     self.validator_matrix
                         .register_validator_weights(era_id.successor(), validator_weights.clone());
@@ -966,7 +958,7 @@ impl reactor::Reactor for MainReactor {
                 );
 
                 if is_switch_block {
-                    self.switch_block = Some(block_hash);
+                    self.switch_block = Some(block.header().clone());
                 } else {
                     self.switch_block = None;
                 }

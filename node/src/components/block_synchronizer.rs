@@ -270,6 +270,7 @@ impl BlockSynchronizer {
                 if builder.block_hash() == block_header.block_hash() =>
             {
                 apply_sigs(builder, maybe_sigs);
+                builder.register_peers(peers);
             }
             _ => {
                 let era_id = block_header.era_id();
@@ -370,7 +371,7 @@ impl BlockSynchronizer {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             let need_next = action.need_next();
-            debug!("BlockSynchronizer: {:?}", need_next);
+            debug!("BlockSynchronizer needs next: {:?}", need_next);
             if !matches!(need_next, NeedNext::Nothing) {
                 builder.set_in_flight_latch(true);
             }

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{effect::Effects, reactor::main_reactor::MainEvent, types::BlockHeader};
+use crate::{effect::Effects, reactor::main_reactor::MainEvent};
 
 pub(super) enum CatchUpInstruction {
     Do(Duration, Effects<MainEvent>),
@@ -8,5 +8,4 @@ pub(super) enum CatchUpInstruction {
     Shutdown(String),
     CaughtUp,
     CommitGenesis,
-    CommitUpgrade(Box<BlockHeader>),
 }

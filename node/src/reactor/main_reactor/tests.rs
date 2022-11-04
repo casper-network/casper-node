@@ -477,9 +477,10 @@ async fn dont_upgrade_without_switch_block() {
     net.settle_on(
         &mut rng,
         |nodes| {
-            nodes
-                .values()
-                .all(|runner| runner.main_reactor().maybe_exit().is_some())
+            nodes.values().all(|runner| {
+                todo!()
+                // runner.main_reactor().maybe_exit().is_some()
+            })
         },
         timeout,
     )
@@ -499,7 +500,8 @@ async fn dont_upgrade_without_switch_block() {
         assert!(header.is_switch_block());
         assert_eq!(
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
-            runner.main_reactor().maybe_exit()
+            // runner.main_reactor().maybe_exit()
+            todo!()
         );
     }
 }

@@ -156,17 +156,8 @@ impl BlockAccumulator {
             };
         }
 
-        if let StartingWith::LocalTip {
-            block_hash,
-            block_height,
-            era_id,
-            is_last_block_before_activation,
-        } = starting_with
-        {
-            self.register_local_tip(block_height, era_id);
-            if is_last_block_before_activation {
-                return SyncInstruction::Leap { block_hash };
-            }
+        if let StartingWith::LocalTip(_, height, era_id) = starting_with {
+            self.register_local_tip(height, era_id);
         }
 
         if self.should_sync(block_height) {
@@ -451,8 +442,8 @@ impl BlockAccumulator {
     }
 
     fn highest_usable_block_height(&self) -> Option<u64> {
-        let mut ret: Option<u64> = self.local_tip.map(|local_tip| local_tip.height);
-        for block_acceptor in &mut self.block_acceptors.values() {
+        let mut ret = self.local_tip.map(|local_tip| local_tip.height);
+        for block_acceptor in self.block_acceptors.values() {
             if false == block_acceptor.has_sufficient_finality() {
                 continue;
             }

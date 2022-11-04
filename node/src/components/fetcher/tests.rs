@@ -33,7 +33,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    reactor::{self, EventQueueHandle, Reactor as ReactorTrait, ReactorEvent, ReactorExit, Runner},
+    reactor::{self, EventQueueHandle, Reactor as ReactorTrait, ReactorEvent, Runner},
     testing::{
         self,
         network::{Network, NetworkedReactor},
@@ -285,10 +285,6 @@ impl ReactorTrait for Reactor {
             deploy_fetcher,
         };
         Ok((reactor, Effects::new()))
-    }
-
-    fn maybe_exit(&self) -> Option<ReactorExit> {
-        None
     }
 }
 

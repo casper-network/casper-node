@@ -196,6 +196,7 @@ impl BlockBuilder {
 
     pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
         if self.in_flight_latch() {
+            debug!("BlockSynchronizer pending response");
             return BlockAcquisitionAction::noop();
         }
         match self.peer_list.need_peers() {
