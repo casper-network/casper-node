@@ -13,8 +13,6 @@ pub(super) struct Metrics {
     pub(super) broadcast_requests: IntCounter,
     /// How often a request to send a message directly to a peer was made.
     pub(super) direct_message_requests: IntCounter,
-    /// Current number of open connections.
-    pub(super) open_connections: IntGauge,
     /// Number of messages still waiting to be sent out (broadcast and direct).
     pub(super) queued_messages: IntGauge,
     /// Number of connected peers.
@@ -32,8 +30,6 @@ pub(super) struct Metrics {
     pub(super) out_count_address_gossip: IntCounter,
     /// Count of outgoing messages with deploy request/response payload.
     pub(super) out_count_deploy_transfer: IntCounter,
-    /// Count of outgoing messages with finalized approvals request/response payload.
-    pub(super) out_count_finalized_approvals_transfer: IntCounter,
     /// Count of outgoing messages with block request/response payload.
     pub(super) out_count_block_transfer: IntCounter,
     /// Count of outgoing messages with trie request/response payload.
@@ -53,8 +49,6 @@ pub(super) struct Metrics {
     pub(super) out_bytes_address_gossip: IntCounter,
     /// Volume in bytes of outgoing messages with deploy request/response payload.
     pub(super) out_bytes_deploy_transfer: IntCounter,
-    /// Volume in bytes of outgoing messages with finalized approvals request/response payload.
-    pub(super) out_bytes_finalized_approvals_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with block request/response payload.
     pub(super) out_bytes_block_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with block request/response payload.
@@ -85,8 +79,6 @@ pub(super) struct Metrics {
     pub(super) in_bytes_address_gossip: IntCounter,
     /// Volume in bytes of incoming messages with deploy request/response payload.
     pub(super) in_bytes_deploy_transfer: IntCounter,
-    /// Volume in bytes of incoming messages with finalized approvals request/response payload.
-    pub(super) in_bytes_finalized_approvals_transfer: IntCounter,
     /// Volume in bytes of incoming messages with block request/response payload.
     pub(super) in_bytes_block_transfer: IntCounter,
     /// Volume in bytes of incoming messages with block request/response payload.
@@ -106,8 +98,6 @@ pub(super) struct Metrics {
     pub(super) in_count_address_gossip: IntCounter,
     /// Count of incoming messages with deploy request/response payload.
     pub(super) in_count_deploy_transfer: IntCounter,
-    /// Count of incoming messages with finalized approvals request/response payload.
-    pub(super) in_count_finalized_approvals_transfer: IntCounter,
     /// Count of incoming messages with block request/response payload.
     pub(super) in_count_block_transfer: IntCounter,
     /// Count of incoming messages with trie request/response payload.
@@ -138,8 +128,6 @@ impl Metrics {
             "net_direct_message_requests",
             "number of requests to send a message directly to a peer",
         )?;
-        let open_connections =
-            IntGauge::new("net_open_connections", "number of established connections")?;
         let queued_messages = IntGauge::new(
             "net_queued_direct_messages",
             "number of messages waiting to be sent out",
@@ -173,10 +161,6 @@ impl Metrics {
         let out_count_deploy_transfer = IntCounter::new(
             "net_out_count_deploy_transfer",
             "count of outgoing messages with deploy request/response payload",
-        )?;
-        let out_count_finalized_approvals_transfer = IntCounter::new(
-            "net_out_count_finalized_approvals_transfer",
-            "count of outgoing messages with finalized approvals request/response payload",
         )?;
         let out_count_block_transfer = IntCounter::new(
             "net_out_count_block_transfer",
@@ -218,10 +202,6 @@ impl Metrics {
         let out_bytes_deploy_transfer = IntCounter::new(
             "net_out_bytes_deploy_transfer",
             "volume in bytes of outgoing messages with deploy request/response payload",
-        )?;
-        let out_bytes_finalized_approvals_transfer = IntCounter::new(
-            "net_out_bytes_finalized_approvals_transfer",
-            "volume in bytes of outgoing messages with finalized approvals request/response payload",
         )?;
         let out_bytes_block_transfer = IntCounter::new(
             "net_out_bytes_block_transfer",
@@ -285,10 +265,6 @@ impl Metrics {
             "net_in_count_deploy_transfer",
             "count of incoming messages with deploy request/response payload",
         )?;
-        let in_count_finalized_approvals_transfer = IntCounter::new(
-            "net_in_count_finalized_approvals_transfer",
-            "count of incoming messages with finalized approvals request/response payload",
-        )?;
         let in_count_block_transfer = IntCounter::new(
             "net_in_count_block_transfer",
             "count of incoming messages with block request/response payload",
@@ -330,10 +306,6 @@ impl Metrics {
             "net_in_bytes_deploy_transfer",
             "volume in bytes of incoming messages with deploy request/response payload",
         )?;
-        let in_bytes_finalized_approvals_transfer = IntCounter::new(
-            "net_in_bytes_finalized_approvals_transfer",
-            "volume in bytes of incoming messages with finalized approvals request/response payload",
-        )?;
         let in_bytes_block_transfer = IntCounter::new(
             "net_in_bytes_block_transfer",
             "volume in bytes of incoming messages with block request/response payload",
@@ -367,7 +339,6 @@ impl Metrics {
 
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
-        registry.register(Box::new(open_connections.clone()))?;
         registry.register(Box::new(queued_messages.clone()))?;
         registry.register(Box::new(peers.clone()))?;
 
@@ -378,7 +349,6 @@ impl Metrics {
         registry.register(Box::new(out_count_finality_signature_gossip.clone()))?;
         registry.register(Box::new(out_count_address_gossip.clone()))?;
         registry.register(Box::new(out_count_deploy_transfer.clone()))?;
-        registry.register(Box::new(out_count_finalized_approvals_transfer.clone()))?;
         registry.register(Box::new(out_count_block_transfer.clone()))?;
         registry.register(Box::new(out_count_trie_transfer.clone()))?;
         registry.register(Box::new(out_count_other.clone()))?;
@@ -390,7 +360,6 @@ impl Metrics {
         registry.register(Box::new(out_bytes_finality_signature_gossip.clone()))?;
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
         registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
-        registry.register(Box::new(out_bytes_finalized_approvals_transfer.clone()))?;
         registry.register(Box::new(out_bytes_block_transfer.clone()))?;
         registry.register(Box::new(out_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(out_bytes_other.clone()))?;
@@ -408,7 +377,6 @@ impl Metrics {
         registry.register(Box::new(in_count_finality_signature_gossip.clone()))?;
         registry.register(Box::new(in_count_address_gossip.clone()))?;
         registry.register(Box::new(in_count_deploy_transfer.clone()))?;
-        registry.register(Box::new(in_count_finalized_approvals_transfer.clone()))?;
         registry.register(Box::new(in_count_block_transfer.clone()))?;
         registry.register(Box::new(in_count_trie_transfer.clone()))?;
         registry.register(Box::new(in_count_other.clone()))?;
@@ -420,7 +388,6 @@ impl Metrics {
         registry.register(Box::new(in_bytes_finality_signature_gossip.clone()))?;
         registry.register(Box::new(in_bytes_address_gossip.clone()))?;
         registry.register(Box::new(in_bytes_deploy_transfer.clone()))?;
-        registry.register(Box::new(in_bytes_finalized_approvals_transfer.clone()))?;
         registry.register(Box::new(in_bytes_block_transfer.clone()))?;
         registry.register(Box::new(in_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(in_bytes_other.clone()))?;
@@ -434,7 +401,6 @@ impl Metrics {
         Ok(Metrics {
             broadcast_requests,
             direct_message_requests,
-            open_connections,
             queued_messages,
             peers,
             out_count_protocol,
@@ -444,7 +410,6 @@ impl Metrics {
             out_count_finality_signature_gossip,
             out_count_address_gossip,
             out_count_deploy_transfer,
-            out_count_finalized_approvals_transfer,
             out_count_block_transfer,
             out_count_trie_transfer,
             out_count_other,
@@ -455,7 +420,6 @@ impl Metrics {
             out_bytes_finality_signature_gossip,
             out_bytes_address_gossip,
             out_bytes_deploy_transfer,
-            out_bytes_finalized_approvals_transfer,
             out_bytes_block_transfer,
             out_bytes_trie_transfer,
             out_bytes_other,
@@ -471,7 +435,6 @@ impl Metrics {
             in_count_finality_signature_gossip,
             in_count_address_gossip,
             in_count_deploy_transfer,
-            in_count_finalized_approvals_transfer,
             in_count_block_transfer,
             in_count_trie_transfer,
             in_count_other,
@@ -482,7 +445,6 @@ impl Metrics {
             in_bytes_finality_signature_gossip,
             in_bytes_address_gossip,
             in_bytes_deploy_transfer,
-            in_bytes_finalized_approvals_transfer,
             in_bytes_block_transfer,
             in_bytes_trie_transfer,
             in_bytes_other,
@@ -628,7 +590,6 @@ impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.broadcast_requests);
         unregister_metric!(self.registry, self.direct_message_requests);
-        unregister_metric!(self.registry, self.open_connections);
         unregister_metric!(self.registry, self.queued_messages);
         unregister_metric!(self.registry, self.peers);
 
@@ -639,7 +600,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_count_finality_signature_gossip);
         unregister_metric!(self.registry, self.out_count_address_gossip);
         unregister_metric!(self.registry, self.out_count_deploy_transfer);
-        unregister_metric!(self.registry, self.out_count_finalized_approvals_transfer);
         unregister_metric!(self.registry, self.out_count_block_transfer);
         unregister_metric!(self.registry, self.out_count_trie_transfer);
         unregister_metric!(self.registry, self.out_count_other);
@@ -651,7 +611,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_bytes_finality_signature_gossip);
         unregister_metric!(self.registry, self.out_bytes_address_gossip);
         unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
-        unregister_metric!(self.registry, self.out_bytes_finalized_approvals_transfer);
         unregister_metric!(self.registry, self.out_bytes_block_transfer);
         unregister_metric!(self.registry, self.out_bytes_trie_transfer);
         unregister_metric!(self.registry, self.out_bytes_other);
@@ -669,7 +628,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.in_count_finality_signature_gossip);
         unregister_metric!(self.registry, self.in_count_address_gossip);
         unregister_metric!(self.registry, self.in_count_deploy_transfer);
-        unregister_metric!(self.registry, self.in_count_finalized_approvals_transfer);
         unregister_metric!(self.registry, self.in_count_block_transfer);
         unregister_metric!(self.registry, self.in_count_trie_transfer);
         unregister_metric!(self.registry, self.in_count_other);
@@ -681,7 +639,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.in_bytes_finality_signature_gossip);
         unregister_metric!(self.registry, self.in_bytes_address_gossip);
         unregister_metric!(self.registry, self.in_bytes_deploy_transfer);
-        unregister_metric!(self.registry, self.in_bytes_finalized_approvals_transfer);
         unregister_metric!(self.registry, self.in_bytes_block_transfer);
         unregister_metric!(self.registry, self.in_bytes_trie_transfer);
         unregister_metric!(self.registry, self.in_bytes_other);
