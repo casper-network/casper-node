@@ -14,7 +14,6 @@ use std::{
 };
 
 use casper_types::{EraId, PublicKey};
-use humantime;
 use serde::Serialize;
 
 use crate::{
