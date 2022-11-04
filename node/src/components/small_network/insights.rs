@@ -6,7 +6,7 @@
 //! insights should neither be abused just because they are available.
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
     sync::atomic::Ordering,
@@ -49,9 +49,9 @@ pub(crate) struct NetworkInsights {
     /// The amount of bandwidth allowance currently buffered, ready to be spent.
     unspent_bandwidth_allowance_bytes: Option<i64>,
     /// Map of outgoing connections, along with their current state.
-    outgoing_connections: HashMap<SocketAddr, OutgoingInsight>,
+    outgoing_connections: Vec<(SocketAddr, OutgoingInsight)>,
     /// Map of incoming connections.
-    connection_symmetries: HashMap<NodeId, ConnectionSymmetryInsight>,
+    connection_symmetries: Vec<(NodeId, ConnectionSymmetryInsight)>,
 }
 
 /// Insight into an outgoing connection.
