@@ -243,7 +243,11 @@ impl MainReactor {
                                 if block.header().is_switch_block() {
                                     self.switch_block = Some(block.id());
                                 }
-                                StartingWith::LocalTip(*block.hash(), block.height())
+                                StartingWith::LocalTip(
+                                    *block.hash(),
+                                    block.height(),
+                                    block.header().era_id(),
+                                )
                             }
                             Ok(None) if self.switch_block.is_none() => {
                                 if let ActivationPoint::Genesis(timestamp) =
@@ -496,7 +500,9 @@ impl MainReactor {
 
         let starting_with = match self.block_synchronizer.keep_up_progress() {
             BlockSynchronizerProgress::Idle => match self.storage.read_highest_complete_block() {
-                Ok(Some(block)) => StartingWith::LocalTip(block.id(), block.height()),
+                Ok(Some(block)) => {
+                    StartingWith::LocalTip(block.id(), block.height(), block.header().era_id())
+                }
                 Ok(None) => {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
                     return KeepUpInstruction::CatchUp;

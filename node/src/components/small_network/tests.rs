@@ -248,8 +248,16 @@ impl Reactor for TestReactor {
                 ),
             ),
 
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::GossipReceived { .. }) => {
+                // We do not care about the announcement of a new gossiped item in this test.
+                Effects::new()
+            }
             Event::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
                 // We do not care about the announcement of gossiping finished in this test.
+                Effects::new()
+            }
+            Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewItemBody { .. }) => {
+                // Addresses shouldn't have an item body when gossiped.
                 Effects::new()
             }
             Event::BeginAddressGossipRequest(ev) => reactor::wrap_effects(

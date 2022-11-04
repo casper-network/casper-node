@@ -5,7 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use futures::future::BoxFuture;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, trace};
 
 use super::{Error, Event, FetchResponder, FetchedData, ItemHandle, Metrics};
 use crate::{
@@ -143,12 +143,12 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
             Some(item_handle) => item_handle.validation_metadata(),
             None => {
                 debug!(item_id = %item.id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
-                return Effects::new();
+                return effect_builder.announce_disconnect_from_peer(peer).ignore();
             }
         };
 
         if let Err(err) = item.validate(validation_metadata) {
-            warn!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
+            debug!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
             effect_builder.announce_disconnect_from_peer(peer).ignore()
         } else {
             match Self::put_to_storage(effect_builder, *item.clone()) {

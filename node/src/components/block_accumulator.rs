@@ -5,13 +5,13 @@ mod event;
 mod starting_with;
 mod sync_instruction;
 
-use std::{collections::BTreeMap, iter};
+use std::{cmp::Ordering, collections::BTreeMap, iter};
 
 use datasize::DataSize;
 use futures::FutureExt;
 use tracing::{debug, error, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -35,6 +35,30 @@ pub(crate) use event::Event;
 pub(crate) use starting_with::StartingWith;
 pub(crate) use sync_instruction::SyncInstruction;
 
+#[derive(Clone, Copy, DataSize, Debug, Eq, PartialEq)]
+struct LocalTipIdentifier {
+    height: u64,
+    era_id: EraId,
+}
+
+impl LocalTipIdentifier {
+    fn new(height: u64, era_id: EraId) -> Self {
+        Self { height, era_id }
+    }
+}
+
+impl PartialOrd for LocalTipIdentifier {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.height.partial_cmp(&other.height)
+    }
+}
+
+impl Ord for LocalTipIdentifier {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.height.cmp(&other.height)
+    }
+}
+
 /// A cache of pending blocks and finality signatures that are gossiped to this node.
 ///
 /// Announces new blocks and finality signatures once they become valid.
@@ -45,19 +69,22 @@ pub(crate) struct BlockAccumulator {
     dead_air_interval: TimeDiff,
     purge_interval: TimeDiff,
 
+    // todo!() - Consider a ubound for both the acceptors and the children maps.
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
     block_children: BTreeMap<BlockHash, BlockHash>,
 
     last_progress: Timestamp,
-    /// The height of the subjective local tip of the chain.
-    local_tip: Option<u64>,
+    /// The height and era ID of the subjective local tip of the chain.
+    local_tip: Option<LocalTipIdentifier>,
+    recent_era_interval: u64,
 }
 
 impl BlockAccumulator {
     pub(crate) fn new(
         config: Config,
         validator_matrix: ValidatorMatrix,
-        local_tip: Option<u64>,
+        local_tip_height_and_era_id: Option<(u64, EraId)>,
+        recent_era_interval: u64,
     ) -> Self {
         Self {
             validator_matrix,
@@ -67,7 +94,9 @@ impl BlockAccumulator {
             block_children: Default::default(),
             last_progress: Timestamp::now(),
             purge_interval: config.purge_interval(),
-            local_tip,
+            local_tip: local_tip_height_and_era_id
+                .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id)),
+            recent_era_interval,
         }
     }
 
@@ -127,8 +156,8 @@ impl BlockAccumulator {
             };
         }
 
-        if starting_with.is_local_tip() {
-            self.register_local_tip(block_height);
+        if let StartingWith::LocalTip(_, height, era_id) = starting_with {
+            self.register_local_tip(height, era_id);
         }
 
         if self.should_sync(block_height) {
@@ -187,6 +216,39 @@ impl BlockAccumulator {
         }
     }
 
+    fn register_peer(
+        &mut self,
+        block_hash: BlockHash,
+        maybe_era_id: Option<EraId>,
+        sender: NodeId,
+    ) {
+        let maybe_local_tip_era_id = self.local_tip.map(|local_tip| local_tip.era_id);
+        match (maybe_era_id, maybe_local_tip_era_id) {
+            // When the era of the item sent by this peer is known, we check it
+            // against our local tip era. If it is recent (within a number of
+            // eras of our local tip), we create an acceptor for it along with
+            // registering the peer.
+            (Some(era_id), Some(local_tip_era_id))
+                if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
+            {
+                let acceptor = self
+                    .block_acceptors
+                    .entry(block_hash)
+                    .or_insert_with(|| BlockAcceptor::new(block_hash, vec![]));
+                acceptor.register_peer(sender);
+            }
+            // In all other cases (i.e. the item's era is not provided, the
+            // local tip doesn't have an era or the item's era is older than
+            // the local tip era by more than `recent_era_interval`), we only
+            // register the peer if there is an acceptor for the item already.
+            _ => {
+                if let Some(acceptor) = self.block_acceptors.get_mut(&block_hash) {
+                    acceptor.register_peer(sender)
+                }
+            }
+        }
+    }
+
     fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -204,7 +266,8 @@ impl BlockAccumulator {
         let block_height = block.header().height();
         if self
             .local_tip
-            .map_or(false, |curr_height| block_height < curr_height)
+            .as_ref()
+            .map_or(false, |local_tip| block_height < local_tip.height)
         {
             debug!(%block_hash, "ignoring outdated block");
             return Effects::new();
@@ -272,17 +335,36 @@ impl BlockAccumulator {
             + From<ControlAnnouncement>
             + Send,
     {
-        // todo!: Also register local tip's era ID; for older signatures, don't create acceptor.
-
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
-
-        let acceptor = self.block_acceptors.entry(block_hash).or_insert_with(|| {
-            BlockAcceptor::new(
-                block_hash,
-                sender.map(|sender| vec![sender]).unwrap_or_default(),
-            )
-        });
+        let maybe_local_tip_era_id = self.local_tip.map(|local_tip| local_tip.era_id);
+        let acceptor = match maybe_local_tip_era_id {
+            // When the era of the finality signature being registered is
+            // known, we check it against our local tip era. If it is recent
+            // (within a number of eras of our local tip), we create an
+            // acceptor for it if one is not already present before registering
+            // the finality signature.
+            Some(local_tip_era_id)
+                if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
+            {
+                self.block_acceptors.entry(block_hash).or_insert_with(|| {
+                    BlockAcceptor::new(
+                        block_hash,
+                        sender.map(|sender| vec![sender]).unwrap_or_default(),
+                    )
+                })
+            }
+            // In all other cases (i.e. the local tip doesn't have an era or
+            // the signature's era is older than the local tip era by more than
+            // `recent_era_interval`), we only register the signature if there
+            // is an acceptor for it already.
+            _ => match self.block_acceptors.get_mut(&block_hash) {
+                Some(acceptor) => acceptor,
+                // When there is no acceptor for it, this function returns
+                // early, ignoring the signature.
+                None => return Effects::new(),
+            },
+        };
 
         match acceptor.register_finality_signature(finality_signature, sender) {
             Ok(Some(finality_signature)) => store_block_and_finality_signatures(
@@ -335,9 +417,13 @@ impl BlockAccumulator {
 
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64) {
+    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
         self.purge();
-        self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
+        self.local_tip = self
+            .local_tip
+            .into_iter()
+            .chain(iter::once(LocalTipIdentifier::new(height, era_id)))
+            .max();
     }
 
     fn purge(&mut self) {
@@ -356,7 +442,7 @@ impl BlockAccumulator {
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {
-        let mut ret: Option<u64> = self.local_tip;
+        let mut ret: Option<u64> = self.local_tip.map(|local_tip| local_tip.height);
         for block_acceptor in &mut self.block_acceptors.values_mut() {
             if false == block_acceptor.has_sufficient_finality() {
                 continue;
@@ -446,6 +532,14 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
             Event::ValidatorMatrixUpdated => self.handle_validators(effect_builder),
+            Event::RegisterPeer {
+                block_hash,
+                era_id,
+                sender,
+            } => {
+                self.register_peer(block_hash, era_id, sender);
+                Effects::new()
+            }
             Event::ReceivedBlock { block, sender } => {
                 self.register_block(effect_builder, *block, Some(sender))
             }
@@ -460,8 +554,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             }
             Event::ExecutedBlock { block } => {
                 let height = block.header().height();
+                let era_id = block.header().era_id();
                 let effects = self.register_block(effect_builder, *block, None);
-                self.register_local_tip(height);
+                self.register_local_tip(height, era_id);
                 effects
             }
             Event::Stored {

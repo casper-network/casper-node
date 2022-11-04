@@ -67,9 +67,9 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Chainspec,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
         ChainspecRawBytes, Deploy, DeployId, ExitCode, FetcherItem, FinalitySignature,
-        FinalitySignatureId, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
+        LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -1015,59 +1015,13 @@ where
             )
         }
         NetResponse::FinalitySignature(ref serialized_item) => {
-            let mut effects = handle_fetch_response::<R, FinalitySignature>(
+            handle_fetch_response::<R, FinalitySignature>(
                 reactor,
                 effect_builder,
                 rng,
                 sender,
                 serialized_item,
-            );
-            match bincode::deserialize::<FetchResponse<FinalitySignature, FinalitySignatureId>>(
-                serialized_item,
-            ) {
-                Ok(FetchResponse::Fetched(fin_sig)) => {
-                    let event = <R as Reactor>::Event::from(
-                        block_accumulator::Event::ReceivedFinalitySignature {
-                            finality_signature: Box::new(fin_sig),
-                            sender,
-                        },
-                    );
-                    effects.extend(<R as Reactor>::dispatch_event(
-                        reactor,
-                        effect_builder,
-                        rng,
-                        event,
-                    ));
-                }
-                Ok(FetchResponse::NotFound(fin_sig_id)) => {
-                    debug!(%sender, ?fin_sig_id, "peer did not have finality signature",);
-                }
-                Ok(FetchResponse::NotProvided(fin_sig_id)) => {
-                    debug!(
-                        %sender,
-                        %fin_sig_id,
-                        "peer refused to provide finality signature"
-                    );
-                    effects.extend(
-                        effect_builder
-                            .announce_disconnect_from_peer(sender)
-                            .ignore(),
-                    );
-                }
-                Err(error) => {
-                    warn!(
-                        %sender,
-                        %error,
-                        "received a finality signature item we couldn't parse, banning peer",
-                    );
-                    effects.extend(
-                        effect_builder
-                            .announce_disconnect_from_peer(sender)
-                            .ignore(),
-                    );
-                }
-            }
-            effects
+            )
         }
         NetResponse::LegacyDeploy(ref serialized_item) => handle_fetch_response::<R, LegacyDeploy>(
             reactor,
@@ -1130,56 +1084,7 @@ where
                 .ignore()
         }
         NetResponse::Block(ref serialized_item) => {
-            let mut effects = handle_fetch_response::<R, Block>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            );
-            match bincode::deserialize::<FetchResponse<Block, BlockHash>>(serialized_item) {
-                Ok(FetchResponse::Fetched(block)) => {
-                    let event =
-                        <R as Reactor>::Event::from(block_accumulator::Event::ReceivedBlock {
-                            block: Box::new(block),
-                            sender,
-                        });
-                    effects.extend(<R as Reactor>::dispatch_event(
-                        reactor,
-                        effect_builder,
-                        rng,
-                        event,
-                    ));
-                }
-                Ok(FetchResponse::NotFound(block_hash)) => {
-                    debug!(%sender, ?block_hash, "peer did not have block",);
-                }
-                Ok(FetchResponse::NotProvided(block_hash)) => {
-                    debug!(
-                        %sender,
-                        %block_hash,
-                        "peer refused to provide block"
-                    );
-                    effects.extend(
-                        effect_builder
-                            .announce_disconnect_from_peer(sender)
-                            .ignore(),
-                    );
-                }
-                Err(error) => {
-                    warn!(
-                        %sender,
-                        %error,
-                        "received a block item we couldn't parse, banning peer",
-                    );
-                    effects.extend(
-                        effect_builder
-                            .announce_disconnect_from_peer(sender)
-                            .ignore(),
-                    );
-                }
-            }
-            effects
+            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
         }
         NetResponse::BlockExecutionResults(ref serialized_item) => {
             handle_fetch_response::<R, BlockExecutionResultsOrChunk>(

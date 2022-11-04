@@ -1,3 +1,5 @@
+use casper_types::EraId;
+
 use crate::types::BlockHash;
 
 #[derive(Clone, Debug)]
@@ -5,14 +7,14 @@ pub(crate) enum StartingWith {
     ExecutableBlock(BlockHash, u64),
     BlockIdentifier(BlockHash, u64),
     SyncedBlockIdentifier(BlockHash, u64),
-    LocalTip(BlockHash, u64),
+    LocalTip(BlockHash, u64, EraId),
     Hash(BlockHash),
 }
 
 impl StartingWith {
     pub(crate) fn block_hash(&self) -> BlockHash {
         match self {
-            StartingWith::LocalTip(hash, _)
+            StartingWith::LocalTip(hash, _, _)
             | StartingWith::BlockIdentifier(hash, _)
             | StartingWith::SyncedBlockIdentifier(hash, _)
             | StartingWith::ExecutableBlock(hash, _)
@@ -22,7 +24,7 @@ impl StartingWith {
 
     pub(crate) fn block_height(&self) -> Option<u64> {
         match self {
-            StartingWith::LocalTip(_, height)
+            StartingWith::LocalTip(_, height, _)
             | StartingWith::BlockIdentifier(_, height)
             | StartingWith::SyncedBlockIdentifier(_, height)
             | StartingWith::ExecutableBlock(_, height) => Some(*height),
@@ -36,9 +38,5 @@ impl StartingWith {
 
     pub(crate) fn is_synced_block_identifier(&self) -> bool {
         matches!(self, StartingWith::SyncedBlockIdentifier(_, _))
-    }
-
-    pub(crate) fn is_local_tip(&self) -> bool {
-        matches!(self, StartingWith::LocalTip(_, _))
     }
 }
