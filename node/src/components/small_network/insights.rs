@@ -81,6 +81,7 @@ enum OutgoingStateInsight {
     },
     Blocked {
         since: SystemTime,
+        justification: String,
     },
     Loopback,
 }
@@ -121,8 +122,12 @@ impl OutgoingStateInsight {
                 peer_id: *peer_id,
                 peer_addr: handle.peer_addr,
             },
-            OutgoingState::Blocked { since } => OutgoingStateInsight::Blocked {
+            OutgoingState::Blocked {
+                since,
+                justification,
+            } => OutgoingStateInsight::Blocked {
                 since: anchor.convert(*since),
+                justification: justification.to_string(),
             },
             OutgoingState::Loopback => OutgoingStateInsight::Loopback,
         }
@@ -154,8 +159,16 @@ impl OutgoingStateInsight {
             OutgoingStateInsight::Connected { peer_id, peer_addr } => {
                 write!(f, "connected -> {} @ {}", peer_id, peer_addr)
             }
-            OutgoingStateInsight::Blocked { since } => {
-                write!(f, "blocked, since {}", time_delta(now, *since))
+            OutgoingStateInsight::Blocked {
+                since,
+                justification,
+            } => {
+                write!(
+                    f,
+                    "blocked since {}: {}",
+                    time_delta(now, *since),
+                    justification
+                )
             }
             OutgoingStateInsight::Loopback => f.write_str("loopback"),
         }
