@@ -35,7 +35,7 @@ pub(crate) use event::Event;
 pub(crate) use starting_with::StartingWith;
 pub(crate) use sync_instruction::SyncInstruction;
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 struct LocalTipIdentifier {
     height: u64,
     era_id: Option<EraId>,
@@ -44,6 +44,12 @@ struct LocalTipIdentifier {
 impl LocalTipIdentifier {
     fn new(height: u64, era_id: Option<EraId>) -> Self {
         Self { height, era_id }
+    }
+}
+
+impl PartialOrd for LocalTipIdentifier {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.height.partial_cmp(&other.height)
     }
 }
 
@@ -217,19 +223,32 @@ impl BlockAccumulator {
         maybe_era_id: Option<EraId>,
         sender: NodeId,
     ) {
-        // todo!: for old blocks, don't create acceptor.
-        match maybe_era_id {
-            Some(_era_id) => {
+        let maybe_local_tip_era_id = self
+            .local_tip
+            .as_ref()
+            .and_then(|local_tip| local_tip.era_id);
+        match (maybe_era_id, maybe_local_tip_era_id) {
+            // When the era of the item sent by this peer is known, we check it
+            // against our local tip era. If it is recent (within a number of
+            // eras of our local tip), we create an acceptor for it along with
+            // registering the peer.
+            (Some(era_id), Some(local_tip_era_id))
+                if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
+            {
                 let acceptor = self
                     .block_acceptors
                     .entry(block_hash)
                     .or_insert_with(|| BlockAcceptor::new(block_hash, vec![]));
                 acceptor.register_peer(sender);
             }
-            None => {
-                self.block_acceptors
-                    .get_mut(&block_hash)
-                    .map(|acceptor| acceptor.register_peer(sender));
+            // In all other cases (i.e. the item's era is not provided, the
+            // local tip doesn't have an era or the item's era is older than
+            // the local tip era by more than `recent_era_interval`), we only
+            // register the peer if there is an acceptor for the item already.
+            _ => {
+                if let Some(acceptor) = self.block_acceptors.get_mut(&block_hash) {
+                    acceptor.register_peer(sender)
+                }
             }
         }
     }
@@ -320,17 +339,39 @@ impl BlockAccumulator {
             + From<ControlAnnouncement>
             + Send,
     {
-        // todo!: Also register local tip's era ID; for older signatures, don't create acceptor.
-
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
-
-        let acceptor = self.block_acceptors.entry(block_hash).or_insert_with(|| {
-            BlockAcceptor::new(
-                block_hash,
-                sender.map(|sender| vec![sender]).unwrap_or_default(),
-            )
-        });
+        let maybe_local_tip_era_id = self
+            .local_tip
+            .as_ref()
+            .and_then(|local_tip| local_tip.era_id);
+        let acceptor = match maybe_local_tip_era_id {
+            // When the era of the finality signature being registered is
+            // known, we check it against our local tip era. If it is recent
+            // (within a number of eras of our local tip), we create an
+            // acceptor for it if one is not already present before registering
+            // the finality signature.
+            Some(local_tip_era_id)
+                if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
+            {
+                self.block_acceptors.entry(block_hash).or_insert_with(|| {
+                    BlockAcceptor::new(
+                        block_hash,
+                        sender.map(|sender| vec![sender]).unwrap_or_default(),
+                    )
+                })
+            }
+            // In all other cases (i.e. the local tip doesn't have an era or
+            // the signature's era is older than the local tip era by more than
+            // `recent_era_interval`), we only register the signature if there
+            // is an acceptor for it already.
+            _ => match self.block_acceptors.get_mut(&block_hash) {
+                Some(acceptor) => acceptor,
+                // When there is no acceptor for it, this function returns
+                // early, ignoring the signature.
+                None => return Effects::new(),
+            },
+        };
 
         match acceptor.register_finality_signature(finality_signature, sender) {
             Ok(Some(finality_signature)) => store_block_and_finality_signatures(
