@@ -1804,6 +1804,84 @@ where
         Ok(GetBidsResult::Success { bids })
     }
 
+    /// Distribute block rewards.
+    pub fn distribute_block_rewards(
+        &self,
+        correlation_id: CorrelationId,
+        step_request: StepRequest,
+    ) -> Result<StepSuccess, StepError> {
+        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
+            Err(error) => return Err(StepError::TrackingCopyError(error)),
+            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        };
+
+        let executor = Executor::new(*self.config());
+
+        let system_account_addr = PublicKey::System.to_account_hash();
+
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(system_account_addr, named_keys, purse)
+        };
+
+        let authorization_keys = {
+            let mut ret = BTreeSet::new();
+            ret.insert(system_account_addr);
+            ret
+        };
+
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+
+        let deploy_hash = {
+            // seeds address generator w/ era_end_timestamp_millis
+            let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
+            bytes.append(&mut step_request.next_era_id.into_bytes()?);
+            DeployHash::new(Digest::hash(&bytes).value())
+        };
+
+        let distribute_rewards_stack = self.get_new_system_call_stack();
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
+            DirectSystemContractCall::DistributeRewards,
+            reward_args,
+            &virtual_system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            distribute_rewards_stack,
+            // There should be no tokens transferred during rewards distribution.
+            U512::zero(),
+        );
+
+        if let Some(exec_error) = execution_result.take_error() {
+            return Err(StepError::DistributeError(exec_error));
+        }
+
+        let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
+
+        // commit
+        let post_state_hash = self
+            .state
+            .commit(
+                correlation_id,
+                step_request.pre_state_hash,
+                execution_effect.transforms,
+            )
+            .map_err(Into::into)?;
+
+        Ok(StepSuccess {
+            post_state_hash,
+            execution_journal,
+        })
+    }
+
     /// Executes a step request.
     pub fn commit_step(
         &self,
@@ -1838,44 +1916,6 @@ where
             bytes.append(&mut step_request.next_era_id.into_bytes()?);
             DeployHash::new(Digest::hash(&bytes).value())
         };
-
-        let reward_factors = match step_request.reward_factors() {
-            Ok(reward_factors) => reward_factors,
-            Err(error) => {
-                error!(
-                    "failed to deserialize reward factors: {}",
-                    error.to_string()
-                );
-                return Err(StepError::BytesRepr(error));
-            }
-        };
-
-        let reward_args = RuntimeArgs::try_new(|args| {
-            args.insert(ARG_REWARD_FACTORS, reward_factors)?;
-            Ok(())
-        })?;
-
-        let distribute_rewards_stack = self.get_new_system_call_stack();
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            reward_args,
-            &virtual_system_account,
-            authorization_keys.clone(),
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            distribute_rewards_stack,
-            // There should be no tokens transferred during rewards distribution.
-            U512::zero(),
-        );
-
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::DistributeError(exec_error));
-        }
 
         let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();
 

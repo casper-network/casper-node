@@ -360,14 +360,8 @@ where
     // Extract the rewards and the inactive validators if this is a switch block
     let EraReport {
         equivocators,
-        rewards,
         inactive_validators,
     } = era_report;
-
-    let reward_items = rewards
-        .iter()
-        .map(|(vid, value)| RewardItem::new(vid.clone(), *value))
-        .collect();
 
     // Both inactive validators and equivocators are evicted
     let evict_items = inactive_validators
@@ -380,7 +374,6 @@ where
     let step_request = StepRequest {
         pre_state_hash: pre_state_root_hash,
         protocol_version,
-        reward_items,
         // Note: The Casper Network does not slash, but another network could
         slash_items: vec![],
         evict_items,

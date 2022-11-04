@@ -104,11 +104,6 @@ where
 pub struct EraReport<VID> {
     /// The set of equivocators.
     pub(crate) equivocators: Vec<VID>,
-    /// Rewards for finalization of earlier blocks.
-    ///
-    /// This is a measure of the value of each validator's contribution to consensus, in
-    /// fractions of the configured maximum block reward.
-    pub(crate) rewards: BTreeMap<VID, u64>,
     /// Validators that haven't produced any unit during the era.
     pub(crate) inactive_validators: Vec<VID>,
 }
@@ -120,7 +115,6 @@ where
     fn default() -> Self {
         EraReport {
             equivocators: vec![],
-            rewards: BTreeMap::new(),
             inactive_validators: vec![],
         }
     }
@@ -145,7 +139,6 @@ impl<VID> EraReport<VID> {
         let EraReport {
             equivocators,
             inactive_validators,
-            rewards,
         } = self;
 
         let hashed_equivocators = hash_slice_of_validators(equivocators);
@@ -162,8 +155,6 @@ impl<VID> EraReport<VID> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TerminalBlockData<C: Context> {
-    /// The rewards for participating in consensus.
-    pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
     /// The list of validators that haven't produced any units.
     pub(crate) inactive_validators: Vec<C::ValidatorId>,
 }

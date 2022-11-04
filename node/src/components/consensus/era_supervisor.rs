@@ -910,7 +910,6 @@ impl EraSupervisor {
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
                 let report = terminal_block_data.map(|tbd| EraReport {
-                    rewards: tbd.rewards,
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
                 });

@@ -70,8 +70,6 @@ pub struct StepRequest {
     ///
     /// A slashed validator is removed from the next validator set.
     pub slash_items: Vec<SlashItem>,
-    /// List of validators that will be rewarded.
-    pub reward_items: Vec<RewardItem>,
     /// List of validators to be evicted.
     ///
     /// Compared to a slashing, evictions are deactivating a given validator, but his stake is
@@ -93,7 +91,6 @@ impl StepRequest {
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
-        reward_items: Vec<RewardItem>,
         evict_items: Vec<EvictItem>,
         next_era_id: EraId,
         era_end_timestamp_millis: u64,
@@ -102,7 +99,6 @@ impl StepRequest {
             pre_state_hash,
             protocol_version,
             slash_items,
-            reward_items,
             evict_items,
             next_era_id,
             era_end_timestamp_millis,
