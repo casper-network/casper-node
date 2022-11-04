@@ -127,6 +127,11 @@ impl ConsensusKeyPair {
     fn sign<T: AsRef<[u8]>>(&self, value: T) -> Signature {
         crypto::sign(value, &self.secret_key, &self.public_key)
     }
+
+    /// Returns the public key.
+    pub(super) fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
 }
 
 /// Certificate used to indicate that the peer is a validator using the specified public key.

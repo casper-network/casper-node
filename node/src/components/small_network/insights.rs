@@ -9,6 +9,7 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
+    sync::atomic::Ordering,
     time::SystemTime,
 };
 
@@ -18,13 +19,23 @@ use serde::Serialize;
 use crate::{types::NodeId, utils::TimeAnchor};
 
 use super::{
-    error::ConnectionError, outgoing::OutgoingState, symmetry::ConnectionSymmetry, OutgoingHandle,
-    Payload, SmallNetwork,
+    error::ConnectionError, message::ConsensusKeyPair, outgoing::OutgoingState,
+    symmetry::ConnectionSymmetry, OutgoingHandle, Payload, SmallNetwork,
 };
 
 /// A collection of insights into the active networking component.
 #[derive(Debug, Serialize)]
 pub(crate) struct NetworkInsights {
+    /// The nodes current ID.
+    our_id: NodeId,
+    /// Whether or not a network CA was present (is a private network).
+    network_ca: bool,
+    /// The public address of the node.
+    public_addr: SocketAddr,
+    /// The fingerprint of a consensus key installed.
+    consensus_keys: Option<PublicKey>,
+    /// Whether or not the node is syncing.
+    is_syncing: bool,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
     /// The list of node IDs that are being preferred due to being active validators.
@@ -187,6 +198,16 @@ impl NetworkInsights {
             .collect();
 
         NetworkInsights {
+            our_id: net.context.our_id,
+            network_ca: net.context.network_ca.is_some(),
+            public_addr: net.context.public_addr,
+            consensus_keys: net
+                .context
+                .consensus_keys
+                .as_ref()
+                .map(ConsensusKeyPair::public_key)
+                .cloned(),
+            is_syncing: net.context.is_syncing.load(Ordering::Relaxed),
             net_active_era: net.active_era,
             priviledged_active_outgoing_nodes,
             priviledged_upcoming_outgoing_nodes,
