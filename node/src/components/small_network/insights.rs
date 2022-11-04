@@ -14,9 +14,13 @@ use std::{
 };
 
 use casper_types::{EraId, PublicKey};
+use humantime;
 use serde::Serialize;
 
-use crate::{types::NodeId, utils::TimeAnchor};
+use crate::{
+    types::NodeId,
+    utils::{opt_display::OptDisplay, DisplayIter, TimeAnchor},
+};
 
 use super::{
     error::ConnectionError, message::ConsensusKeyPair, outgoing::OutgoingState,
@@ -33,7 +37,7 @@ pub(crate) struct NetworkInsights {
     /// The public address of the node.
     public_addr: SocketAddr,
     /// The fingerprint of a consensus key installed.
-    consensus_keys: Option<PublicKey>,
+    consensus_pub_key: Option<PublicKey>,
     /// Whether or not the node is syncing.
     is_syncing: bool,
     /// The active era as seen by the networking component.
@@ -81,6 +85,15 @@ enum OutgoingStateInsight {
     Loopback,
 }
 
+fn time_delta(now: SystemTime, then: SystemTime) -> impl Display {
+    OptDisplay::new(
+        now.duration_since(then)
+            .map(humantime::format_duration)
+            .ok(),
+        "err",
+    )
+}
+
 impl OutgoingStateInsight {
     /// Constructs a new outgoing state insight from a given outgoing state.
     fn from_outgoing_state<P>(
@@ -112,6 +125,39 @@ impl OutgoingStateInsight {
                 since: anchor.convert(*since),
             },
             OutgoingState::Loopback => OutgoingStateInsight::Loopback,
+        }
+    }
+
+    /// Formats the outgoing state insight with times relative to a given timestamp.
+    fn fmt_time_relative(&self, now: SystemTime, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            OutgoingStateInsight::Connecting {
+                failures_so_far,
+                since,
+            } => write!(
+                f,
+                "connecting (fails: {}), since {}",
+                failures_so_far,
+                time_delta(now, *since)
+            ),
+            OutgoingStateInsight::Waiting {
+                failures_so_far,
+                error,
+                last_failure,
+            } => write!(
+                f,
+                "waiting (fails: {}, last error: {}), since {}",
+                failures_so_far,
+                OptDisplay::new(error.as_ref(), "none"),
+                time_delta(now, *last_failure)
+            ),
+            OutgoingStateInsight::Connected { peer_id, peer_addr } => {
+                write!(f, "connected -> {} @ {}", peer_id, peer_addr)
+            }
+            OutgoingStateInsight::Blocked { since } => {
+                write!(f, "blocked, since {}", time_delta(now, *since))
+            }
+            OutgoingStateInsight::Loopback => f.write_str("loopback"),
         }
     }
 }
@@ -149,6 +195,25 @@ impl ConnectionSymmetryInsight {
                 peer_addrs: peer_addrs.clone(),
             },
             ConnectionSymmetry::Gone => ConnectionSymmetryInsight::Gone,
+        }
+    }
+
+    /// Formats the connection symmetry insight with times relative to a given timestamp.
+    fn fmt_time_relative(&self, now: SystemTime, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnectionSymmetryInsight::IncomingOnly { since, peer_addrs } => write!(
+                f,
+                "<- {} (since {})",
+                DisplayIter::new(peer_addrs.iter()),
+                time_delta(now, *since)
+            ),
+            ConnectionSymmetryInsight::OutgoingOnly { since } => {
+                write!(f, "-> (since {})", time_delta(now, *since))
+            }
+            ConnectionSymmetryInsight::Symmetric { peer_addrs } => {
+                write!(f, "<> {}", DisplayIter::new(peer_addrs.iter()))
+            }
+            ConnectionSymmetryInsight::Gone => f.write_str("gone"),
         }
     }
 }
@@ -201,7 +266,7 @@ impl NetworkInsights {
             our_id: net.context.our_id,
             network_ca: net.context.network_ca.is_some(),
             public_addr: net.context.public_addr,
-            consensus_keys: net
+            consensus_pub_key: net
                 .context
                 .consensus_keys
                 .as_ref()
@@ -222,7 +287,62 @@ impl NetworkInsights {
 
 impl Display for NetworkInsights {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // Currently, we use the debug formatting, as it is "good enough".
-        Debug::fmt(self, f)
+        let now = SystemTime::now();
+
+        if self.is_syncing {
+            f.write_str("Public ")?;
+        } else {
+            f.write_str("Private ")?;
+        }
+        writeln!(
+            f,
+            "node {} @ {} (syncing: {})",
+            self.our_id, self.public_addr, self.is_syncing
+        )?;
+        writeln!(
+            f,
+            "active era: {}  consensus key: {} unspent_bandwidth_allowance_bytes: {}",
+            self.net_active_era,
+            DisplayIter::new(self.consensus_pub_key.as_ref()),
+            OptDisplay::new(self.unspent_bandwidth_allowance_bytes, "inactive"),
+        )?;
+        let active = self
+            .priviledged_active_outgoing_nodes
+            .as_ref()
+            .map(HashSet::iter)
+            .map(DisplayIter::new);
+        writeln!(
+            f,
+            "priviledged active: {}",
+            OptDisplay::new(active, "inactive")
+        )?;
+        let upcoming = self
+            .priviledged_upcoming_outgoing_nodes
+            .as_ref()
+            .map(HashSet::iter)
+            .map(DisplayIter::new);
+        writeln!(
+            f,
+            "priviledged upcoming: {}",
+            OptDisplay::new(upcoming, "inactive")
+        )?;
+
+        f.write_str("outgoing connections:\n")?;
+        writeln!(f, "address                  uf     state")?;
+        for (addr, outgoing) in &self.outgoing_connections {
+            write!(f, "{:23}  {:5}  ", addr, outgoing.unforgettable,)?;
+            outgoing.state.fmt_time_relative(now, f)?;
+            f.write_str("\n")?;
+        }
+
+        f.write_str("connection symmetries:\n")?;
+        writeln!(f, "peer ID      ")?;
+        for (peer_id, symmetry) in &self.connection_symmetries {
+            write!(f, "{:10}  ", peer_id)?;
+            symmetry.fmt_time_relative(now, f)?;
+            f.write_str("\n")?;
+        }
+
+        Ok(())
     }
 }
