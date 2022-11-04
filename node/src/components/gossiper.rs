@@ -18,14 +18,13 @@ use prometheus::Registry;
 use tracing::{debug, error, trace, warn};
 
 use crate::{
-    components::{fetcher::FetchResponse, Component},
+    components::Component,
     effect::{
         announcements::GossiperAnnouncement,
         incoming::GossiperIncoming,
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    protocol::Message as NodeMessage,
     types::{
         Block, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId, GossiperItem,
         Item, NodeId,
@@ -44,7 +43,6 @@ use metrics::Metrics;
 pub(crate) trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<Message<T>>>
-    + From<NetworkRequest<NodeMessage>>
     + From<StorageRequest>
     + From<GossiperAnnouncement<T>>
     + Send
@@ -61,7 +59,6 @@ where
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<Message<T>>>
-        + From<NetworkRequest<NodeMessage>>
         + From<StorageRequest>
         + From<GossiperAnnouncement<T>>
         + Send
@@ -345,17 +342,8 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
             GossipAction::GetRemainder { holder } => {
                 // The previous peer failed to provide the item, so we still need to get it.  Send
-                // a `GetRequest` to a different holder and set a timeout to check we got the
-                // response.
-                let request = match NodeMessage::new_get_request_for_gossiper::<T>(&item_id) {
-                    Ok(request) => request,
-                    Err(error) => {
-                        error!("failed to create get-request: {}", error);
-                        // Treat this as if the holder didn't respond - i.e. try to get from a
-                        // different holder.
-                        return self.check_get_from_peer_timeout(effect_builder, item_id, holder);
-                    }
-                };
+                // a `GetItem` to a different holder and set a timeout to check we got the response.
+                let request = Message::GetItem(item_id.clone());
                 let mut effects = effect_builder.send_message(holder, request).ignore();
                 effects.extend(
                     effect_builder
@@ -388,8 +376,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         } else {
             self.table.new_partial_data(&item_id, sender)
         };
-
-        match action {
+        let mut effects = match action {
             GossipAction::ShouldGossip(should_gossip) => {
                 debug!(item=%item_id, %sender, %should_gossip, "received gossip request");
                 self.metrics.items_received.inc();
@@ -430,11 +417,12 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                     is_already_held: false,
                 };
                 let mut effects = effect_builder.send_message(sender, reply).ignore();
+                let item_id_clone = item_id.clone();
                 effects.extend(
                     effect_builder
                         .set_timeout(self.get_from_peer_timeout)
                         .event(move |_| Event::CheckGetFromPeerTimeout {
-                            item_id,
+                            item_id: item_id_clone,
                             peer: sender,
                         }),
                 );
@@ -452,12 +440,24 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 let mut effects = effect_builder.send_message(sender, reply).ignore();
 
                 if action == GossipAction::AnnounceFinished {
-                    effects.extend(effect_builder.announce_finished_gossiping(item_id).ignore());
+                    effects.extend(
+                        effect_builder
+                            .announce_finished_gossiping(item_id.clone())
+                            .ignore(),
+                    );
                 }
 
                 effects
             }
+        };
+        if !T::ID_IS_COMPLETE_ITEM {
+            effects.extend(
+                effect_builder
+                    .announce_gossip_received(item_id, sender)
+                    .ignore(),
+            );
         }
+        effects
     }
 
     /// Handles an incoming gossip response from a peer on the network.
@@ -518,13 +518,8 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        match NodeMessage::new_get_response_for_gossiper(&FetchResponse::Fetched(item)) {
-            Ok(message) => effect_builder.send_message(requester, message).ignore(),
-            Err(error) => {
-                error!("failed to create get-response: {}", error);
-                Effects::new()
-            }
-        }
+        let message = Message::Item(Box::new(item));
+        effect_builder.send_message(requester, message).ignore()
     }
 
     /// Handles the `Err` case for a `Result` of attempting to get the item from the component
@@ -550,6 +545,26 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         }
 
         Effects::new()
+    }
+
+    fn handle_get_item_request(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        item_id: T::Id,
+        requester: NodeId,
+    ) -> Effects<Event<T>> {
+        (self.get_from_holder)(effect_builder, item_id, requester)
+    }
+
+    fn handle_item_received_from_peer(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        item: Box<T>,
+        sender: NodeId,
+    ) -> Effects<Event<T>> {
+        effect_builder
+            .announce_item_body_received_via_gossip(item, sender)
+            .ignore()
     }
 
     /// Updates the gossiper metrics from the state of the gossip table.
@@ -606,6 +621,12 @@ where
                     item_id,
                     is_already_held,
                 } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
+                Message::GetItem(item_id) => {
+                    self.handle_get_item_request(effect_builder, item_id, sender)
+                }
+                Message::Item(item) => {
+                    self.handle_item_received_from_peer(effect_builder, item, sender)
+                }
             },
             Event::GetFromHolderResult {
                 item_id,

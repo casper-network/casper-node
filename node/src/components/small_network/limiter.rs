@@ -54,6 +54,7 @@ impl Limiter {
         &self,
         peer_id: NodeId,
         validator_id: Option<PublicKey>,
+        eras_to_determine_if_validator: usize,
     ) -> LimiterHandle {
         if let Some(public_key) = validator_id.as_ref().cloned() {
             match self.data.connected_validators.write() {
@@ -74,6 +75,7 @@ impl Limiter {
                 peer_id,
                 validator_id,
             },
+            eras_to_determine_if_validator,
         }
     }
 
@@ -171,6 +173,7 @@ pub(super) struct LimiterHandle {
     validator_matrix: ValidatorMatrix,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
+    eras_to_determine_if_validator: usize,
 }
 
 impl LimiterHandle {
@@ -187,10 +190,10 @@ impl LimiterHandle {
         }
 
         let peer_class = if let Some(ref validator_id) = self.consumer_id.validator_id {
-            if self
-                .validator_matrix
-                .is_validator_in_any_of_latest_n_eras(3, validator_id)
-            {
+            if self.validator_matrix.is_validator_in_any_of_latest_n_eras(
+                self.eras_to_determine_if_validator,
+                validator_id,
+            ) {
                 PeerClass::Validator
             } else {
                 PeerClass::NonValidator
@@ -318,7 +321,7 @@ mod tests {
             ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
-        let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
+        let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3);
 
         let start = Instant::now();
         handle.request_allowance(0).await;
@@ -343,8 +346,8 @@ mod tests {
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id)),
-            limiter.create_handle(NodeId::random(&mut rng), None),
+            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3),
+            limiter.create_handle(NodeId::random(&mut rng), None, 3),
         ];
 
         for handle in handles {
@@ -384,7 +387,7 @@ mod tests {
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
-            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(validator_id.clone())))
+            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(validator_id.clone()), 3))
             .map(|handle| {
                 tokio::spawn(async move {
                     handle.request_allowance(500).await;
@@ -435,8 +438,8 @@ mod tests {
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id)),
-            limiter.create_handle(NodeId::random(&mut rng), None),
+            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3),
+            limiter.create_handle(NodeId::random(&mut rng), None, 3),
         ];
 
         for handle in handles {
@@ -476,8 +479,9 @@ mod tests {
             ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
-        let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
-        let validator_handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
+        let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None, 3);
+        let validator_handle =
+            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3);
 
         // We request a large resource at once using a non-validator handle. At the same time,
         // validator requests should be still served, even while waiting for the long-delayed

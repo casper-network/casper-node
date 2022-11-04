@@ -1260,6 +1260,15 @@ impl Storage {
         self.get_highest_block(&mut txn)
     }
 
+    /// Retrieves the highest block header from the storage, if one exists.
+    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let highest_block_hash = match self.block_height_index.iter().last() {
+            Some((_, highest_block_hash)) => highest_block_hash,
+            None => return Ok(None),
+        };
+        self.read_block_header_by_hash(highest_block_hash)
+    }
+
     /// Retrieves the highest complete block from the storage, if one exists.
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
@@ -1814,7 +1823,7 @@ impl Storage {
             return Ok(None);
         }
 
-        self.validate_block_header_hash(&block_header, block_hash)?;
+        block_header.set_block_hash(*block_hash);
         Ok(Some(block_header))
     }
 
@@ -1927,7 +1936,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        self.validate_block_header_hash(&block_header, block_hash)?;
+        block_header.set_block_hash(*block_hash);
         Ok(Some(block_header))
     }
 
@@ -1952,23 +1961,6 @@ impl Storage {
             block_header,
             block_signatures,
         }))
-    }
-
-    /// Validates the block header hash against the expected block hash.
-    fn validate_block_header_hash(
-        &self,
-        block_header: &BlockHeader,
-        block_hash: &BlockHash,
-    ) -> Result<(), FatalStorageError> {
-        let found_block_header_hash = block_header.block_hash();
-        if found_block_header_hash != *block_hash {
-            return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
-                queried_block_hash_bytes: block_hash.as_ref().to_vec(),
-                found_block_header_hash,
-                block_header: Box::new(block_header.clone()),
-            });
-        };
-        Ok(())
     }
 
     /// Checks whether a block at the given height exists in the block height index (and, since the
@@ -2794,15 +2786,6 @@ impl Storage {
             .expect("LMDB panicked trying to get switch block");
         txn.commit().expect("Could not commit transaction");
         Ok(switch_block)
-    }
-
-    /// Retrieves the highest block header from the storage, if one exists.
-    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let highest_block_hash = match self.block_height_index.iter().last() {
-            Some((_, highest_block_hash)) => highest_block_hash,
-            None => return Ok(None),
-        };
-        self.read_block_header_by_hash(highest_block_hash)
     }
 }
 

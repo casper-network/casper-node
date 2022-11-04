@@ -388,10 +388,6 @@ pub struct EstimatorWeights {
     pub deploy_requests: u32,
     /// Weight to attach to deploy responses.
     pub deploy_responses: u32,
-    /// Weight to attach to finalized approvals requests.
-    pub finalized_approvals_requests: u32,
-    /// Weight to attach to finalized approvals responses.
-    pub finalized_approvals_responses: u32,
     /// Weight to attach to block requests.
     pub block_requests: u32,
     /// Weight to attach to block responses.

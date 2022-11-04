@@ -29,6 +29,12 @@ use crate::{
     NodeRng,
 };
 
+/// Cranking delay when encountered a non-switch block when checking the validator status.
+const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
+
+/// Allow the runner to shut down cleanly before shutting down the reactor.
+const DELAY_BEFORE_SHUTDOWN: Duration = Duration::from_secs(2);
+
 impl MainReactor {
     pub(super) fn crank(
         &mut self,
@@ -125,7 +131,9 @@ impl MainReactor {
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
-                ValidateInstruction::NonSwitchBlock => (Duration::from_secs(2), Effects::new()),
+                ValidateInstruction::NonSwitchBlock => {
+                    (VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK, Effects::new())
+                }
                 ValidateInstruction::KeepUp => {
                     info!("Validate: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
@@ -143,7 +151,7 @@ impl MainReactor {
             },
             ReactorState::Upgrade => {
                 // noop ... patiently wait for the runner to shut down cleanly
-                (Duration::from_secs(1), Effects::new())
+                (DELAY_BEFORE_SHUTDOWN, Effects::new())
             }
         }
     }
@@ -255,6 +263,7 @@ impl MainReactor {
                                 StartingWith::LocalTip {
                                     block_hash: *block.hash(),
                                     block_height: block.height(),
+                                    era_id: block.header().era_id(),
                                     is_last_block_before_activation,
                                 }
                             }
@@ -293,7 +302,7 @@ impl MainReactor {
                                 return CatchUpInstruction::CheckLater(
                                     "CatchUp: waiting for genesis immediate switch block to be stored"
                                         .to_string(),
-                                    Duration::from_secs(1),
+                                    self.control_logic_default_delay.into()
                                 );
                             }
                             Err(err) => {
@@ -326,6 +335,7 @@ impl MainReactor {
                                             StartingWith::LocalTip {
                                                 block_hash: *block.hash(),
                                                 block_height: block.height(),
+                                                era_id: block.header().era_id(),
                                                 is_last_block_before_activation,
                                             }
                                         }
@@ -412,10 +422,7 @@ impl MainReactor {
                         }
                         let peers_to_ask = self.small_network.fully_connected_peers_random(
                             rng,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests
-                                as usize,
+                            self.chainspec.core_config.simultaneous_peer_requests as usize,
                         );
                         if peers_to_ask.is_empty() {
                             info!("CatchUp: awaiting peers before attempting sync leap");
@@ -436,12 +443,15 @@ impl MainReactor {
                                 peers_to_ask,
                             })
                         });
-                        return CatchUpInstruction::Do(Duration::from_secs(1), effects);
+                        return CatchUpInstruction::Do(
+                            self.control_logic_default_delay.into(),
+                            effects,
+                        );
                     }
                     LeapStatus::Awaiting { .. } => {
                         return CatchUpInstruction::CheckLater(
                             "sync leaper is awaiting response".to_string(),
-                            Duration::from_secs(2),
+                            self.control_logic_default_delay.into(),
                         );
                     }
                     LeapStatus::Received {
@@ -478,9 +488,7 @@ impl MainReactor {
                             &*best_available,
                             from_peers,
                             true,
-                            self.chainspec
-                                .core_config
-                                .sync_leap_simultaneous_peer_requests,
+                            self.chainspec.core_config.simultaneous_peer_requests,
                         );
                         self.block_accumulator.handle_validators(effect_builder);
                         let effects = effect_builder.immediately().event(|_| {
@@ -495,9 +503,7 @@ impl MainReactor {
                     block_hash,
                     true,
                     true,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
+                    self.chainspec.core_config.simultaneous_peer_requests,
                 );
 
                 // once started NeedNext should perpetuate until nothing is needed
@@ -546,6 +552,7 @@ impl MainReactor {
                 Ok(Some(block)) => StartingWith::LocalTip {
                     block_hash: block.id(),
                     block_height: block.height(),
+                    era_id: block.header().era_id(),
                     is_last_block_before_activation: false,
                 },
                 Ok(None) => {
@@ -596,9 +603,7 @@ impl MainReactor {
                     block_hash,
                     false,
                     true,
-                    self.chainspec
-                        .core_config
-                        .sync_leap_simultaneous_peer_requests,
+                    self.chainspec.core_config.simultaneous_peer_requests,
                 );
                 let effects = effect_builder.immediately().event(|_| {
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
@@ -618,15 +623,13 @@ impl MainReactor {
                                 sync_block_hash,
                                 false,
                                 true,
-                                self.chainspec
-                                    .core_config
-                                    .sync_leap_simultaneous_peer_requests,
+                                self.chainspec.core_config.simultaneous_peer_requests,
                             );
                         }
                         if effects.is_empty() {
                             KeepUpInstruction::CheckLater(
                                 "KeepUp is keeping up".to_string(),
-                                Duration::from_secs(1),
+                                self.control_logic_default_delay.into(),
                             )
                         } else {
                             KeepUpInstruction::Do(Duration::ZERO, effects)
@@ -639,7 +642,7 @@ impl MainReactor {
             }
             SyncInstruction::CaughtUp => KeepUpInstruction::CheckLater(
                 "KeepUp: at perceived tip of chain".to_string(),
-                Duration::from_secs(1),
+                self.control_logic_default_delay.into(),
             ),
         }
     }
@@ -662,7 +665,7 @@ impl MainReactor {
                 if effects.is_empty() {
                     ValidateInstruction::CheckLater(
                         "consensus state is up to date".to_string(),
-                        Duration::from_secs(2),
+                        self.control_logic_default_delay.into(),
                     )
                 } else {
                     ValidateInstruction::Do(Duration::ZERO, effects)

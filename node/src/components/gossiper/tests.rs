@@ -392,23 +392,16 @@ impl reactor::Reactor for Reactor {
             ),
             Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
                 NetResponse::Deploy(ref serialized_item) => {
-                    let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployId>>(
-                        serialized_item,
-                    ) {
-                        Ok(FetchResponse::Fetched(deploy)) => Box::new(deploy),
-                        Ok(FetchResponse::NotFound(deploy_id)) => {
+                    let deploy = match bincode::deserialize::<Message<Deploy>>(serialized_item) {
+                        Ok(Message::Item(deploy)) => deploy,
+                        Ok(Message::GetItem(deploy_id))
+                        | Ok(Message::Gossip(deploy_id))
+                        | Ok(Message::GossipResponse {
+                            item_id: deploy_id, ..
+                        }) => {
                             return fatal!(
                                 effect_builder,
-                                "peer did not have deploy with hash {}: {}",
-                                deploy_id,
-                                sender,
-                            )
-                            .ignore();
-                        }
-                        Ok(FetchResponse::NotProvided(deploy_id)) => {
-                            return fatal!(
-                                effect_builder,
-                                "peer refused to provide deploy with hash {}: {}",
+                                "peer did not provide deploy with hash {}: {}",
                                 deploy_id,
                                 sender,
                             )

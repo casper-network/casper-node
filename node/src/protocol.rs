@@ -26,7 +26,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, Deploy, FetcherItem, FinalitySignature, GossiperItem, NodeId, Tag},
+    types::{Block, Deploy, FetcherItem, FinalitySignature, NodeId, Tag},
 };
 
 /// Reactor message.
@@ -167,25 +167,7 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_request_for_gossiper<T: GossiperItem>(
-        id: &T::Id,
-    ) -> Result<Self, bincode::Error> {
-        Ok(Message::GetRequest {
-            tag: T::TAG,
-            serialized_id: bincode::serialize(id)?,
-        })
-    }
-
     pub(crate) fn new_get_response<T: FetcherItem>(
-        item: &FetchResponse<T, T::Id>,
-    ) -> Result<Self, bincode::Error> {
-        Ok(Message::GetResponse {
-            tag: T::TAG,
-            serialized_item: item.to_serialized()?.into(),
-        })
-    }
-
-    pub(crate) fn new_get_response_for_gossiper<T: GossiperItem>(
         item: &FetchResponse<T, T::Id>,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {

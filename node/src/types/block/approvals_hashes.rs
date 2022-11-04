@@ -129,7 +129,7 @@ impl FetcherItem for ApprovalsHashes {
 
 impl Display for ApprovalsHashes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "approvals hashes for block: {}", self.block_hash)
+        write!(f, "approvals hashes for {}", self.block_hash)
     }
 }
 

@@ -1,3 +1,5 @@
+use casper_types::EraId;
+
 use crate::types::BlockHash;
 
 #[derive(Clone, Debug)]
@@ -8,6 +10,7 @@ pub(crate) enum StartingWith {
     LocalTip {
         block_hash: BlockHash,
         block_height: u64,
+        era_id: EraId,
         is_last_block_before_activation: bool,
     },
     Hash(BlockHash),

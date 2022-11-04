@@ -15,7 +15,6 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     str::FromStr,
-    time::Duration,
 };
 
 use datasize::DataSize;
@@ -28,7 +27,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     file_utils::{self, ReadFileError},
-    EraId, ProtocolVersion,
+    EraId, ProtocolVersion, TimeDiff,
 };
 
 use crate::{
@@ -44,7 +43,21 @@ use crate::{
     NodeRng,
 };
 
-const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+const DEFAULT_UPGRADE_CHECK_INTERVAL: &str = "30sec";
+
+#[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
+pub struct Config {
+    /// How often to scan file system for available upgrades.
+    upgrade_check_interval: TimeDiff,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            upgrade_check_interval: DEFAULT_UPGRADE_CHECK_INTERVAL.parse().unwrap(),
+        }
+    }
+}
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -152,6 +165,7 @@ impl Display for NextUpgrade {
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct UpgradeWatcher {
     current_version: ProtocolVersion,
+    config: Config,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
@@ -162,6 +176,7 @@ pub(crate) struct UpgradeWatcher {
 impl UpgradeWatcher {
     pub(crate) fn new<P: AsRef<Path>>(
         chainspec: &Chainspec,
+        config: Config,
         chainspec_dir: P,
     ) -> Result<Self, Error> {
         let root_dir = chainspec_dir
@@ -175,6 +190,7 @@ impl UpgradeWatcher {
 
         let upgrade_watcher = UpgradeWatcher {
             current_version,
+            config,
             root_dir,
             status: ComponentStatus::Uninitialized,
             next_upgrade,
@@ -228,7 +244,7 @@ impl UpgradeWatcher {
 
         effects.extend(
             effect_builder
-                .set_timeout(UPGRADE_CHECK_INTERVAL)
+                .set_timeout(self.config.upgrade_check_interval.into())
                 .event(|_| Event::CheckForNextUpgrade),
         );
 

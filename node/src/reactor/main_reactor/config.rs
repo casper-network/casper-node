@@ -5,7 +5,7 @@ use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,
     ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig, DiagnosticsPortConfig,
     EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig,
-    SmallNetworkConfig, SpeculativeExecConfig, StorageConfig,
+    SmallNetworkConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -29,4 +29,5 @@ pub(crate) struct Config {
     pub(crate) diagnostics_port: DiagnosticsPortConfig,
     pub(crate) block_accumulator: BlockAccumulatorConfig,
     pub(crate) block_synchronizer: BlockSynchronizerConfig,
+    pub(crate) upgrade_watcher: UpgradeWatcherConfig,
 }

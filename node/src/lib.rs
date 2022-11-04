@@ -65,6 +65,7 @@ pub(crate) use components::{
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
     small_network::Config as SmallNetworkConfig,
+    upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub(crate) use types::NodeRng;
 
