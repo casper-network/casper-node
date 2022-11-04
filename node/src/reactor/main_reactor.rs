@@ -262,20 +262,14 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         // chain / deploy management
-        let highest_block_height = storage.read_highest_block_height();
-        let highest_block_era_id = if let Some(height) = highest_block_height {
-            storage
-                .read_block_header_by_height(height)?
-                .map(|header| header.era_id())
-        } else {
-            None
-        };
+        let highest_block_header = storage.read_highest_block_header()?;
+        let highest_block_height_and_era_id =
+            highest_block_header.map(|header| (header.height(), header.era_id()));
 
         let block_accumulator = BlockAccumulator::new(
             config.block_accumulator,
             validator_matrix.clone(),
-            highest_block_height,
-            highest_block_era_id,
+            highest_block_height_and_era_id,
             chainspec.core_config.unbonding_delay,
         );
         let block_synchronizer =
@@ -502,7 +496,6 @@ impl reactor::Reactor for MainReactor {
                 ..
             }) => {
                 error!(%gossiped_address, "gossiper should not announce gossiped address");
-                // Unreachable as well.
                 Effects::new()
             }
             MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
@@ -891,10 +884,9 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
-                item_id: gossiped_deploy_id,
                 ..
             }) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce gossiped deploy");
+                // Ignore the announcement.
                 Effects::new()
             }
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(

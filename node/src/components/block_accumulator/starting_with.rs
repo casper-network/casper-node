@@ -32,25 +32,11 @@ impl StartingWith {
         }
     }
 
-    pub(crate) fn era_id(&self) -> Option<EraId> {
-        match self {
-            StartingWith::LocalTip(_, _, era_id) => Some(*era_id),
-            StartingWith::ExecutableBlock(_, _, maybe_era_id)
-            | StartingWith::BlockIdentifier(_, _, maybe_era_id)
-            | StartingWith::SyncedBlockIdentifier(_, _, maybe_era_id) => *maybe_era_id,
-            StartingWith::Hash(_) => None,
-        }
-    }
-
     pub(crate) fn is_executable_block(&self) -> bool {
         matches!(self, StartingWith::ExecutableBlock(_, _, _))
     }
 
     pub(crate) fn is_synced_block_identifier(&self) -> bool {
         matches!(self, StartingWith::SyncedBlockIdentifier(_, _, _))
-    }
-
-    pub(crate) fn is_local_tip(&self) -> bool {
-        matches!(self, StartingWith::LocalTip(_, _, _))
     }
 }

@@ -1260,6 +1260,15 @@ impl Storage {
         self.get_highest_block(&mut txn)
     }
 
+    /// Retrieves the highest block header from the storage, if one exists.
+    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let highest_block_hash = match self.block_height_index.iter().last() {
+            Some((_, highest_block_hash)) => highest_block_hash,
+            None => return Ok(None),
+        };
+        self.read_block_header_by_hash(highest_block_hash)
+    }
+
     /// Retrieves the highest complete block from the storage, if one exists.
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
@@ -2776,15 +2785,6 @@ impl Storage {
             .expect("LMDB panicked trying to get switch block");
         txn.commit().expect("Could not commit transaction");
         Ok(switch_block)
-    }
-
-    /// Retrieves the highest block header from the storage, if one exists.
-    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let highest_block_hash = match self.block_height_index.iter().last() {
-            Some((_, highest_block_hash)) => highest_block_hash,
-            None => return Ok(None),
-        };
-        self.read_block_header_by_hash(highest_block_hash)
     }
 }
 

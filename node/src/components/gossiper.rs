@@ -450,11 +450,13 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 effects
             }
         };
-        effects.extend(
-            effect_builder
-                .announce_gossip_received(item_id, sender)
-                .ignore(),
-        );
+        if !T::ID_IS_COMPLETE_ITEM {
+            effects.extend(
+                effect_builder
+                    .announce_gossip_received(item_id, sender)
+                    .ignore(),
+            );
+        }
         effects
     }
 

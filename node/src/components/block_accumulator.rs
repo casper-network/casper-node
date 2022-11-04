@@ -5,7 +5,7 @@ mod event;
 mod starting_with;
 mod sync_instruction;
 
-use std::{collections::BTreeMap, iter};
+use std::{cmp::Ordering, collections::BTreeMap, iter};
 
 use datasize::DataSize;
 use futures::FutureExt;
@@ -35,26 +35,26 @@ pub(crate) use event::Event;
 pub(crate) use starting_with::StartingWith;
 pub(crate) use sync_instruction::SyncInstruction;
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, DataSize, Debug, Eq, PartialEq)]
 struct LocalTipIdentifier {
     height: u64,
-    era_id: Option<EraId>,
+    era_id: EraId,
 }
 
 impl LocalTipIdentifier {
-    fn new(height: u64, era_id: Option<EraId>) -> Self {
+    fn new(height: u64, era_id: EraId) -> Self {
         Self { height, era_id }
     }
 }
 
 impl PartialOrd for LocalTipIdentifier {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.height.partial_cmp(&other.height)
     }
 }
 
 impl Ord for LocalTipIdentifier {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.height.cmp(&other.height)
     }
 }
@@ -83,8 +83,7 @@ impl BlockAccumulator {
     pub(crate) fn new(
         config: Config,
         validator_matrix: ValidatorMatrix,
-        local_tip_height: Option<u64>,
-        local_tip_era_id: Option<EraId>,
+        local_tip_height_and_era_id: Option<(u64, EraId)>,
         recent_era_interval: u64,
     ) -> Self {
         Self {
@@ -95,8 +94,8 @@ impl BlockAccumulator {
             block_children: Default::default(),
             last_progress: Timestamp::now(),
             purge_interval: config.purge_interval(),
-            local_tip: local_tip_height
-                .map(|height| LocalTipIdentifier::new(height, local_tip_era_id)),
+            local_tip: local_tip_height_and_era_id
+                .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id)),
             recent_era_interval,
         }
     }
@@ -157,8 +156,8 @@ impl BlockAccumulator {
             };
         }
 
-        if starting_with.is_local_tip() {
-            self.register_local_tip(block_height, starting_with.era_id());
+        if let StartingWith::LocalTip(_, height, era_id) = starting_with {
+            self.register_local_tip(height, era_id);
         }
 
         if self.should_sync(block_height) {
@@ -223,10 +222,7 @@ impl BlockAccumulator {
         maybe_era_id: Option<EraId>,
         sender: NodeId,
     ) {
-        let maybe_local_tip_era_id = self
-            .local_tip
-            .as_ref()
-            .and_then(|local_tip| local_tip.era_id);
+        let maybe_local_tip_era_id = self.local_tip.map(|local_tip| local_tip.era_id);
         match (maybe_era_id, maybe_local_tip_era_id) {
             // When the era of the item sent by this peer is known, we check it
             // against our local tip era. If it is recent (within a number of
@@ -341,10 +337,7 @@ impl BlockAccumulator {
     {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
-        let maybe_local_tip_era_id = self
-            .local_tip
-            .as_ref()
-            .and_then(|local_tip| local_tip.era_id);
+        let maybe_local_tip_era_id = self.local_tip.map(|local_tip| local_tip.era_id);
         let acceptor = match maybe_local_tip_era_id {
             // When the era of the finality signature being registered is
             // known, we check it against our local tip era. If it is recent
@@ -424,13 +417,12 @@ impl BlockAccumulator {
 
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64, maybe_era_id: Option<EraId>) {
+    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
         self.purge();
         self.local_tip = self
             .local_tip
-            .clone()
             .into_iter()
-            .chain(iter::once(LocalTipIdentifier::new(height, maybe_era_id)))
+            .chain(iter::once(LocalTipIdentifier::new(height, era_id)))
             .max();
     }
 
@@ -450,7 +442,7 @@ impl BlockAccumulator {
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {
-        let mut ret: Option<u64> = self.local_tip.clone().map(|local_tip| local_tip.height);
+        let mut ret: Option<u64> = self.local_tip.map(|local_tip| local_tip.height);
         for block_acceptor in &mut self.block_acceptors.values_mut() {
             if false == block_acceptor.has_sufficient_finality() {
                 continue;
@@ -564,7 +556,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 let height = block.header().height();
                 let era_id = block.header().era_id();
                 let effects = self.register_block(effect_builder, *block, None);
-                self.register_local_tip(height, Some(era_id));
+                self.register_local_tip(height, era_id);
                 effects
             }
             Event::Stored {
