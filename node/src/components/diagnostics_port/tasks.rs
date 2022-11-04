@@ -361,8 +361,11 @@ impl Session {
                 writer.write_all(b"\n").await?;
             }
             OutputFormat::Json => {
-                let buf = serde_json::to_string_pretty(response)
-                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                info!("sending json");
+                let buf = serde_json::to_string_pretty(response).map_err(|err| {
+                    warn!(%err, "error outputting JSON string");
+                    io::Error::new(io::ErrorKind::Other, err)
+                })?;
                 writer.write_all(buf.as_bytes()).await?;
                 writer.write_all(b"\n").await?;
             }
