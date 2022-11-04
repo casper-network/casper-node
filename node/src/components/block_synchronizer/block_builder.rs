@@ -142,10 +142,6 @@ impl BlockBuilder {
         self.acquisition_state.block_height()
     }
 
-    pub(super) fn era_id(&self) -> Option<EraId> {
-        self.era_id
-    }
-
     pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
     }

@@ -304,18 +304,15 @@ impl MainReactor {
                                     Ok(Some(block)) => {
                                         // ++ : leap w/ the higher of local tip or trusted hash
                                         let trusted_height = trusted_header.height();
-                                        let trusted_era_id = trusted_header.era_id();
                                         if trusted_height > block.height() {
                                             StartingWith::BlockIdentifier(
                                                 trusted_hash,
                                                 trusted_height,
-                                                Some(trusted_era_id),
                                             )
                                         } else {
                                             StartingWith::BlockIdentifier(
                                                 *block.hash(),
                                                 block.height(),
-                                                Some(block.header().era_id()),
                                             )
                                         }
                                     }
@@ -347,12 +344,7 @@ impl MainReactor {
                     }
                 }
             }
-            BlockSynchronizerProgress::Syncing(
-                block_hash,
-                maybe_block_height,
-                maybe_era_id,
-                last_progress,
-            ) => {
+            BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
                 // do idleness / reattempt checking
                 if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
                     self.attempts += 1;
@@ -370,13 +362,11 @@ impl MainReactor {
                 }
                 match maybe_block_height {
                     None => StartingWith::Hash(block_hash),
-                    Some(block_height) => {
-                        StartingWith::BlockIdentifier(block_hash, block_height, maybe_era_id)
-                    }
+                    Some(block_height) => StartingWith::BlockIdentifier(block_hash, block_height),
                 }
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height, maybe_era_id) => {
-                StartingWith::SyncedBlockIdentifier(block_hash, block_height, maybe_era_id)
+            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+                StartingWith::SyncedBlockIdentifier(block_hash, block_height)
             }
         };
         debug!("CatchUp: starting with {:?}", starting_with);
@@ -527,7 +517,7 @@ impl MainReactor {
                     )
                 }
             },
-            BlockSynchronizerProgress::Syncing(block_hash, block_height, era_id, last_progress) => {
+            BlockSynchronizerProgress::Syncing(block_hash, block_height, last_progress) => {
                 // do idleness / reattempt checking
                 if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
                     self.attempts += 1;
@@ -541,12 +531,12 @@ impl MainReactor {
                 }
                 match block_height {
                     None => StartingWith::Hash(block_hash),
-                    Some(height) => StartingWith::BlockIdentifier(block_hash, height, era_id),
+                    Some(height) => StartingWith::BlockIdentifier(block_hash, height),
                 }
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height, maybe_era_id) => {
+            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
                 debug!("KeepUp: executable block: {}", block_hash);
-                StartingWith::ExecutableBlock(block_hash, block_height, maybe_era_id)
+                StartingWith::ExecutableBlock(block_hash, block_height)
             }
         };
 
