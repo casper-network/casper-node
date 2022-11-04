@@ -939,7 +939,8 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Announces that we have finished gossiping the indicated item.
+    /// Announces that we have received a gossip message from this peer,
+    /// implying the peer holds the indicated item.
     pub(crate) async fn announce_gossip_received<T>(self, item_id: T::Id, sender: NodeId)
     where
         REv: From<GossiperAnnouncement<T>>,
