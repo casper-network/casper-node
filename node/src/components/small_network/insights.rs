@@ -6,7 +6,7 @@
 //! insights should neither be abused just because they are available.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
     time::SystemTime,
@@ -18,7 +18,8 @@ use serde::Serialize;
 use crate::{types::NodeId, utils::TimeAnchor};
 
 use super::{
-    error::ConnectionError, outgoing::OutgoingState, OutgoingHandle, Payload, SmallNetwork,
+    error::ConnectionError, outgoing::OutgoingState, symmetry::ConnectionSymmetry, OutgoingHandle,
+    Payload, SmallNetwork,
 };
 
 /// A collection of insights into the active networking component.
@@ -34,8 +35,8 @@ pub(crate) struct NetworkInsights {
     unspent_bandwidth_allowance_bytes: Option<i64>,
     /// Map of outgoing connections, along with their current state.
     outgoing_connections: HashMap<SocketAddr, OutgoingInsight>,
-    incoming_connections: HashMap<NodeId, SocketAddr>,
-    seen_symmetry: HashMap<NodeId, ()>,
+    /// Map of incoming connections.
+    connection_symmetries: HashMap<NodeId, ConnectionSymmetryInsight>,
 }
 
 /// Insight into an outgoing connection.
@@ -70,6 +71,7 @@ enum OutgoingStateInsight {
 }
 
 impl OutgoingStateInsight {
+    /// Constructs a new outgoing state insight from a given outgoing state.
     fn from_outgoing_state<P>(
         anchor: &TimeAnchor,
         state: &OutgoingState<OutgoingHandle<P>, ConnectionError>,
@@ -99,6 +101,43 @@ impl OutgoingStateInsight {
                 since: anchor.convert(*since),
             },
             OutgoingState::Loopback => OutgoingStateInsight::Loopback,
+        }
+    }
+}
+
+/// Describes whether a connection is uni- or bi-directional.
+#[derive(Debug, Serialize)]
+pub(super) enum ConnectionSymmetryInsight {
+    IncomingOnly {
+        since: SystemTime,
+        peer_addrs: BTreeSet<SocketAddr>,
+    },
+    OutgoingOnly {
+        since: SystemTime,
+    },
+    Symmetric {
+        peer_addrs: BTreeSet<SocketAddr>,
+    },
+    Gone,
+}
+
+impl ConnectionSymmetryInsight {
+    /// Creates a new insight from a given connection symmetry.
+    fn from_connection_symmetry(anchor: &TimeAnchor, sym: &ConnectionSymmetry) -> Self {
+        match sym {
+            ConnectionSymmetry::IncomingOnly { since, peer_addrs } => {
+                ConnectionSymmetryInsight::IncomingOnly {
+                    since: anchor.convert(*since),
+                    peer_addrs: peer_addrs.clone(),
+                }
+            }
+            ConnectionSymmetry::OutgoingOnly { since } => ConnectionSymmetryInsight::OutgoingOnly {
+                since: anchor.convert(*since),
+            },
+            ConnectionSymmetry::Symmetric { peer_addrs } => ConnectionSymmetryInsight::Symmetric {
+                peer_addrs: peer_addrs.clone(),
+            },
+            ConnectionSymmetry::Gone => ConnectionSymmetryInsight::Gone,
         }
     }
 }
@@ -136,6 +175,17 @@ impl NetworkInsights {
             })
             .collect();
 
+        let connection_symmetries = net
+            .connection_symmetries
+            .iter()
+            .map(|(id, sym)| {
+                (
+                    *id,
+                    ConnectionSymmetryInsight::from_connection_symmetry(&anchor, sym),
+                )
+            })
+            .collect();
+
         NetworkInsights {
             net_active_era: net.active_era,
             priviledged_active_outgoing_nodes,
@@ -144,8 +194,7 @@ impl NetworkInsights {
                 .outgoing_limiter
                 .debug_inspect_unspent_allowance(),
             outgoing_connections,
-            incoming_connections: Default::default(),
-            seen_symmetry: Default::default(),
+            connection_symmetries,
         }
     }
 }
