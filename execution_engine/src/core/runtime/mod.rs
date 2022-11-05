@@ -958,10 +958,7 @@ where
             // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
             auction::METHOD_DISTRIBUTE => (|| {
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
-
-                let reward_factors: BTreeMap<PublicKey, u64> =
-                    Self::get_named_argument(runtime_args, auction::ARG_REWARD_FACTORS)?;
-                runtime.distribute(reward_factors).map_err(Self::reverter)?;
+                runtime.distribute().map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 

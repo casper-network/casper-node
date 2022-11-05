@@ -56,7 +56,7 @@ pub fn execute_finalized_block(
         pre_state_root_hash,
         parent_hash,
         parent_seed,
-        next_block_height: _,
+        next_block_height,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
@@ -69,6 +69,16 @@ pub fn execute_finalized_block(
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
 
+    // Pay out block rewards
+    state_root_hash = scratch_state.distribute_block_rewards(
+        CorrelationId::new(),
+        state_root_hash,
+        protocol_version,
+        next_block_height,
+        time,
+    )?;
+
+    // Deal with user deploys
     for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();

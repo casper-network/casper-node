@@ -66,7 +66,7 @@ pub use self::{
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
     run_genesis_request::RunGenesisRequest,
-    step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
+    step::{SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
@@ -1808,11 +1808,14 @@ where
     pub fn distribute_block_rewards(
         &self,
         correlation_id: CorrelationId,
-        step_request: StepRequest,
-    ) -> Result<StepSuccess, StepError> {
-        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
+        pre_state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        next_block_height: u64,
+        time: u64,
+    ) -> Result<Digest, StepError> {
+        let tracking_copy = match self.tracking_copy(pre_state_hash) {
             Err(error) => return Err(StepError::TrackingCopyError(error)),
-            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
+            Ok(None) => return Err(StepError::RootNotFound(pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
@@ -1836,21 +1839,21 @@ where
 
         let deploy_hash = {
             // seeds address generator w/ era_end_timestamp_millis
-            let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
-            bytes.append(&mut step_request.next_era_id.into_bytes()?);
+            let mut bytes = time.into_bytes()?;
+            bytes.append(&mut next_block_height.into_bytes()?);
             DeployHash::new(Digest::hash(&bytes).value())
         };
 
         let distribute_rewards_stack = self.get_new_system_call_stack();
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
             DirectSystemContractCall::DistributeRewards,
-            reward_args,
+            RuntimeArgs::new(),
             &virtual_system_account,
             authorization_keys.clone(),
             BlockTime::default(),
             deploy_hash,
             gas_limit,
-            step_request.protocol_version,
+            protocol_version,
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
@@ -1864,22 +1867,18 @@ where
         }
 
         let execution_effect = tracking_copy.borrow().effect();
-        let execution_journal = tracking_copy.borrow().execution_journal();
 
         // commit
         let post_state_hash = self
             .state
             .commit(
                 correlation_id,
-                step_request.pre_state_hash,
+                pre_state_hash,
                 execution_effect.transforms,
             )
             .map_err(Into::into)?;
 
-        Ok(StepSuccess {
-            post_state_hash,
-            execution_journal,
-        })
+        Ok(post_state_hash)
     }
 
     /// Executes a step request.

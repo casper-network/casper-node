@@ -26,25 +26,6 @@ impl SlashItem {
     }
 }
 
-/// The definition of a reward item.
-#[derive(Debug, Clone)]
-pub struct RewardItem {
-    /// The public key of the validator that will be rewarded.
-    pub validator_id: PublicKey,
-    /// Amount of motes that will be distributed as rewards.
-    pub value: u64,
-}
-
-impl RewardItem {
-    /// Creates new reward item.
-    pub fn new(validator_id: PublicKey, value: u64) -> Self {
-        Self {
-            validator_id,
-            value,
-        }
-    }
-}
-
 /// The definition of an evict item.
 #[derive(Debug, Clone)]
 pub struct EvictItem {
@@ -113,14 +94,6 @@ impl StepRequest {
             .collect()
     }
 
-    /// Returns all reward factors.
-    pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
-        let mut ret = BTreeMap::new();
-        for reward_item in &self.reward_items {
-            ret.insert(reward_item.validator_id.clone(), reward_item.value);
-        }
-        Ok(ret)
-    }
 }
 
 /// Representation of all possible failures of a step request.
@@ -183,6 +156,7 @@ impl From<RuntimeStackOverflow> for StepError {
 }
 
 /// Represents a successfully executed step request.
+// TODO: Rename to something more general, as it is used both for the step and reward distribution requests (see also StepError)
 #[derive(Debug)]
 pub struct StepSuccess {
     /// New state root hash generated after effects were applied.

@@ -528,11 +528,11 @@ pub trait Auction:
 
     /// Mint and distribute seigniorage rewards to validators and their delegators,
     /// according to `reward_factors` returned by the consensus component.
-    fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error> {
+    fn distribute(&mut self) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
-
+        /*
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
         let era_id = detail::get_era_id(self)?;
@@ -618,7 +618,7 @@ pub trait Auction:
         }
 
         self.record_era_info(era_id, era_info)?;
-
+        */
         Ok(())
     }
 
