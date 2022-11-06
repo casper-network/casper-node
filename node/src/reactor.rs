@@ -998,38 +998,6 @@ where
         + From<PeerBehaviorAnnouncement>,
 {
     match message {
-        NetResponse::SyncLeap(ref serialized_item) => handle_fetch_response::<R, SyncLeap>(
-            reactor,
-            effect_builder,
-            rng,
-            sender,
-            serialized_item,
-        ),
-        NetResponse::BlockHeaderByHash(ref serialized_item) => {
-            handle_fetch_response::<R, BlockHeader>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
-        }
-        NetResponse::FinalitySignature(ref serialized_item) => {
-            handle_fetch_response::<R, FinalitySignature>(
-                reactor,
-                effect_builder,
-                rng,
-                sender,
-                serialized_item,
-            )
-        }
-        NetResponse::LegacyDeploy(ref serialized_item) => handle_fetch_response::<R, LegacyDeploy>(
-            reactor,
-            effect_builder,
-            rng,
-            sender,
-            serialized_item,
-        ),
         NetResponse::Deploy(ref serialized_item) => {
             // Incoming Deploys should be routed to the `DeployAcceptor` rather than directly to the
             // `DeployFetcher`.
@@ -1072,22 +1040,25 @@ where
                 };
             <R as Reactor>::dispatch_event(reactor, effect_builder, rng, event)
         }
-        NetResponse::GossipedAddress(_) => {
-            // The item trait is used for both fetchers and gossiped things, but this kind of
-            // item is never fetched, only gossiped.
-            warn!(
-                ?sender,
-                "gossiped addresses are never fetched, banning peer",
-            );
-            effect_builder
-                .announce_disconnect_from_peer(sender)
-                .ignore()
-        }
+        NetResponse::LegacyDeploy(ref serialized_item) => handle_fetch_response::<R, LegacyDeploy>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+        ),
         NetResponse::Block(ref serialized_item) => {
             handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
         }
-        NetResponse::BlockExecutionResults(ref serialized_item) => {
-            handle_fetch_response::<R, BlockExecutionResultsOrChunk>(
+        NetResponse::BlockHeader(ref serialized_item) => handle_fetch_response::<R, BlockHeader>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+        ),
+        NetResponse::FinalitySignature(ref serialized_item) => {
+            handle_fetch_response::<R, FinalitySignature>(
                 reactor,
                 effect_builder,
                 rng,
@@ -1095,8 +1066,24 @@ where
                 serialized_item,
             )
         }
+        NetResponse::SyncLeap(ref serialized_item) => handle_fetch_response::<R, SyncLeap>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+        ),
         NetResponse::ApprovalsHashes(ref serialized_item) => {
             handle_fetch_response::<R, ApprovalsHashes>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
+        }
+        NetResponse::BlockExecutionResults(ref serialized_item) => {
+            handle_fetch_response::<R, BlockExecutionResultsOrChunk>(
                 reactor,
                 effect_builder,
                 rng,

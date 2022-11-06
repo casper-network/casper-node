@@ -182,9 +182,6 @@ pub(super) enum GetRequestError {
     /// Failed to serialized an item ID on an incoming item request.
     #[error("failed to deserialize incoming item id")]
     MalformedIncomingItemId(#[source] bincode::Error),
-    /// Received a get request for a gossiped address, which is unanswerable.
-    #[error("received a request for a gossiped address")]
-    GossipedAddressNotGettable,
     #[error(
         "id information not matching the finality signature: \
         requested id: {requested_id},\

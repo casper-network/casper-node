@@ -1006,7 +1006,7 @@ impl Item for BlockHeader {
 impl FetcherItem for BlockHeader {
     type ValidationError = Infallible;
     type ValidationMetadata = EmptyValidationMetadata;
-    const TAG: Tag = Tag::BlockHeaderByHash;
+    const TAG: Tag = Tag::BlockHeader;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         Ok(())

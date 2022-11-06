@@ -33,21 +33,19 @@ pub enum Tag {
     LegacyDeploy,
     /// A block.
     Block,
-    /// A gossiped public listening address.
-    GossipedAddress,
-    /// A block header requested by its hash.
-    BlockHeaderByHash,
-    /// A trie or chunk from the global Merkle tree in the execution engine.
+    /// A block header.
+    BlockHeader,
+    /// A trie or chunk of a trie from global state.
     TrieOrChunk,
-    /// A single block signature for a block.
+    /// A finality signature for a block.
     FinalitySignature,
     /// Headers and signatures required to prove that if a given trusted block hash is on the
     /// correct chain, then so is a later header, which should be the most recent one according
     /// to the sender.
     SyncLeap,
-    /// The hashes of the finalized deploy approvals sets.
+    /// The hashes of the finalized deploy approvals sets for a single block.
     ApprovalsHashes,
-    /// Block execution results fetched during syncing.
+    /// The execution results for a single block.
     BlockExecutionResults,
 }
 

@@ -2,7 +2,10 @@
 //!
 //! Any event suffixed -`Incoming` is usually the arrival of a specific network message.
 
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use serde::Serialize;
@@ -26,7 +29,7 @@ impl<M> Display for MessageIncoming<M>
 where
     M: Display,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "incoming from {}: {}", self.sender, self.message)
     }
 }
@@ -46,7 +49,7 @@ impl<M> Display for DemandIncoming<M>
 where
     M: Display,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "demand from {}: {}", self.sender, self.request_msg)
     }
 }
@@ -86,32 +89,28 @@ pub(crate) enum NetRequest {
     Deploy(Vec<u8>),
     LegacyDeploy(Vec<u8>),
     Block(Vec<u8>),
-    // TODO: Move this out of `NetRequest` into its own type, it is never valid.
+    BlockHeader(Vec<u8>),
     FinalitySignature(Vec<u8>),
-    // TODO: Move this out of `NetRequest` into its own type, it is never valid.
-    GossipedAddress(Vec<u8>),
-    BlockHeaderByHash(Vec<u8>),
     SyncLeap(Vec<u8>),
-    BlockExecutionResults(Vec<u8>),
     ApprovalsHashes(Vec<u8>),
+    BlockExecutionResults(Vec<u8>),
 }
 
 impl Display for NetRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
             NetRequest::LegacyDeploy(_) => f.write_str("request for legacy deploy"),
             NetRequest::Block(_) => f.write_str("request for block"),
+            NetRequest::BlockHeader(_) => f.write_str("request for block header"),
             NetRequest::FinalitySignature(_) => {
                 f.write_str("request for gossiped finality signature")
             }
-            NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
-            NetRequest::BlockHeaderByHash(_) => f.write_str("request for block header by hash"),
             NetRequest::SyncLeap(_) => f.write_str("request for sync leap"),
+            NetRequest::ApprovalsHashes(_) => f.write_str("request for approvals hashes"),
             NetRequest::BlockExecutionResults(_) => {
                 f.write_str("request for block execution results")
             }
-            NetRequest::ApprovalsHashes(_) => f.write_str("request for approvals hashes"),
         }
     }
 }
@@ -120,15 +119,14 @@ impl NetRequest {
     /// Returns a unique identifier of the requested object.
     pub(crate) fn unique_id(&self) -> Vec<u8> {
         let id = match self {
-            NetRequest::Deploy(ref id) => id,
-            NetRequest::LegacyDeploy(ref id) => id,
-            NetRequest::Block(ref id) => id,
-            NetRequest::FinalitySignature(ref id) => id,
-            NetRequest::GossipedAddress(ref id) => id,
-            NetRequest::BlockHeaderByHash(ref id) => id,
-            NetRequest::SyncLeap(ref id) => id,
-            NetRequest::BlockExecutionResults(ref id) => id,
-            NetRequest::ApprovalsHashes(ref id) => id,
+            NetRequest::Deploy(ref id)
+            | NetRequest::LegacyDeploy(ref id)
+            | NetRequest::Block(ref id)
+            | NetRequest::BlockHeader(ref id)
+            | NetRequest::FinalitySignature(ref id)
+            | NetRequest::SyncLeap(ref id)
+            | NetRequest::ApprovalsHashes(ref id)
+            | NetRequest::BlockExecutionResults(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -143,12 +141,11 @@ impl NetRequest {
             NetRequest::Deploy(_) => Tag::Deploy,
             NetRequest::LegacyDeploy(_) => Tag::LegacyDeploy,
             NetRequest::Block(_) => Tag::Block,
+            NetRequest::BlockHeader(_) => Tag::BlockHeader,
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
-            NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
-            NetRequest::BlockHeaderByHash(_) => Tag::BlockHeaderByHash,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
-            NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
             NetRequest::ApprovalsHashes(_) => Tag::ApprovalsHashes,
+            NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
         }
     }
 }
@@ -161,12 +158,11 @@ pub(crate) enum NetResponse {
     Deploy(Arc<[u8]>),
     LegacyDeploy(Arc<[u8]>),
     Block(Arc<[u8]>),
-    GossipedAddress(Arc<[u8]>),
-    BlockHeaderByHash(Arc<[u8]>),
+    BlockHeader(Arc<[u8]>),
     FinalitySignature(Arc<[u8]>),
     SyncLeap(Arc<[u8]>),
-    BlockExecutionResults(Arc<[u8]>),
     ApprovalsHashes(Arc<[u8]>),
+    BlockExecutionResults(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -181,19 +177,18 @@ impl DataSize for NetResponse {
 }
 
 impl Display for NetResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetResponse::Deploy(_) => f.write_str("response, deploy"),
             NetResponse::LegacyDeploy(_) => f.write_str("response, legacy deploy"),
             NetResponse::Block(_) => f.write_str("response, block"),
+            NetResponse::BlockHeader(_) => f.write_str("response, block header"),
             NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),
-            NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
-            NetResponse::BlockHeaderByHash(_) => f.write_str("response, block header by hash"),
             NetResponse::SyncLeap(_) => f.write_str("response for sync leap"),
+            NetResponse::ApprovalsHashes(_) => f.write_str("response for approvals hashes"),
             NetResponse::BlockExecutionResults(_) => {
                 f.write_str("response for block execution results")
             }
-            NetResponse::ApprovalsHashes(_) => f.write_str("response for approvals hashes"),
         }
     }
 }
@@ -203,7 +198,7 @@ impl Display for NetResponse {
 pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
 
 impl Display for TrieRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
     }
 }
@@ -213,7 +208,7 @@ impl Display for TrieRequest {
 pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 
 impl Display for TrieResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("response, trie")
     }
 }
