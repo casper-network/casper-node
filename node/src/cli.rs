@@ -144,21 +144,6 @@ impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<i32> {
         match self {
-            // Cli::EdsFU { config, config_ext } => {
-            // config combinator
-            // chainspec fuckery
-            // load chainspec(s)
-            // check in era
-            // if not, shut down
-            // ? do we need a runner
-            // need scheduler
-            //
-            // instantiate reactor
-            // run reactor
-            // start in Initializing state
-            // init'ing its components
-            // doing whatever work required to get them into that state
-            // }
             Cli::Standard { config, config_ext } => {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();

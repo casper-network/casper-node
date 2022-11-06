@@ -544,8 +544,6 @@ impl FromBytes for Deploy {
 impl Item for Deploy {
     type Id = DeployId;
 
-    const TAG: Tag = Tag::Deploy;
-
     fn id(&self) -> Self::Id {
         let deploy_hash = *self.hash();
         let approvals_hash = self.approvals_hash().unwrap_or_else(|error| {
@@ -559,6 +557,7 @@ impl Item for Deploy {
 impl FetcherItem for Deploy {
     type ValidationError = DeployConfigurationFailure;
     type ValidationMetadata = EmptyValidationMetadata;
+    const TAG: Tag = Tag::Deploy;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.is_valid()

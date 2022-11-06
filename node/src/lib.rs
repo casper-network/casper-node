@@ -22,6 +22,7 @@
 )]
 #![allow(clippy::bool_comparison)]
 
+pub mod cli;
 pub(crate) mod components;
 mod config_migration;
 mod data_migration;
@@ -32,9 +33,6 @@ pub(crate) mod reactor;
 #[cfg(test)]
 pub(crate) mod testing;
 pub(crate) mod tls;
-
-// Public API
-pub mod cli;
 pub mod types;
 pub mod utils;
 pub use components::{

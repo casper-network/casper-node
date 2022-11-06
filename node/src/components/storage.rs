@@ -632,6 +632,20 @@ impl Storage {
                     fetch_response,
                 )?)
             }
+            NetRequest::BlockHeader(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockHeader>(serialized_id)?;
+                let opt_item = self
+                    .read_block_header_by_hash(&item_id)
+                    .map_err(FatalStorageError::from)?;
+                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    fetch_response,
+                )?)
+            }
             NetRequest::FinalitySignature(ref serialized_id) => {
                 let id = decode_item_id::<FinalitySignature>(serialized_id)?;
                 let opt_item =
@@ -657,21 +671,6 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::GossipedAddress(_) => Err(GetRequestError::GossipedAddressNotGettable),
-            NetRequest::BlockHeaderByHash(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockHeader>(serialized_id)?;
-                let opt_item = self
-                    .read_block_header_by_hash(&item_id)
-                    .map_err(FatalStorageError::from)?;
-                let fetch_response = FetchResponse::from_opt(item_id, opt_item);
-
-                Ok(self.update_pool_and_send(
-                    effect_builder,
-                    incoming.sender,
-                    serialized_id,
-                    fetch_response,
-                )?)
-            }
             NetRequest::SyncLeap(ref serialized_id) => {
                 let item_id = decode_item_id::<SyncLeap>(serialized_id)?;
                 let fetch_response = self.get_sync_leap(item_id, self.recent_era_count)?;
@@ -683,9 +682,9 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::BlockExecutionResults(ref serialized_id) => {
-                let item_id = decode_item_id::<BlockExecutionResultsOrChunk>(serialized_id)?;
-                let opt_item = self.read_block_execution_results_or_chunk(&item_id)?;
+            NetRequest::ApprovalsHashes(ref serialized_id) => {
+                let item_id = decode_item_id::<ApprovalsHashes>(serialized_id)?;
+                let opt_item = self.read_approvals_hashes(&item_id)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
@@ -695,9 +694,9 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::ApprovalsHashes(ref serialized_id) => {
-                let item_id = decode_item_id::<ApprovalsHashes>(serialized_id)?;
-                let opt_item = self.read_approvals_hashes(&item_id)?;
+            NetRequest::BlockExecutionResults(ref serialized_id) => {
+                let item_id = decode_item_id::<BlockExecutionResultsOrChunk>(serialized_id)?;
+                let opt_item = self.read_block_execution_results_or_chunk(&item_id)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
                 Ok(self.update_pool_and_send(
@@ -2363,7 +2362,7 @@ impl Storage {
                 .put(serialized_id.into(), Arc::downgrade(&shared));
         }
 
-        let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
+        let message = Message::new_get_response_from_serialized(<T as FetcherItem>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 

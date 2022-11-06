@@ -33,21 +33,19 @@ pub enum Tag {
     LegacyDeploy,
     /// A block.
     Block,
-    /// A gossiped public listening address.
-    GossipedAddress,
-    /// A block header requested by its hash.
-    BlockHeaderByHash,
-    /// A trie or chunk from the global Merkle tree in the execution engine.
+    /// A block header.
+    BlockHeader,
+    /// A trie or chunk of a trie from global state.
     TrieOrChunk,
-    /// A single block signature for a block.
+    /// A finality signature for a block.
     FinalitySignature,
     /// Headers and signatures required to prove that if a given trusted block hash is on the
     /// correct chain, then so is a later header, which should be the most recent one according
     /// to the sender.
     SyncLeap,
-    /// The hashes of the finalized deploy approvals sets.
+    /// The hashes of the finalized deploy approvals sets for a single block.
     ApprovalsHashes,
-    /// Block execution results fetched during syncing.
+    /// The execution results for a single block.
     BlockExecutionResults,
 }
 
@@ -57,9 +55,6 @@ pub(crate) trait Item:
 {
     /// The type of ID of the item.
     type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
-
-    /// The tag representing the type of the item.
-    const TAG: Tag;
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;
@@ -79,6 +74,9 @@ pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug + Display;
     type ValidationMetadata: Eq + Clone + Serialize + Debug + DataSize + Send;
+
+    /// The tag representing the type of the item.
+    const TAG: Tag;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;

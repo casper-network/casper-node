@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     effect::GossipTarget,
-    types::{GossiperItem, Item, Tag},
+    types::{GossiperItem, Item},
 };
 
 /// Used to gossip our public listening address to peers.
@@ -31,7 +31,6 @@ impl Display for GossipedAddress {
 
 impl Item for GossipedAddress {
     type Id = GossipedAddress;
-    const TAG: Tag = Tag::GossipedAddress;
 
     fn id(&self) -> Self::Id {
         *self

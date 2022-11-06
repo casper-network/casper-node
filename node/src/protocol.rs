@@ -74,21 +74,16 @@ impl Payload for Message {
             Message::DeployGossiper(_) => MessageKind::DeployGossip,
             Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
-            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
-                match tag {
-                    Tag::LegacyDeploy | Tag::Deploy => MessageKind::DeployTransfer,
-                    Tag::Block => MessageKind::BlockTransfer,
-                    Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
-                    Tag::TrieOrChunk => MessageKind::TrieTransfer,
-                    Tag::SyncLeap => MessageKind::BlockTransfer,
-                    Tag::ApprovalsHashes => MessageKind::BlockTransfer,
-                    Tag::BlockExecutionResults => MessageKind::BlockTransfer,
-
-                    // The following tags should be unreachable.
-                    Tag::FinalitySignature => MessageKind::Other,
-                    Tag::GossipedAddress => MessageKind::Other,
-                }
-            }
+            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy | Tag::LegacyDeploy => MessageKind::DeployTransfer,
+                Tag::Block => MessageKind::BlockTransfer,
+                Tag::BlockHeader => MessageKind::BlockTransfer,
+                Tag::TrieOrChunk => MessageKind::TrieTransfer,
+                Tag::FinalitySignature => MessageKind::Other,
+                Tag::SyncLeap => MessageKind::BlockTransfer,
+                Tag::ApprovalsHashes => MessageKind::BlockTransfer,
+                Tag::BlockExecutionResults => MessageKind::BlockTransfer,
+            },
             Message::FinalitySignature(_) => MessageKind::Consensus,
         }
     }
@@ -118,23 +113,21 @@ impl Payload for Message {
             Message::FinalitySignatureGossiper(_) => weights.gossip,
             Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::LegacyDeploy | Tag::Deploy => weights.deploy_requests,
+                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_requests,
                 Tag::Block => weights.block_requests,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::GossipedAddress => weights.gossip,
-                Tag::BlockHeaderByHash => weights.block_requests,
+                Tag::BlockHeader => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
+                Tag::FinalitySignature => weights.gossip,
                 Tag::SyncLeap => weights.block_requests,
                 Tag::ApprovalsHashes => weights.block_requests,
                 Tag::BlockExecutionResults => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::LegacyDeploy | Tag::Deploy => weights.deploy_responses,
+                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_responses,
                 Tag::Block => weights.block_responses,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::GossipedAddress => weights.gossip,
-                Tag::BlockHeaderByHash => weights.block_responses,
+                Tag::BlockHeader => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
+                Tag::FinalitySignature => weights.gossip,
                 Tag::SyncLeap => weights.block_responses,
                 Tag::ApprovalsHashes => weights.block_responses,
                 Tag::BlockExecutionResults => weights.block_responses,
@@ -266,14 +259,14 @@ where
             }
             Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::GetRequest { tag, serialized_id } => match tag {
-                Tag::LegacyDeploy => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::LegacyDeploy(serialized_id),
-                }
-                .into(),
                 Tag::Deploy => NetRequestIncoming {
                     sender,
                     message: NetRequest::Deploy(serialized_id),
+                }
+                .into(),
+                Tag::LegacyDeploy => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::LegacyDeploy(serialized_id),
                 }
                 .into(),
                 Tag::Block => NetRequestIncoming {
@@ -281,14 +274,9 @@ where
                     message: NetRequest::Block(serialized_id),
                 }
                 .into(),
-                Tag::GossipedAddress => NetRequestIncoming {
+                Tag::BlockHeader => NetRequestIncoming {
                     sender,
-                    message: NetRequest::GossipedAddress(serialized_id),
-                }
-                .into(),
-                Tag::BlockHeaderByHash => NetRequestIncoming {
-                    sender,
-                    message: NetRequest::BlockHeaderByHash(serialized_id),
+                    message: NetRequest::BlockHeader(serialized_id),
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieRequestIncoming {
@@ -321,14 +309,14 @@ where
                 tag,
                 serialized_item,
             } => match tag {
-                Tag::LegacyDeploy => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::LegacyDeploy(serialized_item),
-                }
-                .into(),
                 Tag::Deploy => NetResponseIncoming {
                     sender,
                     message: NetResponse::Deploy(serialized_item),
+                }
+                .into(),
+                Tag::LegacyDeploy => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::LegacyDeploy(serialized_item),
                 }
                 .into(),
                 Tag::Block => NetResponseIncoming {
@@ -336,24 +324,19 @@ where
                     message: NetResponse::Block(serialized_item),
                 }
                 .into(),
-                Tag::FinalitySignature => NetResponseIncoming {
+                Tag::BlockHeader => NetResponseIncoming {
                     sender,
-                    message: NetResponse::FinalitySignature(serialized_item),
-                }
-                .into(),
-                Tag::GossipedAddress => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::GossipedAddress(serialized_item),
-                }
-                .into(),
-                Tag::BlockHeaderByHash => NetResponseIncoming {
-                    sender,
-                    message: NetResponse::BlockHeaderByHash(serialized_item),
+                    message: NetResponse::BlockHeader(serialized_item),
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
                     message: TrieResponse(serialized_item.to_vec()),
+                }
+                .into(),
+                Tag::FinalitySignature => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::FinalitySignature(serialized_item),
                 }
                 .into(),
                 Tag::SyncLeap => NetResponseIncoming {
