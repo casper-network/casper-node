@@ -997,7 +997,6 @@ impl FromBytes for BlockHeader {
 
 impl Item for BlockHeader {
     type Id = BlockHash;
-    const TAG: Tag = Tag::BlockHeaderByHash;
 
     fn id(&self) -> Self::Id {
         self.block_hash()
@@ -1007,6 +1006,7 @@ impl Item for BlockHeader {
 impl FetcherItem for BlockHeader {
     type ValidationError = Infallible;
     type ValidationMetadata = EmptyValidationMetadata;
+    const TAG: Tag = Tag::BlockHeaderByHash;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -1525,8 +1525,6 @@ impl FromBytes for Block {
 impl Item for Block {
     type Id = BlockHash;
 
-    const TAG: Tag = Tag::Block;
-
     fn id(&self) -> Self::Id {
         *self.hash()
     }
@@ -1535,6 +1533,7 @@ impl Item for Block {
 impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
+    const TAG: Tag = Tag::Block;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.verify()
@@ -1642,7 +1641,6 @@ impl BlockExecutionResultsOrChunk {
 
 impl Item for BlockExecutionResultsOrChunk {
     type Id = BlockExecutionResultsOrChunkId;
-    const TAG: Tag = Tag::BlockExecutionResults;
 
     fn id(&self) -> Self::Id {
         let chunk_index = match &self.value {
@@ -1659,6 +1657,7 @@ impl Item for BlockExecutionResultsOrChunk {
 impl FetcherItem for BlockExecutionResultsOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
     type ValidationMetadata = ExecutionResultsChecksum;
+    const TAG: Tag = Tag::BlockExecutionResults;
 
     fn validate(&self, metadata: &ExecutionResultsChecksum) -> Result<(), Self::ValidationError> {
         if let ValueOrChunk::ChunkWithProof(chunk_with_proof) = &self.value {
@@ -2204,7 +2203,6 @@ impl Display for FinalitySignature {
 
 impl Item for FinalitySignature {
     type Id = FinalitySignatureId;
-    const TAG: Tag = Tag::FinalitySignature;
 
     fn id(&self) -> Self::Id {
         FinalitySignatureId {
@@ -2226,6 +2224,7 @@ impl GossiperItem for FinalitySignature {
 impl FetcherItem for FinalitySignature {
     type ValidationError = crypto::Error;
     type ValidationMetadata = EmptyValidationMetadata;
+    const TAG: Tag = Tag::FinalitySignature;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.is_verified()

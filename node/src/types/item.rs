@@ -58,9 +58,6 @@ pub(crate) trait Item:
     /// The type of ID of the item.
     type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
 
-    /// The tag representing the type of the item.
-    const TAG: Tag;
-
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;
 }
@@ -79,6 +76,9 @@ pub(crate) trait FetcherItem: Item {
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug + Display;
     type ValidationMetadata: Eq + Clone + Serialize + Debug + DataSize + Send;
+
+    /// The tag representing the type of the item.
+    const TAG: Tag;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
     fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;

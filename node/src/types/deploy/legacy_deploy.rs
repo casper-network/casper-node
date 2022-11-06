@@ -21,8 +21,6 @@ impl LegacyDeploy {
 impl Item for LegacyDeploy {
     type Id = DeployHash;
 
-    const TAG: Tag = Tag::LegacyDeploy;
-
     fn id(&self) -> Self::Id {
         *self.0.hash()
     }
@@ -31,6 +29,7 @@ impl Item for LegacyDeploy {
 impl FetcherItem for LegacyDeploy {
     type ValidationError = DeployConfigurationFailure;
     type ValidationMetadata = EmptyValidationMetadata;
+    const TAG: Tag = Tag::LegacyDeploy;
 
     fn validate(&self, metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.0.validate(metadata)

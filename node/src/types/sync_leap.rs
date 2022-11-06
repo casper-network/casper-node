@@ -123,8 +123,6 @@ impl Display for SyncLeap {
 impl Item for SyncLeap {
     type Id = BlockHash;
 
-    const TAG: Tag = Tag::SyncLeap;
-
     fn id(&self) -> Self::Id {
         self.trusted_block_header.block_hash()
     }
@@ -133,6 +131,7 @@ impl Item for SyncLeap {
 impl FetcherItem for SyncLeap {
     type ValidationError = SyncLeapValidationError;
     type ValidationMetadata = Arc<Chainspec>;
+    const TAG: Tag = Tag::SyncLeap;
 
     fn validate(&self, chainspec: &Arc<Chainspec>) -> Result<(), Self::ValidationError> {
         if self.trusted_ancestor_headers.is_empty() && self.trusted_block_header.height() > 0 {

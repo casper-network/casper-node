@@ -2361,7 +2361,7 @@ impl Storage {
                 .put(serialized_id.into(), Arc::downgrade(&shared));
         }
 
-        let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
+        let message = Message::new_get_response_from_serialized(<T as FetcherItem>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 

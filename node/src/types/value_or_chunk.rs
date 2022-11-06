@@ -113,7 +113,6 @@ pub type TrieOrChunk = ValueOrChunk<TrieRaw>;
 
 impl Item for TrieOrChunk {
     type Id = TrieOrChunkId;
-    const TAG: Tag = Tag::TrieOrChunk;
 
     fn id(&self) -> Self::Id {
         match self {
@@ -129,6 +128,7 @@ impl Item for TrieOrChunk {
 impl FetcherItem for TrieOrChunk {
     type ValidationError = ChunkWithProofVerificationError;
     type ValidationMetadata = EmptyValidationMetadata;
+    const TAG: Tag = Tag::TrieOrChunk;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         match self {
