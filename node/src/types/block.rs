@@ -1435,11 +1435,11 @@ impl Block {
         protocol_version: ProtocolVersion,
         is_switch: bool,
         deploys_iter: I,
-        parent_block: Option<&Block>,
+        parent_hash: Option<BlockHash>,
         validator_weights: BTreeMap<PublicKey, U512>,
     ) -> Self {
-        let parent_hash = match parent_block {
-            Some(parent) => *parent.hash(),
+        let parent_hash = match parent_hash {
+            Some(parent_hash) => parent_hash,
             None => BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
         };
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();

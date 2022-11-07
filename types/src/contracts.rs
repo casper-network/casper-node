@@ -39,7 +39,7 @@ pub const MAX_TOTAL_UREFS: usize = 100;
 const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
-const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
+const PACKAGE_STRING_LEGACY_EXTRA_SUFFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -520,7 +520,7 @@ impl ContractPackageHash {
             .ok_or(FromStrError::InvalidPrefix)?;
 
         let hex_addr = remainder
-            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
+            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_SUFFIX)
             .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;

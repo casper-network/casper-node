@@ -899,7 +899,6 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::Fatal => Ok(BlockAcquisitionAction::noop()),
         };
-        debug!("BlockAcquisition: next_action: {:?}", next_action);
         next_action
     }
 }

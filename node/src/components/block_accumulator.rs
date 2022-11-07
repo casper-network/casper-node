@@ -64,19 +64,39 @@ impl Ord for LocalTipIdentifier {
 /// Announces new blocks and finality signatures once they become valid.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockAccumulator {
+    /// This component requires the era validator weights for every era
+    /// it receives blocks and / or finality signatures for to verify that
+    /// the received signatures are legitimate to the era and to calculate
+    /// sufficient finality from collected finality signatures.
     validator_matrix: ValidatorMatrix,
-    attempt_execution_threshold: u64,
-    dead_air_interval: TimeDiff,
-    purge_interval: TimeDiff,
-
-    // todo!() - Consider a ubound for both the acceptors and the children maps.
+    /// Each block_acceptor instance is responsible for combining
+    /// potential blocks and their finality signatures. When we have
+    /// collected sufficient finality weight's worth of signatures
+    /// for a potential block, we accept the block and store it.
     block_acceptors: BTreeMap<BlockHash, BlockAcceptor>,
+    /// Key is the parent block hash, value is the child block hash.
+    /// Used to determine if we have awareness of the next block to be
+    /// sync'd or executed.
     block_children: BTreeMap<BlockHash, BlockHash>,
-
-    last_progress: Timestamp,
-    /// The height and era ID of the subjective local tip of the chain.
-    local_tip: Option<LocalTipIdentifier>,
+    /// The height of the subjective local tip of the chain. This is used to
+    /// keep track of whether blocks received from the network are relevant or not,
+    /// and to determine if this node is close enough to the perceived tip of the
+    /// network to transition to executing block for itself.
+    local_tip: Option<u64>,
+    /// Configured setting for how close to perceived tip local tip must be for
+    /// this node to attempt block execution for itself.
+    attempt_execution_threshold: u64,
+    /// Configured setting for tolerating a lack of newly received block
+    /// and / or finality signature data. If we last saw progress longer
+    /// ago than this interval, we will poll the network to determine
+    /// if we are caught up or have become isolated.
+    dead_air_interval: TimeDiff,
+    /// Configured setting for how often to purge dead state.
+    purge_interval: TimeDiff,
+    /// Configured setting for how many eras are considered to be recent.
     recent_era_interval: u64,
+    /// Tracks activity and assists with perceived tip determination.
+    last_progress: Timestamp,
 }
 
 impl BlockAccumulator {
@@ -156,8 +176,8 @@ impl BlockAccumulator {
             };
         }
 
-        if let StartingWith::LocalTip(_, height, era_id) = starting_with {
-            self.register_local_tip(height, era_id);
+        if starting_with.is_local_tip() {
+            self.register_local_tip(block_height);
         }
 
         if self.should_sync(block_height) {
@@ -195,25 +215,11 @@ impl BlockAccumulator {
         SyncInstruction::Leap { block_hash }
     }
 
-    fn should_sync(&mut self, starting_with_block_height: u64) -> bool {
-        match self.highest_usable_block_height() {
-            Some(highest_usable_block_height) => {
-                let height_diff =
-                    highest_usable_block_height.saturating_sub(starting_with_block_height);
-                height_diff <= self.attempt_execution_threshold
-            }
-            None => false,
-        }
-    }
-
-    fn next_syncable_block_hash(&mut self, parent_block_hash: BlockHash) -> Option<BlockHash> {
-        let child_hash = self.block_children.get(&parent_block_hash)?;
-        let block_acceptor = self.block_acceptors.get_mut(child_hash)?;
-        if block_acceptor.has_sufficient_finality() {
-            Some(block_acceptor.block_hash())
-        } else {
-            None
-        }
+    /// Drops all old block acceptors and tracks new local block height;
+    /// subsequent attempts to register a block lower than tip will be rejected.
+    pub(crate) fn register_local_tip(&mut self, height: u64) {
+        self.purge();
+        self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
     }
 
     fn register_peer(
@@ -415,34 +421,32 @@ impl BlockAccumulator {
         }
     }
 
-    /// Drops all old block acceptors and tracks new local block height;
-    /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
-        self.purge();
-        self.local_tip = self
-            .local_tip
-            .into_iter()
-            .chain(iter::once(LocalTipIdentifier::new(height, era_id)))
-            .max();
-    }
-
-    fn purge(&mut self) {
-        let now = Timestamp::now();
-        let mut purged = vec![];
-        let purge_interval = self.purge_interval;
-        self.block_acceptors.retain(|k, v| {
-            let expired = now.saturating_diff(v.last_progress()) > purge_interval;
-            if expired {
-                purged.push(*k)
-            }
-            !expired
-        });
-        self.block_children
-            .retain(|_parent, child| false == purged.contains(child));
+    fn register_stored<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        block: Option<Box<Block>>,
+        finality_signatures: Vec<FinalitySignature>,
+    ) -> Effects<Event>
+    where
+        REv: From<BlockAccumulatorAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
+    {
+        let mut effects = Effects::new();
+        if let Some(block) = block {
+            effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
+            effects.extend(effect_builder.announce_block_accepted(block).ignore());
+        };
+        for finality_signature in finality_signatures {
+            effects.extend(
+                effect_builder
+                    .announce_finality_signature_accepted(Box::new(finality_signature))
+                    .ignore(),
+            );
+        }
+        effects
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {
-        let mut ret: Option<u64> = self.local_tip.map(|local_tip| local_tip.height);
+        let mut ret: Option<u64> = self.local_tip;
         for block_acceptor in &mut self.block_acceptors.values_mut() {
             if false == block_acceptor.has_sufficient_finality() {
                 continue;
@@ -470,28 +474,41 @@ impl BlockAccumulator {
             .map(BlockAcceptor::peers)
     }
 
-    fn handle_stored<REv>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        block: Option<Box<Block>>,
-        finality_signatures: Vec<FinalitySignature>,
-    ) -> Effects<Event>
-    where
-        REv: From<BlockAccumulatorAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
-    {
-        let mut effects = Effects::new();
-        if let Some(block) = block {
-            effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
-            effects.extend(effect_builder.announce_block_accepted(block).ignore());
-        };
-        for finality_signature in finality_signatures {
-            effects.extend(
-                effect_builder
-                    .announce_finality_signature_accepted(Box::new(finality_signature))
-                    .ignore(),
-            );
+    fn should_sync(&mut self, starting_with_block_height: u64) -> bool {
+        match self.highest_usable_block_height() {
+            Some(highest_usable_block_height) => {
+                let height_diff =
+                    highest_usable_block_height.saturating_sub(starting_with_block_height);
+                height_diff <= self.attempt_execution_threshold
+            }
+            None => false,
         }
-        effects
+    }
+
+    fn next_syncable_block_hash(&mut self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+        let child_hash = self.block_children.get(&parent_block_hash)?;
+        let block_acceptor = self.block_acceptors.get_mut(child_hash)?;
+        if block_acceptor.has_sufficient_finality() {
+            Some(block_acceptor.block_hash())
+        } else {
+            None
+        }
+    }
+
+    fn purge(&mut self) {
+        let now = Timestamp::now();
+        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours todo!("move to config")
+        let mut purged = vec![];
+        self.block_acceptors.retain(|k, v| {
+            let expired =
+                now.saturating_diff(v.last_progress()) > TimeDiff::from_seconds(PURGE_INTERVAL);
+            if expired {
+                purged.push(*k)
+            }
+            !expired
+        });
+        self.block_children
+            .retain(|_parent, child| false == purged.contains(child));
     }
 }
 
@@ -562,7 +579,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::Stored {
                 block,
                 finality_signatures,
-            } => self.handle_stored(effect_builder, block, finality_signatures),
+            } => self.register_stored(effect_builder, block, finality_signatures),
         }
     }
 }

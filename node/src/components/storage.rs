@@ -100,6 +100,7 @@ use crate::{
     NodeRng,
 };
 
+use crate::types::SyncLeapIdentifier;
 pub use error::FatalStorageError;
 
 /// Filename for the LMDB database created by the Storage component.
@@ -673,7 +674,7 @@ impl Storage {
             }
             NetRequest::SyncLeap(ref serialized_id) => {
                 let item_id = decode_item_id::<SyncLeap>(serialized_id)?;
-                let fetch_response = self.get_sync_leap(item_id, self.recent_era_count)?;
+                let fetch_response = self.get_sync_leap(item_id)?;
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -2272,46 +2273,58 @@ impl Storage {
 
     pub(crate) fn get_sync_leap(
         &self,
-        block_hash: BlockHash,
-        allowed_era_diff: u64,
-    ) -> Result<FetchResponse<SyncLeap, BlockHash>, FatalStorageError> {
+        sync_leap_identifier: SyncLeapIdentifier,
+    ) -> Result<FetchResponse<SyncLeap, SyncLeapIdentifier>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
 
+        let block_hash = sync_leap_identifier.block_hash();
         let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
             Some(trusted_block_header) => trusted_block_header,
-            None => return Ok(FetchResponse::NotFound(block_hash)),
+            None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
         };
+
+        let trusted_ancestor_headers =
+            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
+                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
+                None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
+            };
+
+        // highest block and signatures are not requested
+        if sync_leap_identifier.trusted_ancestor_only() {
+            return Ok(FetchResponse::Fetched(SyncLeap {
+                trusted_ancestor_only: true,
+                trusted_block_header,
+                trusted_ancestor_headers,
+                signed_block_headers: vec![],
+            }));
+        }
 
         let highest_complete_block_header =
             match self.get_header_of_highest_complete_block(&mut txn)? {
                 Some(highest_complete_block_header) => highest_complete_block_header,
-                None => return Ok(FetchResponse::NotFound(block_hash)),
+                None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
+
         if highest_complete_block_header
             .block_header
             .era_id()
             .saturating_sub(trusted_block_header.era_id().into())
-            > allowed_era_diff.into()
+            > self.recent_era_count.into()
         {
-            return Ok(FetchResponse::NotProvided(block_hash));
+            return Ok(FetchResponse::NotProvided(sync_leap_identifier));
         }
 
         if highest_complete_block_header.block_header.height() == 0 {
             return Ok(FetchResponse::Fetched(SyncLeap {
+                trusted_ancestor_only: false,
                 trusted_block_header,
                 trusted_ancestor_headers: vec![],
                 signed_block_headers: vec![],
             }));
         }
-
-        let trusted_ancestor_headers =
-            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
-                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
-                None => return Ok(FetchResponse::NotFound(block_hash)),
-            };
 
         if let Some(signed_block_headers) = self.get_signed_block_headers(
             &mut txn,
@@ -2322,14 +2335,15 @@ impl Storage {
                 .cloned()
                 .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
-            Ok(FetchResponse::Fetched(SyncLeap {
+            return Ok(FetchResponse::Fetched(SyncLeap {
+                trusted_ancestor_only: false,
                 trusted_block_header,
                 trusted_ancestor_headers,
                 signed_block_headers,
-            }))
-        } else {
-            Ok(FetchResponse::NotFound(block_hash))
+            }));
         }
+
+        Ok(FetchResponse::NotFound(sync_leap_identifier))
     }
 
     /// Creates a serialized representation of a `FetchResponse` and the resulting message.
@@ -2384,6 +2398,21 @@ impl Storage {
             Some(&seq) => seq.into(),
             None => AvailableBlockRange::RANGE_0_0,
         }
+    }
+
+    pub(crate) fn get_highest_missing_block_hash(&self) -> Option<BlockHash> {
+        if let Some(seq) = self.completed_blocks.highest_sequence() {
+            if let Some(block_hash) = self.block_height_index.get(&seq.low()).cloned() {
+                let mut txn = self
+                    .env
+                    .begin_ro_txn()
+                    .expect("Could not start read only transaction for lmdb");
+                if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
+                    return Some(*block.header().parent_hash());
+                }
+            }
+        }
+        None
     }
 
     /// Reads transactions hashes for the `block_hash`.

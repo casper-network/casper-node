@@ -24,7 +24,10 @@ use crate::{
             utils, validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
         },
     },
-    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, Item},
+    types::{
+        ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, Item,
+        SyncLeapIdentifier,
+    },
     NodeRng,
 };
 
@@ -379,11 +382,12 @@ impl MainReactor {
             SyncInstruction::Leap { block_hash } => {
                 let leap_status = self.sync_leaper.leap_status();
                 trace!("CatchUp: leap_status: {:?}", leap_status);
-                match leap_status {
+                return match leap_status {
                     ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
+                        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
                         if let LeapStatus::Failed {
                             error,
-                            block_hash: _,
+                            sync_leap_identifier: _,
                             from_peers: _,
                             in_flight: _,
                         } = ls
@@ -402,15 +406,12 @@ impl MainReactor {
                         );
                         let effects = effect_builder.immediately().event(move |_| {
                             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                                block_hash,
+                                sync_leap_identifier,
                                 peers_to_ask,
                             })
                         });
                         info!("CatchUp: initiating sync leap for: {}", block_hash);
-                        return CatchUpInstruction::Do(
-                            self.control_logic_default_delay.into(),
-                            effects,
-                        );
+                        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
                     }
                     LeapStatus::Awaiting { .. } => {
                         return CatchUpInstruction::CheckLater(
@@ -445,24 +446,28 @@ impl MainReactor {
                         let effects = effect_builder.immediately().event(|_| {
                             MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                         });
-                        return CatchUpInstruction::Do(Duration::ZERO, effects);
+                        CatchUpInstruction::Do(Duration::ZERO, effects)
                     }
-                }
+                };
             }
             SyncInstruction::BlockSync { block_hash } => {
-                self.block_synchronizer.register_block_by_hash(
+                if self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     true,
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
+                ) {
+                    // once started NeedNext should perpetuate until nothing is needed
+                    let mut effects = Effects::new();
+                    effects.extend(effect_builder.immediately().event(|_| {
+                        MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                    }));
+                    return CatchUpInstruction::Do(Duration::ZERO, effects);
+                }
+                return CatchUpInstruction::CheckLater(
+                    "CatchUp is syncing".to_string(),
+                    Duration::from_millis(500),
                 );
-
-                // once started NeedNext should perpetuate until nothing is needed
-                let mut effects = Effects::new();
-                effects.extend(effect_builder.immediately().event(|_| {
-                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                }));
-                return CatchUpInstruction::Do(Duration::ZERO, effects);
             }
             SyncInstruction::BlockExec { .. } => {
                 let msg = "BlockExec is not valid while in CatchUp mode".to_string();
@@ -495,6 +500,40 @@ impl MainReactor {
             }
             (_, None) => {
                 // remain in KeepUp
+            }
+        }
+
+        match self.block_synchronizer.catch_up_progress() {
+            ev @ BlockSynchronizerProgress::Idle | ev @ BlockSynchronizerProgress::Synced(_, _) => {
+                error!("XXX checking historical syncing: {:?}", ev);
+                if let Some(historical_block_hash) = self.storage.get_highest_missing_block_hash() {
+                    error!(
+                        "XXX starting historical syncing: {:?}",
+                        historical_block_hash
+                    );
+                    if self.block_synchronizer.register_block_by_hash(
+                        historical_block_hash,
+                        true,
+                        true,
+                        self.chainspec
+                            .core_config
+                            .sync_leap_simultaneous_peer_requests,
+                    ) {
+                        let effects = effect_builder.immediately().event(|_| {
+                            MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                        });
+                        return KeepUpInstruction::Do(Duration::ZERO, effects);
+                    }
+                }
+            }
+            BlockSynchronizerProgress::Syncing(_, maybe_block_height, last_progress) => {
+                error!(
+                    "XXX attempting historical syncing maybe_block_height: {:?}",
+                    maybe_block_height
+                );
+                if self.last_progress < last_progress {
+                    self.last_progress = last_progress;
+                }
             }
         }
 
@@ -539,7 +578,6 @@ impl MainReactor {
                 StartingWith::ExecutableBlock(block_hash, block_height)
             }
         };
-
         debug!("KeepUp: starting with {:?}", starting_with);
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
         debug!("KeepUp: sync_instruction {:?}", sync_instruction);
@@ -547,16 +585,22 @@ impl MainReactor {
             SyncInstruction::Leap { .. } => KeepUpInstruction::CatchUp,
             SyncInstruction::BlockSync { block_hash } => {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
-                self.block_synchronizer.register_block_by_hash(
+                if self.block_synchronizer.register_block_by_hash(
                     block_hash,
                     false,
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
-                );
-                let effects = effect_builder.immediately().event(|_| {
-                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                });
-                KeepUpInstruction::Do(Duration::ZERO, effects)
+                ) {
+                    let effects = effect_builder.immediately().event(|_| {
+                        MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                    });
+                    KeepUpInstruction::Do(Duration::ZERO, effects)
+                } else {
+                    KeepUpInstruction::CheckLater(
+                        "KeepUp is syncing".to_string(),
+                        Duration::from_millis(500),
+                    )
+                }
             }
             SyncInstruction::BlockExec {
                 block_hash,
