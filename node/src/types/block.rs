@@ -2217,7 +2217,7 @@ impl GossiperItem for FinalitySignature {
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn target(&self) -> GossipTarget {
-        GossipTarget::NonValidators(self.era_id)
+        GossipTarget::All
     }
 }
 
