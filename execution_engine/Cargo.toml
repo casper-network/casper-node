@@ -1,6 +1,6 @@
 [package]
 name = "casper-execution-engine"
-version = "2.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "2.0.1" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
 edition = "2018"
 description = "CasperLabs execution engine crates."

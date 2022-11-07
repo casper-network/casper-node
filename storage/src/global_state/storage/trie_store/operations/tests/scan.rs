@@ -32,7 +32,8 @@ where
         store,
         key,
         &root,
-    )?;
+    )?
+    .expect("trie scan returned no leaf");
 
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
