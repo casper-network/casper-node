@@ -9,7 +9,6 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator, GenesisAccount,
-    RewardItem,
 };
 use casper_types::{
     account::AccountHash,
@@ -151,10 +150,6 @@ fn should_run_ee_1152_regression_test() {
         .with_next_era_id(era_id)
         .with_era_end_timestamp_millis(timestamp_millis);
 
-    for (public_key, _stake) in trusted_era_validators.clone().into_iter() {
-        let reward_amount = BLOCK_REWARD / trusted_era_validators.len() as u64;
-        step_request = step_request.with_reward_item(RewardItem::new(public_key, reward_amount));
-    }
 
     builder.step(step_request.build()).unwrap();
 

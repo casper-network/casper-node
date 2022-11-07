@@ -12,7 +12,7 @@ use casper_engine_test_support::{
     TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
-    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, step::RewardItem,
+    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
 use casper_types::{
     self,
@@ -276,7 +276,6 @@ fn should_distribute_delegation_rate_zero() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
         .with_next_era_id(builder.get_era().successor())
         .with_run_auction(true)
         .build();
@@ -550,7 +549,6 @@ fn should_withdraw_bids_after_distribute() {
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_next_era_id(builder.get_era())
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
         .with_run_auction(true)
         .build();
 
@@ -860,7 +858,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
         .with_next_era_id(builder.get_era().successor())
         .with_run_auction(true)
         .build();
@@ -990,7 +987,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
         .with_next_era_id(builder.get_era().successor())
         .with_run_auction(true)
         .build();
@@ -1291,18 +1287,6 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR_1,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR_1,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR_1,
-        ))
         .with_next_era_id(builder.get_era().successor())
         .with_run_auction(true)
         .build();
@@ -1403,18 +1387,6 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR_2,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR_2,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR_2,
-        ))
         .with_next_era_id(builder.get_era().successor())
         .with_run_auction(true)
         .build();
@@ -1703,7 +1675,6 @@ fn should_distribute_delegation_rate_half() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
         .with_next_era_id(builder.get_era())
         .with_run_auction(true)
         .build();
@@ -2134,7 +2105,6 @@ fn should_distribute_uneven_delegation_rate_zero() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
         .with_next_era_id(builder.get_era())
         .with_run_auction(true)
         .build();
@@ -2370,18 +2340,6 @@ fn should_distribute_by_factor() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR,
-        ))
         .with_run_auction(true)
         .with_next_era_id(builder.get_era().successor())
         .build();
@@ -2597,18 +2555,6 @@ fn should_distribute_by_factor_regardless_of_stake() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR,
-        ))
         .with_run_auction(true)
         .with_next_era_id(builder.get_era().successor())
         .build();
@@ -2824,18 +2770,6 @@ fn should_distribute_by_factor_uneven() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR,
-        ))
         .with_run_auction(true)
         .with_next_era_id(builder.get_era().successor())
         .build();
@@ -3126,18 +3060,6 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR,
-        ))
         .with_run_auction(true)
         .with_next_era_id(builder.get_era().successor())
         .build();
@@ -3438,18 +3360,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_1.clone(),
-            VALIDATOR_1_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_2.clone(),
-            VALIDATOR_2_REWARD_FACTOR,
-        ))
-        .with_reward_item(RewardItem::new(
-            VALIDATOR_3.clone(),
-            VALIDATOR_3_REWARD_FACTOR,
-        ))
         .with_next_era_id(builder.get_era().successor())
         .with_run_auction(true)
         .build();
@@ -4501,11 +4411,11 @@ fn should_not_restake_after_full_unbond() {
     );
 
     // step until validator receives rewards.
-    builder.advance_eras_by(2, vec![]);
+    builder.advance_eras_by(2);
 
     // validator receives rewards after this step.
 
-    builder.advance_era(vec![RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)]);
+    builder.advance_era();
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
     // second era.
@@ -4528,7 +4438,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4604,7 +4514,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // step until validator receives rewards.
-    builder.advance_eras_by(3, vec![]);
+    builder.advance_eras_by(3);
 
     // assert that the validator should indeed receive rewards and that
     // the delegator is scheduled to receive rewards this era.
@@ -4652,7 +4562,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // validator receives rewards after this step.
-    builder.advance_era(vec![RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)]);
+    builder.advance_era();
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
     // second era.

@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
-    EngineConfig, RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    EngineConfig, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
     runtime_args,
@@ -144,11 +144,6 @@ fn regression_20220221_should_distribute_to_many_validators() {
         trusted_era_validators.len(),
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT as usize
     );
-
-    for (public_key, _stake) in trusted_era_validators.clone().into_iter() {
-        let reward_amount = BLOCK_REWARD / trusted_era_validators.len() as u64;
-        step_request = step_request.with_reward_item(RewardItem::new(public_key, reward_amount));
-    }
 
     let step_request = step_request.build();
 

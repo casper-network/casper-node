@@ -6,7 +6,7 @@ use tracing::{debug, trace, warn};
 use casper_execution_engine::{
     core::engine_state::{
         self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, StepError,
         StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -75,7 +75,7 @@ pub fn execute_finalized_block(
         state_root_hash,
         protocol_version,
         next_block_height,
-        time,
+        block_time,
     )?;
 
     // Deal with user deploys

@@ -143,11 +143,9 @@ impl<VID> EraReport<VID> {
 
         let hashed_equivocators = hash_slice_of_validators(equivocators);
         let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
-        let hashed_rewards = Digest::hash_btree_map(rewards).expect("Could not hash rewards");
 
         Digest::hash_slice_rfold(&[
             hashed_equivocators,
-            hashed_rewards,
             hashed_inactive_validators,
         ])
     }
