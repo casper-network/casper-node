@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -18,7 +18,7 @@ use crate::{
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     block: Option<Block>,
-    signatures: BTreeMap<PublicKey, FinalitySignature>,
+    signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
     // todo!() - Consider a ubound.
     peers: Vec<NodeId>,
     has_sufficient_finality: bool,
@@ -133,13 +133,15 @@ impl BlockAcceptor {
                 self.register_peer(node_id);
             }
             self.signatures
-                .insert(finality_signature.public_key.clone(), finality_signature);
+                .entry(finality_signature.public_key.clone())
+                .and_modify(|(_, senders)| senders.extend(peer))
+                .or_insert_with(|| (finality_signature, peer.into_iter().collect()));
             return Ok(None);
         }
 
         if let Some(block) = &self.block {
             // if the signature's era does not match the block's era
-            // its malicious / bogus / invalid.
+            // it's malicious / bogus / invalid.
             if block.header().era_id() != finality_signature.era_id {
                 match peer {
                     Some(node_id) => {
@@ -163,13 +165,12 @@ impl BlockAcceptor {
         if let Some(node_id) = peer {
             self.register_peer(node_id);
         }
-        let is_new = self
-            .signatures
-            .insert(
-                finality_signature.public_key.clone(),
-                finality_signature.clone(),
-            )
-            .is_none();
+        let is_new = !self.signatures.contains_key(&finality_signature.public_key);
+
+        self.signatures
+            .entry(finality_signature.public_key.clone())
+            .and_modify(|(_, senders)| senders.extend(peer))
+            .or_insert_with(|| (finality_signature.clone(), peer.into_iter().collect()));
 
         if had_sufficient_finality && is_new {
             // we received this finality signature after putting the block & earlier signatures
@@ -203,7 +204,11 @@ impl BlockAcceptor {
                 self.has_sufficient_finality = true;
                 return ShouldStore::SufficientlySignedBlock {
                     block,
-                    signatures: self.signatures.iter().map(|(_, v)| v.clone()).collect_vec(),
+                    signatures: self
+                        .signatures
+                        .values()
+                        .map(|(sig, _)| sig.clone())
+                        .collect_vec(),
                 };
             }
         }
@@ -219,7 +224,7 @@ impl BlockAcceptor {
         if let Some(block) = &self.block {
             return Some(block.header().era_id());
         }
-        if let Some(finality_signature) = self.signatures.values().next() {
+        if let Some((finality_signature, _)) = self.signatures.values().next() {
             return Some(finality_signature.era_id);
         }
         None
@@ -240,16 +245,19 @@ impl BlockAcceptor {
     fn remove_bogus_validators(&mut self, era_validator_weights: &EraValidatorWeights) {
         let bogus_validators = era_validator_weights.bogus_validators(self.signatures.keys());
 
+        let mut faulty_senders = BTreeSet::new();
         bogus_validators.iter().for_each(|bogus_validator| {
             debug!(%bogus_validator, "bogus validator");
-            self.signatures.remove(bogus_validator);
+            if let Some((_, senders)) = self.signatures.remove(bogus_validator) {
+                faulty_senders.extend(senders);
+            }
         });
 
         if let Some(block) = &self.block {
             let bogus_validators = self
                 .signatures
                 .iter()
-                .filter(|(_, v)| {
+                .filter(|(_, (v, _))| {
                     v.block_hash != self.block_hash() || v.era_id != block.header().era_id()
                 })
                 .map(|(k, _)| k.clone())
@@ -257,8 +265,16 @@ impl BlockAcceptor {
 
             bogus_validators.iter().for_each(|bogus_validator| {
                 debug!(%bogus_validator, "bogus validator");
-                self.signatures.remove(bogus_validator);
+                if let Some((_, senders)) = self.signatures.remove(bogus_validator) {
+                    faulty_senders.extend(senders);
+                }
             });
+        }
+
+        if !faulty_senders.is_empty() {
+            self.peers
+                .retain(|node_id| !faulty_senders.contains(node_id));
+            // todo!(): Ban senders?
         }
     }
 
