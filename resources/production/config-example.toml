@@ -409,7 +409,7 @@ attempt_execution_threshold = 3
 dead_air_interval = '180sec'
 
 # Time after which the block acceptors are considered old and can be purged.
-purge_interval = '6hrs'
+purge_interval = '6h'
 
 # ================================================
 # Configuration options for the block synchronizer
