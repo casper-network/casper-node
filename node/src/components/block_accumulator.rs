@@ -501,11 +501,10 @@ impl BlockAccumulator {
 
     fn purge(&mut self) {
         let now = Timestamp::now();
-        const PURGE_INTERVAL: u32 = 6 * 60 * 60; // 6 hours todo!("move to config")
         let mut purged = vec![];
+        let purge_interval = self.purge_interval;
         self.block_acceptors.retain(|k, v| {
-            let expired =
-                now.saturating_diff(v.last_progress()) > TimeDiff::from_seconds(PURGE_INTERVAL);
+            let expired = now.saturating_diff(v.last_progress()) > purge_interval;
             if expired {
                 purged.push(*k)
             }

@@ -67,11 +67,7 @@ impl EraId {
     /// Returns the predecessor to current era, or None if genesis.
     #[must_use]
     pub fn predecessor(self) -> Option<EraId> {
-        if self.0 == 0 {
-            None
-        } else {
-            Some(EraId::from(self.0.saturating_sub(1)))
-        }
+        self.checked_sub(1)
     }
 
     /// Returns the current era plus `x`, or `None` if that would overflow

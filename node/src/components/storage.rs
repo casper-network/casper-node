@@ -1828,13 +1828,17 @@ impl Storage {
     }
 
     /// Returns block headers of the trusted block's ancestors, back to the most recent switch
-    /// block. If the trusted one is already a switch block, returns empty vec.
+    /// block.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
         let mut current_trusted_block_header = trusted_block_header.clone();
+
+        if current_trusted_block_header.era_id().is_genesis() {
+            return Ok(Some(vec![]));
+        }
 
         let mut result = vec![];
         loop {

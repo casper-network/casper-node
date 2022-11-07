@@ -141,28 +141,7 @@ impl BlockSynchronizer {
     pub(crate) fn historical_progress(&mut self) -> BlockSynchronizerProgress {
         match &self.historical {
             None => BlockSynchronizerProgress::Idle,
-            Some(builder) => {
-                if builder.is_finished() {
-                    match builder.block_height() {
-                        None => error!("finished builder should have block height"),
-                        Some(block_height) => {
-                            return BlockSynchronizerProgress::Synced(
-                                builder.block_hash(),
-                                block_height,
-                            )
-                        }
-                    }
-                }
-                BlockSynchronizerProgress::Syncing(
-                    builder.block_hash(),
-                    builder.block_height(),
-                    builder.last_progress_time().max(
-                        self.global_sync
-                            .last_progress()
-                            .unwrap_or_else(Timestamp::zero),
-                    ),
-                )
-            }
+            Some(builder) => self.block_builder_progress(builder),
         }
     }
 
@@ -170,28 +149,7 @@ impl BlockSynchronizer {
     pub(crate) fn keep_up_progress(&mut self) -> BlockSynchronizerProgress {
         match &self.forward {
             None => BlockSynchronizerProgress::Idle,
-            Some(builder) => {
-                if builder.is_finished() {
-                    match builder.block_height() {
-                        None => error!("finished builder should have block height"),
-                        Some(block_height) => {
-                            return BlockSynchronizerProgress::Synced(
-                                builder.block_hash(),
-                                block_height,
-                            )
-                        }
-                    }
-                }
-                BlockSynchronizerProgress::Syncing(
-                    builder.block_hash(),
-                    builder.block_height(),
-                    builder.last_progress_time().max(
-                        self.global_sync
-                            .last_progress()
-                            .unwrap_or_else(Timestamp::zero),
-                    ),
-                )
-            }
+            Some(builder) => self.block_builder_progress(builder),
         }
     }
 
@@ -831,6 +789,26 @@ impl BlockSynchronizer {
             self.global_sync
                 .cancel_request(forward_hash, global_state_synchronizer::Error::Cancelled);
         }
+    }
+
+    fn block_builder_progress(&self, builder: &BlockBuilder) -> BlockSynchronizerProgress {
+        if builder.is_finished() {
+            match builder.block_height() {
+                None => error!("finished builder should have block height"),
+                Some(block_height) => {
+                    return BlockSynchronizerProgress::Synced(builder.block_hash(), block_height)
+                }
+            }
+        }
+        BlockSynchronizerProgress::Syncing(
+            builder.block_hash(),
+            builder.block_height(),
+            builder.last_progress_time().max(
+                self.global_sync
+                    .last_progress()
+                    .unwrap_or_else(Timestamp::zero),
+            ),
+        )
     }
 }
 

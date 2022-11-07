@@ -40,6 +40,8 @@ pub(crate) enum SyncLeapValidationError {
     TooManySwitchBlocks,
     #[error("Too many trusted ancestor headers: no more than one era's worth is needed.")]
     TooManyTrustedAncestors,
+    #[error("Signed block headers present despite trusted_ancestor_only flag.")]
+    UnexpectedSignedBlockHeaders,
 }
 
 /// Identifier for a SyncLeap.
@@ -129,9 +131,11 @@ impl SyncLeap {
             }))
     }
 
-    pub(crate) fn highest_block_height(&self) -> Option<u64> {
-        self.headers().map(BlockHeader::height).max()
-        //.unwrap_or_else(|| self.trusted_block_header.height())
+    pub(crate) fn highest_block_height(&self) -> u64 {
+        self.headers()
+            .map(BlockHeader::height)
+            .max()
+            .unwrap_or_else(|| self.trusted_block_header.height())
     }
 
     pub(crate) fn highest_block_header(&self) -> (&BlockHeader, Option<&BlockSignatures>) {
@@ -202,30 +206,28 @@ impl FetcherItem for SyncLeap {
         if self.trusted_ancestor_headers.len() as u64 > chainspec.max_blocks_per_era() {
             return Err(SyncLeapValidationError::TooManyTrustedAncestors);
         }
+        if self.trusted_ancestor_only && !self.signed_block_headers.is_empty() {
+            return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
+        }
 
         let mut headers: BTreeMap<BlockHash, &BlockHeader> = self
             .headers()
             .map(|header| (header.block_hash(), header))
             .collect();
-
-        if headers.iter().any(|(_, header)| {
-            header.protocol_version() != self.trusted_block_header.protocol_version()
-        }) {
-            return Err(SyncLeapValidationError::WrongProtocolVersion);
+        let mut signatures: BTreeMap<EraId, Vec<&BlockSignatures>> = BTreeMap::new();
+        for signed_header in &self.signed_block_headers {
+            signatures
+                .entry(signed_header.block_signatures.era_id)
+                .or_default()
+                .push(&signed_header.block_signatures);
         }
 
-        let trusted_ancestor_only = self.trusted_ancestor_only;
-        let mut signatures: Option<BTreeMap<EraId, Vec<&BlockSignatures>>>;
-        if trusted_ancestor_only {
-            signatures = None;
-        } else {
-            let mut ret: BTreeMap<EraId, Vec<&BlockSignatures>> = BTreeMap::new();
-            for signed_header in &self.signed_block_headers {
-                ret.entry(signed_header.block_signatures.era_id)
-                    .or_default()
-                    .push(&signed_header.block_signatures);
-            }
-            signatures = Some(ret);
+        let protocol_version = chainspec.protocol_version();
+        if headers
+            .values()
+            .any(|header| header.protocol_version() != protocol_version)
+        {
+            return Err(SyncLeapValidationError::WrongProtocolVersion);
         }
 
         let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.block_hash()];
@@ -233,22 +235,20 @@ impl FetcherItem for SyncLeap {
         while let Some(hash) = verified.pop() {
             if let Some(header) = headers.remove(&hash) {
                 verified.push(*header.parent_hash());
-                if let Some(evw) = &mut signatures {
-                    if let Some(validator_weights) = header.next_era_validator_weights() {
-                        if let Some(era_sigs) = evw.remove(&header.next_block_era_id()) {
-                            for sigs in era_sigs {
-                                if let Err(err) = utils::check_sufficient_block_signatures(
-                                    validator_weights,
-                                    chainspec.highway_config.finality_threshold_fraction,
-                                    Some(sigs),
-                                ) {
-                                    return Err(
-                                        SyncLeapValidationError::HeadersNotSufficientlySigned(err),
-                                    );
-                                }
-                                sigs.verify().map_err(SyncLeapValidationError::Crypto)?;
-                                verified.push(sigs.block_hash);
+                if let Some(validator_weights) = header.next_era_validator_weights() {
+                    if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
+                        for sigs in era_sigs {
+                            if let Err(err) = utils::check_sufficient_block_signatures(
+                                validator_weights,
+                                chainspec.highway_config.finality_threshold_fraction,
+                                Some(sigs),
+                            ) {
+                                return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(
+                                    err,
+                                ));
                             }
+                            sigs.verify().map_err(SyncLeapValidationError::Crypto)?;
+                            verified.push(sigs.block_hash);
                         }
                     }
                 }
@@ -258,14 +258,9 @@ impl FetcherItem for SyncLeap {
         // any orphaned headers == incomplete proof
         let incomplete_headers_proof = !headers.is_empty();
         // if trusted_ancestor_only == false, any orphaned signatures == incomplete proof
-        let incomplete_signatures_proof = match signatures {
-            Some(ref evw) => !evw.is_empty(),
-            None => false,
-        };
+        let incomplete_signatures_proof = !signatures.is_empty();
 
         if incomplete_headers_proof || incomplete_signatures_proof {
-            println!("{:?}", headers);
-            println!("{:?}", signatures);
             return Err(SyncLeapValidationError::IncompleteProof);
         }
 

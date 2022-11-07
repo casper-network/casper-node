@@ -551,7 +551,7 @@ where
                 total,
             }) = Self::get_allocated_memory()
             {
-                trace!(%allocated, %total, "memory allocated");
+                debug!(%allocated, %total, "memory allocated");
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
                 self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);

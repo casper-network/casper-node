@@ -613,9 +613,22 @@ impl MainReactor {
                 | ev @ BlockSynchronizerProgress::Synced(_, _) => {
                     error!("XXX checking historical syncing: {:?}", ev);
                     if let Some(block_header) = self.storage.get_highest_orphaned_block_header() {
-                        let historical_block_hash = block_header.block_hash();
                         error!("XXX starting historical syncing: {:?}", block_header);
-                        if let Some(previous_era_id) = block_header.era_id().predecessor() {
+                        let parent_hash = block_header.parent_hash();
+                        let required_era_id = match self.storage.read_block_header(parent_hash) {
+                            Ok(None) => block_header.era_id().predecessor(),
+                            Ok(Some(parent_header)) => Some(parent_header.era_id()),
+                            Err(err) => {
+                                return KeepUpInstruction::Do(
+                                    Duration::ZERO,
+                                    utils::new_shutdown_effect(format!(
+                                        "fatal storage error read_block_header: {}",
+                                        err
+                                    )),
+                                )
+                            }
+                        };
+                        if let Some(previous_era_id) = required_era_id {
                             if false == self.validator_matrix.has_era(&previous_era_id) {
                                 error!(
                                     "XXX attempting historical sync leap: {:?}",
@@ -638,9 +651,7 @@ impl MainReactor {
                                             self.chainspec.core_config.simultaneous_peer_requests,
                                         );
                                         let sync_leap_identifier =
-                                            SyncLeapIdentifier::sync_to_historical(
-                                                historical_block_hash,
-                                            );
+                                            SyncLeapIdentifier::sync_to_historical(*parent_hash);
                                         let effects =
                                             effect_builder.immediately().event(move |_| {
                                                 MainEvent::SyncLeaper(
@@ -650,10 +661,7 @@ impl MainReactor {
                                                     },
                                                 )
                                             });
-                                        info!(
-                                            "KeepUp: initiating sync leap for: {}",
-                                            historical_block_hash
-                                        );
+                                        info!("KeepUp: initiating sync leap for: {}", parent_hash);
                                         return KeepUpInstruction::Do(Duration::ZERO, effects);
                                     }
                                     LeapStatus::Awaiting { .. } => {
