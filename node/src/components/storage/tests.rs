@@ -22,7 +22,6 @@ use super::{
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
     Storage,
 };
-use crate::types::SyncLeapIdentifier;
 use crate::{
     components::fetcher::FetchResponse,
     effect::{requests::StorageRequest, Multiple},
@@ -32,7 +31,7 @@ use crate::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
         BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
         DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        LegacyDeploy,
+        LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -119,7 +118,7 @@ fn create_sync_leap_test_chain(
                 ProtocolVersion::from_parts(1, 5, 0),
                 *height == 0 || *height == 3 || *height == 6 || *height == 9,
                 None,
-                parent.map(|block| block.hash().clone()),
+                parent.map(|block| *block.hash()),
                 if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
                     trusted_validator_weights.clone()
                 } else {
@@ -139,7 +138,7 @@ fn create_sync_leap_test_chain(
             ProtocolVersion::from_parts(1, 5, 0),
             true,
             None,
-            parent.map(|block| block.hash().clone()),
+            parent.map(|block| *block.hash()),
             trusted_validator_weights.clone(),
         );
         blocks.push(block);
@@ -217,10 +216,10 @@ fn storage_fixture_from_parts(
         &WithDir::new(harness.tmp.path(), cfg),
         fault_tolerance_fraction.unwrap_or_else(|| Ratio::new(1, 3)),
         hard_reset_to_start_of_era,
-        protocol_version.unwrap_or_else(|| ProtocolVersion::V1_0_0),
-        network_name.unwrap_or_else(|| "test"),
-        max_ttl.unwrap_or_else(|| MAX_TTL),
-        recent_era_count.unwrap_or_else(|| RECENT_ERA_COUNT),
+        protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
+        network_name.unwrap_or("test"),
+        max_ttl.unwrap_or(MAX_TTL),
+        recent_era_count.unwrap_or(RECENT_ERA_COUNT),
     )
     .expect("could not create storage component fixture from parts")
 }
