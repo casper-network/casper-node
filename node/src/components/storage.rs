@@ -2400,7 +2400,7 @@ impl Storage {
         }
     }
 
-    pub(crate) fn get_highest_missing_block_hash(&self) -> Option<BlockHash> {
+    pub(crate) fn get_highest_orphaned_block_header(&self) -> Option<BlockHeader> {
         if let Some(seq) = self.completed_blocks.highest_sequence() {
             if let Some(block_hash) = self.block_height_index.get(&seq.low()).cloned() {
                 let mut txn = self
@@ -2408,7 +2408,7 @@ impl Storage {
                     .begin_ro_txn()
                     .expect("Could not start read only transaction for lmdb");
                 if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
-                    return Some(*block.header().parent_hash());
+                    return Some(block.header().clone());
                 }
             }
         }

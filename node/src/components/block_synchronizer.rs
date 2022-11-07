@@ -138,7 +138,7 @@ impl BlockSynchronizer {
     }
 
     /// Returns the progress being made on the historical syncing.
-    pub(crate) fn catch_up_progress(&mut self) -> BlockSynchronizerProgress {
+    pub(crate) fn historical_progress(&mut self) -> BlockSynchronizerProgress {
         match &self.historical {
             None => BlockSynchronizerProgress::Idle,
             Some(builder) => {

@@ -55,12 +55,12 @@ impl SyncLeapIdentifier {
         }
     }
 
-    // pub(crate) fn sync_to_historical(block_hash: BlockHash) -> Self {
-    //     SyncLeapIdentifier {
-    //         block_hash,
-    //         trusted_ancestor_only: true,
-    //     }
-    // }
+    pub(crate) fn sync_to_historical(block_hash: BlockHash) -> Self {
+        SyncLeapIdentifier {
+            block_hash,
+            trusted_ancestor_only: true,
+        }
+    }
 
     pub(crate) fn block_hash(&self) -> BlockHash {
         self.block_hash

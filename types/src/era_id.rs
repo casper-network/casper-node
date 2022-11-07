@@ -64,6 +64,16 @@ impl EraId {
         EraId::from(self.0.saturating_add(1))
     }
 
+    /// Returns the predecessor to current era, or None if genesis.
+    #[must_use]
+    pub fn predecessor(self) -> Option<EraId> {
+        if self.0 == 0 {
+            None
+        } else {
+            Some(EraId::from(self.0.saturating_sub(1)))
+        }
+    }
+
     /// Returns the current era plus `x`, or `None` if that would overflow
     pub fn checked_add(&self, x: u64) -> Option<EraId> {
         self.0.checked_add(x).map(EraId)
