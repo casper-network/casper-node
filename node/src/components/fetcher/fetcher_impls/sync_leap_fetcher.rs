@@ -6,7 +6,7 @@ use futures::FutureExt;
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{BlockHash, NodeId, SyncLeap},
+    types::{NodeId, SyncLeap, SyncLeapIdentifier},
 };
 
 #[async_trait]
@@ -16,7 +16,9 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
     // single peer.
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn item_handles(&mut self) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<SyncLeap>>> {
+    fn item_handles(
+        &mut self,
+    ) -> &mut HashMap<SyncLeapIdentifier, HashMap<NodeId, ItemHandle<SyncLeap>>> {
         &mut self.item_handles
     }
 
@@ -30,7 +32,7 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
 
     async fn get_from_storage<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
-        _id: BlockHash,
+        _id: SyncLeapIdentifier,
     ) -> Option<SyncLeap> {
         // We never get a SyncLeap we requested from our own storage.
         None

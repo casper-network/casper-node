@@ -4,13 +4,13 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use crate::types::{BlockHash, NodeId};
+use crate::types::{NodeId, SyncLeapIdentifier};
 
 #[derive(Debug, Clone, DataSize)]
 pub(crate) enum LeapActivityError {
-    TooOld(BlockHash, Vec<NodeId>),
-    Unobtainable(BlockHash, Vec<NodeId>),
-    NoPeers(BlockHash),
+    TooOld(SyncLeapIdentifier, Vec<NodeId>),
+    Unobtainable(SyncLeapIdentifier, Vec<NodeId>),
+    NoPeers(SyncLeapIdentifier),
 }
 
 impl Display for LeapActivityError {

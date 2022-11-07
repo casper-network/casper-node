@@ -4,7 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use crate::components::block_synchronizer::{
     block_acquisition,
@@ -200,8 +200,8 @@ impl BlockBuilder {
         }
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
-                debug!(
-                    "BlockBuilder: sufficent peers for block_hash {}",
+                trace!(
+                    "BlockBuilder: sufficient peers for block_hash {}",
                     self.block_hash
                 );
             }
