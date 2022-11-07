@@ -4,6 +4,7 @@ use std::{
     hash::Hash,
 };
 
+use datasize::DataSize;
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -19,6 +20,7 @@ use crate::types::{BlockHash, BlockHeader};
 #[derive(
     Clone,
     Copy,
+    DataSize,
     PartialEq,
     Eq,
     PartialOrd,

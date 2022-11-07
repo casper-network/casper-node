@@ -4,7 +4,9 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use casper_hashing::Digest;
 use casper_types::{crypto, EraId};
+use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
@@ -15,7 +17,7 @@ use crate::{
 };
 
 /// Reasons why a peer was blocked.
-#[derive(Debug, Serialize)]
+#[derive(DataSize, Debug, Serialize)]
 pub(crate) enum BlocklistJustification {
     /// Peer sent an item that was not parseable at all.
     SentBadItem { tag: Tag },
@@ -35,12 +37,14 @@ pub(crate) enum BlocklistJustification {
     SentSignatureWithBogusValidator {
         /// The actual validation error.
         #[serde(skip_serializing)]
+        #[data_size(skip)]
         error: BlockSignatureError,
     },
     /// A finality signature that was sent is cryptographically invalid.
     SentBadFinalitySignature {
         /// The actual cryptographic validation error.
         #[serde(skip_serializing)]
+        #[data_size(skip)]
         error: crypto::Error,
     },
     /// A received batch of block headers was not valid.
@@ -49,6 +53,7 @@ pub(crate) enum BlocklistJustification {
         batch_id: BlockHeadersBatchId,
         /// The actual validation error.
         #[serde(skip_serializing)]
+        #[data_size(skip)]
         error: BlockHeadersBatchValidationError,
     },
     /// A received block with signatures failed validation.
@@ -57,6 +62,7 @@ pub(crate) enum BlocklistJustification {
         block_header: BlockHeader,
         /// The block signature error.
         #[serde(skip_serializing)]
+        #[data_size(skip)]
         error: BlockSignatureError,
     },
     /// A received block did not yield the expected execution results.
@@ -77,6 +83,7 @@ pub(crate) enum BlocklistJustification {
     SentBadDeploy {
         /// The deserialization error.
         #[serde(skip_serializing)]
+        #[data_size(skip)]
         error: bincode::Error,
     },
     /// A network address was received that should only be received via direct gossip.
@@ -90,10 +97,23 @@ pub(crate) enum BlocklistJustification {
     SentInvalidConsensusMessage {
         /// Actual validation error.
         #[serde(skip_serializing)]
+        #[data_size(skip)]
         error: anyhow::Error,
     },
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
+    /// Peer is on the wrong network.
+    WrongNetwork {
+        /// The network name reported by the peer.
+        peer_network_name: String,
+    },
+    /// Peer presented the wrong chainspec hash.
+    WrongChainspecHash {
+        /// The chainspec hash reported by the peer.
+        peer_chainspec_hash: Digest,
+    },
+    /// Peer did not present a chainspec hash.
+    MissingChainspecHash,
 }
 
 impl Display for BlocklistJustification {
@@ -164,6 +184,21 @@ impl Display for BlocklistJustification {
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")
+            }
+            BlocklistJustification::WrongNetwork { peer_network_name } => write!(
+                f,
+                "reported to be on the wrong network ({:?})",
+                peer_network_name
+            ),
+            BlocklistJustification::WrongChainspecHash {
+                peer_chainspec_hash,
+            } => write!(
+                f,
+                "reported a mismatched chainspec hash ({})",
+                peer_chainspec_hash
+            ),
+            BlocklistJustification::MissingChainspecHash => {
+                f.write_str("sent handshake without chainspec hash")
             }
         }
     }

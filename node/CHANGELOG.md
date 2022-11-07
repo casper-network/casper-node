@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased (next)]
 
+### Added
+
+* Add `net-info` command to diagnostics port to gain insights into the nodes network connectivity state.
+
 ### Changed
 
 * Log messages for blocked nodes have been unified and reasons for blocking peers are better tracked.
