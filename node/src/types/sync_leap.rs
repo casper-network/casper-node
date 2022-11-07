@@ -24,8 +24,8 @@ use crate::{
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
-    #[error("The provided headers have different protocol versions.")]
-    MultipleProtocolVersions,
+    #[error("The provided headers don't have the current protocol version.")]
+    WrongProtocolVersion,
     #[error("No ancestors of the trusted block provided.")]
     MissingTrustedAncestors,
     #[error("The SyncLeap does not contain proof that all its headers are on the right chain.")]
@@ -36,6 +36,10 @@ pub(crate) enum SyncLeapValidationError {
     Crypto(crypto::Error),
     #[error(transparent)]
     BlockWithMetadata(BlockHeaderWithMetadataValidationError),
+    #[error("Too many switch blocks: leaping across that many eras is not allowed.")]
+    TooManySwitchBlocks,
+    #[error("Too many trusted ancestor headers: no more than one era's worth is needed.")]
+    TooManyTrustedAncestors,
 }
 
 /// Identifier for a SyncLeap.
@@ -207,7 +211,7 @@ impl FetcherItem for SyncLeap {
         if headers.iter().any(|(_, header)| {
             header.protocol_version() != self.trusted_block_header.protocol_version()
         }) {
-            return Err(SyncLeapValidationError::MultipleProtocolVersions);
+            return Err(SyncLeapValidationError::WrongProtocolVersion);
         }
 
         let trusted_ancestor_only = self.trusted_ancestor_only;
@@ -550,24 +554,4 @@ mod tests {
         );
         assert_validator_weights(20, sync_leap);
     }
-}
-
-#[derive(Error, Debug)]
-pub(crate) enum SyncLeapValidationError {
-    #[error("The provided headers don't have the current protocol version.")]
-    WrongProtocolVersion,
-    #[error("No ancestors of the trusted block provided.")]
-    MissingTrustedAncestors,
-    #[error("The SyncLeap does not contain proof that all its headers are on the right chain.")]
-    IncompleteProof,
-    #[error(transparent)]
-    HeadersNotSufficientlySigned(BlockSignatureError),
-    #[error("The block signatures are not cryptographically valid: {0}")]
-    Crypto(crypto::Error),
-    #[error(transparent)]
-    BlockWithMetadata(BlockHeaderWithMetadataValidationError),
-    #[error("Too many switch blocks: leaping across that many eras is not allowed.")]
-    TooManySwitchBlocks,
-    #[error("Too many trusted ancestor headers: no more than one era's worth is needed.")]
-    TooManyTrustedAncestors,
 }

@@ -82,7 +82,7 @@ pub(crate) struct BlockAccumulator {
     /// keep track of whether blocks received from the network are relevant or not,
     /// and to determine if this node is close enough to the perceived tip of the
     /// network to transition to executing block for itself.
-    local_tip: Option<u64>,
+    local_tip: Option<LocalTipIdentifier>,
     /// Configured setting for how close to perceived tip local tip must be for
     /// this node to attempt block execution for itself.
     attempt_execution_threshold: u64,
@@ -176,8 +176,8 @@ impl BlockAccumulator {
             };
         }
 
-        if starting_with.is_local_tip() {
-            self.register_local_tip(block_height);
+        if let StartingWith::LocalTip(_, height, era_id) = starting_with {
+            self.register_local_tip(height, era_id);
         }
 
         if self.should_sync(block_height) {
@@ -217,9 +217,13 @@ impl BlockAccumulator {
 
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64) {
+    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
         self.purge();
-        self.local_tip = self.local_tip.into_iter().chain(iter::once(height)).max();
+        self.local_tip = self
+            .local_tip
+            .into_iter()
+            .chain(iter::once(LocalTipIdentifier::new(height, era_id)))
+            .max();
     }
 
     fn register_peer(
@@ -446,7 +450,7 @@ impl BlockAccumulator {
     }
 
     fn highest_usable_block_height(&mut self) -> Option<u64> {
-        let mut ret: Option<u64> = self.local_tip;
+        let mut ret: Option<u64> = self.local_tip.map(|local_tip| local_tip.height);
         for block_acceptor in &mut self.block_acceptors.values_mut() {
             if false == block_acceptor.has_sufficient_finality() {
                 continue;

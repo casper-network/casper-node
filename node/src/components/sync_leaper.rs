@@ -13,7 +13,7 @@ use crate::{
         Component,
     },
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
-    types::{BlockHash, Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 pub(crate) use error::LeapActivityError;
