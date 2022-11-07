@@ -1032,11 +1032,14 @@ impl BlockHeaderWithMetadata {
 }
 
 /// The body portion of a block.
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    hash: OnceCell<Digest>,
 }
 
 impl BlockBody {
@@ -1053,6 +1056,7 @@ impl BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            hash: OnceCell::new(),
         }
     }
 
@@ -1080,10 +1084,12 @@ impl BlockBody {
 
     /// Computes the body hash by hashing the serialized bytes.
     pub fn hash(&self) -> Digest {
-        let serialized_body = self
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        Digest::hash(&serialized_body)
+        *self.hash.get_or_init(|| {
+            let serialized_body = self
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+            Digest::hash(&serialized_body)
+        })
     }
 }
 
@@ -1125,6 +1131,7 @@ impl FromBytes for BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            hash: OnceCell::new(),
         };
         Ok((body, bytes))
     }
@@ -1948,6 +1955,7 @@ pub(crate) mod json_compatibility {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
+                hash: OnceCell::new(),
             }
         }
     }
