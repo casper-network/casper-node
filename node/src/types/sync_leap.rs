@@ -21,6 +21,8 @@ use crate::{
     },
     utils::{self, BlockSignatureError},
 };
+#[cfg(test)]
+use casper_types::system::auction::ValidatorWeights;
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
@@ -159,13 +161,13 @@ impl SyncLeap {
             .chain(self.signed_block_headers.iter().map(|sh| &sh.block_header))
     }
 
-    // #[cfg(test)]
-    // pub(crate) fn validators_of_highest_block(&self) -> Option<&ValidatorWeights> {
-    //     let (highest_header, _) = self.highest_block_header();
-    //     self.switch_blocks()
-    //         .find(|switch_block| switch_block.next_block_era_id() == highest_header.era_id())
-    //         .and_then(BlockHeader::next_era_validator_weights)
-    // }
+    #[cfg(test)]
+    pub(crate) fn validators_of_highest_block(&self) -> Option<&ValidatorWeights> {
+        let (highest_header, _) = self.highest_block_header();
+        self.switch_blocks()
+            .find(|switch_block| switch_block.next_block_era_id() == highest_header.era_id())
+            .and_then(BlockHeader::next_era_validator_weights)
+    }
 }
 
 impl Display for SyncLeap {
@@ -360,6 +362,7 @@ mod tests {
             trusted_block_header,
             trusted_ancestor_headers,
             signed_block_headers,
+            trusted_ancestor_only: false,
         }
     }
 

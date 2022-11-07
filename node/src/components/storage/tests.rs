@@ -99,7 +99,7 @@ fn create_sync_leap_test_chain(
     let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
     trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
 
-    let mut blocks = vec![];
+    let mut blocks: Vec<Block> = vec![];
     [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         .iter()
         .for_each(|height| {
@@ -119,7 +119,7 @@ fn create_sync_leap_test_chain(
                 ProtocolVersion::from_parts(1, 5, 0),
                 *height == 0 || *height == 3 || *height == 6 || *height == 9,
                 None,
-                parent,
+                parent.map(|block| block.hash().clone()),
                 if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
                     trusted_validator_weights.clone()
                 } else {
@@ -139,7 +139,7 @@ fn create_sync_leap_test_chain(
             ProtocolVersion::from_parts(1, 5, 0),
             true,
             None,
-            parent,
+            parent.map(|block| block.hash().clone()),
             trusted_validator_weights.clone(),
         );
         blocks.push(block);
@@ -1483,7 +1483,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 #[test]
 fn should_get_sync_leap() {
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
@@ -1510,7 +1510,7 @@ fn should_get_sync_leap() {
 #[test]
 fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(11).unwrap().header().block_hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
@@ -1534,7 +1534,7 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
 #[test]
 fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], true);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], true, None);
 
     let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
