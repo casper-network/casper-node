@@ -1,0 +1,17 @@
+[package]
+name = "muxink"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.1.0"
+futures = "0.3.21"
+thiserror = "1.0.31"
+tokio = { version = "1" }
+tokio-util = "0.7.2"
+tracing = "0.1.18"
+
+[dev-dependencies]
+tokio = { version = "1", features = [ "io-util", "macros", "net", "rt" ] }
+tokio-stream = "0.1.8"
+tokio-util = { version = "0.7.2", features = [ "compat" ] }
