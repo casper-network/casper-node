@@ -303,9 +303,7 @@ impl<REv> NetworkContext<REv> {
     pub(super) fn chain_info(&self) -> &ChainInfo {
         &self.chain_info
     }
-}
 
-impl<REv> NetworkContext<REv> {
     pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
         match &self.network_ca {
             Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
