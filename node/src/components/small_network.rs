@@ -24,6 +24,7 @@
 //! maintain an outgoing connection to any new address learned.
 
 mod bincode_format;
+pub(crate) mod blocklist;
 mod chain_info;
 mod config;
 mod counting_format;
@@ -31,6 +32,7 @@ mod error;
 mod event;
 mod gossiped_address;
 mod identity;
+mod insights;
 mod limiter;
 mod message;
 mod message_pack_format;
@@ -77,9 +79,11 @@ pub(crate) use self::{
     event::Event,
     gossiped_address::GossipedAddress,
     identity::Identity,
+    insights::NetworkInsights,
     message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use self::{
+    blocklist::BlocklistJustification,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
@@ -605,7 +609,10 @@ where
     }
 
     /// Determines whether an outgoing peer should be blocked based on the connection error.
-    fn is_blockable_offense_for_outgoing(&self, error: &ConnectionError) -> bool {
+    fn is_blockable_offense_for_outgoing(
+        &self,
+        error: &ConnectionError,
+    ) -> Option<BlocklistJustification> {
         match error {
             // Potentially transient failures.
             //
@@ -617,24 +624,34 @@ where
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_) => false,
+            | ConnectionError::IncompatibleVersion(_) => None,
 
             // These errors are potential bugs on our side.
             ConnectionError::HandshakeSenderCrashed(_)
             | ConnectionError::FailedToReuniteHandshakeSinkAndStream
-            | ConnectionError::CouldNotEncodeOurHandshake(_) => false,
+            | ConnectionError::CouldNotEncodeOurHandshake(_) => None,
 
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
             | ConnectionError::DidNotSendHandshake
             | ConnectionError::InvalidRemoteHandshakeMessage(_)
-            | ConnectionError::InvalidConsensusCertificate(_) => false,
+            | ConnectionError::InvalidConsensusCertificate(_) => None,
 
             // Definitely something we want to avoid.
-            ConnectionError::WrongNetwork(_)
-            | ConnectionError::WrongChainspecHash(_)
-            | ConnectionError::MissingChainspecHash => true,
+            ConnectionError::WrongNetwork(peer_network_name) => {
+                Some(BlocklistJustification::WrongNetwork {
+                    peer_network_name: peer_network_name.clone(),
+                })
+            }
+            ConnectionError::WrongChainspecHash(peer_chainspec_hash) => {
+                Some(BlocklistJustification::WrongChainspecHash {
+                    peer_chainspec_hash: *peer_chainspec_hash,
+                })
+            }
+            ConnectionError::MissingChainspecHash => {
+                Some(BlocklistJustification::MissingChainspecHash)
+            }
         }
     }
 
@@ -659,8 +676,12 @@ where
                 // We perform blocking first, to not trigger a reconnection before blocking.
                 let mut requests = Vec::new();
 
-                if self.is_blockable_offense_for_outgoing(&error) {
-                    requests.extend(self.outgoing_manager.block_addr(peer_addr, now).into_iter());
+                if let Some(justification) = self.is_blockable_offense_for_outgoing(&error) {
+                    requests.extend(
+                        self.outgoing_manager
+                            .block_addr(peer_addr, now, justification)
+                            .into_iter(),
+                    );
                 }
 
                 // Now we can proceed with the regular updates.
@@ -1069,6 +1090,9 @@ where
 
                     responder.respond(symmetric_validator_peers).ignore()
                 }
+                NetworkInfoRequest::Insight { responder } => responder
+                    .respond(NetworkInsights::collect_from_component(self))
+                    .ignore(),
             },
             (ComponentStatus::Initialized, Event::PeerAddressReceived(gossiped_address)) => {
                 let requests = self.outgoing_manager.learn_addr(
@@ -1080,14 +1104,19 @@ where
             }
             (
                 ComponentStatus::Initialized,
-                Event::BlocklistAnnouncement(PeerBehaviorAnnouncement::OffenseCommitted(peer_id)),
+                Event::BlocklistAnnouncement(PeerBehaviorAnnouncement::OffenseCommitted(
+                    peer_id,
+                    justification,
+                )),
             ) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.
-                warn!(%peer_id, "adding peer to blocklist after transgression");
+                info!(%offender, %justification, "adding peer to blocklist after transgression");
 
-                if let Some(addr) = self.outgoing_manager.get_addr(*peer_id) {
-                    let requests = self.outgoing_manager.block_addr(addr, Instant::now());
+                if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
+                    let requests =
+                        self.outgoing_manager
+                            .block_addr(addr, Instant::now(), *justification);
                     self.process_dial_requests(requests)
                 } else {
                     // Peer got away with it, no longer an outgoing connection.

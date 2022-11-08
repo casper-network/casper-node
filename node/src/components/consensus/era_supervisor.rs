@@ -40,6 +40,8 @@ use crate::{
         validator_change::{ValidatorChange, ValidatorChanges},
         ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
         ReactorEventT, ResolveValidity, TimerId,
+        small_network::blocklist::BlocklistJustification,
+        storage::Storage,
     },
     effect::{
         announcements::ControlAnnouncement,
@@ -756,12 +758,11 @@ impl EraSupervisor {
         self.metrics.proposed_block();
         let mut effects = Effects::new();
         if !valid {
-            warn!(
-                peer_id = %sender,
-                era = %era_id.value(),
-                "invalid consensus value; disconnecting from the sender"
-            );
-            effects.extend(self.disconnect(effect_builder, sender));
+            effects.extend(self.disconnect(
+                effect_builder,
+                sender,
+                BlocklistJustification::SentInvalidConsensusValue { era: era_id },
+            ));
         }
         if self
             .open_eras
@@ -830,20 +831,21 @@ impl EraSupervisor {
             }
         };
         match consensus_result {
-            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
-                warn!(
-                    %sender,
-                    %error,
-                    "invalid incoming message to consensus instance; disconnecting from the sender"
-                );
-                self.disconnect(effect_builder, sender)
-            }
+            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => self.disconnect(
+                effect_builder,
+                sender,
+                BlocklistJustification::SentInvalidConsensusMessage { error },
+            ),
             ProtocolOutcome::Disconnect(sender) => {
                 warn!(
                     %sender,
                     "disconnecting from the sender of invalid data"
                 );
-                self.disconnect(effect_builder, sender)
+                self.disconnect(
+                    effect_builder,
+                    sender,
+                    BlocklistJustification::BadConsensusBehavior,
+                )
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1074,9 +1076,10 @@ impl EraSupervisor {
         &self,
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
+        justification: BlocklistJustification,
     ) -> Effects<Event> {
         effect_builder
-            .announce_disconnect_from_peer(sender)
+            .announce_block_peer_with_justification(sender, justification)
             .ignore()
     }
 

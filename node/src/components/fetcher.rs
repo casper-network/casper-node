@@ -17,6 +17,12 @@ use tracing::{debug, trace};
 
 use crate::{
     components::Component,
+    components::{
+        fetcher::event::FetchResponder,
+        linear_chain::{self, BlockSignatureError},
+        small_network::blocklist::BlocklistJustification,
+        Component,
+    },
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},

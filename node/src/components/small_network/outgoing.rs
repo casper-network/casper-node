@@ -106,7 +106,7 @@ use datasize::DataSize;
 use prometheus::IntGauge;
 use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
-use super::{display_error, NodeId};
+use super::{blocklist::BlocklistJustification, display_error, NodeId};
 
 /// An outgoing connection/address in various states.
 #[derive(DataSize, Debug)]
@@ -116,14 +116,14 @@ where
     E: DataSize,
 {
     /// Whether or not the address is unforgettable, see `learn_addr` for details.
-    is_unforgettable: bool,
+    pub(super) is_unforgettable: bool,
     /// The current state the connection/address is in.
-    state: OutgoingState<H, E>,
+    pub(super) state: OutgoingState<H, E>,
 }
 
 /// Active state for a connection/address.
 #[derive(DataSize, Debug)]
-pub enum OutgoingState<H, E>
+pub(crate) enum OutgoingState<H, E>
 where
     H: DataSize,
     E: DataSize,
@@ -156,7 +156,12 @@ where
         handle: H,
     },
     /// The address was blocked and will not be retried.
-    Blocked { since: Instant },
+    Blocked {
+        /// Since when the block took effect.
+        since: Instant,
+        /// The justification given for blocking.
+        justification: BlocklistJustification,
+    },
     /// The address is owned by ourselves and will not be tried again.
     Loopback,
 }
@@ -292,7 +297,7 @@ where
     /// Outgoing connections subsystem configuration.
     config: OutgoingConfig,
     /// Mapping of address to their current connection state.
-    outgoing: HashMap<SocketAddr, Outgoing<H, E>>,
+    pub(super) outgoing: HashMap<SocketAddr, Outgoing<H, E>>,
     /// Routing table.
     ///
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
@@ -544,14 +549,25 @@ where
     /// Blocks an address.
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
+    pub(crate) fn block_addr(
+        &mut self,
+        addr: SocketAddr,
+        now: Instant,
+        justification: BlocklistJustification,
+    ) -> Option<DialRequest<H>> {
         let span = make_span(addr, self.outgoing.get(&addr));
 
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_vacant) => {
                     info!("unknown address blocked");
-                    self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                    self.change_outgoing_state(
+                        addr,
+                        OutgoingState::Blocked {
+                            since: now,
+                            justification,
+                        },
+                    );
                     None
                 }
                 // TODO: Check what happens on close on our end, i.e. can we distinguish in logs
@@ -568,12 +584,24 @@ where
                     OutgoingState::Connected { ref handle, .. } => {
                         info!("connected address blocked, disconnecting");
                         let handle = handle.clone();
-                        self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                        self.change_outgoing_state(
+                            addr,
+                            OutgoingState::Blocked {
+                                since: now,
+                                justification,
+                            },
+                        );
                         Some(DialRequest::Disconnect { span, handle })
                     }
                     OutgoingState::Waiting { .. } | OutgoingState::Connecting { .. } => {
                         info!("address blocked");
-                        self.change_outgoing_state(addr, OutgoingState::Blocked { since: now });
+                        self.change_outgoing_state(
+                            addr,
+                            OutgoingState::Blocked {
+                                since: now,
+                                justification,
+                            },
+                        );
                         None
                     }
                 },
@@ -663,7 +691,7 @@ where
                     }
                 }
 
-                OutgoingState::Blocked { since } => {
+                OutgoingState::Blocked { since, .. } => {
                     if now >= since + self.config.unblock_after {
                         info!("address unblocked");
 
@@ -878,7 +906,10 @@ mod tests {
     use thiserror::Error;
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
-    use crate::testing::{init_logging, test_clock::TestClock};
+    use crate::{
+        components::small_network::blocklist::BlocklistJustification,
+        testing::{init_logging, test_clock::TestClock},
+    };
 
     /// Error for test dialer.
     ///
@@ -1168,7 +1199,13 @@ mod tests {
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
         // Block `addr_a` from the start.
-        assert!(manager.block_addr(addr_a, clock.now()).is_none());
+        assert!(manager
+            .block_addr(
+                addr_a,
+                clock.now(),
+                BlocklistJustification::MissingChainspecHash
+            )
+            .is_none());
 
         // Learning both `addr_a` and `addr_b` should only trigger a connection to `addr_b` now.
         assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
@@ -1197,14 +1234,27 @@ mod tests {
 
         // Another fifteen seconds later, we block `addr_b`.
         clock.advance_time(15_000);
-        assert!(disconnects(101, &manager.block_addr(addr_b, clock.now())));
+        assert!(disconnects(
+            101,
+            &manager.block_addr(
+                addr_b,
+                clock.now(),
+                BlocklistJustification::MissingChainspecHash
+            )
+        ));
 
         // `addr_c` will be blocked during the connection phase.
         assert!(dials(
             addr_c,
             &manager.learn_addr(addr_c, false, clock.now())
         ));
-        assert!(manager.block_addr(addr_c, clock.now()).is_none());
+        assert!(manager
+            .block_addr(
+                addr_c,
+                clock.now(),
+                BlocklistJustification::MissingChainspecHash
+            )
+            .is_none());
 
         // We are still expect to provide a dial outcome, but afterwards, there should be no
         // route to C and an immediate disconnection should be queued.
@@ -1284,7 +1334,13 @@ mod tests {
 
         // Blocking loopbacks does not result in a block, since regular blocks would clear after
         // some time.
-        assert!(manager.block_addr(loopback_addr, clock.now()).is_none());
+        assert!(manager
+            .block_addr(
+                loopback_addr,
+                clock.now(),
+                BlocklistJustification::MissingChainspecHash
+            )
+            .is_none());
 
         clock.advance_time(1_000_000_000);
 
@@ -1398,7 +1454,13 @@ mod tests {
         assert!(!manager.is_blocked(addr_a));
 
         // Block `addr_a` from the start.
-        assert!(manager.block_addr(addr_a, clock.now()).is_none());
+        assert!(manager
+            .block_addr(
+                addr_a,
+                clock.now(),
+                BlocklistJustification::MissingChainspecHash
+            )
+            .is_none());
         assert!(manager.is_blocked(addr_a));
 
         clock.advance_time(60);

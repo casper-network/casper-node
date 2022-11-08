@@ -23,7 +23,7 @@ use crate::{
     components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
     effect::{
         announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
-        EffectBuilder, EffectExt, Effects,
+        requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
     },
     types::NodeRng,
     utils::umask,

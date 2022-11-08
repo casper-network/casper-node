@@ -32,6 +32,7 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, QueueDumpFormat},
         diagnostics_port::DumpConsensusStateRequest,
+        requests::NetworkInfoRequest,
         EffectBuilder,
     },
     utils::display_error,
@@ -195,7 +196,10 @@ impl Session {
         line: &str,
     ) -> io::Result<bool>
     where
-        REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+        REv: From<DumpConsensusStateRequest>
+            + From<ControlAnnouncement>
+            + From<NetworkInfoRequest>
+            + Send,
     {
         debug!(%line, "line received");
         match Command::from_line(line) {
@@ -276,6 +280,12 @@ impl Session {
                             }
                         };
                     }
+                    Action::NetInfo => {
+                        self.send_outcome(writer, &Outcome::success("collecting insights"))
+                            .await?;
+                        let insights = effect_builder.get_network_insights().await;
+                        self.send_to_client(writer, &insights).await?;
+                    }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))
                             .await?;
@@ -351,8 +361,11 @@ impl Session {
                 writer.write_all(b"\n").await?;
             }
             OutputFormat::Json => {
-                let buf = serde_json::to_string_pretty(response)
-                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                info!("sending json");
+                let buf = serde_json::to_string_pretty(response).map_err(|err| {
+                    warn!(%err, "error outputting JSON string");
+                    io::Error::new(io::ErrorKind::Other, err)
+                })?;
                 writer.write_all(buf.as_bytes()).await?;
                 writer.write_all(b"\n").await?;
             }
@@ -393,7 +406,10 @@ async fn handler<REv>(
     mut shutdown_receiver: watch::Receiver<()>,
 ) -> io::Result<()>
 where
-    REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + Send,
 {
     debug!("accepted new connection on diagnostics port");
 
@@ -433,7 +449,10 @@ pub(super) async fn server<REv>(
     listener: UnixListener,
     mut shutdown_receiver: watch::Receiver<()>,
 ) where
-    REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + Send,
 {
     let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;
