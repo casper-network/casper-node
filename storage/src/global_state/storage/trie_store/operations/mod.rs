@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use tracing::{error, trace};
+use tracing::{error, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -115,11 +115,12 @@ where
                             current = next;
                         }
                         None => {
-                            panic!(
+                            warn!(
                                 "No trie value at key: {:?} (reading from key: {:?})",
                                 pointer.hash(),
                                 key
                             );
+                            return Ok(ReadResult::NotFound);
                         }
                     },
                     None => {
@@ -136,11 +137,12 @@ where
                             current = next;
                         }
                         None => {
-                            panic!(
+                            warn!(
                                 "No trie value at key: {:?} (reading from key: {:?})",
                                 pointer.hash(),
                                 key
                             );
+                            return Ok(ReadResult::NotFound);
                         }
                     }
                 } else {
@@ -209,11 +211,12 @@ where
                 let next = match store.get(txn, pointer.hash())? {
                     Some(next) => next,
                     None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from key: {:?})",
+                        warn!(
+                            "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
-                            key
+                            path
                         );
+                        return Ok(ReadResult::NotFound);
                     }
                 };
                 depth += 1;
@@ -233,11 +236,12 @@ where
                 let next = match store.get(txn, pointer.hash())? {
                     Some(next) => next,
                     None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from key: {:?})",
+                        warn!(
+                            "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
-                            key
+                            path
                         );
+                        return Ok(ReadResult::NotFound);
                     }
                 };
                 depth += affix.len();
@@ -423,7 +427,7 @@ fn scan<T, S, E>(
     store: &S,
     key_bytes: &[u8],
     root: &Trie,
-) -> Result<TrieScan, E>
+) -> Result<Option<TrieScan>, E>
 where
     T: Readable<Handle = S::Handle>,
     S: TrieStore,
@@ -439,7 +443,7 @@ where
     loop {
         match current {
             leaf @ Trie::Leaf { .. } => {
-                return Ok(TrieScan::new(leaf, acc));
+                return Ok(Some(TrieScan::new(leaf, acc)));
             }
             Trie::Node { pointer_block } => {
                 let index = {
@@ -454,7 +458,7 @@ where
                 let pointer = match maybe_pointer {
                     Some(pointer) => pointer,
                     None => {
-                        return Ok(TrieScan::new(Trie::Node { pointer_block }, acc));
+                        return Ok(Some(TrieScan::new(Trie::Node { pointer_block }, acc)));
                     }
                 };
                 match store.get(txn, pointer.hash())? {
@@ -464,18 +468,19 @@ where
                         acc.push((index, Trie::Node { pointer_block }))
                     }
                     None => {
-                        panic!(
+                        warn!(
                             "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
                             path
                         );
+                        return Ok(None);
                     }
                 }
             }
             Trie::Extension { affix, pointer } => {
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
-                    return Ok(TrieScan::new(Trie::Extension { affix, pointer }, acc));
+                    return Ok(Some(TrieScan::new(Trie::Extension { affix, pointer }, acc)));
                 }
                 match store.get(txn, pointer.hash())? {
                     Some(next) => {
@@ -488,11 +493,12 @@ where
                         acc.push((index, Trie::Extension { affix, pointer }))
                     }
                     None => {
-                        panic!(
+                        warn!(
                             "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
                             path
                         );
+                        return Ok(None);
                     }
                 }
             }
@@ -528,7 +534,10 @@ where
 
     let key_bytes = key_to_delete.to_bytes()?;
     let TrieScan { tip, mut parents } =
-        scan::<_, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
+        match scan::<_, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)? {
+            Some(trie_scan) => trie_scan,
+            None => return Ok(DeleteResult::DoesNotExist),
+        };
 
     // Check that tip is a leaf
     match tip {
@@ -954,7 +963,13 @@ where
             };
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScan { tip, parents } =
-                scan::<T, S, E>(correlation_id, txn, store, &path, &current_root)?;
+                match scan::<T, S, E>(correlation_id, txn, store, &path, &current_root)? {
+                    Some(trie_scan) => trie_scan,
+                    // If we are scanning the trie and it's not complete under the given root, then
+                    // in the context of a write we must consider this root to "not exist".
+                    // This can happen when a trie is being sync'd or is incomplete.
+                    None => return Ok(WriteResult::RootNotFound),
+                };
             let new_elements: Vec<(Digest, Trie)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.

@@ -103,8 +103,8 @@ impl TestChain {
         let delegators = vec![];
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
-        // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        let genesis_time = Timestamp::now() + 45000.into();
+        // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
+        let genesis_time = Timestamp::now() + 60000.into();
         info!(
             "creating test chain configuration, genesis: {}",
             genesis_time
@@ -497,10 +497,10 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .participating()
             .storage()
-            .read_block_header_and_sufficient_finality_signatures_by_height(2)
+            .read_block_by_height(2)
             .expect("failed to read from storage")
             .expect("missing switch block")
-            .block_header;
+            .take_header();
         assert_eq!(EraId::from(1), header.era_id());
         assert!(header.is_switch_block());
         assert_eq!(
