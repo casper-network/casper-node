@@ -42,11 +42,10 @@ pub(super) enum Error {
         actual: EraId,
         peer: NodeId,
     },
-    #[error("mismatched block hash from peer {peer}: expected={expected}, actual={actual}")]
+    #[error("mismatched block hash: expected={expected}, actual={actual}")]
     BlockHashMismatch {
         expected: BlockHash,
         actual: BlockHash,
-        peer: NodeId,
     },
     #[error("should not be possible to have sufficient finality wihtout block: {block_hash}")]
     SufficientFinalityWithoutBlock { block_hash: BlockHash },
