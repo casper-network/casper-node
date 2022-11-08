@@ -1032,11 +1032,14 @@ impl BlockHeaderWithMetadata {
 }
 
 /// The body portion of a block.
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    hash: OnceCell<Digest>,
 }
 
 impl BlockBody {
@@ -1053,6 +1056,7 @@ impl BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            hash: OnceCell::new(),
         }
     }
 
@@ -1080,10 +1084,12 @@ impl BlockBody {
 
     /// Computes the body hash by hashing the serialized bytes.
     pub fn hash(&self) -> Digest {
-        let serialized_body = self
-            .to_bytes()
-            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-        Digest::hash(&serialized_body)
+        *self.hash.get_or_init(|| {
+            let serialized_body = self
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+            Digest::hash(&serialized_body)
+        })
     }
 }
 
@@ -1125,6 +1131,7 @@ impl FromBytes for BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            hash: OnceCell::new(),
         };
         Ok((body, bytes))
     }
@@ -1613,19 +1620,24 @@ pub struct BlockExecutionResultsOrChunk {
     block_hash: BlockHash,
     /// Complete execution results for the block or a chunk of the complete data.
     value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    is_valid: OnceCell<Result<bool, bytesrepr::Error>>,
 }
 
 impl BlockExecutionResultsOrChunk {
     /// Verifies equivalence of the effects (or chunks) Merkle root hash with the expected value.
     pub fn validate(&self, expected_merkle_root: &Digest) -> Result<bool, bytesrepr::Error> {
-        match &self.value {
-            ValueOrChunk::Value(block_execution_results) => {
-                Ok(&Chunkable::hash(&block_execution_results)? == expected_merkle_root)
-            }
-            ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
-                Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
-            }
-        }
+        self.is_valid
+            .get_or_init(|| match &self.value {
+                ValueOrChunk::Value(block_execution_results) => {
+                    Ok(&Chunkable::hash(&block_execution_results)? == expected_merkle_root)
+                }
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                    Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
+                }
+            })
+            .clone()
     }
 
     /// Consumes `self` and returns inner `ValueOrChunk` field.
@@ -1737,6 +1749,7 @@ impl BlockExecutionResultsOrChunkId {
         BlockExecutionResultsOrChunk {
             block_hash: self.block_hash,
             value,
+            is_valid: OnceCell::new(),
         }
     }
 }
@@ -1948,6 +1961,7 @@ pub(crate) mod json_compatibility {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
+                hash: OnceCell::new(),
             }
         }
     }
