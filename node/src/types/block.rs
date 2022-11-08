@@ -1620,19 +1620,24 @@ pub struct BlockExecutionResultsOrChunk {
     block_hash: BlockHash,
     /// Complete execution results for the block or a chunk of the complete data.
     value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    is_valid: OnceCell<Result<bool, bytesrepr::Error>>,
 }
 
 impl BlockExecutionResultsOrChunk {
     /// Verifies equivalence of the effects (or chunks) Merkle root hash with the expected value.
     pub fn validate(&self, expected_merkle_root: &Digest) -> Result<bool, bytesrepr::Error> {
-        match &self.value {
-            ValueOrChunk::Value(block_execution_results) => {
-                Ok(&Chunkable::hash(&block_execution_results)? == expected_merkle_root)
-            }
-            ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
-                Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
-            }
-        }
+        self.is_valid
+            .get_or_init(|| match &self.value {
+                ValueOrChunk::Value(block_execution_results) => {
+                    Ok(&Chunkable::hash(&block_execution_results)? == expected_merkle_root)
+                }
+                ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                    Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
+                }
+            })
+            .clone()
     }
 
     /// Consumes `self` and returns inner `ValueOrChunk` field.
@@ -1744,6 +1749,7 @@ impl BlockExecutionResultsOrChunkId {
         BlockExecutionResultsOrChunk {
             block_hash: self.block_hash,
             value,
+            is_valid: OnceCell::new(),
         }
     }
 }
