@@ -81,6 +81,7 @@ pub(crate) use self::{
 };
 use self::{
     chain_info::ChainInfo,
+    config::IdentityConfig,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
@@ -102,6 +103,13 @@ use crate::{
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
+    reactor::{EventQueueHandle, Finalize, ReactorEvent},
+    tls::{
+        self, validate_cert_with_authority, LoadCertError, LoadSecretKeyError, TlsCert,
+        ValidationError,
+    },
+    types::NodeId,
+    utils::{self, display_error, Source, WithDir},
     NodeRng,
 };
 
@@ -248,7 +256,7 @@ where
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
             &net_metrics,
-        ));
+        )?);
 
         let component = SmallNetwork {
             cfg,
