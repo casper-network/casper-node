@@ -1104,10 +1104,10 @@ where
             }
             (
                 ComponentStatus::Initialized,
-                Event::BlocklistAnnouncement(PeerBehaviorAnnouncement::OffenseCommitted(
-                    peer_id,
+                Event::BlocklistAnnouncement(PeerBehaviorAnnouncement::OffenseCommitted {
+                    offender,
                     justification,
-                )),
+                }),
             ) => {
                 // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
                 // current outgoing address of a peer.

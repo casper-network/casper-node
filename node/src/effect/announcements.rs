@@ -19,9 +19,8 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
-        upgrade_watcher::NextUpgrade,
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
         small_network::blocklist::BlocklistJustification,
+        upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     types::{
@@ -288,8 +287,11 @@ pub(crate) enum PeerBehaviorAnnouncement {
 impl Display for PeerBehaviorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PeerBehaviorAnnouncement::OffenseCommitted(peer, justification) => {
-                write!(f, "peer {} committed offense", peer, justification)
+            PeerBehaviorAnnouncement::OffenseCommitted {
+                offender,
+                justification,
+            } => {
+                write!(f, "peer {} committed offense: {}", offender, justification)
             }
         }
     }

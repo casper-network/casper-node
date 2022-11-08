@@ -97,7 +97,11 @@ pub(crate) enum Error {
 
 impl<REv> Component<REv> for DiagnosticsPort
 where
-    REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<Event>
+        + From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + Send,
 {
     type Event = Event;
 
@@ -122,7 +126,11 @@ where
 
 impl<REv> InitializedComponent<REv> for DiagnosticsPort
 where
-    REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<Event>
+        + From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + Send,
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
@@ -131,7 +139,11 @@ where
 
 impl<REv> PortBoundComponent<REv> for DiagnosticsPort
 where
-    REv: From<Event> + From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<Event>
+        + From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + Send,
 {
     type Error = Error;
     type ComponentEvent = Event;

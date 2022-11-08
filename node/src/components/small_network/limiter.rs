@@ -4,7 +4,7 @@
 //! by making each user request an allowance first.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -111,6 +111,31 @@ impl Limiter {
             }
             Some(is_validator) => is_validator,
         }
+    }
+
+    pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
+        Some(self.data.resources.blocking_lock().available)
+    }
+
+    pub(super) fn debug_inspect_validators(
+        &self,
+    ) -> Option<(HashSet<PublicKey>, HashSet<PublicKey>)> {
+        // TODO[RC]: Inspect `self.data.validator_matrix` instead of `self.data.validator_sets`
+
+        todo!();
+
+        // match self.data.validator_sets.read() {
+        //     Ok(validators) => Some((
+        //         validators.active_validators.clone(),
+        //         validators.upcoming_validators.clone(),
+        //     )),
+        //     Err(_) => {
+        //         debug!(
+        //             "could not inspect validator data set of limiter for debugging, lock poisoned"
+        //         );
+        //         None
+        //     }
+        // }
     }
 }
 

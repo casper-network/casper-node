@@ -22,8 +22,8 @@ use crate::{
 };
 
 use super::{
-    error::ConnectionError, message::ConsensusKeyPair, outgoing::OutgoingState,
-    symmetry::ConnectionSymmetry, OutgoingHandle, Payload, SmallNetwork,
+    error::ConnectionError, outgoing::OutgoingState, symmetry::ConnectionSymmetry, OutgoingHandle,
+    Payload, SmallNetwork,
 };
 
 /// A collection of insights into the active networking component.
@@ -34,9 +34,7 @@ pub(crate) struct NetworkInsights {
     /// Whether or not a network CA was present (is a private network).
     network_ca: bool,
     /// The public address of the node.
-    public_addr: SocketAddr,
-    /// The fingerprint of a consensus key installed.
-    consensus_pub_key: Option<PublicKey>,
+    public_addr: Option<SocketAddr>,
     /// Whether or not the node is syncing.
     is_syncing: bool,
     /// The active era as seen by the networking component.
@@ -275,16 +273,10 @@ impl NetworkInsights {
             .collect();
 
         NetworkInsights {
-            our_id: net.context.our_id,
-            network_ca: net.context.network_ca.is_some(),
-            public_addr: net.context.public_addr,
-            consensus_pub_key: net
-                .context
-                .consensus_keys
-                .as_ref()
-                .map(ConsensusKeyPair::public_key)
-                .cloned(),
-            is_syncing: net.context.is_syncing.load(Ordering::Relaxed),
+            our_id: net.context.our_id(),
+            network_ca: net.context.network_ca().is_some(),
+            public_addr: net.context.public_addr(),
+            is_syncing: net.context.is_syncing().load(Ordering::Relaxed),
             net_active_era: net.active_era,
             priviledged_active_outgoing_nodes,
             priviledged_upcoming_outgoing_nodes,
@@ -308,14 +300,13 @@ impl Display for NetworkInsights {
         }
         writeln!(
             f,
-            "node {} @ {} (syncing: {})",
+            "node {} @ {:?} (syncing: {})",
             self.our_id, self.public_addr, self.is_syncing
         )?;
         writeln!(
             f,
-            "active era: {}  consensus key: {} unspent_bandwidth_allowance_bytes: {}",
+            "active era: {} unspent_bandwidth_allowance_bytes: {}",
             self.net_active_era,
-            DisplayIter::new(self.consensus_pub_key.as_ref()),
             OptDisplay::new(self.unspent_bandwidth_allowance_bytes, "inactive"),
         )?;
         let active = self

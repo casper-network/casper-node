@@ -10,10 +10,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
-    components::linear_chain::BlockSignatureError,
-    types::{
-        error::BlockHeadersBatchValidationError, BlockHash, BlockHeader, BlockHeadersBatchId, Tag,
-    },
+    types::{BlockHash, BlockHeader, Tag},
+    utils::BlockSignatureError,
 };
 
 /// Reasons why a peer was blocked.
@@ -46,15 +44,6 @@ pub(crate) enum BlocklistJustification {
         #[serde(skip_serializing)]
         #[data_size(skip)]
         error: crypto::Error,
-    },
-    /// A received batch of block headers was not valid.
-    SentInvalidHeaderBatch {
-        /// The ID of the received batch that did not validate.
-        batch_id: BlockHeadersBatchId,
-        /// The actual validation error.
-        #[serde(skip_serializing)]
-        #[data_size(skip)]
-        error: BlockHeadersBatchValidationError,
     },
     /// A received block with signatures failed validation.
     SentBlockWithInvalidFinalitySignatures {
@@ -142,11 +131,6 @@ impl Display for BlocklistJustification {
                 f,
                 "sent cryptographically invalid finality signature: {}",
                 error
-            ),
-            BlocklistJustification::SentInvalidHeaderBatch { batch_id, error } => write!(
-                f,
-                "sent block headers batch {} that failed validation: {}",
-                batch_id, error
             ),
             BlocklistJustification::SentBlockWithInvalidFinalitySignatures {
                 block_header,

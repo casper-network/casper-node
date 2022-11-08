@@ -58,8 +58,7 @@ use tracing_futures::Instrument;
 
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor, deploy_acceptor, fetcher, fetcher,
-        fetcher::FetchResponse, fetcher::FetchedOrNotFound,
+        block_accumulator, deploy_acceptor, fetcher, fetcher::FetchResponse,
         small_network::blocklist::BlocklistJustification,
         small_network::Identity as NetworkIdentity,
     },
@@ -1021,11 +1020,12 @@ where
                             %deploy_id,
                             "peer refused to provide deploy, banning peer"
                         );
+                        // TODO[RC]: Needs new justification
                         return effect_builder
                             .announce_block_peer_with_justification(
                                 sender,
                                 BlocklistJustification::SentBadDeploy { error: todo!() },
-                            ) // TODO[RC]: Needs new justification
+                            )
                             .ignore();
                     }
                     Err(error) => {

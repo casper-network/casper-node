@@ -30,18 +30,19 @@ use casper_hashing::Digest;
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp, U512};
 
 use crate::{
-    components::consensus::{
-        cl_context::{ClContext, Keypair},
-        consensus_protocol::{
-            ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
-            ProtocolOutcome,
+    components::{
+        consensus::{
+            cl_context::{ClContext, Keypair},
+            consensus_protocol::{
+                ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
+                ProtocolOutcome,
+            },
+            metrics::Metrics,
+            validator_change::{ValidatorChange, ValidatorChanges},
+            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
+            ReactorEventT, ResolveValidity, TimerId,
         },
-        metrics::Metrics,
-        validator_change::{ValidatorChange, ValidatorChanges},
-        ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
-        ReactorEventT, ResolveValidity, TimerId,
         small_network::blocklist::BlocklistJustification,
-        storage::Storage,
     },
     effect::{
         announcements::ControlAnnouncement,

@@ -456,9 +456,12 @@ impl reactor::Reactor for MainReactor {
             MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
                 let mut effects = Effects::new();
                 match &ann {
-                    PeerBehaviorAnnouncement::OffenseCommitted(node_id) => {
+                    PeerBehaviorAnnouncement::OffenseCommitted {
+                        offender,
+                        justification,
+                    } => {
                         let event = MainEvent::BlockSynchronizer(
-                            block_synchronizer::Event::DisconnectFromPeer(**node_id),
+                            block_synchronizer::Event::DisconnectFromPeer(**offender),
                         );
                         effects.extend(self.dispatch_event(effect_builder, rng, event));
                     }

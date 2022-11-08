@@ -140,7 +140,7 @@ use crate::{
         deploy_acceptor,
         fetcher::FetchResult,
         small_network::FromIncoming,
-        small_network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        small_network::{blocklist::BlocklistJustification, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,

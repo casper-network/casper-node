@@ -529,8 +529,9 @@ mod tests {
             Component,
         },
         effect::{
-            announcements::ControlAnnouncement, requests::DumpConsensusStateRequest, EffectBuilder,
-            EffectExt, Effects,
+            announcements::ControlAnnouncement,
+            requests::{DumpConsensusStateRequest, NetworkInfoRequest},
+            EffectBuilder, EffectExt, Effects,
         },
         reactor::{
             self, main_reactor::MainEvent, EventQueueHandle, QueueKind, Reactor as ReactorTrait,
@@ -585,6 +586,8 @@ mod tests {
         DumpConsensusStateRequest(DumpConsensusStateRequest),
         #[from]
         ControlAnnouncement(ControlAnnouncement),
+        #[from]
+        NetworkInfoRequest(NetworkInfoRequest),
     }
 
     impl Display for Event {
@@ -631,7 +634,9 @@ mod tests {
                     self.diagnostics_console
                         .handle_event(effect_builder, rng, event),
                 ),
-                Event::DumpConsensusStateRequest(_) | Event::ControlAnnouncement(_) => {
+                Event::DumpConsensusStateRequest(_)
+                | Event::ControlAnnouncement(_)
+                | Event::NetworkInfoRequest(_) => {
                     panic!("unexpected: {}", event)
                 }
             }
