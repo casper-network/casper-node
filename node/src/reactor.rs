@@ -58,9 +58,9 @@ use tracing_futures::Instrument;
 
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor, fetcher, fetcher::FetchResponse,
-        small_network::blocklist::BlocklistJustification,
-        small_network::Identity as NetworkIdentity,
+        block_accumulator, deploy_acceptor, fetcher,
+        fetcher::FetchResponse,
+        small_network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
@@ -1020,11 +1020,10 @@ where
                             %deploy_id,
                             "peer refused to provide deploy, banning peer"
                         );
-                        // TODO[RC]: Needs new justification
                         return effect_builder
                             .announce_block_peer_with_justification(
                                 sender,
-                                BlocklistJustification::SentBadDeploy { error: todo!() },
+                                BlocklistJustification::PeerDidNotProvideADeploy { deploy_id },
                             )
                             .ignore();
                     }

@@ -9,6 +9,7 @@ use tracing::{debug, error, trace};
 
 use super::{Error, Event, FetchResponder, FetchedData, ItemHandle, Metrics};
 use crate::{
+    components::small_network::blocklist::BlocklistJustification,
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
@@ -143,13 +144,23 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
             Some(item_handle) => item_handle.validation_metadata(),
             None => {
                 debug!(item_id = %item.id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
-                return effect_builder.announce_disconnect_from_peer(peer).ignore();
+                return effect_builder
+                    .announce_block_peer_with_justification(
+                        peer,
+                        BlocklistJustification::SentBadItem { tag: T::TAG },
+                    )
+                    .ignore();
             }
         };
 
         if let Err(err) = item.validate(validation_metadata) {
             debug!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
-            effect_builder.announce_disconnect_from_peer(peer).ignore()
+            effect_builder
+                .announce_block_peer_with_justification(
+                    peer,
+                    BlocklistJustification::SentBadItem { tag: T::TAG },
+                )
+                .ignore()
         } else {
             match Self::put_to_storage(effect_builder, *item.clone()) {
                 StoringState::WontStore(item) => self.signal(item.id(), Ok(item), peer),

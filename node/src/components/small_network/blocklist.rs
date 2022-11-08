@@ -5,12 +5,13 @@
 use std::fmt::{self, Display, Formatter};
 
 use casper_hashing::Digest;
-use casper_types::{crypto, EraId};
+use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
-    types::{BlockHash, BlockHeader, Tag},
+    components::block_accumulator,
+    types::{BlockHash, BlockHeader, DeployId, Tag},
     utils::BlockSignatureError,
 };
 
@@ -38,12 +39,19 @@ pub(crate) enum BlocklistJustification {
         #[data_size(skip)]
         error: BlockSignatureError,
     },
-    /// A finality signature that was sent is cryptographically invalid.
+    /// A finality signature that was sent is invalid.
     SentBadFinalitySignature {
         /// The actual cryptographic validation error.
         #[serde(skip_serializing)]
         #[data_size(skip)]
-        error: crypto::Error,
+        error: block_accumulator::Error,
+    },
+    /// A block that was sent is invalid.
+    SentBadBlock {
+        /// The actual cryptographic validation error.
+        #[serde(skip_serializing)]
+        #[data_size(skip)]
+        error: block_accumulator::Error,
     },
     /// A received block with signatures failed validation.
     SentBlockWithInvalidFinalitySignatures {
@@ -103,6 +111,10 @@ pub(crate) enum BlocklistJustification {
     },
     /// Peer did not present a chainspec hash.
     MissingChainspecHash,
+    /// Peer is considered dishonest.
+    DishonestPeer,
+    /// Peer has a deploy but is not providing it.
+    PeerDidNotProvideADeploy { deploy_id: DeployId },
 }
 
 impl Display for BlocklistJustification {
@@ -183,6 +195,19 @@ impl Display for BlocklistJustification {
             ),
             BlocklistJustification::MissingChainspecHash => {
                 f.write_str("sent handshake without chainspec hash")
+            }
+            BlocklistJustification::SentBadBlock { error } => {
+                write!(f, "sent a block that is invalid or unexpected ({})", error)
+            }
+            BlocklistJustification::DishonestPeer => {
+                f.write_str("sent handshake without chainspec hash")
+            }
+            BlocklistJustification::PeerDidNotProvideADeploy { deploy_id } => {
+                write!(
+                    f,
+                    "peer has a deploy but is not providing it ({})",
+                    deploy_id
+                )
             }
         }
     }

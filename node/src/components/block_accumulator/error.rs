@@ -5,7 +5,7 @@ use casper_types::{crypto, EraId};
 use crate::types::{BlockHash, BlockValidationError, NodeId};
 
 #[derive(Error, Debug)]
-pub(super) enum InvalidGossipError {
+pub enum InvalidGossipError {
     #[error("received cryptographically invalid block for: {block_hash} from: {peer} with error: {validation_error}")]
     Block {
         block_hash: BlockHash,
@@ -30,7 +30,7 @@ impl InvalidGossipError {
 }
 
 #[derive(Error, Debug)]
-pub(super) enum Error {
+pub enum Error {
     #[error(transparent)]
     InvalidGossip(Box<InvalidGossipError>),
     #[error("invalid configuration")]

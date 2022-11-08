@@ -53,6 +53,8 @@ pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
+use super::small_network::blocklist::BlocklistJustification;
+
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
     + From<FetcherRequest<Block>>
@@ -877,7 +879,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                             .into_iter()
                             .flat_map(|node_id| {
                                 effect_builder
-                                    .announce_disconnect_from_peer(node_id)
+                                    .announce_block_peer_with_justification(
+                                        node_id,
+                                        BlocklistJustification::DishonestPeer,
+                                    )
                                     .ignore()
                             })
                             .collect();

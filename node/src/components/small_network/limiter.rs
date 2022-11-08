@@ -114,7 +114,11 @@ impl Limiter {
     }
 
     pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
-        Some(self.data.resources.blocking_lock().available)
+        // TODO[RC]: `self.data.resources.blocking_lock()` panics
+
+        None
+
+        //Some(self.data.resources.blocking_lock().available)
     }
 
     pub(super) fn debug_inspect_validators(
@@ -122,7 +126,7 @@ impl Limiter {
     ) -> Option<(HashSet<PublicKey>, HashSet<PublicKey>)> {
         // TODO[RC]: Inspect `self.data.validator_matrix` instead of `self.data.validator_sets`
 
-        todo!();
+        None
 
         // match self.data.validator_sets.read() {
         //     Ok(validators) => Some((
@@ -131,8 +135,8 @@ impl Limiter {
         //     )),
         //     Err(_) => {
         //         debug!(
-        //             "could not inspect validator data set of limiter for debugging, lock poisoned"
-        //         );
+        //             "could not inspect validator data set of limiter for debugging, lock
+        // poisoned"         );
         //         None
         //     }
         // }
