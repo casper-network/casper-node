@@ -207,35 +207,35 @@ where
     /// onto the queue.
     event_queue: Option<EventQueueHandle<REv>>,
     /// Our own [`NodeId`].
-    pub(super) our_id: NodeId,
+    our_id: NodeId,
     /// TLS certificate associated with this node's identity.
-    pub(super) our_cert: Arc<TlsCert>,
+    our_cert: Arc<TlsCert>,
     /// TLS certificate authority associated with this node's identity.
-    pub(super) network_ca: Option<Arc<X509>>,
+    network_ca: Option<Arc<X509>>,
     /// Secret key associated with `our_cert`.
-    pub(super) secret_key: Arc<PKey<Private>>,
+    secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
-    pub(super) net_metrics: Weak<Metrics>,
+    net_metrics: Weak<Metrics>,
     /// Chain info extract from chainspec.
-    pub(super) chain_info: ChainInfo,
+    chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
     node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
-    pub(super) public_addr: Option<SocketAddr>,
+    public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
-    pub(super) handshake_timeout: TimeDiff,
+    handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
-    pub(super) payload_weights: EstimatorWeights,
+    payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.
-    pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
+    tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub(super) tarpit_duration: TimeDiff,
+    tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    pub(super) tarpit_chance: f32,
+    tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
-    pub(super) max_in_flight_demands: usize,
+    max_in_flight_demands: usize,
     /// Flag indicating whether this node is syncing.
-    pub(super) is_syncing: AtomicBool,
+    is_syncing: AtomicBool,
 }
 
 impl<REv> NetworkContext<REv> {
