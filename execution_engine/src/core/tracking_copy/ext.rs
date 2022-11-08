@@ -91,6 +91,7 @@ pub trait TrackingCopyExt<R> {
         correlation_id: CorrelationId,
     ) -> Result<SystemContractRegistry, Self::Error>;
 
+    /// Gets the system checksum registry.
     fn get_checksum_registry(
         &mut self,
         correlation_id: CorrelationId,

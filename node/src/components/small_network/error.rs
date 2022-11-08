@@ -7,10 +7,9 @@ use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::{tls::ValidationError, utils::ResolveAddressError};
 use crate::{
     tls::{LoadCertError, ValidationError},
-    utils::{LoadError, Loadable, ResolveAddressError},
+    utils::ResolveAddressError,
 };
 
 pub(super) type Result<T> = result::Result<T, Error>;
@@ -70,13 +69,6 @@ pub enum Error {
         #[serde(skip_serializing)]
         #[from]
         LoadCertError,
-    ),
-    /// Failed to validate a network CA certificate.
-    #[error("failed to validate a cert against network CA: {0:?}")]
-    CertValidationError(
-        #[serde(skip_serializing)]
-        #[source]
-        ValidationError,
     ),
 }
 

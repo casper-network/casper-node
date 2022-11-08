@@ -54,7 +54,7 @@ use super::{
     Transport,
 };
 use crate::{
-    components::small_network::{framed_transport, BincodeFormat, Config, FromIncoming},
+    components::small_network::{framed_transport, BincodeFormat, Config, Error, FromIncoming},
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
         EffectBuilder,
@@ -203,38 +203,39 @@ pub(crate) struct NetworkContext<REv>
 where
     REv: 'static,
 {
-    our_id: NodeId,
-    /// Our own public listening address.
-    public_addr: Option<SocketAddr>,
     /// The handle to the reactor's event queue, used by incoming message handlers to put events
     /// onto the queue.
     event_queue: Option<EventQueueHandle<REv>>,
+    /// Our own [`NodeId`].
+    pub(super) our_id: NodeId,
     /// TLS certificate associated with this node's identity.
-    our_cert: Arc<TlsCert>,
+    pub(super) our_cert: Arc<TlsCert>,
     /// TLS certificate authority associated with this node's identity.
-    network_ca: Option<Arc<X509>>,
+    pub(super) network_ca: Option<Arc<X509>>,
     /// Secret key associated with `our_cert`.
-    secret_key: Arc<PKey<Private>>,
+    pub(super) secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
-    net_metrics: Weak<Metrics>,
-    /// Chain info extracted from chainspec.
-    chain_info: ChainInfo,
+    pub(super) net_metrics: Weak<Metrics>,
+    /// Chain info extract from chainspec.
+    pub(super) chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
     node_key_pair: Option<NodeKeyPair>,
+    /// Our own public listening address.
+    pub(super) public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
-    handshake_timeout: TimeDiff,
+    pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
-    payload_weights: EstimatorWeights,
+    pub(super) payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.
-    tarpit_version_threshold: Option<ProtocolVersion>,
+    pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
-    tarpit_duration: TimeDiff,
+    pub(super) tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    tarpit_chance: f32,
+    pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
-    max_in_flight_demands: usize,
+    pub(super) max_in_flight_demands: usize,
     /// Flag indicating whether this node is syncing.
-    is_syncing: AtomicBool,
+    pub(super) is_syncing: AtomicBool,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -244,7 +245,7 @@ impl<REv> NetworkContext<REv> {
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         // Set the demand max from configuration, regarding `0` as "unlimited".
         let max_in_flight_demands = if cfg.max_in_flight_demands == 0 {
             usize::MAX
@@ -259,7 +260,7 @@ impl<REv> NetworkContext<REv> {
         } = our_identity;
         let our_id = NodeId::from(tls_certificate.public_key_fingerprint());
 
-        NetworkContext {
+        Ok(NetworkContext {
             our_id,
             public_addr: None,
             event_queue: None,
@@ -276,7 +277,7 @@ impl<REv> NetworkContext<REv> {
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands,
             is_syncing: AtomicBool::new(false),
-        }
+        })
     }
 
     pub(super) fn initialize(
@@ -286,13 +287,6 @@ impl<REv> NetworkContext<REv> {
     ) {
         self.public_addr = Some(our_public_addr);
         self.event_queue = Some(event_queue);
-    }
-
-    pub(super) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
-        match &self.network_ca {
-            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
-            None => tls::validate_self_signed_cert(peer_cert),
-        }
     }
 
     /// Our own [`NodeId`].
