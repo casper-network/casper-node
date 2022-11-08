@@ -109,6 +109,10 @@ impl ValidatorMatrix {
         }
     }
 
+    pub(crate) fn has_era(&self, era_id: &EraId) -> bool {
+        self.read_inner().contains_key(era_id)
+    }
+
     pub(crate) fn validator_weights(&self, era_id: EraId) -> Option<EraValidatorWeights> {
         self.read_inner().get(&era_id).cloned()
     }

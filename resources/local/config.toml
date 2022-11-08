@@ -205,6 +205,15 @@ blocklist_retain_duration = '1min'
 # Peer is considered a validator if it was a validator in this number of latest eras.
 eras_to_determine_if_validator = 3
 
+# Identity of a node
+#
+# When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
+# This option makes sense for some private chains where for security reasons joining new nodes is restricted.
+# [network.identity]
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
+# ca_certificate = "ca_cert.pem"
+
 # Weights for impact estimation of incoming messages, used in combination with
 # `max_incoming_message_rate_non_validators`.
 #
@@ -412,7 +421,7 @@ attempt_execution_threshold = 3
 dead_air_interval = '180sec'
 
 # Time after which the block acceptors are considered old and can be purged.
-purge_interval = '6hrs'
+purge_interval = '1min'
 
 # ================================================
 # Configuration options for the block synchronizer
@@ -431,7 +440,7 @@ max_parallel_trie_fetches = 5000
 peer_refresh_interval = '90sec'
 
 # Time interval for the node to check what the block synchronizer needs to acquire next.
-need_next_interval = '30ms'
+need_next_interval = '300ms'
 
 # Time interval for recurring disconnection of dishonest peers.
 disconnect_dishonest_peers_interval = '10sec'

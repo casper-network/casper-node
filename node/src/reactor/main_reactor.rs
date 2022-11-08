@@ -132,6 +132,7 @@ pub(crate) struct MainReactor {
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
     recent_switch_block_headers: Vec<BlockHeader>,
+    sync_to_historical: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -323,6 +324,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix,
             recent_switch_block_headers,
             switch_block: None,
+            sync_to_historical: config.node.sync_to_genesis,
         };
 
         let effects = effect_builder
@@ -649,6 +651,11 @@ impl reactor::Reactor for MainReactor {
                         None => self
                             .recent_switch_block_headers
                             .push(block.header().clone()),
+                    }
+
+                    let era_count = self.chainspec.number_of_past_switch_blocks_needed();
+                    while self.recent_switch_block_headers.len() as u64 > era_count {
+                        self.recent_switch_block_headers.remove(0);
                     }
                 }
                 debug!(

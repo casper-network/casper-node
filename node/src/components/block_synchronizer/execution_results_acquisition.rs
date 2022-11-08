@@ -208,13 +208,24 @@ impl ExecutionResultsAcquisition {
     pub(super) fn needs_value_or_chunk(
         &self,
     ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
-        if let Some(chunk_id) = self.first_missing() {
-            if let Some((ret, checksum)) = self.execution_results_or_chunk_id() {
-                // todo! Isn't chunk_id already the same as in ret?
-                return Some((ret.next_chunk(chunk_id), checksum));
-            }
+        match self {
+            ExecutionResultsAcquisition::Needed { .. }
+            | ExecutionResultsAcquisition::Complete { .. }
+            | ExecutionResultsAcquisition::Mapped { .. } => None,
+            ExecutionResultsAcquisition::Pending {
+                block_hash,
+                checksum,
+            } => Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum)),
+            ExecutionResultsAcquisition::Incomplete {
+                block_hash,
+                checksum,
+                next,
+                ..
+            } => Some((
+                BlockExecutionResultsOrChunkId::new(*block_hash).next_chunk(*next),
+                *checksum,
+            )),
         }
-        None
     }
 
     pub(super) fn apply_checksum(self, checksum: ExecutionResultsChecksum) -> Result<Self, Error> {
@@ -323,39 +334,6 @@ impl ExecutionResultsAcquisition {
             | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
             | ExecutionResultsAcquisition::Complete { block_hash, .. }
             | ExecutionResultsAcquisition::Mapped { block_hash, .. } => *block_hash,
-        }
-    }
-
-    fn first_missing(&self) -> Option<u64> {
-        match self {
-            ExecutionResultsAcquisition::Needed { .. }
-            | ExecutionResultsAcquisition::Pending { .. } => Some(0),
-            ExecutionResultsAcquisition::Incomplete { next, .. } => Some(*next),
-            ExecutionResultsAcquisition::Complete { .. }
-            | ExecutionResultsAcquisition::Mapped { .. } => None,
-        }
-    }
-
-    fn execution_results_or_chunk_id(
-        &self,
-    ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
-        match self {
-            ExecutionResultsAcquisition::Needed { .. }
-            | ExecutionResultsAcquisition::Complete { .. }
-            | ExecutionResultsAcquisition::Mapped { .. } => None,
-            ExecutionResultsAcquisition::Pending {
-                block_hash,
-                checksum,
-            } => Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum)),
-            ExecutionResultsAcquisition::Incomplete {
-                block_hash,
-                checksum,
-                next,
-                ..
-            } => Some((
-                BlockExecutionResultsOrChunkId::new(*block_hash).next_chunk(*next),
-                *checksum,
-            )),
         }
     }
 }

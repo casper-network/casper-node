@@ -850,7 +850,7 @@ impl ContractRuntime {
         let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
         let ret = match engine_state.get_trie_full(correlation_id, trie_key)? {
             None => Ok(None),
-            Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw, chunk_index)?)),
+            Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw.into(), chunk_index)?)),
         };
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
         ret
@@ -925,9 +925,10 @@ mod tests {
 
     fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
         let next_hash = if let TrieOrChunk::Value(trie_bytes) = trie_or_chunk {
-            if let Trie::Node { pointer_block } =
-                bytesrepr::deserialize::<Trie<Key, StoredValue>>(trie_bytes.into_inner().into())
-                    .expect("Could not parse trie bytes")
+            if let Trie::Node { pointer_block } = bytesrepr::deserialize::<Trie<Key, StoredValue>>(
+                trie_bytes.into_inner().into_inner().into(),
+            )
+            .expect("Could not parse trie bytes")
             {
                 if pointer_block.child_count() == 0 {
                     panic!("expected children");

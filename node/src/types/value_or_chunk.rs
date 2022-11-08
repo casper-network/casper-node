@@ -4,6 +4,7 @@ use casper_execution_engine::storage::trie::TrieRaw;
 use casper_types::ExecutionResult;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -12,7 +13,10 @@ use casper_hashing::{
 };
 
 use super::Chunkable;
-use crate::types::{EmptyValidationMetadata, FetcherItem, Item, Tag};
+use crate::{
+    types::{EmptyValidationMetadata, FetcherItem, Item, Tag},
+    utils::ds,
+};
 
 /// Represents a value or a chunk of data with attached proof.
 ///
@@ -75,10 +79,10 @@ impl<V> ValueOrChunk<V> {
     }
 }
 
-impl Display for ValueOrChunk<TrieRaw> {
+impl Display for ValueOrChunk<HashingTrieRaw> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ValueOrChunk::Value(data) => write!(f, "value {:10}", HexFmt(data.inner())),
+            ValueOrChunk::Value(data) => write!(f, "value {}", data),
             ValueOrChunk::ChunkWithProof(chunk) => write!(
                 f,
                 "chunk #{} with proof, root hash {}",
@@ -108,15 +112,52 @@ impl Display for ValueOrChunk<Vec<ExecutionResult>> {
 #[error("Chunk validation failed")]
 pub(crate) struct ChunkValidationError;
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, DataSize)]
+pub struct HashingTrieRaw {
+    inner: TrieRaw,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    hash: OnceCell<Digest>,
+}
+
+impl From<TrieRaw> for HashingTrieRaw {
+    fn from(inner: TrieRaw) -> HashingTrieRaw {
+        HashingTrieRaw {
+            inner,
+            hash: OnceCell::new(),
+        }
+    }
+}
+
+impl Display for HashingTrieRaw {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(self.inner.inner()))
+    }
+}
+
+impl HashingTrieRaw {
+    fn hash(&self) -> Digest {
+        *self.hash.get_or_init(|| Digest::hash(&self.inner.inner()))
+    }
+
+    pub fn inner(&self) -> &TrieRaw {
+        &self.inner
+    }
+
+    pub fn into_inner(self) -> TrieRaw {
+        self.inner
+    }
+}
+
 /// Represents an enum that can contain either a whole trie or a chunk of it.
-pub type TrieOrChunk = ValueOrChunk<TrieRaw>;
+pub type TrieOrChunk = ValueOrChunk<HashingTrieRaw>;
 
 impl Item for TrieOrChunk {
     type Id = TrieOrChunkId;
 
     fn id(&self) -> Self::Id {
         match self {
-            TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, Digest::hash(&trie_raw.inner())),
+            TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, trie_raw.hash()),
             TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
                 chunked_data.proof().index(),
                 chunked_data.proof().root_hash(),

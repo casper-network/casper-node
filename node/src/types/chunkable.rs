@@ -1,11 +1,13 @@
 use std::{borrow::Cow, convert::Infallible};
 
-use casper_execution_engine::storage::trie::TrieRaw;
 use casper_hashing::Digest;
+use casper_types::bytesrepr::ToBytes;
 use casper_types::{
     bytesrepr::{self, Bytes},
     ExecutionResult,
 };
+
+use super::value_or_chunk::HashingTrieRaw;
 
 /// Implemented for types that are chunked when sending over the wire and/or before storing the the
 /// trie store.
@@ -45,13 +47,11 @@ impl Chunkable for Bytes {
     }
 }
 
-use casper_types::bytesrepr::ToBytes;
-
-impl Chunkable for TrieRaw {
+impl Chunkable for HashingTrieRaw {
     type Error = Infallible;
 
     fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
-        Ok(Cow::Borrowed(self.inner().inner_bytes()))
+        Ok(Cow::Borrowed(self.inner().inner().inner_bytes()))
     }
 }
 

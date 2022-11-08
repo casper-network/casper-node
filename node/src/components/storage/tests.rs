@@ -31,7 +31,7 @@ use crate::{
         Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
         BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
         DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        LegacyDeploy,
+        LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -71,6 +71,7 @@ fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMeta
 fn create_sync_leap_test_chain(
     non_signed_blocks: &[u64],
     include_switch_block_at_tip: bool,
+    maybe_recent_era_count: Option<u64>,
 ) -> (Storage, Vec<Block>) {
     // Test chain:
     //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
@@ -81,15 +82,23 @@ fn create_sync_leap_test_chain(
 
     // If `include_switch_block_at_tip`, the additional switch block of height 12 will be added at
     // the tip of the chain.
-
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
+    let mut storage = storage_fixture_from_parts(
+        &harness,
+        None,
+        None,
+        None,
+        None,
+        None,
+        maybe_recent_era_count,
+    );
+
     let mut trusted_validator_weights = BTreeMap::new();
 
     let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
     trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
 
-    let mut blocks = vec![];
+    let mut blocks: Vec<Block> = vec![];
     [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         .iter()
         .for_each(|height| {
@@ -109,7 +118,7 @@ fn create_sync_leap_test_chain(
                 ProtocolVersion::from_parts(1, 5, 0),
                 *height == 0 || *height == 3 || *height == 6 || *height == 9,
                 None,
-                parent,
+                parent.map(|block| *block.hash()),
                 if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
                     trusted_validator_weights.clone()
                 } else {
@@ -129,7 +138,7 @@ fn create_sync_leap_test_chain(
             ProtocolVersion::from_parts(1, 5, 0),
             true,
             None,
-            parent,
+            parent.map(|block| *block.hash()),
             trusted_validator_weights.clone(),
         );
         blocks.push(block);
@@ -188,6 +197,35 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
 
 /// Storage component test fixture.
 ///
+/// Creates a storage component in a temporary directory.
+///
+/// # Panics
+///
+/// Panics if setting up the storage fixture fails.
+fn storage_fixture_from_parts(
+    harness: &ComponentHarness<UnitTestEvent>,
+    fault_tolerance_fraction: Option<Ratio<u64>>,
+    hard_reset_to_start_of_era: Option<EraId>,
+    protocol_version: Option<ProtocolVersion>,
+    network_name: Option<&str>,
+    max_ttl: Option<TimeDiff>,
+    recent_era_count: Option<u64>,
+) -> Storage {
+    let cfg = new_config(harness);
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        fault_tolerance_fraction.unwrap_or_else(|| Ratio::new(1, 3)),
+        hard_reset_to_start_of_era,
+        protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
+        network_name.unwrap_or("test"),
+        max_ttl.unwrap_or(MAX_TTL),
+        recent_era_count.unwrap_or(RECENT_ERA_COUNT),
+    )
+    .expect("could not create storage component fixture from parts")
+}
+
+/// Storage component test fixture.
+///
 /// Creates a storage component in a temporary directory, but with a hard reset to a specified era.
 ///
 /// # Panics
@@ -197,17 +235,15 @@ fn storage_fixture_with_hard_reset(
     harness: &ComponentHarness<UnitTestEvent>,
     reset_era_id: EraId,
 ) -> Storage {
-    let cfg = new_config(harness);
-    Storage::new(
-        &WithDir::new(harness.tmp.path(), cfg),
-        Ratio::new(1, 3),
+    storage_fixture_from_parts(
+        harness,
+        None,
         Some(reset_era_id),
-        ProtocolVersion::from_parts(1, 1, 0),
-        "test",
-        MAX_TTL,
-        RECENT_ERA_COUNT,
+        Some(ProtocolVersion::from_parts(1, 1, 0)),
+        None,
+        None,
+        None,
     )
-    .expect("could not create storage component fixture")
 }
 
 /// Creates 3 random signatures for the given block.
@@ -1325,7 +1361,7 @@ fn can_put_and_get_block() {
 
 #[test]
 fn should_get_trusted_ancestor_headers() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1346,7 +1382,7 @@ fn should_get_trusted_ancestor_headers() {
 
 #[test]
 fn should_get_signed_block_headers() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1395,7 +1431,7 @@ fn should_get_signed_block_headers() {
 
 #[test]
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[11], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[11], false, None);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1446,13 +1482,11 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 #[test]
 fn should_get_sync_leap() {
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
-    let allowed_era_diff = 100;
-    let sync_leap_result = storage
-        .get_sync_leap(requested_block_hash, allowed_era_diff)
-        .unwrap();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     let sync_leap = match sync_leap_result {
         FetchResponse::Fetched(sync_leap) => sync_leap,
@@ -1475,13 +1509,11 @@ fn should_get_sync_leap() {
 #[test]
 fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(11).unwrap().header().block_hash();
-    let allowed_era_diff = 100;
-    let sync_leap_result = storage
-        .get_sync_leap(requested_block_hash, allowed_era_diff)
-        .unwrap();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     let sync_leap = match sync_leap_result {
         FetchResponse::Fetched(sync_leap) => sync_leap,
@@ -1501,13 +1533,11 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
 #[test]
 fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], true);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], true, None);
 
     let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
-    let allowed_era_diff = 100;
-    let sync_leap_result = storage
-        .get_sync_leap(requested_block_hash, allowed_era_diff)
-        .unwrap();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     let sync_leap = match sync_leap_result {
         FetchResponse::Fetched(sync_leap) => sync_leap,
@@ -1526,13 +1556,12 @@ fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block()
 
 #[test]
 fn should_respect_allowed_era_diff_in_get_sync_leap() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false);
+    let maybe_recent_era_count = Some(1);
+    let (storage, blocks) = create_sync_leap_test_chain(&[], false, maybe_recent_era_count);
 
     let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
-    let allowed_era_diff = 1;
-    let sync_leap_result = storage
-        .get_sync_leap(requested_block_hash, allowed_era_diff)
-        .unwrap();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     assert!(
         matches!(sync_leap_result, FetchResponse::NotProvided(_)),
