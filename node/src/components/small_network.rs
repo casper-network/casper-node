@@ -248,7 +248,7 @@ where
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
             &net_metrics,
-        )?);
+        ));
 
         let component = SmallNetwork {
             cfg,
