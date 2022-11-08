@@ -24,7 +24,7 @@ use crate::{
 /// value is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, DataSize)]
 pub enum ValueOrChunk<V> {
-    /// Represents a value. The second entry is the memoized hash.
+    /// Represents a value.
     Value(V),
     /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
