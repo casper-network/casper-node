@@ -7,7 +7,10 @@ use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::{tls::ValidationError, utils::ResolveAddressError};
+use crate::{
+    tls::{LoadCertError, ValidationError},
+    utils::ResolveAddressError,
+};
 
 pub(super) type Result<T> = result::Result<T, Error>;
 
@@ -53,13 +56,19 @@ pub enum Error {
         #[source]
         ResolveAddressError,
     ),
-
     /// Instantiating metrics failed.
     #[error(transparent)]
     Metrics(
         #[serde(skip_serializing)]
         #[from]
         prometheus::Error,
+    ),
+    /// Failed to load a certificate.
+    #[error("failed to load a certificate: {0}")]
+    LoadCertificate(
+        #[serde(skip_serializing)]
+        #[from]
+        LoadCertError,
     ),
 }
 

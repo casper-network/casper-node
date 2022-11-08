@@ -203,12 +203,11 @@ pub(crate) struct NetworkContext<REv>
 where
     REv: 'static,
 {
-    our_id: NodeId,
-    /// Our own public listening address.
-    public_addr: Option<SocketAddr>,
     /// The handle to the reactor's event queue, used by incoming message handlers to put events
     /// onto the queue.
     event_queue: Option<EventQueueHandle<REv>>,
+    /// Our own [`NodeId`].
+    our_id: NodeId,
     /// TLS certificate associated with this node's identity.
     our_cert: Arc<TlsCert>,
     /// TLS certificate authority associated with this node's identity.
@@ -217,10 +216,12 @@ where
     secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     net_metrics: Weak<Metrics>,
-    /// Chain info extracted from chainspec.
+    /// Chain info extract from chainspec.
     chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
     node_key_pair: Option<NodeKeyPair>,
+    /// Our own public listening address.
+    public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
     handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
@@ -288,13 +289,6 @@ impl<REv> NetworkContext<REv> {
         self.event_queue = Some(event_queue);
     }
 
-    pub(super) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
-        match &self.network_ca {
-            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
-            None => tls::validate_self_signed_cert(peer_cert),
-        }
-    }
-
     /// Our own [`NodeId`].
     pub(super) fn our_id(&self) -> NodeId {
         self.our_id
@@ -308,6 +302,13 @@ impl<REv> NetworkContext<REv> {
     /// Chain info extract from chainspec.
     pub(super) fn chain_info(&self) -> &ChainInfo {
         &self.chain_info
+    }
+
+    pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
+        match &self.network_ca {
+            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
+            None => tls::validate_self_signed_cert(peer_cert),
+        }
     }
 }
 
