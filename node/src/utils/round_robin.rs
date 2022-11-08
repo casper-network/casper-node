@@ -64,6 +64,7 @@ impl<I> QueueState<I> {
     }
 
     /// Remove all events from a queue.
+    #[cfg(test)]
     async fn drain(&self) -> Vec<I> {
         let mut guard = self.queue.lock().await;
         let events: Vec<I> = guard.drain(..).collect();
@@ -263,6 +264,7 @@ where
     }
 
     /// Drains all events from a specific queue.
+    #[cfg(test)]
     pub(crate) async fn drain_queue(&self, queue: K) -> Vec<I> {
         let events = self
             .queues

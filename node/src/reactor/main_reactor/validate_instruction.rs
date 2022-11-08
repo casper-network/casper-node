@@ -7,4 +7,5 @@ pub(super) enum ValidateInstruction {
     CheckLater(String, Duration),
     NonSwitchBlock,
     KeepUp,
+    ShutdownForUpgrade,
 }

@@ -30,7 +30,7 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion,
+    EraId, ProtocolVersion, PublicKey,
 };
 
 #[cfg(test)]
@@ -156,6 +156,20 @@ impl Chainspec {
 
         // We produce at least minimum_era_height blocks, even after era_duration has passed.
         max_blocks_by_time.max(self.core_config.minimum_era_height)
+    }
+
+    /// Returns `Some` if the validator set is being modified by the upgrade (otherwise `None`)
+    /// and `true` if the provided public key is a member of the new set, otherwise `false`.
+    pub(crate) fn is_in_modified_validator_set(&self, public_key: &PublicKey) -> Option<bool> {
+        self.protocol_config
+            .global_state_update
+            .as_ref()
+            .and_then(|global_state_update| {
+                if global_state_update.validators.is_empty() {
+                    return None;
+                }
+                Some(global_state_update.validators.contains(public_key))
+            })
     }
 }
 
@@ -391,7 +405,20 @@ mod tests {
             );
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
-            for value in spec.protocol_config.global_state_update.unwrap().0.values() {
+            assert!(!spec
+                .protocol_config
+                .global_state_update
+                .as_ref()
+                .unwrap()
+                .validators
+                .is_empty());
+            for value in spec
+                .protocol_config
+                .global_state_update
+                .unwrap()
+                .entries
+                .values()
+            {
                 assert!(StoredValue::from_bytes(value).is_ok());
             }
         }

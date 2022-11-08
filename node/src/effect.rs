@@ -719,7 +719,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| {
-                debug!("validator broadcast for : {}", era_id);
+                debug!("validator broadcast for {}", era_id);
                 NetworkRequest::ValidatorBroadcast {
                     payload: Box::new(payload),
                     era_id,

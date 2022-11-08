@@ -23,6 +23,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 #[cfg(test)]
@@ -274,7 +275,7 @@ impl UpperHex for Digest {
 
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:10}", base16::encode_lower(&self.0))
+        write!(f, "{:10}", HexFmt(&self.0))
     }
 }
 

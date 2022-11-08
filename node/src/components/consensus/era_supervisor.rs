@@ -1085,6 +1085,7 @@ impl EraSupervisor {
         &self.open_eras
     }
 
+    /// This node's public signing key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key
     }

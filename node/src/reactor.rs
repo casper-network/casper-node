@@ -699,7 +699,7 @@ where
         })
     }
 
-    /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
+    /// Runs the reactor until `self.crank` returns `Some` or we get interrupted by a termination
     /// signal.
     pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
         loop {

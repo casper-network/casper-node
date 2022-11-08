@@ -6,6 +6,8 @@ pub(super) enum CatchUpInstruction {
     Do(Duration, Effects<MainEvent>),
     CheckLater(String, Duration),
     Shutdown(String),
+    ShutdownForUpgrade,
     CaughtUp,
     CommitGenesis,
+    CommitUpgrade,
 }

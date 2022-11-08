@@ -29,12 +29,12 @@ use crate::{
     protocol::Message,
     reactor::{
         main_reactor::{Config, MainEvent, MainReactor},
-        Reactor, ReactorExit, Runner,
+        Runner,
     },
     testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, NodeRng,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, NodeRng,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -48,7 +48,7 @@ struct TestChain {
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
-type Nodes = crate::testing::network::Nodes<FilterReactor<MainReactor>>;
+type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
 
 impl Runner<ConditionCheckReactor<FilterReactor<MainReactor>>> {
     fn main_reactor(&self) -> &MainReactor {
@@ -418,10 +418,11 @@ async fn dont_upgrade_without_switch_block() {
     let mut rng = crate::new_rng();
 
     // Set up a network with only a single validator.
-    let alice_sk = Arc::new(SecretKey::random(&mut rng));
-    let alice_pk = PublicKey::from(&*alice_sk);
-    let keys: Vec<Arc<SecretKey>> = vec![alice_sk];
-    let stakes: BTreeMap<PublicKey, U512> = iter::once((alice_pk, U512::from(100))).collect();
+    let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let keys: Vec<Arc<SecretKey>> = vec![alice_secret_key];
+    let stakes: BTreeMap<PublicKey, U512> =
+        iter::once((alice_public_key, U512::from(100))).collect();
 
     // Eras have exactly two blocks each, and there is one block per second.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
@@ -477,10 +478,9 @@ async fn dont_upgrade_without_switch_block() {
     net.settle_on(
         &mut rng,
         |nodes| {
-            nodes.values().all(|runner| {
-                todo!()
-                // runner.main_reactor().maybe_exit().is_some()
-            })
+            nodes
+                .values()
+                .all(|runner| runner.is_shutting_down.is_set())
         },
         timeout,
     )
@@ -498,11 +498,6 @@ async fn dont_upgrade_without_switch_block() {
             .take_header();
         assert_eq!(EraId::from(1), header.era_id());
         assert!(header.is_switch_block());
-        assert_eq!(
-            Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
-            // runner.main_reactor().maybe_exit()
-            todo!()
-        );
     }
 }
 
@@ -513,14 +508,14 @@ async fn should_store_finalized_approvals() {
     let mut rng = crate::new_rng();
 
     // Set up a network with two validators.
-    let alice_sk = Arc::new(SecretKey::random(&mut rng));
-    let alice_pk = PublicKey::from(&*alice_sk);
-    let bob_sk = Arc::new(SecretKey::random(&mut rng));
-    let charlie_sk = Arc::new(SecretKey::random(&mut rng)); // just for ordering testing purposes
-    let keys: Vec<Arc<SecretKey>> = vec![alice_sk.clone(), bob_sk.clone()];
+    let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::new(SecretKey::random(&mut rng));
+    let charlie_secret_key = Arc::new(SecretKey::random(&mut rng)); // just for ordering testing purposes
+    let keys: Vec<Arc<SecretKey>> = vec![alice_secret_key.clone(), bob_secret_key.clone()];
     // only Alice will be proposing blocks
     let stakes: BTreeMap<PublicKey, U512> =
-        iter::once((alice_pk.clone(), U512::from(100))).collect();
+        iter::once((alice_public_key.clone(), U512::from(100))).collect();
 
     // Eras have exactly two blocks each, and there is one block per second.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
@@ -542,15 +537,15 @@ async fn should_store_finalized_approvals() {
     let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
     let mut deploy_bob_alice = deploy_alice_bob.clone();
 
-    deploy_alice_bob.sign(&*alice_sk);
-    deploy_alice_bob.sign(&*bob_sk);
+    deploy_alice_bob.sign(&*alice_secret_key);
+    deploy_alice_bob.sign(&*bob_secret_key);
 
-    deploy_alice_bob_charlie.sign(&*alice_sk);
-    deploy_alice_bob_charlie.sign(&*bob_sk);
-    deploy_alice_bob_charlie.sign(&*charlie_sk);
+    deploy_alice_bob_charlie.sign(&*alice_secret_key);
+    deploy_alice_bob_charlie.sign(&*bob_secret_key);
+    deploy_alice_bob_charlie.sign(&*charlie_secret_key);
 
-    deploy_bob_alice.sign(&*bob_sk);
-    deploy_bob_alice.sign(&*alice_sk);
+    deploy_bob_alice.sign(&*bob_secret_key);
+    deploy_bob_alice.sign(&*alice_secret_key);
 
     // We will be testing the correct sequence of approvals against the deploy signed by Bob and
     // Alice.
@@ -569,7 +564,7 @@ async fn should_store_finalized_approvals() {
     let deploy_hash = *deploy_alice_bob.deploy_or_transfer_hash().deploy_hash();
 
     for runner in net.runners_mut() {
-        if runner.main_reactor().consensus().public_key() == &alice_pk {
+        if runner.main_reactor().consensus().public_key() == &alice_public_key {
             // Alice will propose the deploy signed by Alice and Bob.
             runner
                 .process_injected_effects(|effect_builder| {
@@ -640,7 +635,7 @@ async fn should_store_finalized_approvals() {
         let maybe_original_approvals = maybe_dwa
             .as_ref()
             .map(|dwa| dwa.original_approvals().iter().cloned().collect());
-        if runner.main_reactor().consensus().public_key() != &alice_pk {
+        if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(
                 maybe_finalized_approvals.as_ref(),

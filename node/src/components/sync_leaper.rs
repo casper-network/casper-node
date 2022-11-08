@@ -66,7 +66,6 @@ impl LeapStatus {
 struct LeapActivity {
     block_hash: BlockHash,
     peers: HashMap<NodeId, PeerState>,
-    succeeded: bool,
 }
 
 impl LeapActivity {
@@ -175,14 +174,12 @@ impl SyncLeaper {
     pub(crate) fn leap_status(&mut self) -> LeapStatus {
         match &self.leap_activity {
             None => LeapStatus::Inactive,
-            Some(activity) => activity.status(),
-        }
-    }
-
-    pub(crate) fn set_success(&mut self, block_hash: BlockHash) {
-        if let Some(activity) = self.leap_activity.as_mut() {
-            if activity.block_hash == block_hash {
-                activity.succeeded = true;
+            Some(activity) => {
+                let result = activity.status();
+                if result.active() == false {
+                    self.leap_activity = None;
+                }
+                result
             }
         }
     }
@@ -241,11 +238,7 @@ impl SyncLeaper {
                 (peer, PeerState::RequestSent)
             })
             .collect();
-        self.leap_activity = Some(LeapActivity {
-            block_hash,
-            peers,
-            succeeded: false,
-        });
+        self.leap_activity = Some(LeapActivity { block_hash, peers });
         effects
     }
 

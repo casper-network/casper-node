@@ -39,7 +39,7 @@ impl ProtocolConfig {
         &self,
     ) -> Result<BTreeMap<Key, StoredValue>, bytesrepr::Error> {
         let state_update = match &self.global_state_update {
-            Some(GlobalStateUpdate(state_update)) => state_update,
+            Some(GlobalStateUpdate { entries, .. }) => entries,
             None => return Ok(BTreeMap::default()),
         };
         let mut update_mapping = BTreeMap::new();
