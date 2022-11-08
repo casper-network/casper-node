@@ -233,7 +233,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
 //     )
 //     .build();
 
-//     builder.exec(exec_request_1).expect_success().commit();
+//     builder.exec(exec_request_1).expect_success().apply().commit_to_disk();
 
 //     let account_stored_value = builder
 //         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])

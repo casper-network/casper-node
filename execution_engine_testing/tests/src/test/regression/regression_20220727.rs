@@ -73,7 +73,11 @@ fn should_not_oom() {
         )
         .build();
 
-        builder.exec(exec_request).expect_failure().commit();
+        builder
+            .exec(exec_request)
+            .expect_failure()
+            .apply()
+            .commit_to_disk();
 
         let error = builder.get_error().unwrap();
 
@@ -97,7 +101,11 @@ fn should_not_oom() {
         )
         .build();
 
-        builder.exec(exec_request).expect_failure().commit();
+        builder
+            .exec(exec_request)
+            .expect_failure()
+            .apply()
+            .commit_to_disk();
 
         let error = builder.get_error().unwrap();
 
@@ -130,7 +138,11 @@ fn should_pass_table_validation() {
         )
         .build();
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec(exec_request)
+            .expect_success()
+            .apply()
+            .commit_to_disk();
     }
 }
 
@@ -239,7 +251,7 @@ fn test_element_section(
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).apply().commit_to_disk();
 
     builder.get_error()
 }
@@ -287,7 +299,11 @@ fn should_not_allow_more_than_one_table() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().unwrap();
 
@@ -390,7 +406,11 @@ fn should_allow_large_br_table() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -409,7 +429,11 @@ fn should_not_allow_large_br_table() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should fail");
 
@@ -479,7 +503,11 @@ fn should_allow_multiple_globals() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -498,7 +526,11 @@ fn should_not_allow_too_many_globals() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should fail");
 
@@ -530,7 +562,11 @@ fn should_verify_max_param_count() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should have error");
 
@@ -555,7 +591,11 @@ fn should_verify_max_param_count() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(exec_request)
+        .expect_success()
+        .apply()
+        .commit_to_disk();
 }
 
 #[ignore]
@@ -574,7 +614,11 @@ fn should_not_allow_too_many_params() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should fail");
 
@@ -610,7 +654,11 @@ fn should_not_allow_to_import_gas_function() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
 
     let error = builder.get_error().expect("should fail");
 
@@ -743,7 +791,11 @@ fn test_non_existing_global(module_wat: &str, index: u32) {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec(exec_request)
+        .expect_failure()
+        .apply()
+        .commit_to_disk();
     let error = builder.get_error().expect("should fail");
     assert!(
         matches!(

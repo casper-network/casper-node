@@ -5,7 +5,8 @@
 mod config;
 mod error;
 mod memory_metrics;
-// #[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 
 use std::{
     fmt::{self, Debug, Display, Formatter},

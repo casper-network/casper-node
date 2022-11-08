@@ -15,9 +15,10 @@ use crate::{
     reactor::participating,
     testing::{
         self,
-        multi_stage_test_reactor::{InitializerReactorConfigWithChainspec, CONFIG_DIR},
+        multi_stage_test_reactor::{
+            InitializerReactorConfigWithChainspec, MultiStageTestReactor, CONFIG_DIR,
+        },
         network::{Network, Nodes},
-        MultiStageTestReactor,
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
