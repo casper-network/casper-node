@@ -139,7 +139,7 @@ use crate::{
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::FromIncoming,
+        small_network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -760,6 +760,18 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
         .unwrap_or_default()
+    }
+
+    /// Gets a structure describing the current network status.
+    pub(crate) async fn get_network_insights(self) -> NetworkInsights
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::Insight { responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Gets a map of the current network peers to their socket addresses.
@@ -1887,14 +1899,23 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
-    pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
-    where
+    /// Blocks a specific peer due to a transgression.
+    ///
+    /// This function will also emit a log message for the block.
+    pub(crate) async fn announce_block_peer_with_justification(
+        self,
+        offender: NodeId,
+        justification: BlocklistJustification,
+    ) where
         REv: From<PeerBehaviorAnnouncement>,
     {
+        warn!(%offender, %justification, "peer will be blocked");
         self.event_queue
             .schedule(
-                PeerBehaviorAnnouncement::OffenseCommitted(Box::new(peer)),
+                PeerBehaviorAnnouncement::OffenseCommitted {
+                    offender: Box::new(offender),
+                    justification: Box::new(justification),
+                },
                 QueueKind::Regular,
             )
             .await

@@ -4,7 +4,7 @@
 //! by making each user request an allowance first.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -111,6 +111,35 @@ impl Limiter {
             }
             Some(is_validator) => is_validator,
         }
+    }
+
+    pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
+        // Disabled temporarily, as it results in a panic:
+
+        // node panicked: Cannot start a runtime from within a runtime. This happens because a
+        // function (like `block_on`) attempted to block the current thread while the thread is
+        // being used to drive asynchronous tasks.
+
+        None
+
+        //Some(self.data.resources.blocking_lock().available)
+    }
+
+    pub(super) fn debug_inspect_validators(
+        &self,
+        current_era: &EraId,
+    ) -> Option<(HashSet<PublicKey>, HashSet<PublicKey>)> {
+        Some((
+            self.validator_keys_for_era(current_era),
+            self.validator_keys_for_era(&current_era.successor()),
+        ))
+    }
+
+    fn validator_keys_for_era(&self, era: &EraId) -> HashSet<PublicKey> {
+        self.validator_matrix
+            .validator_weights(*era)
+            .map(|validator_weights| validator_weights.validator_public_keys().cloned().collect())
+            .unwrap_or_default()
     }
 }
 

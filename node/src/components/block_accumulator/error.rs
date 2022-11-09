@@ -5,7 +5,7 @@ use casper_types::{crypto, EraId};
 use crate::types::{BlockHash, BlockValidationError, NodeId};
 
 #[derive(Error, Debug)]
-pub(super) enum InvalidGossipError {
+pub enum InvalidGossipError {
     #[error("received cryptographically invalid block for: {block_hash} from: {peer} with error: {validation_error}")]
     Block {
         block_hash: BlockHash,
@@ -30,7 +30,15 @@ impl InvalidGossipError {
 }
 
 #[derive(Error, Debug)]
-pub(super) enum Error {
+pub enum Bogusness {
+    #[error("peer is not a validator in current era")]
+    NotAValidator,
+    #[error("peer provided finality signatures from incorrect era")]
+    SignatureEraIdMismatch,
+}
+
+#[derive(Error, Debug)]
+pub enum Error {
     #[error(transparent)]
     InvalidGossip(Box<InvalidGossipError>),
     #[error("invalid configuration")]
@@ -47,6 +55,8 @@ pub(super) enum Error {
         expected: BlockHash,
         actual: BlockHash,
     },
-    #[error("should not be possible to have sufficient finality wihtout block: {block_hash}")]
+    #[error("should not be possible to have sufficient finality without block: {block_hash}")]
     SufficientFinalityWithoutBlock { block_hash: BlockHash },
+    #[error("bogus validator detected")]
+    BogusValidator(Bogusness),
 }

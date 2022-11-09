@@ -15,6 +15,7 @@ use crate::effect::GossipTarget;
 #[derive(
     Clone,
     Copy,
+    DataSize,
     PartialEq,
     Eq,
     PartialOrd,

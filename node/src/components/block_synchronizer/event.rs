@@ -23,7 +23,7 @@ pub(crate) enum Event {
     #[from]
     Request(BlockSynchronizerRequest),
 
-    DisconnectFromPeer(NodeId),
+    DisconnectFromPeer(NodeId), // todo!() [RC] - Should we add `justification` here?
     MarkedComplete(BlockHash),
     ValidatorMatrixUpdated,
     #[from]

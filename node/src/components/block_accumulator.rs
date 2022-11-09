@@ -14,7 +14,7 @@ use tracing::{debug, error, warn};
 use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
-    components::Component,
+    components::{small_network::blocklist::BlocklistJustification, Component},
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ControlAnnouncement, PeerBehaviorAnnouncement,
@@ -30,7 +30,7 @@ use crate::{
 use crate::components::ValidatorBoundComponent;
 use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
-use error::Error;
+pub use error::Error;
 pub(crate) use event::Event;
 pub(crate) use starting_with::StartingWith;
 pub(crate) use sync_instruction::SyncInstruction;
@@ -299,37 +299,51 @@ impl BlockAccumulator {
                 ),
                 None => Effects::new(),
             },
-            Err(Error::InvalidGossip(error)) => {
-                warn!(%error, "received invalid finality_signature");
-                effect_builder
-                    .announce_disconnect_from_peer(error.peer())
-                    .ignore()
-            }
-            Err(Error::EraMismatch {
-                peer,
-                block_hash,
-                expected,
-                actual,
-            }) => {
-                warn!(
-                    "era mismatch from {} for {}; expected: {} and actual: {}",
-                    peer, block_hash, expected, actual
-                );
-                effect_builder.announce_disconnect_from_peer(peer).ignore()
-            }
-            Err(ref error @ Error::BlockHashMismatch { .. }) => {
-                error!(%error, "finality signature has mismatched block_hash; this is a bug");
-                Effects::new()
-            }
-            Err(ref error @ Error::SufficientFinalityWithoutBlock { .. }) => {
-                error!(%error, "should not have sufficient finality without block");
-                Effects::new()
-            }
-            Err(Error::InvalidConfiguration) => fatal!(
-                effect_builder,
-                "node has an invalid configuration, shutting down"
-            )
-            .ignore(),
+            Err(error) => match error {
+                Error::InvalidGossip(ref gossip_error) => {
+                    warn!(%gossip_error, "received invalid block");
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            gossip_error.peer(),
+                            BlocklistJustification::SentBadBlock { error },
+                        )
+                        .ignore()
+                }
+                Error::EraMismatch {
+                    peer,
+                    block_hash,
+                    expected,
+                    actual,
+                } => {
+                    warn!(
+                        "era mismatch from {} for {}; expected: {} and actual: {}",
+                        peer, block_hash, expected, actual
+                    );
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            peer,
+                            BlocklistJustification::SentBadBlock { error },
+                        )
+                        .ignore()
+                }
+                ref error @ Error::BlockHashMismatch { .. } => {
+                    error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                    Effects::new()
+                }
+                ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
+                    error!(%error, "should not have sufficient finality without block");
+                    Effects::new()
+                }
+                Error::InvalidConfiguration => fatal!(
+                    effect_builder,
+                    "node has an invalid configuration, shutting down"
+                )
+                .ignore(),
+                Error::BogusValidator(_) => {
+                    error!(%error, "unexpected detection of bogus validator, this is a bug");
+                    Effects::new()
+                }
+            },
         }
     }
 
@@ -385,40 +399,56 @@ impl BlockAccumulator {
                 ),
                 None => Effects::new(),
             },
-            Err(Error::InvalidGossip(error)) => {
-                warn!(%error, "received invalid finality_signature");
-                effect_builder
-                    .announce_disconnect_from_peer(error.peer())
-                    .ignore()
+            Err(error) => {
+                match error {
+                    Error::InvalidGossip(ref gossip_error) => {
+                        warn!(%gossip_error, "received invalid finality_signature");
+                        effect_builder
+                            .announce_block_peer_with_justification(
+                                gossip_error.peer(),
+                                BlocklistJustification::SentBadFinalitySignature { error },
+                            )
+                            .ignore()
+                    }
+                    Error::EraMismatch {
+                        peer,
+                        block_hash,
+                        expected,
+                        actual,
+                    } => {
+                        // the acceptor logic purges finality signatures that don't match
+                        // the era validators, so in this case we can continue to
+                        // use the acceptor
+                        warn!(
+                            "era mismatch from {} for {}; expected: {} and actual: {}",
+                            peer, block_hash, expected, actual
+                        );
+                        effect_builder
+                            .announce_block_peer_with_justification(
+                                peer,
+                                BlocklistJustification::SentBadFinalitySignature { error },
+                            )
+                            .ignore()
+                    }
+                    ref error @ Error::BlockHashMismatch { .. } => {
+                        error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                        Effects::new()
+                    }
+                    ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
+                        error!(%error, "should not have sufficient finality without block");
+                        Effects::new()
+                    }
+                    Error::InvalidConfiguration => fatal!(
+                        effect_builder,
+                        "node has an invalid configuration, shutting down"
+                    )
+                    .ignore(),
+                    Error::BogusValidator(_) => {
+                        error!(%error, "unexpected detection of bogus validator, this is a bug");
+                        Effects::new()
+                    }
+                }
             }
-            Err(Error::EraMismatch {
-                peer,
-                block_hash,
-                expected,
-                actual,
-            }) => {
-                // the acceptor logic purges finality signatures that don't match
-                // the era validators, so in this case we can continue to
-                // use the acceptor
-                warn!(
-                    "era mismatch from {} for {}; expected: {} and actual: {}",
-                    peer, block_hash, expected, actual
-                );
-                effect_builder.announce_disconnect_from_peer(peer).ignore()
-            }
-            Err(ref error @ Error::BlockHashMismatch { .. }) => {
-                error!(%error, "finality signature has mismatched block_hash; this is a bug");
-                Effects::new()
-            }
-            Err(ref error @ Error::SufficientFinalityWithoutBlock { .. }) => {
-                error!(%error, "should not have sufficient finality without block");
-                Effects::new()
-            }
-            Err(Error::InvalidConfiguration) => fatal!(
-                effect_builder,
-                "node has an invalid configuration, shutting down"
-            )
-            .ignore(),
         }
     }
 
@@ -611,7 +641,7 @@ fn store_block_and_finality_signatures<REv, I>(
 ) -> Effects<Event>
 where
     REv: From<PeerBehaviorAnnouncement> + From<StorageRequest> + Send,
-    I: IntoIterator<Item = NodeId>,
+    I: IntoIterator<Item = (NodeId, Error)>,
 {
     let mut effects = match should_store {
         ShouldStore::SufficientlySignedBlock { block, signatures } => {
@@ -635,9 +665,12 @@ where
             }),
         ShouldStore::Nothing => Effects::new(),
     };
-    effects.extend(faulty_senders.into_iter().flat_map(|node_id| {
+    effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
         effect_builder
-            .announce_disconnect_from_peer(node_id)
+            .announce_block_peer_with_justification(
+                node_id,
+                BlocklistJustification::SentBadFinalitySignature { error },
+            )
             .ignore()
     }));
     effects

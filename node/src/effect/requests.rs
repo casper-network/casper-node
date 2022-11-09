@@ -40,6 +40,7 @@ use crate::{
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         fetcher::FetchResult,
+        small_network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
@@ -217,7 +218,7 @@ where
 }
 
 /// A networking info request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
@@ -235,19 +236,26 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with all connected non-syncing peers in random order.
         responder: Responder<Vec<NodeId>>,
     },
+    /// Get detailed insights into the nodes networking.
+    Insight {
+        responder: Responder<NetworkInsights>,
+    },
 }
 
 impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::Peers { responder: _ } => {
-                write!(formatter, "get peers-to-socket-address map")
+                formatter.write_str("get peers-to-socket-address map")
             }
             NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
-                write!(formatter, "get fully connected peers")
+                formatter.write_str("get fully connected peers")
             }
             NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
-                write!(formatter, "get fully connected non-syncing peers")
+                formatter.write_str("get fully connected non-syncing peers")
+            }
+            NetworkInfoRequest::Insight { responder: _ } => {
+                formatter.write_str("get networking insights")
             }
         }
     }

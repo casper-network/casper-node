@@ -456,9 +456,15 @@ impl reactor::Reactor for MainReactor {
             MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
                 let mut effects = Effects::new();
                 match &ann {
-                    PeerBehaviorAnnouncement::OffenseCommitted(node_id) => {
+                    PeerBehaviorAnnouncement::OffenseCommitted {
+                        offender,
+                        justification: _,
+                    } => {
+                        // todo!() - instead of ignoring, should we pass `justification` down to the
+                        // "peer rating" system? Probably, because it'll allow us to add additional
+                        // info to `BlocklistJustification::DishonestPeer` variant.
                         let event = MainEvent::BlockSynchronizer(
-                            block_synchronizer::Event::DisconnectFromPeer(**node_id),
+                            block_synchronizer::Event::DisconnectFromPeer(**offender),
                         );
                         effects.extend(self.dispatch_event(effect_builder, rng, event));
                     }

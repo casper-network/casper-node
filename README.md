@@ -186,7 +186,7 @@ If the configuration option `diagnostics_port.enabled` is set to `true`, a unix 
 The `debug.socket` can be connected to by tools like `socat` for interactive use:
 
 ```sh
-socat - unix:/path/to/debug.socket
+socat readline unix:/path/to/debug.socket
 ```
 
 Entering `help` will show available commands. The `set` command allows configuring the current connection, see `set --help`.

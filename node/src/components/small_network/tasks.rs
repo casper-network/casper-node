@@ -310,6 +310,14 @@ impl<REv> NetworkContext<REv> {
             None => tls::validate_self_signed_cert(peer_cert),
         }
     }
+
+    pub(crate) fn network_ca(&self) -> Option<&Arc<X509>> {
+        self.network_ca.as_ref()
+    }
+
+    pub(crate) fn is_syncing(&self) -> &AtomicBool {
+        &self.is_syncing
+    }
 }
 
 /// Handles an incoming connection.

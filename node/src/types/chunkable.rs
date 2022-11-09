@@ -1,9 +1,8 @@
 use std::{borrow::Cow, convert::Infallible};
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
 use casper_types::{
-    bytesrepr::{self, Bytes},
+    bytesrepr::{self, Bytes, ToBytes},
     ExecutionResult,
 };
 

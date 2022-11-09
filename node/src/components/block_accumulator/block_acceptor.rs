@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
-    components::block_accumulator::error::{Error as AcceptorError, InvalidGossipError},
+    components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
     types::{
         Block, BlockHash, EmptyValidationMetadata, EraValidatorWeights, FetcherItem,
         FinalitySignature, NodeId, SignatureWeight,
@@ -128,7 +128,7 @@ impl BlockAcceptor {
         }
 
         let had_sufficient_finality = self.has_sufficient_finality;
-        // if we dont have finality yet, collect the signature and return
+        // if we don't have finality yet, collect the signature and return
         // while we could store the finality signature, we currently prefer
         // to store block and signatures when sufficient weight is attained
         if false == had_sufficient_finality {
@@ -191,13 +191,13 @@ impl BlockAcceptor {
     pub(super) fn should_store_block(
         &mut self,
         era_validator_weights: &EraValidatorWeights,
-    ) -> (ShouldStore, BTreeSet<NodeId>) {
+    ) -> (ShouldStore, Vec<(NodeId, AcceptorError)>) {
         if self.has_sufficient_finality {
-            return (ShouldStore::Nothing, BTreeSet::new());
+            return (ShouldStore::Nothing, Vec::new());
         }
 
         if self.block.is_none() || self.signatures.is_empty() {
-            return (ShouldStore::Nothing, BTreeSet::new());
+            return (ShouldStore::Nothing, Vec::new());
         }
 
         let faulty_senders = self.remove_bogus_validators(era_validator_weights);
@@ -255,14 +255,19 @@ impl BlockAcceptor {
     fn remove_bogus_validators(
         &mut self,
         era_validator_weights: &EraValidatorWeights,
-    ) -> BTreeSet<NodeId> {
+    ) -> Vec<(NodeId, AcceptorError)> {
         let bogus_validators = era_validator_weights.bogus_validators(self.signatures.keys());
 
-        let mut faulty_senders = BTreeSet::new();
+        let mut faulty_senders = Vec::new();
         bogus_validators.iter().for_each(|bogus_validator| {
             debug!(%bogus_validator, "bogus validator");
             if let Some((_, senders)) = self.signatures.remove(bogus_validator) {
-                faulty_senders.extend(senders);
+                faulty_senders.extend(senders.iter().map(|sender| {
+                    (
+                        *sender,
+                        AcceptorError::BogusValidator(Bogusness::NotAValidator),
+                    )
+                }));
             }
         });
 
@@ -277,14 +282,20 @@ impl BlockAcceptor {
             bogus_validators.iter().for_each(|bogus_validator| {
                 debug!(%bogus_validator, "bogus validator");
                 if let Some((_, senders)) = self.signatures.remove(bogus_validator) {
-                    faulty_senders.extend(senders);
+                    faulty_senders.extend(senders.iter().map(|sender| {
+                        (
+                            *sender,
+                            AcceptorError::BogusValidator(Bogusness::SignatureEraIdMismatch),
+                        )
+                    }));
                 }
             });
         }
 
-        for node_id in &faulty_senders {
+        for (node_id, _) in &faulty_senders {
             self.peers.remove(node_id);
         }
+
         faulty_senders
     }
 

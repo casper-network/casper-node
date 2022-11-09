@@ -30,16 +30,19 @@ use casper_hashing::Digest;
 use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp, U512};
 
 use crate::{
-    components::consensus::{
-        cl_context::{ClContext, Keypair},
-        consensus_protocol::{
-            ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
-            ProtocolOutcome,
+    components::{
+        consensus::{
+            cl_context::{ClContext, Keypair},
+            consensus_protocol::{
+                ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
+                ProtocolOutcome,
+            },
+            metrics::Metrics,
+            validator_change::{ValidatorChange, ValidatorChanges},
+            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
+            ReactorEventT, ResolveValidity, TimerId,
         },
-        metrics::Metrics,
-        validator_change::{ValidatorChange, ValidatorChanges},
-        ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
-        ReactorEventT, ResolveValidity, TimerId,
+        small_network::blocklist::BlocklistJustification,
     },
     effect::{
         announcements::ControlAnnouncement,
@@ -765,12 +768,14 @@ impl EraSupervisor {
         self.metrics.proposed_block();
         let mut effects = Effects::new();
         if !valid {
-            warn!(
-                peer_id = %sender,
-                era = %era_id.value(),
-                "invalid consensus value; disconnecting from the sender"
-            );
-            effects.extend(self.disconnect(effect_builder, sender));
+            effects.extend({
+                effect_builder
+                    .announce_block_peer_with_justification(
+                        sender,
+                        BlocklistJustification::SentInvalidConsensusValue { era: era_id },
+                    )
+                    .ignore()
+            });
         }
         if self
             .open_eras
@@ -839,20 +844,25 @@ impl EraSupervisor {
             }
         };
         match consensus_result {
-            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
-                warn!(
-                    %sender,
-                    %error,
-                    "invalid incoming message to consensus instance; disconnecting from the sender"
-                );
-                self.disconnect(effect_builder, sender)
-            }
+            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => effect_builder
+                .announce_block_peer_with_justification(
+                    sender,
+                    BlocklistJustification::SentInvalidConsensusMessage { error },
+                )
+                .ignore(),
             ProtocolOutcome::Disconnect(sender) => {
                 warn!(
                     %sender,
                     "disconnecting from the sender of invalid data"
                 );
-                self.disconnect(effect_builder, sender)
+                {
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            sender,
+                            BlocklistJustification::BadConsensusBehavior,
+                        )
+                        .ignore()
+                }
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1077,16 +1087,6 @@ impl EraSupervisor {
             .last()
             .and_then(|era| era.consensus.next_round_length());
         responder.respond(Some((public_key, round_length))).ignore()
-    }
-
-    fn disconnect<REv: ReactorEventT>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
-    ) -> Effects<Event> {
-        effect_builder
-            .announce_disconnect_from_peer(sender)
-            .ignore()
     }
 
     /// Get a reference to the era supervisor's open eras.
