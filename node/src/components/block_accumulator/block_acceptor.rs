@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -18,9 +18,9 @@ use crate::{
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     block: Option<Block>,
-    signatures: BTreeMap<PublicKey, FinalitySignature>,
+    signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
     // todo!() - Consider a ubound.
-    peers: Vec<NodeId>,
+    peers: BTreeSet<NodeId>,
     has_sufficient_finality: bool,
     last_progress: Timestamp,
 }
@@ -37,23 +37,26 @@ pub(super) enum ShouldStore {
 }
 
 impl BlockAcceptor {
-    pub(super) fn new(block_hash: BlockHash, peers: Vec<NodeId>) -> Self {
+    pub(super) fn new<I>(block_hash: BlockHash, peers: I) -> Self
+    where
+        I: IntoIterator<Item = NodeId>,
+    {
         Self {
             block_hash,
             block: None,
             signatures: BTreeMap::new(),
-            peers,
+            peers: peers.into_iter().collect(),
             has_sufficient_finality: false,
             last_progress: Timestamp::now(),
         }
     }
 
-    pub(super) fn peers(&self) -> Vec<NodeId> {
-        self.peers.to_vec()
+    pub(super) fn peers(&self) -> &BTreeSet<NodeId> {
+        &self.peers
     }
 
     pub(super) fn register_peer(&mut self, peer: NodeId) {
-        self.peers.push(peer);
+        self.peers.insert(peer);
     }
 
     pub(super) fn register_block(
@@ -62,16 +65,10 @@ impl BlockAcceptor {
         peer: Option<NodeId>,
     ) -> Result<(), AcceptorError> {
         if self.block_hash() != *block.hash() {
-            match peer {
-                Some(node_id) => {
-                    return Err(AcceptorError::BlockHashMismatch {
-                        expected: self.block_hash(),
-                        actual: *block.hash(),
-                        peer: node_id,
-                    })
-                }
-                None => return Err(AcceptorError::InvalidConfiguration),
-            }
+            return Err(AcceptorError::BlockHashMismatch {
+                expected: self.block_hash(),
+                actual: *block.hash(),
+            });
         }
 
         if let Err(error) = block.validate(&EmptyValidationMetadata) {
@@ -108,6 +105,12 @@ impl BlockAcceptor {
         finality_signature: FinalitySignature,
         peer: Option<NodeId>,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
+        if self.block_hash != finality_signature.block_hash {
+            return Err(AcceptorError::BlockHashMismatch {
+                expected: self.block_hash,
+                actual: finality_signature.block_hash,
+            });
+        }
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
             match peer {
@@ -133,13 +136,15 @@ impl BlockAcceptor {
                 self.register_peer(node_id);
             }
             self.signatures
-                .insert(finality_signature.public_key.clone(), finality_signature);
+                .entry(finality_signature.public_key.clone())
+                .and_modify(|(_, senders)| senders.extend(peer))
+                .or_insert_with(|| (finality_signature, peer.into_iter().collect()));
             return Ok(None);
         }
 
         if let Some(block) = &self.block {
             // if the signature's era does not match the block's era
-            // its malicious / bogus / invalid.
+            // it's malicious / bogus / invalid.
             if block.header().era_id() != finality_signature.era_id {
                 match peer {
                     Some(node_id) => {
@@ -163,13 +168,12 @@ impl BlockAcceptor {
         if let Some(node_id) = peer {
             self.register_peer(node_id);
         }
-        let is_new = self
-            .signatures
-            .insert(
-                finality_signature.public_key.clone(),
-                finality_signature.clone(),
-            )
-            .is_none();
+        let is_new = !self.signatures.contains_key(&finality_signature.public_key);
+
+        self.signatures
+            .entry(finality_signature.public_key.clone())
+            .and_modify(|(_, senders)| senders.extend(peer))
+            .or_insert_with(|| (finality_signature.clone(), peer.into_iter().collect()));
 
         if had_sufficient_finality && is_new {
             // we received this finality signature after putting the block & earlier signatures
@@ -182,33 +186,42 @@ impl BlockAcceptor {
         Ok(None)
     }
 
+    /// Returns instructions to write the block and/or finality signatures to storage.
+    /// Also returns a set of peers that sent us invalid data and should be banned.
     pub(super) fn should_store_block(
         &mut self,
         era_validator_weights: &EraValidatorWeights,
-    ) -> ShouldStore {
+    ) -> (ShouldStore, BTreeSet<NodeId>) {
         if self.has_sufficient_finality {
-            return ShouldStore::Nothing;
+            return (ShouldStore::Nothing, BTreeSet::new());
         }
 
         if self.block.is_none() || self.signatures.is_empty() {
-            return ShouldStore::Nothing;
+            return (ShouldStore::Nothing, BTreeSet::new());
         }
 
-        self.remove_bogus_validators(era_validator_weights);
+        let faulty_senders = self.remove_bogus_validators(era_validator_weights);
         if SignatureWeight::Sufficient
             == era_validator_weights.has_sufficient_weight(self.signatures.keys())
         {
             if let Some(block) = self.block.clone() {
                 self.touch();
                 self.has_sufficient_finality = true;
-                return ShouldStore::SufficientlySignedBlock {
-                    block,
-                    signatures: self.signatures.iter().map(|(_, v)| v.clone()).collect_vec(),
-                };
+                return (
+                    ShouldStore::SufficientlySignedBlock {
+                        block,
+                        signatures: self
+                            .signatures
+                            .values()
+                            .map(|(sig, _)| sig.clone())
+                            .collect_vec(),
+                    },
+                    faulty_senders,
+                );
             }
         }
 
-        ShouldStore::Nothing
+        (ShouldStore::Nothing, faulty_senders)
     }
 
     pub(super) fn has_sufficient_finality(&self) -> bool {
@@ -219,7 +232,7 @@ impl BlockAcceptor {
         if let Some(block) = &self.block {
             return Some(block.header().era_id());
         }
-        if let Some(finality_signature) = self.signatures.values().next() {
+        if let Some((finality_signature, _)) = self.signatures.values().next() {
             return Some(finality_signature.era_id);
         }
         None
@@ -237,29 +250,42 @@ impl BlockAcceptor {
         self.last_progress
     }
 
-    fn remove_bogus_validators(&mut self, era_validator_weights: &EraValidatorWeights) {
+    /// Removes finality signatures that have the wrong era ID or are signed by non-validators.
+    /// Returns the set of peers that sent us these signatures.
+    fn remove_bogus_validators(
+        &mut self,
+        era_validator_weights: &EraValidatorWeights,
+    ) -> BTreeSet<NodeId> {
         let bogus_validators = era_validator_weights.bogus_validators(self.signatures.keys());
 
+        let mut faulty_senders = BTreeSet::new();
         bogus_validators.iter().for_each(|bogus_validator| {
             debug!(%bogus_validator, "bogus validator");
-            self.signatures.remove(bogus_validator);
+            if let Some((_, senders)) = self.signatures.remove(bogus_validator) {
+                faulty_senders.extend(senders);
+            }
         });
 
         if let Some(block) = &self.block {
             let bogus_validators = self
                 .signatures
                 .iter()
-                .filter(|(_, v)| {
-                    v.block_hash != self.block_hash() || v.era_id != block.header().era_id()
-                })
+                .filter(|(_, (v, _))| v.era_id != block.header().era_id())
                 .map(|(k, _)| k.clone())
                 .collect_vec();
 
             bogus_validators.iter().for_each(|bogus_validator| {
                 debug!(%bogus_validator, "bogus validator");
-                self.signatures.remove(bogus_validator);
+                if let Some((_, senders)) = self.signatures.remove(bogus_validator) {
+                    faulty_senders.extend(senders);
+                }
             });
         }
+
+        for node_id in &faulty_senders {
+            self.peers.remove(node_id);
+        }
+        faulty_senders
     }
 
     fn touch(&mut self) {

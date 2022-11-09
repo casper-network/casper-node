@@ -187,9 +187,18 @@ impl EraSupervisor {
         rng: &mut NodeRng,
         recent_switch_block_headers: &[BlockHeader],
     ) -> Option<Effects<Event>> {
+        if !recent_switch_block_headers
+            .iter()
+            .tuple_windows()
+            .all(|(b0, b1)| b0.next_block_era_id() == b1.era_id())
+        {
+            error!("switch block headers are not consecutive; this is a bug");
+            return None;
+        }
+
         let highest_switch_block_header = recent_switch_block_headers.last()?;
 
-        let new_era_id = highest_switch_block_header.era_id().successor();
+        let new_era_id = highest_switch_block_header.next_block_era_id();
 
         // We need to initialize current_era and (evidence-only) current_era - 1.
         // To initialize an era, all switch blocks between its booking block and its key block are

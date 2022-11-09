@@ -665,6 +665,11 @@ impl reactor::Reactor for MainReactor {
                             .recent_switch_block_headers
                             .push(block.header().clone()),
                     }
+
+                    let era_count = self.chainspec.number_of_past_switch_blocks_needed();
+                    while self.recent_switch_block_headers.len() as u64 > era_count {
+                        self.recent_switch_block_headers.remove(0);
+                    }
                 }
                 debug!(
                     "notifying block gossiper to start gossiping for: {}",

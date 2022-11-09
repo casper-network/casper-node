@@ -134,7 +134,7 @@ impl TrieAccumulator {
                 }
                 Some(partial_chunks) => {
                     debug!(%hash, "got a full trie");
-                    partial_chunks.respond(Ok(Box::new(trie)))
+                    partial_chunks.respond(Ok(Box::new(trie.into_inner())))
                 }
             },
             TrieOrChunk::ChunkWithProof(chunk) => self.consume_chunk(effect_builder, chunk),

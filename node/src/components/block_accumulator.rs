@@ -244,7 +244,7 @@ impl BlockAccumulator {
                 let acceptor = self
                     .block_acceptors
                     .entry(block_hash)
-                    .or_insert_with(|| BlockAcceptor::new(block_hash, vec![]));
+                    .or_insert_with(|| BlockAcceptor::new(block_hash, None));
                 acceptor.register_peer(sender);
             }
             // In all other cases (i.e. the item's era is not provided, the
@@ -289,7 +289,7 @@ impl BlockAccumulator {
         let acceptor = self
             .block_acceptors
             .entry(*block_hash)
-            .or_insert_with(|| BlockAcceptor::new(*block_hash, vec![]));
+            .or_insert_with(|| BlockAcceptor::new(*block_hash, None));
 
         match acceptor.register_block(block, sender) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
@@ -309,16 +309,11 @@ impl BlockAccumulator {
                         )
                         .ignore()
                 }
-                Error::InvalidConfiguration => fatal!(
-                    effect_builder,
-                    "node has an invalid configuration, shutting down"
-                )
-                .ignore(),
                 Error::EraMismatch {
+                    peer,
                     block_hash,
                     expected,
                     actual,
-                    peer,
                 } => {
                     warn!(
                         "era mismatch from {} for {}; expected: {} and actual: {}",
@@ -331,17 +326,21 @@ impl BlockAccumulator {
                         )
                         .ignore()
                 }
-                ref hash_mismatch_error @ Error::BlockHashMismatch { peer, .. } => {
-                    warn!(%hash_mismatch_error, "finality signature has mismatched block_hash");
-                    effect_builder
-                        .announce_block_peer_with_justification(
-                            peer,
-                            BlocklistJustification::SentBadBlock { error },
-                        )
-                        .ignore()
+                ref error @ Error::BlockHashMismatch { .. } => {
+                    error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                    Effects::new()
                 }
                 ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
                     error!(%error, "should not have sufficient finality without block");
+                    Effects::new()
+                }
+                Error::InvalidConfiguration => fatal!(
+                    effect_builder,
+                    "node has an invalid configuration, shutting down"
+                )
+                .ignore(),
+                Error::BogusValidator(_) => {
+                    error!(%error, "unexpected detection of bogus validator, this is a bug");
                     Effects::new()
                 }
             },
@@ -372,12 +371,9 @@ impl BlockAccumulator {
             Some(local_tip_era_id)
                 if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
             {
-                self.block_acceptors.entry(block_hash).or_insert_with(|| {
-                    BlockAcceptor::new(
-                        block_hash,
-                        sender.map(|sender| vec![sender]).unwrap_or_default(),
-                    )
-                })
+                self.block_acceptors
+                    .entry(block_hash)
+                    .or_insert_with(|| BlockAcceptor::new(block_hash, sender))
             }
             // In all other cases (i.e. the local tip doesn't have an era or
             // the signature's era is older than the local tip era by more than
@@ -394,7 +390,7 @@ impl BlockAccumulator {
         match acceptor.register_finality_signature(finality_signature, sender) {
             Ok(Some(finality_signature)) => store_block_and_finality_signatures(
                 effect_builder,
-                ShouldStore::SingleSignature(finality_signature),
+                (ShouldStore::SingleSignature(finality_signature), None),
             ),
             Ok(None) => match &self.validator_matrix.validator_weights(era_id) {
                 Some(evw) => store_block_and_finality_signatures(
@@ -403,6 +399,7 @@ impl BlockAccumulator {
                 ),
                 None => Effects::new(),
             },
+
             Err(error) => {
                 match error {
                     Error::InvalidGossip(ref gossip_error) => {
@@ -414,16 +411,11 @@ impl BlockAccumulator {
                             )
                             .ignore()
                     }
-                    Error::InvalidConfiguration => fatal!(
-                        effect_builder,
-                        "node has an invalid configuration, shutting down"
-                    )
-                    .ignore(),
                     Error::EraMismatch {
+                        peer,
                         block_hash,
                         expected,
                         actual,
-                        peer,
                     } => {
                         // the acceptor logic purges finality signatures that don't match
                         // the era validators, so in this case we can continue to
@@ -439,17 +431,21 @@ impl BlockAccumulator {
                             )
                             .ignore()
                     }
-                    ref hash_mismatch_error @ Error::BlockHashMismatch { peer, .. } => {
-                        warn!(%hash_mismatch_error, "finality signature has mismatched block_hash");
-                        effect_builder
-                            .announce_block_peer_with_justification(
-                                peer,
-                                BlocklistJustification::SentBadFinalitySignature { error },
-                            )
-                            .ignore()
+                    ref error @ Error::BlockHashMismatch { .. } => {
+                        error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                        Effects::new()
                     }
                     ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
                         error!(%error, "should not have sufficient finality without block");
+                        Effects::new()
+                    }
+                    Error::InvalidConfiguration => fatal!(
+                        effect_builder,
+                        "node has an invalid configuration, shutting down"
+                    )
+                    .ignore(),
+                    Error::BogusValidator(_) => {
+                        error!(%error, "unexpected detection of bogus validator, this is a bug");
                         Effects::new()
                     }
                 }
@@ -507,7 +503,7 @@ impl BlockAccumulator {
     fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
         self.block_acceptors
             .get(&block_hash)
-            .map(BlockAcceptor::peers)
+            .map(|acceptor| acceptor.peers().iter().cloned().collect())
     }
 
     fn should_sync(&mut self, starting_with_block_height: u64) -> bool {
@@ -640,14 +636,15 @@ impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
     }
 }
 
-fn store_block_and_finality_signatures<REv>(
+fn store_block_and_finality_signatures<REv, I>(
     effect_builder: EffectBuilder<REv>,
-    should_store: ShouldStore,
+    (should_store, faulty_senders): (ShouldStore, I),
 ) -> Effects<Event>
 where
-    REv: From<StorageRequest> + Send,
+    REv: From<PeerBehaviorAnnouncement> + From<StorageRequest> + Send,
+    I: IntoIterator<Item = (NodeId, Error)>,
 {
-    match should_store {
+    let mut effects = match should_store {
         ShouldStore::SufficientlySignedBlock { block, signatures } => {
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
             signatures.iter().for_each(|signature| {
@@ -668,5 +665,14 @@ where
                 finality_signatures: vec![signature],
             }),
         ShouldStore::Nothing => Effects::new(),
-    }
+    };
+    effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
+        effect_builder
+            .announce_block_peer_with_justification(
+                node_id,
+                BlocklistJustification::SentBadFinalitySignature { error },
+            )
+            .ignore()
+    }));
+    effects
 }
