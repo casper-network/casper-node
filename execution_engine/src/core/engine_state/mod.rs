@@ -1810,6 +1810,7 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
+        proposer: PublicKey,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -1818,6 +1819,9 @@ where
             Ok(None) => return Err(StepError::RootNotFound(pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
+
+        let mut runtime_args = RuntimeArgs::new();
+        runtime_args.insert("proposer", proposer)?;
 
         let executor = Executor::new(*self.config());
 
@@ -1847,7 +1851,7 @@ where
         let distribute_rewards_stack = self.get_new_system_call_stack();
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
             DirectSystemContractCall::DistributeRewards,
-            RuntimeArgs::new(),
+            runtime_args,
             &virtual_system_account,
             authorization_keys.clone(),
             BlockTime::default(),
