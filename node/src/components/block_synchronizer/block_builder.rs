@@ -166,7 +166,10 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_marked_complete(&mut self) {
-        if let Err(error) = self.acquisition_state.register_marked_complete() {
+        if let Err(error) = self
+            .acquisition_state
+            .register_marked_complete(self.should_fetch_execution_state)
+        {
             error!(%error, "register marked complete failed");
             self.abort()
         } else {
@@ -326,7 +329,7 @@ impl BlockBuilder {
                     self.promote_peer(maybe_peer);
                 }
                 Ok(FinalitySignatureAcceptance::Noop) => {
-                    // noop
+                    self.touch();
                 }
             }
             Ok(())

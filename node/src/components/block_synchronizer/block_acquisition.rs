@@ -143,6 +143,7 @@ pub(super) enum BlockAcquisitionState {
     Fatal,
 }
 
+#[derive(Debug)]
 pub(super) enum FinalitySignatureAcceptance {
     Noop,
     NeededIt,
@@ -310,17 +311,19 @@ impl BlockAcquisitionState {
         signature: FinalitySignature,
         validator_weights: EraValidatorWeights,
     ) -> Result<FinalitySignatureAcceptance, Error> {
+        let signer = signature.public_key.clone();
         let new_state = match self {
-            BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures)
-            | BlockAcquisitionState::HaveWeakFinalitySignatures(header, acquired_signatures)
-            | BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
-                if false == acquired_signatures.apply_signature(signature) {
-                    return Ok(FinalitySignatureAcceptance::Noop);
-                };
-                info!(
-                    "BlockAcquisition: registering finality signature for: {}",
-                    header.block_hash()
+            BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures) => {
+                let added = acquired_signatures.apply_signature(signature);
+                debug!(
+                    "BlockAcquisition: registering finality signature of {} for {}, added: {}",
+                    signer,
+                    header.block_hash(),
+                    added
                 );
+                if false == added {
+                    return Ok(FinalitySignatureAcceptance::Noop);
+                }
                 match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient => {
@@ -335,6 +338,17 @@ impl BlockAcquisitionState {
                     }
                 }
             }
+            BlockAcquisitionState::HaveWeakFinalitySignatures(header, acquired_signatures)
+            | BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
+                let added = acquired_signatures.apply_signature(signature);
+                debug!(
+                    "BlockAcquisition: registering finality signature of {} for {}, added: {}",
+                    signer,
+                    header.block_hash(),
+                    added
+                );
+                return Ok(FinalitySignatureAcceptance::Noop);
+            }
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, ..)
             | BlockAcquisitionState::HaveGlobalState(block, acquired_signatures, ..)
             | BlockAcquisitionState::HaveApprovalsHashes(block, acquired_signatures, ..)
@@ -343,7 +357,8 @@ impl BlockAcquisitionState {
                     return Ok(FinalitySignatureAcceptance::Noop);
                 };
                 info!(
-                    "BlockAcquisition: registering finality signature for: {}",
+                    "BlockAcquisition: registering finality signature of {} for {}",
+                    signer,
                     block.id()
                 );
                 match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
@@ -377,10 +392,26 @@ impl BlockAcquisitionState {
         Ok(FinalitySignatureAcceptance::Noop)
     }
 
-    pub(super) fn register_marked_complete(&mut self) -> Result<(), Error> {
+    pub(super) fn register_marked_complete(
+        &mut self,
+        need_execution_state: bool,
+    ) -> Result<(), Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, _)
-            | BlockAcquisitionState::HaveGlobalState(block, acquired_signatures, ..) => {
+                if !need_execution_state =>
+            {
+                info!(
+                    "BlockAcquisition: registering marked complete for: {}",
+                    block.id()
+                );
+                BlockAcquisitionState::HaveStrictFinalitySignatures(
+                    Box::new(block.header().clone()),
+                    acquired_signatures.clone(),
+                )
+            }
+            BlockAcquisitionState::HaveGlobalState(block, acquired_signatures, ..)
+                if need_execution_state =>
+            {
                 info!(
                     "BlockAcquisition: registering marked complete for: {}",
                     block.id()
@@ -406,6 +437,8 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
@@ -593,12 +626,12 @@ impl BlockAcquisitionState {
                     Ok(new_effects) => match new_effects {
                         ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. }
-                        | ExecutionResultsAcquisition::Incomplete { .. } => return Ok(None),
-                        ExecutionResultsAcquisition::Complete { .. } => {
+                        | ExecutionResultsAcquisition::Acquiring { .. } => return Ok(None),
+                        ExecutionResultsAcquisition::Acquired { .. } => {
                             let deploy_hashes =
                                 block.deploy_and_transfer_hashes().copied().collect();
                             match new_effects.apply_deploy_hashes(deploy_hashes) {
-                                Ok(ExecutionResultsAcquisition::Mapped {
+                                Ok(ExecutionResultsAcquisition::Complete {
                                     block_hash,
                                     checksum,
                                     results,
@@ -607,7 +640,7 @@ impl BlockAcquisitionState {
                                         block.clone(),
                                         signatures.clone(),
                                         deploys.clone(),
-                                        ExecutionResultsAcquisition::Mapped {
+                                        ExecutionResultsAcquisition::Complete {
                                             block_hash,
                                             checksum,
                                             results: results.clone(),
@@ -617,8 +650,8 @@ impl BlockAcquisitionState {
                                 ),
                                 Ok(ExecutionResultsAcquisition::Needed { .. })
                                 | Ok(ExecutionResultsAcquisition::Pending { .. })
-                                | Ok(ExecutionResultsAcquisition::Incomplete { .. })
-                                | Ok(ExecutionResultsAcquisition::Complete { .. }) => {
+                                | Ok(ExecutionResultsAcquisition::Acquiring { .. })
+                                | Ok(ExecutionResultsAcquisition::Acquired { .. }) => {
                                     return Err(Error::InvalidStateTransition)
                                 }
                                 // todo! - when `apply_deploy_hashes` returns an
@@ -628,7 +661,7 @@ impl BlockAcquisitionState {
                                 Err(error) => return Err(Error::ExecutionResults(error)),
                             }
                         }
-                        ExecutionResultsAcquisition::Mapped { ref results, .. } => (
+                        ExecutionResultsAcquisition::Complete { ref results, .. } => (
                             BlockAcquisitionState::HaveGlobalState(
                                 block.clone(),
                                 signatures.clone(),
@@ -674,7 +707,7 @@ impl BlockAcquisitionState {
                 block,
                 signatures,
                 deploys,
-                ExecutionResultsAcquisition::Mapped { checksum, .. },
+                ExecutionResultsAcquisition::Complete { checksum, .. },
             ) if need_execution_state => {
                 info!(
                     "BlockAcquisition: registering execution results stored notification for: {}",
@@ -779,8 +812,8 @@ impl BlockAcquisitionState {
                     ))
                 } else {
                     match exec_results {
-                        ExecutionResultsAcquisition::Complete { .. }
-                        | ExecutionResultsAcquisition::Mapped { .. } => {
+                        ExecutionResultsAcquisition::Acquired { .. }
+                        | ExecutionResultsAcquisition::Complete { .. } => {
                             Err(Error::InvalidAttemptToAcquireExecutionResults)
                         }
                         ExecutionResultsAcquisition::Needed { .. } => {
@@ -790,7 +823,7 @@ impl BlockAcquisitionState {
                             ))
                         }
                         acq @ ExecutionResultsAcquisition::Pending { .. }
-                        | acq @ ExecutionResultsAcquisition::Incomplete { .. } => {
+                        | acq @ ExecutionResultsAcquisition::Acquiring { .. } => {
                             match acq.needs_value_or_chunk() {
                                 None => {
                                     warn!(block_hash=%block.id(), "execution_results_acquisition.needs_value_or_chunk() should never be None for these variants");

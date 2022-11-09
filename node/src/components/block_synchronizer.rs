@@ -316,8 +316,8 @@ impl BlockSynchronizer {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             let need_next = action.need_next();
+            debug!("BlockSynchronizer: needs next: {:?}", need_next);
             if !matches!(need_next, NeedNext::Nothing) {
-                debug!("BlockSynchronizer: {:?}", need_next);
                 builder.set_in_flight_latch(true);
             }
             match need_next {
