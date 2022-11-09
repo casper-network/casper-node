@@ -1377,18 +1377,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the highest block header.
-    pub(crate) async fn get_highest_block_header_from_storage(self) -> Option<BlockHeader>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetHighestBlockHeader { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the highest complete block header.
     pub(crate) async fn get_highest_complete_block_header_from_storage(self) -> Option<BlockHeader>
     where

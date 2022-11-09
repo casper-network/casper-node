@@ -745,12 +745,6 @@ impl Storage {
             StorageRequest::GetHighestBlock { responder } => {
                 responder.respond(self.read_highest_block()?).ignore()
             }
-            StorageRequest::GetHighestBlockHeader { responder } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                responder
-                    .respond(self.get_highest_block_header(&mut txn)?)
-                    .ignore()
-            }
             StorageRequest::GetHighestCompleteBlockHeader { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
@@ -1715,21 +1709,6 @@ impl Storage {
             .keys()
             .last()
             .and_then(|&height| self.get_block_by_height(txn, height).transpose())
-            .transpose()
-    }
-
-    /// Retrieves the highest block header from storage, if one exists. May return an LMDB error.
-    fn get_highest_block_header<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.block_height_index
-            .iter()
-            .last()
-            .and_then(|(_, hash_of_highest_block)| {
-                self.get_single_block_header(txn, hash_of_highest_block)
-                    .transpose()
-            })
             .transpose()
     }
 
