@@ -30,6 +30,14 @@ impl InvalidGossipError {
 }
 
 #[derive(Error, Debug)]
+pub enum Bogusness {
+    #[error("peer is not a validator in current era")]
+    NotAValidator,
+    #[error("peer provided finality signatures from incorrect era")]
+    SignatureEraIdMismatch,
+}
+
+#[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
     InvalidGossip(Box<InvalidGossipError>),
@@ -47,6 +55,8 @@ pub enum Error {
         expected: BlockHash,
         actual: BlockHash,
     },
-    #[error("should not be possible to have sufficient finality wihtout block: {block_hash}")]
+    #[error("should not be possible to have sufficient finality without block: {block_hash}")]
     SufficientFinalityWithoutBlock { block_hash: BlockHash },
+    #[error("bogus validator detected")]
+    BogusValidator(Bogusness),
 }

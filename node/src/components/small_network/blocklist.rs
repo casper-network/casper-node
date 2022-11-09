@@ -22,14 +22,14 @@ pub(crate) enum BlocklistJustification {
     /// Received a block with incorrect parent, which was specified beforehand.
     /// A finality signature that was sent is invalid.
     SentBadFinalitySignature {
-        /// The actual cryptographic validation error.
+        /// Error reported by block accumulator.
         #[serde(skip_serializing)]
         #[data_size(skip)]
         error: block_accumulator::Error,
     },
     /// A block that was sent is invalid.
     SentBadBlock {
-        /// The actual cryptographic validation error.
+        /// Error reported by block accumulator.
         #[serde(skip_serializing)]
         #[data_size(skip)]
         error: block_accumulator::Error,
