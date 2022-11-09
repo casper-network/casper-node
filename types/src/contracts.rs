@@ -641,8 +641,9 @@ impl JsonSchema for ContractPackageHash {
 }
 
 /// A enum to determine the lock status of the contract package.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum ContractPackageStatus {
     /// The package is locked and cannot be versioned.
     Locked,
