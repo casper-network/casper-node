@@ -114,7 +114,11 @@ impl Limiter {
     }
 
     pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
-        // TODO[RC]: `self.data.resources.blocking_lock()` panics
+        // Disabled temporarily, as it results in a panic:
+
+        // node panicked: Cannot start a runtime from within a runtime. This happens because a
+        // function (like `block_on`) attempted to block the current thread while the thread is
+        // being used to drive asynchronous tasks.
 
         None
 
@@ -123,23 +127,19 @@ impl Limiter {
 
     pub(super) fn debug_inspect_validators(
         &self,
+        current_era: &EraId,
     ) -> Option<(HashSet<PublicKey>, HashSet<PublicKey>)> {
-        // TODO[RC]: Inspect `self.data.validator_matrix` instead of `self.data.validator_sets`
+        Some((
+            self.validator_keys_for_era(current_era),
+            self.validator_keys_for_era(&current_era.successor()),
+        ))
+    }
 
-        None
-
-        // match self.data.validator_sets.read() {
-        //     Ok(validators) => Some((
-        //         validators.active_validators.clone(),
-        //         validators.upcoming_validators.clone(),
-        //     )),
-        //     Err(_) => {
-        //         debug!(
-        //             "could not inspect validator data set of limiter for debugging, lock
-        // poisoned"         );
-        //         None
-        //     }
-        // }
+    fn validator_keys_for_era(&self, era: &EraId) -> HashSet<PublicKey> {
+        self.validator_matrix
+            .validator_weights(*era)
+            .map(|validator_weights| validator_weights.validator_public_keys().cloned().collect())
+            .unwrap_or_default()
     }
 }
 

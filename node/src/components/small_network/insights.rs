@@ -40,9 +40,9 @@ pub(crate) struct NetworkInsights {
     /// The active era as seen by the networking component.
     net_active_era: EraId,
     /// The list of node IDs that are being preferred due to being active validators.
-    priviledged_active_outgoing_nodes: Option<HashSet<PublicKey>>,
+    privileged_active_outgoing_nodes: Option<HashSet<PublicKey>>,
     /// The list of node IDs that are being preferred due to being upcoming validators.
-    priviledged_upcoming_outgoing_nodes: Option<HashSet<PublicKey>>,
+    privileged_upcoming_outgoing_nodes: Option<HashSet<PublicKey>>,
     /// The amount of bandwidth allowance currently buffered, ready to be spent.
     unspent_bandwidth_allowance_bytes: Option<i64>,
     /// Map of outgoing connections, along with their current state.
@@ -237,9 +237,9 @@ impl NetworkInsights {
         // Since we are at the top level of the component, we gain access to inner values of the
         // respective structs. We abuse this to gain debugging insights. Note: If limiters are no
         // longer a `trait`, the trait methods can be removed as well in favor of direct access.
-        let (priviledged_active_outgoing_nodes, priviledged_upcoming_outgoing_nodes) = net
+        let (privileged_active_outgoing_nodes, privileged_upcoming_outgoing_nodes) = net
             .outgoing_limiter
-            .debug_inspect_validators()
+            .debug_inspect_validators(&net.active_era)
             .map(|(a, b)| (Some(a), Some(b)))
             .unwrap_or_default();
 
@@ -278,8 +278,8 @@ impl NetworkInsights {
             public_addr: net.context.public_addr(),
             is_syncing: net.context.is_syncing().load(Ordering::Relaxed),
             net_active_era: net.active_era,
-            priviledged_active_outgoing_nodes,
-            priviledged_upcoming_outgoing_nodes,
+            privileged_active_outgoing_nodes,
+            privileged_upcoming_outgoing_nodes,
             unspent_bandwidth_allowance_bytes: net
                 .outgoing_limiter
                 .debug_inspect_unspent_allowance(),
@@ -310,23 +310,23 @@ impl Display for NetworkInsights {
             OptDisplay::new(self.unspent_bandwidth_allowance_bytes, "inactive"),
         )?;
         let active = self
-            .priviledged_active_outgoing_nodes
+            .privileged_active_outgoing_nodes
             .as_ref()
             .map(HashSet::iter)
             .map(DisplayIter::new);
         writeln!(
             f,
-            "priviledged active: {}",
+            "privileged active: {}",
             OptDisplay::new(active, "inactive")
         )?;
         let upcoming = self
-            .priviledged_upcoming_outgoing_nodes
+            .privileged_upcoming_outgoing_nodes
             .as_ref()
             .map(HashSet::iter)
             .map(DisplayIter::new);
         writeln!(
             f,
-            "priviledged upcoming: {}",
+            "privileged upcoming: {}",
             OptDisplay::new(upcoming, "inactive")
         )?;
 
