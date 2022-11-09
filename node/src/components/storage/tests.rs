@@ -387,13 +387,13 @@ fn get_highest_block(
     response
 }
 
-/// Requests the highest block header from a storage component.
-fn get_highest_block_header(
+/// Requests the highest complete block header from a storage component.
+fn get_highest_complete_block_header(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
 ) -> Option<BlockHeader> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetHighestBlockHeader { responder }.into()
+        StorageRequest::GetHighestCompleteBlockHeader { responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -519,7 +519,7 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert!(get_highest_block(&mut harness, &mut storage).is_none());
-    assert!(get_highest_block_header(&mut harness, &mut storage).is_none());
+    assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
     assert!(get_block_header_at_height(&mut storage, 14).is_none());
     assert!(get_block_at_height(&mut storage, 33).is_none());
@@ -535,10 +535,7 @@ fn can_retrieve_block_by_height() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
-    assert_eq!(
-        get_highest_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
-    );
+    assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
@@ -562,10 +559,7 @@ fn can_retrieve_block_by_height() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
-    assert_eq!(
-        get_highest_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
-    );
+    assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert_eq!(
@@ -589,6 +583,8 @@ fn can_retrieve_block_by_height() {
 
     // Inserting block with height 99, changes highest.
     let was_new = put_block(&mut harness, &mut storage, block_99.clone());
+    // Mark block 99 as complete.
+    storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
@@ -596,7 +592,7 @@ fn can_retrieve_block_by_height() {
         Some(&*block_99)
     );
     assert_eq!(
-        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
         Some(block_99.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
@@ -1388,7 +1384,7 @@ fn should_get_signed_block_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_of_highest_complete_block(&mut txn)
+            .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
         let previous_switch_block_header = storage
@@ -1437,7 +1433,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_of_highest_complete_block(&mut txn)
+            .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
 

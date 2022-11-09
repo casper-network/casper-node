@@ -86,6 +86,8 @@ pub(super) enum Action {
     },
     /// Dump the event queues.
     DumpQueues,
+    /// Get detailed networking insights.
+    NetInfo,
     /// Close connection server-side.
     Quit,
 }

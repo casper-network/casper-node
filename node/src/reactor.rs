@@ -58,8 +58,9 @@ use tracing_futures::Instrument;
 
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor, fetcher, fetcher::FetchResponse,
-        small_network::Identity as NetworkIdentity,
+        block_accumulator, deploy_acceptor, fetcher,
+        fetcher::FetchResponse,
+        small_network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
@@ -926,16 +927,12 @@ where
         Some(fetcher_event) => {
             Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
         }
-        None => {
-            info!(
-                "{} sent us a {:?} item we couldn't parse, banning peer",
+        None => effect_builder
+            .announce_block_peer_with_justification(
                 sender,
-                I::TAG
-            );
-            effect_builder
-                .announce_disconnect_from_peer(sender)
-                .ignore()
-        }
+                BlocklistJustification::SentBadItem { tag: I::TAG },
+            )
+            .ignore(),
     }
 }
 
@@ -988,7 +985,10 @@ where
                             "peer refused to provide deploy, banning peer"
                         );
                         return effect_builder
-                            .announce_disconnect_from_peer(sender)
+                            .announce_block_peer_with_justification(
+                                sender,
+                                BlocklistJustification::PeerDidNotProvideADeploy { deploy_id },
+                            )
                             .ignore();
                     }
                     Err(error) => {
@@ -998,7 +998,10 @@ where
                             "received a deploy item we couldn't parse, banning peer",
                         );
                         return effect_builder
-                            .announce_disconnect_from_peer(sender)
+                            .announce_block_peer_with_justification(
+                                sender,
+                                BlocklistJustification::SentBadDeploy { error },
+                            )
                             .ignore();
                     }
                 };

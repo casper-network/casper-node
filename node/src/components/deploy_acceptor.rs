@@ -214,7 +214,7 @@ impl DeployAcceptor {
         }
 
         effect_builder
-            .get_highest_block_header_from_storage()
+            .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {
                 event_metadata: EventMetadata::new(deploy, source, maybe_responder),
                 maybe_block_header: Box::new(maybe_block_header),

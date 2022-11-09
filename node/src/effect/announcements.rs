@@ -19,6 +19,7 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
+        small_network::blocklist::BlocklistJustification,
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
@@ -282,14 +283,22 @@ impl Display for ConsensusAnnouncement {
 #[derive(Debug, Serialize)]
 pub(crate) enum PeerBehaviorAnnouncement {
     /// A given peer committed a blockable offense.
-    OffenseCommitted(Box<NodeId>),
+    OffenseCommitted {
+        /// The peer ID of the offending node.
+        offender: Box<NodeId>,
+        /// Justification for blocking the peer.
+        justification: Box<BlocklistJustification>,
+    },
 }
 
 impl Display for PeerBehaviorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PeerBehaviorAnnouncement::OffenseCommitted(peer) => {
-                write!(f, "peer {} committed offense", peer)
+            PeerBehaviorAnnouncement::OffenseCommitted {
+                offender,
+                justification,
+            } => {
+                write!(f, "peer {} committed offense: {}", offender, justification)
             }
         }
     }
