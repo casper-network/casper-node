@@ -768,11 +768,14 @@ impl EraSupervisor {
         self.metrics.proposed_block();
         let mut effects = Effects::new();
         if !valid {
-            effects.extend(self.disconnect(
-                effect_builder,
-                sender,
-                BlocklistJustification::SentInvalidConsensusValue { era: era_id },
-            ));
+            effects.extend({
+                effect_builder
+                    .announce_block_peer_with_justification(
+                        sender,
+                        BlocklistJustification::SentInvalidConsensusValue { era: era_id },
+                    )
+                    .ignore()
+            });
         }
         if self
             .open_eras
@@ -841,21 +844,25 @@ impl EraSupervisor {
             }
         };
         match consensus_result {
-            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => self.disconnect(
-                effect_builder,
-                sender,
-                BlocklistJustification::SentInvalidConsensusMessage { error },
-            ),
+            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => effect_builder
+                .announce_block_peer_with_justification(
+                    sender,
+                    BlocklistJustification::SentInvalidConsensusMessage { error },
+                )
+                .ignore(),
             ProtocolOutcome::Disconnect(sender) => {
                 warn!(
                     %sender,
                     "disconnecting from the sender of invalid data"
                 );
-                self.disconnect(
-                    effect_builder,
-                    sender,
-                    BlocklistJustification::BadConsensusBehavior,
-                )
+                {
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            sender,
+                            BlocklistJustification::BadConsensusBehavior,
+                        )
+                        .ignore()
+                }
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1080,17 +1087,6 @@ impl EraSupervisor {
             .last()
             .and_then(|era| era.consensus.next_round_length());
         responder.respond(Some((public_key, round_length))).ignore()
-    }
-
-    fn disconnect<REv: ReactorEventT>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
-        justification: BlocklistJustification,
-    ) -> Effects<Event> {
-        effect_builder
-            .announce_block_peer_with_justification(sender, justification)
-            .ignore()
     }
 
     /// Get a reference to the era supervisor's open eras.

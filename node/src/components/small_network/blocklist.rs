@@ -1,6 +1,6 @@
 //! Blocklisting support.
 //!
-//! Blocked peers are prevent from interacting with the node through a variety of means.
+//! Blocked peers are prevented from interacting with the node through a variety of means.
 
 use std::fmt::{self, Display, Formatter};
 
@@ -19,7 +19,6 @@ use crate::{
 pub(crate) enum BlocklistJustification {
     /// Peer sent incorrect item.
     SentBadItem { tag: Tag },
-    /// Received a block with incorrect parent, which was specified beforehand.
     /// A finality signature that was sent is invalid.
     SentBadFinalitySignature {
         /// Error reported by block accumulator.
@@ -81,7 +80,7 @@ impl Display for BlocklistJustification {
             }
             BlocklistJustification::SentBadFinalitySignature { error } => write!(
                 f,
-                "sent cryptographically invalid finality signature: {}",
+                "sent a finality signature that is invalid or unexpected ({})",
                 error
             ),
             BlocklistJustification::SentBadDeploy { error } => {
