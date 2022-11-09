@@ -910,7 +910,10 @@ impl RpcWithParams for QueryBalance {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         let state_root_hash = match params.state_identifier {
-            None => match effect_builder.get_highest_block_header_from_storage().await {
+            None => match effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+            {
                 None => {
                     return Err(Error::new(
                         ErrorCode::NoSuchBlock,
