@@ -1388,7 +1388,7 @@ fn should_get_signed_block_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_of_highest_complete_block(&mut txn)
+            .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
         let previous_switch_block_header = storage
@@ -1437,7 +1437,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_of_highest_complete_block(&mut txn)
+            .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
 

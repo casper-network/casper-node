@@ -351,6 +351,11 @@ pub(crate) enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
+    /// Retrieve highest complete block header.
+    GetHighestCompleteBlockHeader {
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve switch block header with given era ID.
     GetSwitchBlockHeaderAtEraId {
         /// Era ID of the switch block.
@@ -586,6 +591,9 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetHighestBlockHeader { .. } => {
                 write!(formatter, "get highest block header")
+            }
+            StorageRequest::GetHighestCompleteBlockHeader { .. } => {
+                write!(formatter, "get highest complete block header")
             }
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block header at era id {}", era_id)

@@ -751,6 +751,12 @@ impl Storage {
                     .respond(self.get_highest_block_header(&mut txn)?)
                     .ignore()
             }
+            StorageRequest::GetHighestCompleteBlockHeader { responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                responder
+                    .respond(self.get_highest_complete_block_header(&mut txn)?)
+                    .ignore()
+            }
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
@@ -1727,8 +1733,35 @@ impl Storage {
             .transpose()
     }
 
-    /// Retrieves the highest block header from storage, if one exists. May return an LMDB error.
-    fn get_header_of_highest_complete_block<Tx: Transaction>(
+    /// Retrieves the highest complete block header from storage, if one exists. May return an
+    /// LMDB error.
+    fn get_highest_complete_block_header<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
+            Some(sequence) => sequence.high(),
+            None => {
+                return Ok(None);
+            }
+        };
+        let highest_complete_block_hash =
+            match self.block_height_index.get(&highest_complete_block_height) {
+                Some(hash) => hash,
+                None => {
+                    warn!("couldn't find the highest complete block in block height index");
+                    return Ok(None);
+                }
+            };
+
+        // The `completed_blocks` contains blocks with sufficient finality signatures,
+        // so we don't need to check the sufficiency again.
+        self.get_single_block_header(txn, highest_complete_block_hash)
+    }
+
+    /// Retrieves the highest block header with metadata from storage, if one exists. May return an
+    /// LMDB error.
+    fn get_header_with_metadata_of_highest_complete_block<Tx: Transaction>(
         &self,
         txn: &mut Tx,
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
@@ -2307,7 +2340,7 @@ impl Storage {
         }
 
         let highest_complete_block_header =
-            match self.get_header_of_highest_complete_block(&mut txn)? {
+            match self.get_header_with_metadata_of_highest_complete_block(&mut txn)? {
                 Some(highest_complete_block_header) => highest_complete_block_header,
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
