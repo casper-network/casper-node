@@ -297,7 +297,7 @@ impl Display for NetworkInsights {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let now = SystemTime::now();
 
-        if self.is_syncing {
+        if !self.network_ca {
             f.write_str("Public ")?;
         } else {
             f.write_str("Private ")?;
