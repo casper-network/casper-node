@@ -93,7 +93,6 @@ impl BlockAcceptor {
         }
 
         if self.block.is_none() {
-            self.touch();
             self.block = Some(block);
         }
 
