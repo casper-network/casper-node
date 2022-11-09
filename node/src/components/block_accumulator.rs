@@ -399,7 +399,6 @@ impl BlockAccumulator {
                 ),
                 None => Effects::new(),
             },
-
             Err(error) => {
                 match error {
                     Error::InvalidGossip(ref gossip_error) => {

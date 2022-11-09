@@ -128,7 +128,7 @@ impl BlockAcceptor {
         }
 
         let had_sufficient_finality = self.has_sufficient_finality;
-        // if we dont have finality yet, collect the signature and return
+        // if we don't have finality yet, collect the signature and return
         // while we could store the finality signature, we currently prefer
         // to store block and signatures when sufficient weight is attained
         if false == had_sufficient_finality {
@@ -296,10 +296,6 @@ impl BlockAcceptor {
             self.peers.remove(node_id);
         }
 
-        // Instead of using BTreeSet we dedup vec manually in order to avoid
-        // polluting `block_acceptor::Error` with `Ord` implementations.
-        faulty_senders.sort_by(|(node_a, _), (node_b, _)| node_a.cmp(node_b));
-        faulty_senders.dedup_by(|(node_a, _), (node_b, _)| node_a.eq(&node_b));
         faulty_senders
     }
 
