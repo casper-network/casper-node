@@ -1,21 +1,21 @@
 //! `Display` wrapper for optional values.
 //!
-//! Allows displaying an `Option<T>`, where `T` already implements `T`.
+//! Allows displaying an `Option<T>`, where `T` already implements `Display`.
 
 use std::fmt::{Display, Formatter, Result};
 
 /// Wrapper around `Option` that implements `Display`.
-pub struct OptDisplay<'a, 'b, T> {
+pub struct OptDisplay<'a, T> {
     /// The actual `Option` being displayed.
-    inner: Option<&'a T>,
+    inner: Option<T>,
     /// Value to substitute if `inner` is `None`.
-    empty_display: &'b str,
+    empty_display: &'a str,
 }
 
-impl<'a, 'b, T: Display> OptDisplay<'a, 'b, T> {
+impl<'a, T: Display> OptDisplay<'a, T> {
     /// Creates a new `OptDisplay`.
     #[inline]
-    pub fn new(maybe_display: Option<&'a T>, empty_display: &'b str) -> Self {
+    pub fn new(maybe_display: Option<T>, empty_display: &'a str) -> Self {
         Self {
             inner: maybe_display,
             empty_display,
@@ -23,12 +23,12 @@ impl<'a, 'b, T: Display> OptDisplay<'a, 'b, T> {
     }
 }
 
-impl<'a, 'b, T: Display> Display for OptDisplay<'a, 'b, T> {
+impl<'a, T: Display> Display for OptDisplay<'a, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.inner {
             None => f.write_str(self.empty_display),
-            Some(val) => val.fmt(f),
+            Some(ref val) => val.fmt(f),
         }
     }
 }

@@ -23,7 +23,7 @@ use super::Component;
 use crate::{
     effect::{
         announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
-        EffectBuilder, EffectExt, Effects,
+        requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
     },
     reactor::EventQueueHandle,
     types::NodeRng,
@@ -70,7 +70,10 @@ impl DiagnosticsPort {
         event_queue: EventQueueHandle<REv>,
     ) -> Result<(Self, Effects<Event>), Error>
     where
-        REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+        REv: From<DumpConsensusStateRequest>
+            + From<ControlAnnouncement>
+            + From<NetworkInfoRequest>
+            + Send,
     {
         let config = cfg.value();
         let (shutdown_sender, shutdown_receiver) = watch::channel(());

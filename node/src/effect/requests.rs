@@ -43,6 +43,7 @@ use crate::{
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
+        small_network::NetworkInsights,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::{AutoClosingResponder, Responder},
@@ -187,7 +188,7 @@ where
 }
 
 /// A networking info request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
@@ -200,16 +201,24 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<NodeId>>,
     },
+    /// Get detailed insights into the nodes networking.
+    Insight {
+        responder: Responder<NetworkInsights>,
+    },
 }
 
 impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::Peers { responder: _ } => {
-                write!(formatter, "get peers-to-socket-address map")
+                formatter.write_str("get peers-to-socket-address map")
             }
             NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
-                write!(formatter, "get fully connected peers")
+                formatter.write_str("get fully connected peers")
+            }
+
+            NetworkInfoRequest::Insight { responder: _ } => {
+                formatter.write_str("get networking insights")
             }
         }
     }

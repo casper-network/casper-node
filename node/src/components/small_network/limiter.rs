@@ -38,6 +38,24 @@ pub(super) trait Limiter: Send + Sync {
         active_validators: HashSet<PublicKey>,
         upcoming_validators: HashSet<PublicKey>,
     );
+
+    /// Inspects the validator set.
+    ///
+    /// This function should not be used for obtaining debugging insights only, as its API is not
+    /// stable and it is invasive and slow.
+    fn debug_inspect_validators(&self) -> Option<(HashSet<PublicKey>, HashSet<PublicKey>)> {
+        None
+    }
+
+    /// Inspects potentially unspent allowance.
+    ///
+    /// If the limiter has the concept of a unspent allowance, returns it.
+    ///
+    /// This function should not be used for obtaining debugging insights only, as its API is not
+    /// stable and it is invasive and slow.
+    fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
+        None
+    }
 }
 
 /// A per-peer handle for a limiter.
@@ -216,6 +234,25 @@ impl Limiter for ClassBasedLimiter {
                 debug!("could not update validator data set of limiter, lock poisoned");
             }
         }
+    }
+
+    fn debug_inspect_validators(&self) -> Option<(HashSet<PublicKey>, HashSet<PublicKey>)> {
+        match self.data.validator_sets.read() {
+            Ok(validators) => Some((
+                validators.active_validators.clone(),
+                validators.upcoming_validators.clone(),
+            )),
+            Err(_) => {
+                debug!(
+                    "could not inspect validator data set of limiter for debugging, lock poisoned"
+                );
+                None
+            }
+        }
+    }
+
+    fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
+        Some(self.data.resources.blocking_lock().available)
     }
 }
 
