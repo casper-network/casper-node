@@ -9,6 +9,7 @@ use std::{cmp::Ordering, collections::BTreeMap, iter};
 
 use datasize::DataSize;
 use futures::FutureExt;
+use itertools::Itertools;
 use tracing::{debug, error, warn};
 
 use casper_types::{EraId, TimeDiff, Timestamp};
@@ -279,9 +280,6 @@ impl BlockAccumulator {
             debug!(%block_hash, "ignoring outdated block");
             return Effects::new();
         }
-        if let Some(parent_hash) = block.parent() {
-            self.block_children.insert(*parent_hash, *block_hash);
-        }
 
         let acceptor = self
             .block_acceptors
@@ -290,10 +288,14 @@ impl BlockAccumulator {
 
         match acceptor.register_block(block, sender) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
-                Some(evw) => store_block_and_finality_signatures(
-                    effect_builder,
-                    acceptor.should_store_block(&evw),
-                ),
+                Some(evw) => {
+                    let (should_store, faulty_senders) = acceptor.should_store_block(&evw);
+                    self.store_block_and_finality_signatures(
+                        effect_builder,
+                        should_store,
+                        faulty_senders,
+                    )
+                }
                 None => Effects::new(),
             },
             Err(error) => match error {
@@ -382,15 +384,20 @@ impl BlockAccumulator {
         };
 
         match acceptor.register_finality_signature(finality_signature, sender) {
-            Ok(Some(finality_signature)) => store_block_and_finality_signatures(
+            Ok(Some(finality_signature)) => self.store_block_and_finality_signatures(
                 effect_builder,
-                (ShouldStore::SingleSignature(finality_signature), None),
+                ShouldStore::SingleSignature(finality_signature),
+                None,
             ),
-            Ok(None) => match &self.validator_matrix.validator_weights(era_id) {
-                Some(evw) => store_block_and_finality_signatures(
-                    effect_builder,
-                    acceptor.should_store_block(evw),
-                ),
+            Ok(None) => match self.validator_matrix.validator_weights(era_id) {
+                Some(evw) => {
+                    let (should_store, faulty_senders) = acceptor.should_store_block(&evw);
+                    self.store_block_and_finality_signatures(
+                        effect_builder,
+                        should_store,
+                        faulty_senders,
+                    )
+                }
                 None => Effects::new(),
             },
             Err(error) => {
@@ -534,6 +541,54 @@ impl BlockAccumulator {
         self.block_children
             .retain(|_parent, child| false == purged.contains(child));
     }
+
+    fn store_block_and_finality_signatures<REv, I>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        should_store: ShouldStore,
+        faulty_senders: I,
+    ) -> Effects<Event>
+    where
+        REv: From<PeerBehaviorAnnouncement> + From<StorageRequest> + Send,
+        I: IntoIterator<Item = (NodeId, Error)>,
+    {
+        let mut effects = match should_store {
+            ShouldStore::SufficientlySignedBlock { block, signatures } => {
+                if let Some(parent_hash) = block.parent() {
+                    self.block_children.insert(*parent_hash, *block.hash());
+                }
+                let mut block_signatures =
+                    BlockSignatures::new(*block.hash(), block.header().era_id());
+                signatures.iter().for_each(|signature| {
+                    block_signatures
+                        .insert_proof(signature.public_key.clone(), signature.signature);
+                });
+                effect_builder
+                    .put_block_to_storage(Box::new(block.clone()))
+                    .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
+                    .event(move |_| Event::Stored {
+                        block: Some(Box::new(block)),
+                        finality_signatures: signatures,
+                    })
+            }
+            ShouldStore::SingleSignature(signature) => effect_builder
+                .put_finality_signature_to_storage(signature.clone())
+                .event(move |_| Event::Stored {
+                    block: None,
+                    finality_signatures: vec![signature],
+                }),
+            ShouldStore::Nothing => Effects::new(),
+        };
+        effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
+            effect_builder
+                .announce_block_peer_with_justification(
+                    node_id,
+                    BlocklistJustification::SentBadFinalitySignature { error },
+                )
+                .ignore()
+        }));
+        effects
+    }
 }
 
 pub(crate) trait ReactorEvent:
@@ -610,62 +665,26 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
 
 impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
     fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
-        let mut effects = Effects::new();
-        for block_acceptor in self
+        let validator_matrix = &self.validator_matrix; // Closure can't borrow all of self.
+        let should_stores = self
             .block_acceptors
             .values_mut()
             .filter(|acceptor| false == acceptor.has_sufficient_finality())
-        {
-            if let Some(era_id) = block_acceptor.era_id() {
-                if let Some(evw) = self.validator_matrix.validator_weights(era_id) {
-                    effects.extend(store_block_and_finality_signatures(
-                        effect_builder,
-                        block_acceptor.should_store_block(&evw),
-                    ));
-                }
-            }
-        }
-        effects
+            .filter_map(|acceptor| {
+                let era_id = acceptor.era_id()?;
+                let evw = validator_matrix.validator_weights(era_id)?;
+                Some(acceptor.should_store_block(&evw))
+            })
+            .collect_vec();
+        should_stores
+            .into_iter()
+            .flat_map(|(should_store, faulty_senders)| {
+                self.store_block_and_finality_signatures(
+                    effect_builder,
+                    should_store,
+                    faulty_senders,
+                )
+            })
+            .collect()
     }
-}
-
-fn store_block_and_finality_signatures<REv, I>(
-    effect_builder: EffectBuilder<REv>,
-    (should_store, faulty_senders): (ShouldStore, I),
-) -> Effects<Event>
-where
-    REv: From<PeerBehaviorAnnouncement> + From<StorageRequest> + Send,
-    I: IntoIterator<Item = (NodeId, Error)>,
-{
-    let mut effects = match should_store {
-        ShouldStore::SufficientlySignedBlock { block, signatures } => {
-            let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
-            signatures.iter().for_each(|signature| {
-                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
-            });
-            effect_builder
-                .put_block_to_storage(Box::new(block.clone()))
-                .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
-                .event(move |_| Event::Stored {
-                    block: Some(Box::new(block)),
-                    finality_signatures: signatures,
-                })
-        }
-        ShouldStore::SingleSignature(signature) => effect_builder
-            .put_finality_signature_to_storage(signature.clone())
-            .event(move |_| Event::Stored {
-                block: None,
-                finality_signatures: vec![signature],
-            }),
-        ShouldStore::Nothing => Effects::new(),
-    };
-    effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
-        effect_builder
-            .announce_block_peer_with_justification(
-                node_id,
-                BlocklistJustification::SentBadFinalitySignature { error },
-            )
-            .ignore()
-    }));
-    effects
 }
