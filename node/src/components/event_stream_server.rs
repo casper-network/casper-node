@@ -217,6 +217,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "event_stream_server"
+    }
 }
 
 impl<REv> PortBoundComponent<REv> for EventStreamServer

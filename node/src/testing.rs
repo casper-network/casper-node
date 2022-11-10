@@ -38,8 +38,9 @@ use casper_types::{testing::TestRng, TimeDiff, Timestamp};
 use crate::{
     components::Component,
     effect::{
-        announcements::ControlAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
-        Responder,
+        announcements::{ControlAnnouncement, FatalAnnouncement},
+        requests::NetworkRequest,
+        EffectBuilder, Effects, Responder,
     },
     logging,
     protocol::Message,
@@ -326,6 +327,8 @@ pub(crate) enum UnitTestEvent {
     /// A preserved control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
     /// A network request made by the component under test.
     #[from]
     NetworkRequest(NetworkRequest<Message>),
@@ -342,7 +345,7 @@ impl ReactorEvent for UnitTestEvent {
     fn try_into_control(self) -> Option<ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-            UnitTestEvent::NetworkRequest(_) => None,
+            UnitTestEvent::FatalAnnouncement(_) | UnitTestEvent::NetworkRequest(_) => None,
         }
     }
 }

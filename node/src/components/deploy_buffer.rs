@@ -248,6 +248,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "deploy_buffer"
+    }
 }
 
 impl<REv> Component<REv> for DeployBuffer

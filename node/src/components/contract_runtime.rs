@@ -41,7 +41,7 @@ use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentStatus},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
         requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
@@ -211,9 +211,9 @@ impl<REv> Component<REv> for ContractRuntime
 where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
-        + From<ControlAnnouncement>
         + From<NetworkRequest<Message>>
         + From<BlockCompleteConfirmationRequest>
+        + From<FatalAnnouncement>
         + Send,
 {
     type Event = Event;
@@ -304,8 +304,8 @@ impl ContractRuntime {
     where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
-            + From<ControlAnnouncement>
             + From<BlockCompleteConfirmationRequest>
+            + From<FatalAnnouncement>
             + Send,
     {
         match request {
@@ -752,7 +752,7 @@ impl ContractRuntime {
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
-            + From<ControlAnnouncement>
+            + From<FatalAnnouncement>
             + From<BlockCompleteConfirmationRequest>
             + Send,
     {

@@ -8,4 +8,5 @@ pub(super) enum ValidateInstruction {
     NonSwitchBlock,
     KeepUp,
     ShutdownForUpgrade,
+    Fatal(String),
 }

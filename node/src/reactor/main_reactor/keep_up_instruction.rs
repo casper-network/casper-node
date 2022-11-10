@@ -8,4 +8,5 @@ pub(super) enum KeepUpInstruction {
     CheckLater(String, Duration),
     CatchUp,
     ShutdownForUpgrade,
+    Fatal(String),
 }

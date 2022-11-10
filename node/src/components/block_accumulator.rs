@@ -17,7 +17,7 @@ use crate::{
     components::{small_network::blocklist::BlocklistJustification, Component},
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, ControlAnnouncement, PeerBehaviorAnnouncement,
+            BlockAccumulatorAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement,
         },
         requests::{BlockAccumulatorRequest, BlockCompleteConfirmationRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -266,10 +266,7 @@ impl BlockAccumulator {
         sender: Option<NodeId>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest>
-            + From<PeerBehaviorAnnouncement>
-            + From<ControlAnnouncement>
-            + Send,
+        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
         let block_hash = block.hash();
         let era_id = block.header().era_id();
@@ -354,10 +351,7 @@ impl BlockAccumulator {
         sender: Option<NodeId>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest>
-            + From<PeerBehaviorAnnouncement>
-            + From<ControlAnnouncement>
-            + Send,
+        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
@@ -547,7 +541,7 @@ pub(crate) trait ReactorEvent:
     + From<PeerBehaviorAnnouncement>
     + From<BlockAccumulatorAnnouncement>
     + From<BlockCompleteConfirmationRequest>
-    + From<ControlAnnouncement>
+    + From<FatalAnnouncement>
     + Send
     + 'static
 {
@@ -558,7 +552,7 @@ impl<REv> ReactorEvent for REv where
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
         + From<BlockCompleteConfirmationRequest>
-        + From<ControlAnnouncement>
+        + From<FatalAnnouncement>
         + Send
         + 'static
 {

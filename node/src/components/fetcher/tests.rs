@@ -22,7 +22,10 @@ use crate::{
         storage::{self, Storage},
     },
     effect::{
-        announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, RpcServerAnnouncement},
+        announcements::{
+            ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement,
+            RpcServerAnnouncement,
+        },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
@@ -82,6 +85,10 @@ impl Default for FetcherTestConfig {
 #[derive(Debug, From, Serialize)]
 enum Event {
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
+    #[from]
     Network(in_memory_network::Event<Message>),
     #[from]
     Storage(storage::Event),
@@ -129,8 +136,6 @@ enum Event {
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
-    #[from]
-    ControlAnnouncement(ControlAnnouncement),
 }
 
 impl Display for Event {
@@ -249,7 +254,8 @@ impl ReactorTrait for Reactor {
             | Event::TrieResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)
             | Event::FinalitySignatureIncoming(_)
-            | Event::ControlAnnouncement(_) => panic!("unexpected: {}", event),
+            | Event::ControlAnnouncement(_)
+            | Event::FatalAnnouncement(_) => panic!("unexpected: {}", event),
         }
     }
 

@@ -20,6 +20,7 @@ use crate::{
         announcements::ControlAnnouncement, requests::BlockSynchronizerRequest, EffectBuilder,
         EffectExt, Effects,
     },
+    fatal,
     reactor::{
         self,
         main_reactor::{
@@ -63,7 +64,7 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
         match self.state {
-            ReactorState::Initialize => match self.initialize_next_component() {
+            ReactorState::Initialize => match self.initialize_next_component(effect_builder) {
                 Some(effects) => (Duration::ZERO, effects),
                 None => {
                     if false == self.small_network.has_sufficient_fully_connected_peers() {
@@ -82,7 +83,10 @@ impl MainReactor {
                         self.state = ReactorState::Validate;
                         (Duration::ZERO, effects)
                     }
-                    Err(msg) => (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                    Err(msg) => (
+                        Duration::ZERO,
+                        fatal!(effect_builder, "failed to commit genesis: {}", msg).ignore(),
+                    ),
                 },
                 CatchUpInstruction::CommitUpgrade => match self.commit_upgrade(effect_builder) {
                     Ok(effects) => {
@@ -90,15 +94,18 @@ impl MainReactor {
                         self.state = ReactorState::Upgrading;
                         (Duration::ZERO, effects)
                     }
-                    Err(msg) => (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                    Err(msg) => (
+                        Duration::ZERO,
+                        fatal!(effect_builder, "failed to commit upgrade: {}", msg).ignore(),
+                    ),
                 },
                 CatchUpInstruction::CaughtUp => {
                     info!("CatchUp: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
                 }
-                CatchUpInstruction::Shutdown(msg) => {
-                    (Duration::ZERO, utils::new_shutdown_effect(msg))
+                CatchUpInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
                 CatchUpInstruction::ShutdownForUpgrade => {
                     info!("CatchUp: shutting down for upgrade");
@@ -124,8 +131,8 @@ impl MainReactor {
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
-                UpgradingInstruction::Shutdown(msg) => {
-                    (Duration::ZERO, utils::new_shutdown_effect(msg))
+                UpgradingInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
             },
             ReactorState::KeepUp => {
@@ -155,6 +162,9 @@ impl MainReactor {
                         self.state = ReactorState::ShutdownForUpgrade;
                         (Duration::ZERO, Effects::new())
                     }
+                    KeepUpInstruction::Fatal(msg) => {
+                        (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                    }
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
@@ -180,16 +190,19 @@ impl MainReactor {
                     self.state = ReactorState::ShutdownForUpgrade;
                     (Duration::ZERO, Effects::new())
                 }
+                ValidateInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                }
             },
             ReactorState::ShutdownForUpgrade => {
                 let highest_switch_block_era = match self.recent_switch_block_headers.last() {
                     None => {
-                        return (
-                            Duration::ZERO,
-                            utils::new_shutdown_effect(
-                                "recent_switch_block_headers cannot be empty in Upgrade state",
-                            ),
+                        let effects = fatal!(
+                            effect_builder,
+                            "ShutdownForUpgrade: recent_switch_block_headers cannot be empty"
                         )
+                        .ignore();
+                        return (Duration::ZERO, effects);
                     }
                     Some(block_header) => block_header.era_id(),
                 };
@@ -204,13 +217,13 @@ impl MainReactor {
                         {
                             Ok(should_stop) => should_stop,
                             Err(error) => {
-                                return (
-                                    Duration::ZERO,
-                                    utils::new_shutdown_effect(format!(
-                                        "failed check for sufficient finality signatures: {}",
-                                        error
-                                    )),
+                                let effects = fatal!(
+                                    effect_builder,
+                                    "failed check for sufficient finality signatures: {}",
+                                    error
                                 )
+                                .ignore();
+                                return (Duration::ZERO, effects);
                             }
                         };
                         let effects = if should_stop {
@@ -230,61 +243,66 @@ impl MainReactor {
                     }
                     None => (
                         Duration::ZERO,
-                        utils::new_shutdown_effect(
-                            "validator_weights cannot be missing in Upgrade state",
-                        ),
+                        fatal!(
+                            effect_builder,
+                            "validator_weights cannot be missing in Upgrade state"
+                        )
+                        .ignore(),
                     ),
                 }
             }
         }
     }
 
-    fn initialize_next_component(&mut self) -> Option<Effects<MainEvent>> {
+    fn initialize_next_component(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> Option<Effects<MainEvent>> {
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.diagnostics_port,
-            "diagnostics",
             MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
         ) {
             return Some(effects);
         }
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.upgrade_watcher,
-            "upgrade_watcher",
             MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
         ) {
             return Some(effects);
         }
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.small_network,
-            "small_network",
             MainEvent::Network(small_network::Event::Initialize),
         ) {
             return Some(effects);
         }
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.event_stream_server,
-            "event_stream_server",
             MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
         ) {
             return Some(effects);
         }
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.rest_server,
-            "rest_server",
             MainEvent::RestServer(rest_server::Event::Initialize),
         ) {
             return Some(effects);
         }
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.rpc_server,
-            "rpc_server",
             MainEvent::RpcServer(rpc_server::Event::Initialize),
         ) {
             return Some(effects);
         }
         if let Some(effects) = utils::initialize_component(
+            effect_builder,
             &mut self.block_synchronizer,
-            "block_synchronizer",
             MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
         ) {
             return Some(effects);
@@ -302,16 +320,20 @@ impl MainReactor {
             let blocks = match self.storage.read_blocks_since(timestamp) {
                 Ok(blocks) => blocks,
                 Err(err) => {
-                    return Some(utils::new_shutdown_effect(format!(
-                        "fatal block store error when attempting to read highest blocks: {}",
-                        err
-                    )))
+                    return Some(
+                        fatal!(
+                            effect_builder,
+                            "fatal block store error when attempting to read highest blocks: {}",
+                            err
+                        )
+                        .ignore(),
+                    )
                 }
             };
             let event = deploy_buffer::Event::Initialize(blocks);
             if let Some(effects) = utils::initialize_component(
+                effect_builder,
                 &mut self.deploy_buffer,
-                "deploy_buffer",
                 MainEvent::DeployBuffer(event),
             ) {
                 return Some(effects);
@@ -371,7 +393,7 @@ impl MainReactor {
                                     }
                                 }
                                 // -- : no trusted hash, no local block
-                                return CatchUpInstruction::Shutdown(
+                                return CatchUpInstruction::Fatal(
                                     "CatchUp: cannot proceed without trusted hash".to_string(),
                                 );
                             }
@@ -384,7 +406,7 @@ impl MainReactor {
                                 );
                             }
                             Err(err) => {
-                                return CatchUpInstruction::Shutdown(format!(
+                                return CatchUpInstruction::Fatal(format!(
                                     "CatchUp: fatal block store error when attempting to read \
                                     highest complete block: {}",
                                     err
@@ -418,7 +440,7 @@ impl MainReactor {
                                         StartingWith::Hash(trusted_hash)
                                     }
                                     Err(_) => {
-                                        return CatchUpInstruction::Shutdown(
+                                        return CatchUpInstruction::Fatal(
                                             "CatchUp: fatal block store error when attempting to \
                                             read highest complete block"
                                                 .to_string(),
@@ -431,7 +453,7 @@ impl MainReactor {
                                 StartingWith::Hash(trusted_hash)
                             }
                             Err(err) => {
-                                return CatchUpInstruction::Shutdown(format!(
+                                return CatchUpInstruction::Fatal(format!(
                                     "CatchUp: fatal block store error when attempting to read \
                                     highest complete block: {}",
                                     err
@@ -446,7 +468,7 @@ impl MainReactor {
                 if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
                     self.attempts += 1;
                     if self.attempts > self.max_attempts {
-                        return CatchUpInstruction::Shutdown(
+                        return CatchUpInstruction::Fatal(
                             "CatchUp: block sync idleness exceeded reattempt tolerance".to_string(),
                         );
                     }
@@ -488,7 +510,7 @@ impl MainReactor {
                         {
                             self.attempts += 1;
                             if self.attempts > self.max_attempts {
-                                return CatchUpInstruction::Shutdown(format!(
+                                return CatchUpInstruction::Fatal(format!(
                                     "CatchUp: failed leap exceeded reattempt tolerance: {}",
                                     error,
                                 ));
@@ -568,7 +590,7 @@ impl MainReactor {
                 );
             }
             SyncInstruction::BlockExec { .. } => {
-                return CatchUpInstruction::Shutdown(
+                return CatchUpInstruction::Fatal(
                     "BlockExec is not valid while in CatchUp mode".to_string(),
                 );
             }
@@ -576,7 +598,7 @@ impl MainReactor {
                 match self.should_commit_upgrade() {
                     Ok(true) => return CatchUpInstruction::CommitUpgrade,
                     Ok(false) => (),
-                    Err(msg) => return CatchUpInstruction::Shutdown(msg),
+                    Err(msg) => return CatchUpInstruction::Fatal(msg),
                 }
                 if self.should_shutdown_for_upgrade() {
                     return CatchUpInstruction::ShutdownForUpgrade;
@@ -594,7 +616,7 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             ),
             Ok(false) => UpgradingInstruction::CatchUp,
-            Err(msg) => UpgradingInstruction::Shutdown(msg),
+            Err(msg) => UpgradingInstruction::Fatal(msg),
         }
     }
 
@@ -630,14 +652,11 @@ impl MainReactor {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
                     return KeepUpInstruction::CatchUp;
                 }
-                Err(err) => {
-                    return KeepUpInstruction::Do(
-                        Duration::ZERO,
-                        utils::new_shutdown_effect(format!(
-                            "fatal storage error read_highest_complete_block: {}",
-                            err
-                        )),
-                    )
+                Err(error) => {
+                    return KeepUpInstruction::Fatal(format!(
+                        "failed to read highest complete block: {}",
+                        error
+                    ))
                 }
             },
             BlockSynchronizerProgress::Syncing(block_hash, block_height, last_progress) => {
@@ -709,10 +728,7 @@ impl MainReactor {
                         }
                     }
                     Err(msg) => {
-                        return KeepUpInstruction::Do(
-                            Duration::ZERO,
-                            utils::new_shutdown_effect(msg),
-                        );
+                        return KeepUpInstruction::Fatal(msg);
                     }
                 }
             }
@@ -735,14 +751,11 @@ impl MainReactor {
                         let required_era_id = match self.storage.read_block_header(parent_hash) {
                             Ok(None) => block_header.era_id().predecessor(),
                             Ok(Some(parent_header)) => Some(parent_header.era_id()),
-                            Err(err) => {
-                                return KeepUpInstruction::Do(
-                                    Duration::ZERO,
-                                    utils::new_shutdown_effect(format!(
-                                        "fatal storage error read_block_header: {}",
-                                        err
-                                    )),
-                                )
+                            Err(error) => {
+                                return KeepUpInstruction::Fatal(format!(
+                                    "failed to read block header: {}",
+                                    error
+                                ));
                             }
                         };
                         if let Some(previous_era_id) = required_era_id {
@@ -884,9 +897,7 @@ impl MainReactor {
                 }
             }
             Ok(None) => ValidateInstruction::KeepUp,
-            Err(msg) => {
-                return ValidateInstruction::Do(Duration::ZERO, utils::new_shutdown_effect(msg));
-            }
+            Err(msg) => ValidateInstruction::Fatal(msg),
         }
     }
 
@@ -899,7 +910,7 @@ impl MainReactor {
         if self.switch_block.is_some() {
             match self.create_required_eras(effect_builder, rng) {
                 Err(msg) => {
-                    return (false, Some(utils::new_shutdown_effect(msg)));
+                    return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
                 }
                 Ok(Some(effects)) => {
                     return (true, Some(effects));
@@ -982,57 +993,57 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
-        match self.contract_runtime.commit_genesis(
+        let post_state_hash = match self.contract_runtime.commit_genesis(
             self.chainspec.clone().as_ref(),
             self.chainspec_raw_bytes.clone().as_ref(),
         ) {
-            Ok(success) => {
-                let post_state_hash = success.post_state_hash;
-
-                let genesis_timestamp = match self
-                    .chainspec
-                    .protocol_config
-                    .activation_point
-                    .genesis_timestamp()
-                {
-                    None => {
-                        return Err("must have genesis timestamp".to_string());
-                    }
-                    Some(timestamp) => timestamp,
-                };
-
-                info!(
-                    %post_state_hash,
-                    %genesis_timestamp,
-                    network_name = %self.chainspec.network_config.name,
-                    "successfully ran genesis"
-                );
-
-                let next_block_height = 0;
-                let initial_pre_state = ExecutionPreState::new(
-                    next_block_height,
-                    post_state_hash,
-                    BlockHash::default(),
-                    Digest::default(),
-                );
-                self.contract_runtime
-                    .set_initial_state(initial_pre_state)
-                    .map_err(|err| err.to_string())?;
-
-                let finalized_block = FinalizedBlock::new(
-                    BlockPayload::default(),
-                    Some(EraReport::default()),
-                    genesis_timestamp,
-                    EraId::default(),
-                    next_block_height,
-                    PublicKey::System,
-                );
-                Ok(effect_builder
-                    .enqueue_block_for_execution(finalized_block, vec![])
-                    .ignore())
+            Ok(success) => success.post_state_hash,
+            Err(error) => {
+                return Err(error.to_string());
             }
-            Err(err) => Err(format!("failed to commit genesis: {:?}", err)),
-        }
+        };
+
+        let genesis_timestamp = match self
+            .chainspec
+            .protocol_config
+            .activation_point
+            .genesis_timestamp()
+        {
+            None => {
+                return Err("must have genesis timestamp".to_string());
+            }
+            Some(timestamp) => timestamp,
+        };
+
+        info!(
+            %post_state_hash,
+            %genesis_timestamp,
+            network_name = %self.chainspec.network_config.name,
+            "successfully ran genesis"
+        );
+
+        let next_block_height = 0;
+        let initial_pre_state = ExecutionPreState::new(
+            next_block_height,
+            post_state_hash,
+            BlockHash::default(),
+            Digest::default(),
+        );
+        self.contract_runtime
+            .set_initial_state(initial_pre_state)
+            .map_err(|err| err.to_string())?;
+
+        let finalized_block = FinalizedBlock::new(
+            BlockPayload::default(),
+            Some(EraReport::default()),
+            genesis_timestamp,
+            EraId::default(),
+            next_block_height,
+            PublicKey::System,
+        );
+        Ok(effect_builder
+            .enqueue_block_for_execution(finalized_block, vec![])
+            .ignore())
     }
 
     fn should_commit_upgrade(&self) -> Result<bool, String> {
@@ -1072,7 +1083,7 @@ impl MainReactor {
         info!("{:?}: committing upgrade", self.state);
         let previous_block_header = match &self.switch_block {
             None => {
-                return Ok(utils::new_shutdown_effect("switch_block should be Some"));
+                return Err("switch_block should be Some".to_string());
             }
             Some(header) => header,
         };
@@ -1115,7 +1126,7 @@ impl MainReactor {
                         .enqueue_block_for_execution(finalized_block, vec![])
                         .ignore())
                 }
-                Err(err) => Err(format!("failed to upgrade protocol: {:?}", err)),
+                Err(err) => Err(err.to_string()),
             },
             Err(msg) => Err(msg),
         }
