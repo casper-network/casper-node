@@ -1170,6 +1170,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "small_network"
+    }
 }
 
 /// Transport type alias for base encrypted connections.

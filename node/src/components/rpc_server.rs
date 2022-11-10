@@ -502,6 +502,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "rpc_server"
+    }
 }
 
 impl<REv> PortBoundComponent<REv> for RpcServer

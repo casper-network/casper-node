@@ -27,7 +27,7 @@ use casper_types::{
 use crate::{
     components::Component,
     effect::{
-        announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
+        announcements::{DeployAcceptorAnnouncement, FatalAnnouncement},
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -123,7 +123,7 @@ pub(crate) trait ReactorEventT:
     + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
-    + From<ControlAnnouncement>
+    + From<FatalAnnouncement>
     + Send
 {
 }
@@ -133,7 +133,7 @@ impl<REv> ReactorEventT for REv where
         + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
-        + From<ControlAnnouncement>
+        + From<FatalAnnouncement>
         + Send
 {
 }

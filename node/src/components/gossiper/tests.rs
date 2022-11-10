@@ -43,7 +43,7 @@ use crate::{
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, RpcServerAnnouncement,
+            FatalAnnouncement, GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
@@ -74,6 +74,10 @@ const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 #[must_use]
 enum Event {
     #[from]
+    ControlAnnouncement(ControlAnnouncement),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
+    #[from]
     Network(in_memory_network::Event<NodeMessage>),
     #[from]
     Storage(storage::Event),
@@ -87,8 +91,6 @@ enum Event {
     StorageRequest(StorageRequest),
     #[from]
     MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
-    #[from]
-    ControlAnnouncement(ControlAnnouncement),
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
@@ -177,6 +179,7 @@ impl Display for Event {
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
+            Event::FatalAnnouncement(fatal_ann) => write!(formatter, "fatal: {}", fatal_ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
@@ -338,6 +341,9 @@ impl reactor::Reactor for Reactor {
             }
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
+            }
+            Event::FatalAnnouncement(fatal_ann) => {
+                unreachable!("unhandled fatal announcement: {}", fatal_ann)
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,

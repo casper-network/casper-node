@@ -158,7 +158,7 @@ use crate::{
 };
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
     GossiperAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
     UpgradeWatcherAnnouncement,
 };
@@ -636,18 +636,12 @@ impl<REv> EffectBuilder<REv> {
     /// Reports a fatal error.  Normally called via the `crate::fatal!()` macro.
     ///
     /// Usually causes the node to cease operations quickly and exit/crash.
-    //
-    // Note: This function is implemented manually without `async` sugar because the `Send`
-    // inference seems to not work in all cases otherwise.
     pub(crate) async fn fatal(self, file: &'static str, line: u32, msg: String)
     where
-        REv: From<ControlAnnouncement>,
+        REv: From<FatalAnnouncement>,
     {
         self.event_queue
-            .schedule(
-                ControlAnnouncement::FatalError { file, line, msg },
-                QueueKind::Control,
-            )
+            .schedule(FatalAnnouncement { file, line, msg }, QueueKind::Control)
             .await
     }
 

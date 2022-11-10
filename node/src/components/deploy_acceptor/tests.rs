@@ -61,6 +61,8 @@ enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
+    FatalAnnouncement(FatalAnnouncement),
+    #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
@@ -94,6 +96,7 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
+            Event::FatalAnnouncement(fatal_ann) => write!(formatter, "fatal: {}", fatal_ann),
             Event::DeployAcceptorAnnouncement(ann) => {
                 write!(formatter, "deploy-acceptor announcement: {}", ann)
             }
@@ -464,6 +467,9 @@ impl reactor::Reactor for Reactor {
             ),
             Event::ControlAnnouncement(ctrl_ann) => {
                 panic!("unhandled control announcement: {}", ctrl_ann)
+            }
+            Event::FatalAnnouncement(fatal_ann) => {
+                panic!("unhandled fatal announcement: {}", fatal_ann)
             }
             Event::DeployAcceptorAnnouncement(_) => {
                 // We do not care about deploy acceptor announcements in the acceptor tests.

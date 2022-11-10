@@ -135,6 +135,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "diagnostics"
+    }
 }
 
 impl<REv> PortBoundComponent<REv> for DiagnosticsPort

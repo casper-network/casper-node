@@ -294,6 +294,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "upgrade_watcher"
+    }
 }
 
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the

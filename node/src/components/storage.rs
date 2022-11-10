@@ -78,6 +78,7 @@ use object_pool::ObjectPool;
 use crate::{
     components::{fetcher::FetchResponse, Component},
     effect::{
+        announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
         requests::{
             AppStateRequest, BlockCompleteConfirmationRequest, NetworkRequest, StorageRequest,
@@ -86,7 +87,6 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    reactor::ReactorEvent,
     types::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
@@ -262,7 +262,7 @@ impl From<AppStateRequest> for Event {
 
 impl<REv> Component<REv> for Storage
 where
-    REv: ReactorEvent + From<NetworkRequest<Message>>,
+    REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
 {
     type Event = Event;
 

@@ -822,6 +822,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "block_synchronizer"
+    }
 }
 
 impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {

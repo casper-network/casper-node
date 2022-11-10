@@ -137,6 +137,8 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
     fn is_fatal(&self) -> bool {
         matches!(self.status(), ComponentStatus::Fatal(_))
     }
+
+    fn name(&self) -> &str;
 }
 
 pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {

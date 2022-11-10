@@ -30,48 +30,6 @@ use crate::{
     utils::Source,
 };
 
-// #[derive(Serialize)]
-// pub(crate) enum ControlLogicAnnouncement {
-//     Initialize => {
-// //          ctor puts into status and we handle pushing various init events here
-// //         self.storage.is_init() -> state / or effects if it requires work to be done
-//     },
-//     GetCaughtUp => {
-//         // <- keep on catching up
-//         // > sync leap then have convo w accumul
-//         // OR
-//         // <- transition to keeping up
-//         // <- fatal
-//     }
-//     StayCaughtUp => {
-//         // <- keep on keeping up
-//         // <- maybe enuff cycles to attempt 1 sync block
-//         // <- get caught up
-//         // <- fatal
-//     }
-// }
-
-// impl Display for ControlLogicAnnouncement {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         match self {
-//             ControlLogicAnnouncement::MissingValidatorSet { era_id } => {
-//                 write!(f, "missing validator set for era {}", era_id)
-//             }
-//         }
-//     }
-// }
-//
-// impl Debug for ControlLogicAnnouncement {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Self::MissingValidatorSet { era_id } => f
-//                 .debug_struct("MissingValidatorSet")
-//                 .field("era_id", era_id)
-//                 .finish(),
-//         }
-//     }
-// }
-
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
 /// Reactors are never passed control announcements back in and every reactor event must be able to
@@ -88,13 +46,10 @@ pub(crate) enum ControlAnnouncement {
 
     /// The component has encountered a fatal error and cannot continue.
     ///
-    /// This usually triggers a shutdown of the component, reactor or whole application.
+    /// This usually triggers a shutdown of the application.
     FatalError {
-        /// File the fatal error occurred in.
         file: &'static str,
-        /// Line number where the fatal error occurred.
         line: u32,
-        /// Error message.
         msg: String,
     },
     /// An external event queue dump has been requested.
@@ -105,27 +60,6 @@ pub(crate) enum ControlAnnouncement {
         /// Responder called when the dump has been finished.
         finished: Responder<()>,
     },
-}
-
-/// Queue dump format with handler.
-#[derive(Serialize)]
-pub(crate) enum QueueDumpFormat {
-    /// Dump using given serde serializer.
-    Serde(#[serde(skip)] FileSerializer),
-    /// Dump writing debug output to file.
-    Debug(#[serde(skip)] File),
-}
-
-impl QueueDumpFormat {
-    /// Creates a new queue dump serde format.
-    pub(crate) fn serde(serializer: FileSerializer) -> Self {
-        QueueDumpFormat::Serde(serializer)
-    }
-
-    /// Creates a new queue dump debug format.
-    pub(crate) fn debug(file: File) -> Self {
-        QueueDumpFormat::Debug(file)
-    }
 }
 
 impl Debug for ControlAnnouncement {
@@ -156,6 +90,44 @@ impl Display for ControlAnnouncement {
                 write!(f, "dump event queue")
             }
         }
+    }
+}
+
+/// A component has encountered a fatal error and cannot continue.
+///
+/// This usually triggers a shutdown of the application.
+#[derive(Serialize, Debug)]
+#[must_use]
+pub(crate) struct FatalAnnouncement {
+    pub(crate) file: &'static str,
+    pub(crate) line: u32,
+    pub(crate) msg: String,
+}
+
+impl Display for FatalAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "fatal error [{}:{}]: {}", self.file, self.line, self.msg)
+    }
+}
+
+/// Queue dump format with handler.
+#[derive(Serialize)]
+pub(crate) enum QueueDumpFormat {
+    /// Dump using given serde serializer.
+    Serde(#[serde(skip)] FileSerializer),
+    /// Dump writing debug output to file.
+    Debug(#[serde(skip)] File),
+}
+
+impl QueueDumpFormat {
+    /// Creates a new queue dump serde format.
+    pub(crate) fn serde(serializer: FileSerializer) -> Self {
+        QueueDumpFormat::Serde(serializer)
+    }
+
+    /// Creates a new queue dump debug format.
+    pub(crate) fn debug(file: File) -> Self {
+        QueueDumpFormat::Debug(file)
     }
 }
 

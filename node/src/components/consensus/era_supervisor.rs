@@ -45,7 +45,7 @@ use crate::{
         small_network::blocklist::BlocklistJustification,
     },
     effect::{
-        announcements::ControlAnnouncement,
+        announcements::FatalAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -1120,7 +1120,7 @@ async fn execute_finalized_block<REv>(
     finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
     finalized_block: FinalizedBlock,
 ) where
-    REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
+    REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
 {
     // if the block exists in storage, it either has been executed before, or we fast synced to a
     // higher block - skip execution

@@ -16,8 +16,8 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            GossiperAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
-            UpgradeWatcherAnnouncement,
+            FatalAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -50,11 +50,11 @@ use crate::{
 pub(crate) enum MainEvent {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
 
-    // Check the status of the reactor, should only be raised by the reactor itself
+    /// Check the status of the reactor, should only be raised by the reactor itself
     ReactorCrank,
-    // Shutdown the reactor, should only be raised by the reactor itself
-    Shutdown(String),
 
     #[from]
     UpgradeWatcher(#[serde(skip_serializing)] upgrade_watcher::Event),
@@ -237,7 +237,6 @@ impl ReactorEvent for MainEvent {
     #[inline]
     fn description(&self) -> &'static str {
         match self {
-            MainEvent::Shutdown(_) => "Shutdown",
             MainEvent::ReactorCrank => "CheckStatus",
             MainEvent::Network(_) => "SmallNetwork",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
@@ -287,6 +286,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AppStateRequest(_) => "StateStoreRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
             MainEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             MainEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             MainEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
@@ -328,7 +328,6 @@ impl ReactorEvent for MainEvent {
 impl Display for MainEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            MainEvent::Shutdown(msg) => write!(f, "shutdown: {}", msg),
             MainEvent::ReactorCrank => write!(f, "check status"),
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
             MainEvent::Network(event) => write!(f, "small network: {}", event),
@@ -441,6 +440,7 @@ impl Display for MainEvent {
             }
             MainEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             MainEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
+            MainEvent::FatalAnnouncement(fatal_ann) => write!(f, "fatal: {}", fatal_ann),
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)
             }

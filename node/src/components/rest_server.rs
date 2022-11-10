@@ -218,6 +218,10 @@ where
     fn status(&self) -> ComponentStatus {
         self.status.clone()
     }
+
+    fn name(&self) -> &str {
+        "rest_server"
+    }
 }
 
 impl<REv> PortBoundComponent<REv> for RestServer

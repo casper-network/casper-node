@@ -49,18 +49,18 @@ use crate::{
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            DeployAcceptorAnnouncement, DeployBufferAnnouncement, GossiperAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            GossiperAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::{BlockSynchronizerRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    fatal,
     protocol::Message,
     reactor::{
         self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
-        EventQueueHandle,
+        EventQueueHandle, QueueKind,
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
@@ -69,6 +69,8 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+#[cfg(test)]
+use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -351,24 +353,27 @@ impl reactor::Reactor for MainReactor {
                 Effects::new()
             }
 
+            MainEvent::FatalAnnouncement(fatal_ann) => {
+                if self.consensus.is_active_validator() {
+                    warn!(%fatal_ann, "consensus is active, not shutting down");
+                    Effects::new()
+                } else {
+                    let ctrl_ann =
+                        MainEvent::ControlAnnouncement(ControlAnnouncement::FatalError {
+                            file: fatal_ann.file,
+                            line: fatal_ann.line,
+                            msg: fatal_ann.msg,
+                        });
+                    effect_builder
+                        .into_inner()
+                        .schedule(ctrl_ann, QueueKind::Control)
+                        .ignore()
+                }
+            }
+
             // PRIMARY REACTOR STATE CONTROL LOGIC
             MainEvent::ReactorCrank => self.crank(effect_builder, rng),
 
-            // ROUTE ALL INTENT TO SHUTDOWN TO THIS EVENT
-            // (DON'T USE FATAL ELSEWHERE WITHIN REACTOR OR COMPONENTS)
-            MainEvent::Shutdown(msg) => {
-                if self.consensus.is_active_validator() {
-                    info!(%msg, "consensus is active, not shutting down");
-                    Effects::new()
-                } else {
-                    fatal!(
-                        effect_builder,
-                        "reactor should shut down due to error: {}",
-                        msg,
-                    )
-                    .ignore()
-                }
-            }
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
                 MainEvent::UpgradeWatcher,
@@ -616,6 +621,7 @@ impl reactor::Reactor for MainReactor {
                 // if it is a switch block, get validators
                 if let Some(validator_weights) = block.header().next_era_validator_weights() {
                     self.switch_block = Some(block.header().clone());
+
                     let era_id = block.header().era_id();
                     self.validator_matrix
                         .register_validator_weights(era_id.successor(), validator_weights.clone());
@@ -1152,9 +1158,6 @@ impl MainReactor {
         &self.contract_runtime
     }
 }
-
-#[cfg(test)]
-use crate::{testing::network::NetworkedReactor, types::NodeId};
 
 #[cfg(test)]
 impl NetworkedReactor for MainReactor {
