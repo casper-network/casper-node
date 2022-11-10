@@ -609,10 +609,6 @@ impl reactor::Reactor for Reactor {
             Event::NetworkRequest(_) => panic!("test does not handle network requests"),
         }
     }
-
-    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
-        panic!()
-    }
 }
 
 fn put_block_to_storage(

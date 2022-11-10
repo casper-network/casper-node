@@ -719,7 +719,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| {
-                debug!("validator broadcast for : {}", era_id);
+                debug!("validator broadcast for {}", era_id);
                 NetworkRequest::ValidatorBroadcast {
                     payload: Box::new(payload),
                     era_id,
@@ -786,13 +786,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network peers in random order.
-    pub async fn get_fully_connected_peers(self) -> Vec<NodeId>
+    /// Gets up to `count` fully-connected network peers in random order.
+    pub async fn get_fully_connected_peers(self, count: usize) -> Vec<NodeId>
     where
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::FullyConnectedPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedPeers { count, responder },
             QueueKind::Regular,
         )
         .await

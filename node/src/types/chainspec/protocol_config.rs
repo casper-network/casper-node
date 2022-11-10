@@ -39,7 +39,7 @@ impl ProtocolConfig {
         &self,
     ) -> Result<BTreeMap<Key, StoredValue>, bytesrepr::Error> {
         let state_update = match &self.global_state_update {
-            Some(GlobalStateUpdate(state_update)) => state_update,
+            Some(GlobalStateUpdate { entries, .. }) => entries,
             None => return Ok(BTreeMap::default()),
         };
         let mut update_mapping = BTreeMap::new();
@@ -50,7 +50,6 @@ impl ProtocolConfig {
         Ok(update_mapping)
     }
 
-    #[allow(unused)] // TODO: To be removed
     /// Returns whether the block header belongs to the last block before the upgrade to the
     /// current protocol version.
     pub(crate) fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {

@@ -20,6 +20,7 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
+simultaneous_peer_requests = 5
 
 [highway]
 finality_threshold_fraction = [2, 25]
@@ -35,6 +36,7 @@ max_block_size = 12
 max_deploy_size = 1_048_576
 block_max_deploy_count = 125
 block_max_transfer_count = 1000
+block_max_approval_count = 2600
 block_gas_limit = 13
 payment_args_max_length = 1024
 session_args_max_length = 1024
@@ -90,10 +92,10 @@ has_key = { cost = 119, arguments = [0, 1] }
 is_valid_uref = { cost = 120, arguments = [0, 1] }
 load_named_keys = { cost = 121, arguments = [0, 1] }
 new_uref = { cost = 122, arguments = [0, 1, 2] }
-random_bytes = { cost = 200, arguments = [0, 0] }
 print = { cost = 123, arguments = [0, 1] }
 provision_contract_user_group_uref = { cost = 124, arguments = [0,1,2,3,4] }
 put_key = { cost = 125, arguments = [0, 1, 2, 3] }
+random_bytes = { cost = 123, arguments = [0, 1] }
 read_host_buffer = { cost = 126, arguments = [0, 1, 2] }
 read_value = { cost = 127, arguments = [0, 1, 0] }
 read_value_local = { cost = 128,  arguments = [0, 1, 0] }

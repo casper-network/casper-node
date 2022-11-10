@@ -10,7 +10,7 @@ use super::network::NetworkedReactor;
 use crate::{
     components::small_network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
-    reactor::{EventQueueHandle, Finalize, Reactor, ReactorExit},
+    reactor::{EventQueueHandle, Finalize, Reactor},
     types::{Chainspec, ChainspecRawBytes, NodeId},
     NodeRng,
 };
@@ -101,10 +101,6 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
             self.condition_checker = None;
         }
         self.reactor.dispatch_event(effect_builder, rng, event)
-    }
-
-    fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.reactor.maybe_exit()
     }
 }
 

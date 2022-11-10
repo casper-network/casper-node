@@ -185,19 +185,19 @@ pub(super) enum ExecutionResultsAcquisition {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
     },
-    Incomplete {
+    Acquiring {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
         chunks: HashMap<u64, ChunkWithProof>,
         chunk_count: u64,
         next: u64,
     },
-    Complete {
+    Acquired {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
         results: Vec<casper_types::ExecutionResult>,
     },
-    Mapped {
+    Complete {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
         results: HashMap<DeployHash, casper_types::ExecutionResult>,
@@ -210,13 +210,13 @@ impl ExecutionResultsAcquisition {
     ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
         match self {
             ExecutionResultsAcquisition::Needed { .. }
-            | ExecutionResultsAcquisition::Complete { .. }
-            | ExecutionResultsAcquisition::Mapped { .. } => None,
+            | ExecutionResultsAcquisition::Acquired { .. }
+            | ExecutionResultsAcquisition::Complete { .. } => None,
             ExecutionResultsAcquisition::Pending {
                 block_hash,
                 checksum,
             } => Some((BlockExecutionResultsOrChunkId::new(*block_hash), *checksum)),
-            ExecutionResultsAcquisition::Incomplete {
+            ExecutionResultsAcquisition::Acquiring {
                 block_hash,
                 checksum,
                 next,
@@ -237,9 +237,9 @@ impl ExecutionResultsAcquisition {
                 })
             }
             ExecutionResultsAcquisition::Pending { block_hash, .. }
-            | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
-            | ExecutionResultsAcquisition::Complete { block_hash, .. }
-            | ExecutionResultsAcquisition::Mapped { block_hash, .. } => {
+            | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
+            | ExecutionResultsAcquisition::Acquired { block_hash, .. }
+            | ExecutionResultsAcquisition::Complete { block_hash, .. } => {
                 Err(Error::InvalidAttemptToApplyChecksum { block_hash })
             }
         }
@@ -264,8 +264,8 @@ impl ExecutionResultsAcquisition {
             (ExecutionResultsAcquisition::Needed { block_hash }, _) => {
                 Err(Error::AttemptToApplyDataWhenMissingChecksum { block_hash })
             }
-            (ExecutionResultsAcquisition::Complete { .. }, _)
-            | (ExecutionResultsAcquisition::Mapped { .. }, _) => {
+            (ExecutionResultsAcquisition::Acquired { .. }, _)
+            | (ExecutionResultsAcquisition::Complete { .. }, _) => {
                 Err(Error::AttemptToApplyDataAfterCompleted { block_hash })
             }
             (
@@ -273,9 +273,9 @@ impl ExecutionResultsAcquisition {
                 ValueOrChunk::Value(results),
             )
             | (
-                ExecutionResultsAcquisition::Incomplete { checksum, .. },
+                ExecutionResultsAcquisition::Acquiring { checksum, .. },
                 ValueOrChunk::Value(results),
-            ) => Ok(Self::Complete {
+            ) => Ok(Self::Acquired {
                 block_hash,
                 checksum,
                 results,
@@ -285,7 +285,7 @@ impl ExecutionResultsAcquisition {
                 ValueOrChunk::ChunkWithProof(chunk),
             ) => apply_chunk(block_hash, checksum, HashMap::new(), chunk, None),
             (
-                ExecutionResultsAcquisition::Incomplete {
+                ExecutionResultsAcquisition::Acquiring {
                     checksum,
                     chunks,
                     chunk_count,
@@ -300,11 +300,11 @@ impl ExecutionResultsAcquisition {
         match self {
             ExecutionResultsAcquisition::Needed { block_hash, .. }
             | ExecutionResultsAcquisition::Pending { block_hash, .. }
-            | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
-            | ExecutionResultsAcquisition::Mapped { block_hash, .. } => {
+            | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
+            | ExecutionResultsAcquisition::Complete { block_hash, .. } => {
                 Err(Error::InvalidAttemptToApplyDeployHashes { block_hash })
             }
-            ExecutionResultsAcquisition::Complete {
+            ExecutionResultsAcquisition::Acquired {
                 block_hash,
                 checksum,
                 results,
@@ -318,7 +318,7 @@ impl ExecutionResultsAcquisition {
                     });
                 }
                 let ret = deploy_hashes.into_iter().zip(results).collect();
-                Ok(Self::Mapped {
+                Ok(Self::Complete {
                     block_hash,
                     checksum,
                     results: ret,
@@ -331,9 +331,9 @@ impl ExecutionResultsAcquisition {
         match self {
             ExecutionResultsAcquisition::Needed { block_hash }
             | ExecutionResultsAcquisition::Pending { block_hash, .. }
-            | ExecutionResultsAcquisition::Incomplete { block_hash, .. }
-            | ExecutionResultsAcquisition::Complete { block_hash, .. }
-            | ExecutionResultsAcquisition::Mapped { block_hash, .. } => *block_hash,
+            | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
+            | ExecutionResultsAcquisition::Acquired { block_hash, .. }
+            | ExecutionResultsAcquisition::Complete { block_hash, .. } => *block_hash,
         }
     }
 }
@@ -384,7 +384,7 @@ fn apply_chunk(
     let _ = chunks.insert(index, chunk);
 
     match (0..chunk_count).find(|idx| !chunks.contains_key(idx)) {
-        Some(next) => Ok(ExecutionResultsAcquisition::Incomplete {
+        Some(next) => Ok(ExecutionResultsAcquisition::Acquiring {
             block_hash,
             checksum,
             chunks,
@@ -398,7 +398,7 @@ fn apply_chunk(
                 .copied()
                 .collect();
             match bytesrepr::deserialize(serialized) {
-                Ok(results) => Ok(ExecutionResultsAcquisition::Complete {
+                Ok(results) => Ok(ExecutionResultsAcquisition::Acquired {
                     block_hash,
                     checksum,
                     results,

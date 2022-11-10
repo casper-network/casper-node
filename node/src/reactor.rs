@@ -286,10 +286,6 @@ pub(crate) trait Reactor: Sized {
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error>;
 
-    /// If `Some`, indicates that the reactor has completed all its work and should no longer
-    /// dispatch events.  The running process may stop or may keep running with a new reactor.
-    fn maybe_exit(&self) -> Option<ReactorExit>;
-
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 }
@@ -526,9 +522,9 @@ where
 
     /// Processes a single event on the event queue.
     ///
-    /// Returns `false` if processing should stop.
+    /// Returns `Some(exit_code)` if processing should stop.
     #[instrument("dispatch", level = "debug", fields(a, ev = self.current_event_id), skip(self, rng))]
-    pub(crate) async fn crank(&mut self, rng: &mut NodeRng) -> bool {
+    pub(crate) async fn crank(&mut self, rng: &mut NodeRng) -> Option<ExitCode> {
         self.metrics.events.inc();
 
         let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
@@ -574,7 +570,7 @@ where
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
 
-        let (effects, keep_going) = if event.as_control().is_some() {
+        let (effects, maybe_exit_code) = if event.as_control().is_some() {
             // We've received a control event, which will _not_ be handled by the reactor.
             match event.try_into_control() {
                 None => {
@@ -585,11 +581,14 @@ where
                     );
 
                     // We ignore the event.
-                    (Default::default(), true)
+                    (Effects::new(), None)
+                }
+                Some(ControlAnnouncement::ShutdownForUpgrade) => {
+                    (Effects::new(), Some(ExitCode::Success))
                 }
                 Some(ControlAnnouncement::FatalError { file, line, msg }) => {
                     error!(%file, %line, %msg, "fatal error via control announcement");
-                    (Default::default(), false)
+                    (Effects::new(), Some(ExitCode::Abort))
                 }
                 Some(ControlAnnouncement::QueueDumpRequest {
                     dump_format,
@@ -636,13 +635,13 @@ where
                     finished.respond(()).await;
 
                     // Do nothing on queue dump otherwise.
-                    (Default::default(), true)
+                    (Effects::new(), None)
                 }
             }
         } else {
             (
                 self.reactor.dispatch_event(effect_builder, rng, event),
-                true,
+                None,
             )
         };
 
@@ -668,7 +667,7 @@ where
 
         self.current_event_id += 1;
 
-        keep_going
+        maybe_exit_code
     }
 
     /// Gets both the allocated and total memory from sys-info + jemalloc
@@ -701,50 +700,15 @@ where
         })
     }
 
-    /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
+    /// Runs the reactor until `self.crank` returns `Some` or we get interrupted by a termination
     /// signal.
     pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
         loop {
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
-                    if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                    if let Some(exit_code) = self.crank(rng).await {
                         self.is_shutting_down.set();
-
-                        // TODO: Workaround, until we actually use control announcements for
-                        // exiting: Go over the entire remaining event queue and look for a control
-                        // announcement. This approach is hacky, and should be replaced with
-                        // `ControlAnnouncement` handling instead.
-                        //
-                        // When this workaround is fixed, we should revisit the handling of getting
-                        // a deploy in the event stream server (handling of SseData::DeployAccepted)
-                        // since that workaround of making two attempts with the first wrapped in a
-                        // timeout should no longer be required.
-
-                        for (ancestor, event) in
-                            self.scheduler.drain_queue(QueueKind::Control).await
-                        {
-                            if let Some(ctrl_ann) = event.as_control() {
-                                match ctrl_ann {
-                                    ControlAnnouncement::FatalError { file, line, msg } => {
-                                        warn!(%file, line=*line, %msg, "exiting due to fatal error scheduled before reactor completion");
-                                        return ReactorExit::ProcessShouldExit(ExitCode::Abort);
-                                    }
-                                    ControlAnnouncement::QueueDumpRequest { .. } => {
-                                        // Queue dumps are not handled when shutting down. TODO:
-                                        // Maybe return an error instead, something like "reactor is
-                                        // shutting down"?
-                                    }
-                                }
-                            } else {
-                                debug!(?ancestor, %event, "found non-control announcement while draining queue")
-                            }
-                        }
-
-                        break reactor_exit;
-                    }
-                    if !self.crank(rng).await {
-                        self.is_shutting_down.set();
-                        break ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                        break ReactorExit::ProcessShouldExit(exit_code);
                     }
                 }
                 SIGINT => {
@@ -816,7 +780,7 @@ where
     }
 
     /// Processes a single event if there is one, returns `None` otherwise.
-    pub(crate) async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<bool> {
+    pub(crate) async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<Option<ExitCode>> {
         if self.scheduler.item_count() == 0 {
             None
         } else {

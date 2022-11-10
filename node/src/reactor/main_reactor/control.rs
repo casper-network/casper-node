@@ -16,18 +16,20 @@ use crate::{
         sync_leaper::LeapStatus,
         upgrade_watcher, InitializedComponent, ValidatorBoundComponent,
     },
-    effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::ControlAnnouncement, requests::BlockSynchronizerRequest, EffectBuilder,
+        EffectExt, Effects,
+    },
     reactor::{
         self,
         main_reactor::{
             catch_up_instruction::CatchUpInstruction, keep_up_instruction::KeepUpInstruction,
-            utils, validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
+            upgrading_instruction::UpgradingInstruction, utils,
+            validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
         },
     },
-    types::{
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, FinalizedBlock, Item,
-        SyncLeapIdentifier,
-    },
+    types::{ActivationPoint, BlockHash, BlockPayload, FinalizedBlock, Item, SyncLeapIdentifier},
+    utils::DisplayIter,
     NodeRng,
 };
 
@@ -64,6 +66,10 @@ impl MainReactor {
             ReactorState::Initialize => match self.initialize_next_component() {
                 Some(effects) => (Duration::ZERO, effects),
                 None => {
+                    if false == self.small_network.has_sufficient_fully_connected_peers() {
+                        info!("Initialize: awaiting sufficient fully-connected peers");
+                        return (Duration::from_secs(2), Effects::new());
+                    }
                     info!("Initialize: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
@@ -78,6 +84,14 @@ impl MainReactor {
                     }
                     Err(msg) => (Duration::ZERO, utils::new_shutdown_effect(msg)),
                 },
+                CatchUpInstruction::CommitUpgrade => match self.commit_upgrade(effect_builder) {
+                    Ok(effects) => {
+                        info!("CatchUp: switch to Upgrading");
+                        self.state = ReactorState::Upgrading;
+                        (Duration::ZERO, effects)
+                    }
+                    Err(msg) => (Duration::ZERO, utils::new_shutdown_effect(msg)),
+                },
                 CatchUpInstruction::CaughtUp => {
                     info!("CatchUp: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
@@ -86,6 +100,11 @@ impl MainReactor {
                 CatchUpInstruction::Shutdown(msg) => {
                     (Duration::ZERO, utils::new_shutdown_effect(msg))
                 }
+                CatchUpInstruction::ShutdownForUpgrade => {
+                    info!("CatchUp: shutting down for upgrade");
+                    self.state = ReactorState::ShutdownForUpgrade;
+                    (Duration::ZERO, Effects::new())
+                }
                 CatchUpInstruction::Do(wait, effects) => {
                     debug!("CatchUp: node is processing effects");
                     (wait, effects)
@@ -93,6 +112,20 @@ impl MainReactor {
                 CatchUpInstruction::CheckLater(msg, wait) => {
                     debug!("CatchUp: {}", msg);
                     (wait, Effects::new())
+                }
+            },
+            ReactorState::Upgrading => match self.upgrading_instruction() {
+                UpgradingInstruction::CheckLater(msg, wait) => {
+                    debug!("Upgrading: {}", msg);
+                    (wait, Effects::new())
+                }
+                UpgradingInstruction::CatchUp => {
+                    info!("Upgrading: switch to CatchUp");
+                    self.state = ReactorState::CatchUp;
+                    (Duration::ZERO, Effects::new())
+                }
+                UpgradingInstruction::Shutdown(msg) => {
+                    (Duration::ZERO, utils::new_shutdown_effect(msg))
                 }
             },
             ReactorState::KeepUp => {
@@ -117,6 +150,11 @@ impl MainReactor {
                         debug!("KeepUp: {}", msg);
                         (wait, Effects::new())
                     }
+                    KeepUpInstruction::ShutdownForUpgrade => {
+                        info!("KeepUp: switch to ShutdownForUpgrade");
+                        self.state = ReactorState::ShutdownForUpgrade;
+                        (Duration::ZERO, Effects::new())
+                    }
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
@@ -137,10 +175,66 @@ impl MainReactor {
                     debug!("Validate: {}", msg);
                     (wait, Effects::new())
                 }
+                ValidateInstruction::ShutdownForUpgrade => {
+                    info!("Validate: switch to ShutdownForUpgrade");
+                    self.state = ReactorState::ShutdownForUpgrade;
+                    (Duration::ZERO, Effects::new())
+                }
             },
-            ReactorState::Upgrade => {
-                // noop ... patiently wait for the runner to shut down cleanly
-                (DELAY_BEFORE_SHUTDOWN, Effects::new())
+            ReactorState::ShutdownForUpgrade => {
+                let highest_switch_block_era = match self.recent_switch_block_headers.last() {
+                    None => {
+                        return (
+                            Duration::ZERO,
+                            utils::new_shutdown_effect(
+                                "recent_switch_block_headers cannot be empty in Upgrade state",
+                            ),
+                        )
+                    }
+                    Some(block_header) => block_header.era_id(),
+                };
+                match self
+                    .validator_matrix
+                    .validator_weights(highest_switch_block_era)
+                {
+                    Some(validator_weights) => {
+                        let should_stop = match self
+                            .storage
+                            .era_has_sufficient_finality_signatures(&validator_weights)
+                        {
+                            Ok(should_stop) => should_stop,
+                            Err(error) => {
+                                return (
+                                    Duration::ZERO,
+                                    utils::new_shutdown_effect(format!(
+                                        "failed check for sufficient finality signatures: {}",
+                                        error
+                                    )),
+                                )
+                            }
+                        };
+                        let effects = if should_stop {
+                            // Allow a short delay for further finality signatures to arrive and be
+                            // stored.
+                            effect_builder
+                                .set_timeout(DELAY_BEFORE_SHUTDOWN)
+                                .event(|_| {
+                                    MainEvent::ControlAnnouncement(
+                                        ControlAnnouncement::ShutdownForUpgrade,
+                                    )
+                                })
+                        } else {
+                            Effects::new()
+                        };
+                        (DELAY_BEFORE_SHUTDOWN, effects)
+                    }
+                    None => (
+                        Duration::ZERO,
+                        utils::new_shutdown_effect(
+                            "validator_weights cannot be missing in Upgrade state",
+                        ),
+                    ),
+                }
             }
         }
     }
@@ -209,8 +303,7 @@ impl MainReactor {
                 Ok(blocks) => blocks,
                 Err(err) => {
                     return Some(utils::new_shutdown_effect(format!(
-                        "fatal block store error when attempting to read highest \
-                                    blocks: {}",
+                        "fatal block store error when attempting to read highest blocks: {}",
                         err
                     )))
                 }
@@ -244,7 +337,7 @@ impl MainReactor {
                                 // -+ : leap w/ local tip
                                 info!("CatchUp: local tip detected, no trusted hash");
                                 if block.header().is_switch_block() {
-                                    self.switch_block = Some(block.id());
+                                    self.switch_block = Some(block.header().clone());
                                 }
                                 StartingWith::LocalTip(
                                     *block.hash(),
@@ -292,8 +385,8 @@ impl MainReactor {
                             }
                             Err(err) => {
                                 return CatchUpInstruction::Shutdown(format!(
-                                    "CatchUp: fatal block store error when attempting to read highest \
-                                    complete block: {}",
+                                    "CatchUp: fatal block store error when attempting to read \
+                                    highest complete block: {}",
                                     err
                                 ));
                             }
@@ -313,9 +406,10 @@ impl MainReactor {
                                                 trusted_height,
                                             )
                                         } else {
-                                            StartingWith::BlockIdentifier(
+                                            StartingWith::LocalTip(
                                                 *block.hash(),
                                                 block.height(),
+                                                block.header().era_id(),
                                             )
                                         }
                                     }
@@ -325,8 +419,8 @@ impl MainReactor {
                                     }
                                     Err(_) => {
                                         return CatchUpInstruction::Shutdown(
-                                            "CatchUp: fatal block store error when attempting to read highest \
-                                    complete block"
+                                            "CatchUp: fatal block store error when attempting to \
+                                            read highest complete block"
                                                 .to_string(),
                                         );
                                     }
@@ -338,8 +432,8 @@ impl MainReactor {
                             }
                             Err(err) => {
                                 return CatchUpInstruction::Shutdown(format!(
-                                    "CatchUp: fatal block store error when attempting to read highest \
-                            complete block: {}",
+                                    "CatchUp: fatal block store error when attempting to read \
+                                    highest complete block: {}",
                                     err
                                 ));
                             }
@@ -400,36 +494,39 @@ impl MainReactor {
                                 ));
                             }
                         }
-                        let peers_to_ask = self.small_network.peers_random_vec(
+                        let peers_to_ask = self.small_network.fully_connected_peers_random(
                             rng,
-                            self.chainspec.core_config.simultaneous_peer_requests,
+                            self.chainspec.core_config.simultaneous_peer_requests as usize,
                         );
+                        info!(
+                            "CatchUp: initiating sync leap for {} using peers {}",
+                            block_hash,
+                            DisplayIter::new(&peers_to_ask)
+                        );
+
                         let effects = effect_builder.immediately().event(move |_| {
                             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
                                 sync_leap_identifier,
                                 peers_to_ask,
                             })
                         });
-                        info!("CatchUp: initiating sync leap for: {}", block_hash);
-                        CatchUpInstruction::Do(Duration::ZERO, effects)
+                        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
                     }
-                    LeapStatus::Awaiting { .. } => {
-                        return CatchUpInstruction::CheckLater(
-                            "sync leaper is awaiting response".to_string(),
-                            self.control_logic_default_delay.into(),
-                        );
-                    }
+                    LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
+                        "sync leaper is awaiting response".to_string(),
+                        self.control_logic_default_delay.into(),
+                    ),
                     LeapStatus::Received {
                         best_available,
                         from_peers,
                         ..
                     } => {
-                        debug!(%best_available,"CatchUp: sync leap received");
-                        info!(
-                            "CatchUp: sync leap received for: {:?}; {:?}",
-                            best_available.highest_block_height(),
-                            best_available.trusted_block_header.block_hash()
+                        debug!(
+                            "CatchUp: {} received from {}",
+                            best_available,
+                            DisplayIter::new(&from_peers)
                         );
+                        info!("CatchUp: {}", best_available);
                         for validator_weights in best_available.era_validator_weights(
                             self.validator_matrix.fault_tolerance_threshold(),
                         ) {
@@ -447,7 +544,7 @@ impl MainReactor {
                         let effects = effect_builder.immediately().event(|_| {
                             MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                         });
-                        CatchUpInstruction::Do(Duration::ZERO, effects)
+                        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
                     }
                 };
             }
@@ -471,13 +568,18 @@ impl MainReactor {
                 );
             }
             SyncInstruction::BlockExec { .. } => {
-                let msg = "BlockExec is not valid while in CatchUp mode".to_string();
-                error!("{}", msg);
-                return CatchUpInstruction::Shutdown(msg);
+                return CatchUpInstruction::Shutdown(
+                    "BlockExec is not valid while in CatchUp mode".to_string(),
+                );
             }
             SyncInstruction::CaughtUp => {
-                if let Err(msg) = self.check_should_shutdown_for_upgrade() {
-                    return CatchUpInstruction::Shutdown(msg);
+                match self.should_commit_upgrade() {
+                    Ok(true) => return CatchUpInstruction::CommitUpgrade,
+                    Ok(false) => (),
+                    Err(msg) => return CatchUpInstruction::Shutdown(msg),
+                }
+                if self.should_shutdown_for_upgrade() {
+                    return CatchUpInstruction::ShutdownForUpgrade;
                 }
             }
         }
@@ -485,11 +587,26 @@ impl MainReactor {
         CatchUpInstruction::CaughtUp
     }
 
+    fn upgrading_instruction(&self) -> UpgradingInstruction {
+        match self.should_commit_upgrade() {
+            Ok(true) => UpgradingInstruction::CheckLater(
+                "awaiting upgrade".to_string(),
+                self.control_logic_default_delay.into(),
+            ),
+            Ok(false) => UpgradingInstruction::CatchUp,
+            Err(msg) => UpgradingInstruction::Shutdown(msg),
+        }
+    }
+
     fn keep_up_instruction(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> KeepUpInstruction {
+        if self.should_shutdown_for_upgrade() {
+            return KeepUpInstruction::ShutdownForUpgrade;
+        }
+
         match self.check_should_validate(effect_builder, rng) {
             (true, Some(effects)) => {
                 info!("KeepUp: go to Validate");
@@ -646,10 +763,14 @@ impl MainReactor {
                                         {
                                             error!("KeepUp: historical leap failed: {:?}", error);
                                         }
-                                        let peers_to_ask = self.small_network.peers_random_vec(
-                                            rng,
-                                            self.chainspec.core_config.simultaneous_peer_requests,
-                                        );
+                                        let peers_to_ask =
+                                            self.small_network.fully_connected_peers_random(
+                                                rng,
+                                                self.chainspec
+                                                    .core_config
+                                                    .simultaneous_peer_requests
+                                                    as usize,
+                                            );
                                         let sync_leap_identifier =
                                             SyncLeapIdentifier::sync_to_historical(*parent_hash);
                                         let effects =
@@ -742,6 +863,11 @@ impl MainReactor {
             // validate status is only checked at switch blocks
             return ValidateInstruction::NonSwitchBlock;
         }
+
+        if self.should_shutdown_for_upgrade() {
+            return ValidateInstruction::ShutdownForUpgrade;
+        }
+
         match self.create_required_eras(effect_builder, rng) {
             Ok(Some(effects)) => {
                 let last_progress = self.consensus.last_progress();
@@ -778,11 +904,7 @@ impl MainReactor {
                 Ok(Some(effects)) => {
                     return (true, Some(effects));
                 }
-                Ok(None) => {
-                    if let Err(msg) = self.check_should_shutdown_for_upgrade() {
-                        return (false, Some(utils::new_shutdown_effect(msg)));
-                    }
-                }
+                Ok(None) => (),
             }
         }
         (false, None)
@@ -837,7 +959,7 @@ impl MainReactor {
 
         let era_id = highest_switch_block_header.era_id();
         if self.upgrade_watcher.should_upgrade_after(era_id) {
-            info!("upgrade required after: {}", era_id);
+            debug!(%era_id, "upgrade required after given era");
             return Ok(None);
         }
 
@@ -913,13 +1035,48 @@ impl MainReactor {
         }
     }
 
-    // todo!("remove this after we wire up method again")
-    #[allow(dead_code)]
+    fn should_commit_upgrade(&self) -> Result<bool, String> {
+        let highest_switch_block_header = match &self.switch_block {
+            None => {
+                return Err("switch_block should be Some".to_string());
+            }
+            Some(header) => header,
+        };
+
+        if !self
+            .chainspec
+            .protocol_config
+            .is_last_block_before_activation(highest_switch_block_header)
+        {
+            return Ok(false);
+        }
+
+        match self
+            .chainspec
+            .is_in_modified_validator_set(self.consensus.public_key())
+        {
+            None => match highest_switch_block_header.next_era_validator_weights() {
+                None => Err("switch_block should have next era validator weights".to_string()),
+                Some(next_era_validator_weights) => {
+                    Ok(next_era_validator_weights.contains_key(self.consensus.public_key()))
+                }
+            },
+            Some(is_validator) => Ok(is_validator),
+        }
+    }
+
     fn commit_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
-        previous_block_header: Box<BlockHeader>,
     ) -> Result<Effects<MainEvent>, String> {
+        info!("{:?}: committing upgrade", self.state);
+        let previous_block_header = match &self.switch_block {
+            None => {
+                return Ok(utils::new_shutdown_effect("switch_block should be Some"));
+            }
+            Some(header) => header,
+        };
+
         match self.chainspec.ee_upgrade_config(
             *previous_block_header.state_root_hash(),
             previous_block_header.protocol_version(),
@@ -964,36 +1121,13 @@ impl MainReactor {
         }
     }
 
-    fn check_should_shutdown_for_upgrade(&mut self) -> Result<(), String> {
-        let highest_switch_block_era = match self.recent_switch_block_headers.last() {
-            None => return Ok(()),
-            Some(block_header) => block_header.era_id(),
-        };
-        if self
-            .upgrade_watcher
-            .should_upgrade_after(highest_switch_block_era)
-        {
-            match self
-                .validator_matrix
-                .validator_weights(highest_switch_block_era)
-            {
-                Some(validator_weights) => {
-                    if self
-                        .storage
-                        .era_has_sufficient_finality_signatures(&validator_weights)
-                    {
-                        self.state = ReactorState::Upgrade;
-                    }
-                }
-                None => {
-                    return Err(
-                        "should not be possible to be in this state with no era validators"
-                            .to_string(),
-                    );
-                }
-            }
+    fn should_shutdown_for_upgrade(&self) -> bool {
+        if let Some(block_header) = self.recent_switch_block_headers.last() {
+            return self
+                .upgrade_watcher
+                .should_upgrade_after(block_header.era_id());
         }
-        Ok(())
+        false
     }
 
     fn enqueue_executable_block(

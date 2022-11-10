@@ -222,17 +222,17 @@ impl DeployAcceptor {
             })
     }
 
-    fn handle_get_block_result<REv: ReactorEventT>(
+    fn handle_get_block_header_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         event_metadata: EventMetadata,
-        maybe_block: Option<BlockHeader>,
+        maybe_block_header: Option<BlockHeader>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
 
-        let block = match maybe_block {
-            Some(block) => block,
+        let block_header = match maybe_block_header {
+            Some(block_header) => block_header,
             None => {
                 // this should be unreachable per current design of the system
                 if let Some(responder) = event_metadata.maybe_responder {
@@ -242,7 +242,7 @@ impl DeployAcceptor {
             }
         };
 
-        let prestate_hash = *block.state_root_hash();
+        let prestate_hash = *block_header.state_root_hash();
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
@@ -865,7 +865,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 event_metadata,
                 maybe_block_header,
                 verification_start_timestamp,
-            } => self.handle_get_block_result(
+            } => self.handle_get_block_header_result(
                 effect_builder,
                 event_metadata,
                 *maybe_block_header,

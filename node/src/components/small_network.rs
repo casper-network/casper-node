@@ -54,7 +54,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use itertools::Itertools;
 use prometheus::Registry;
 use rand::{prelude::SliceRandom, seq::IteratorRandom};
 use serde::{Deserialize, Serialize};
@@ -879,16 +878,25 @@ where
         ret
     }
 
-    pub(crate) fn peers_random(&self, rng: &mut NodeRng, up_to: u32) -> BTreeMap<NodeId, String> {
-        self.peers()
-            .into_iter()
-            .choose_multiple(rng, up_to as usize)
-            .into_iter()
-            .collect()
+    pub(crate) fn fully_connected_peers_random(
+        &self,
+        rng: &mut NodeRng,
+        count: usize,
+    ) -> Vec<NodeId> {
+        self.connection_symmetries
+            .iter()
+            .filter_map(|(node_id, sym)| {
+                matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
+            })
+            .choose_multiple(rng, count)
     }
 
-    pub(crate) fn peers_random_vec(&self, rng: &mut NodeRng, up_to: u32) -> Vec<NodeId> {
-        self.peers_random(rng, up_to).into_keys().collect_vec()
+    pub(crate) fn has_sufficient_fully_connected_peers(&self) -> bool {
+        self.connection_symmetries
+            .iter()
+            .filter(|(_node_id, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .count()
+            >= self.cfg.min_peers_for_initialization as usize
     }
 
     #[cfg(test)]
@@ -1063,19 +1071,9 @@ where
             }
             (ComponentStatus::Initialized, Event::NetworkInfoRequest { req }) => match *req {
                 NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
-                NetworkInfoRequest::FullyConnectedPeers { responder } => {
-                    let mut symmetric_peers: Vec<NodeId> = self
-                        .connection_symmetries
-                        .iter()
-                        .filter_map(|(node_id, sym)| {
-                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
-                        })
-                        .collect();
-
-                    symmetric_peers.shuffle(rng);
-
-                    responder.respond(symmetric_peers).ignore()
-                }
+                NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
+                    .respond(self.fully_connected_peers_random(rng, count))
+                    .ignore(),
                 NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder } => {
                     let mut symmetric_validator_peers: Vec<NodeId> = self
                         .connection_symmetries

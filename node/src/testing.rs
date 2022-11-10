@@ -274,6 +274,9 @@ impl<REv: 'static> ComponentHarness<REv> {
 
                 if let Some(ctrl_ann) = ev.as_control() {
                     match ctrl_ann {
+                        ControlAnnouncement::ShutdownForUpgrade { .. } => {
+                            panic!("a control announcement requesting a shutdown was received")
+                        }
                         fatal @ ControlAnnouncement::FatalError { .. } => {
                             panic!(
                                 "a control announcement requesting a fatal error was received: {}",

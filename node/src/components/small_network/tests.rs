@@ -273,10 +273,6 @@ impl Reactor for TestReactor {
             Event::BlocklistAnnouncement(_announcement) => Effects::new(),
         }
     }
-
-    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
-        unimplemented!()
-    }
 }
 
 impl NetworkedReactor for TestReactor {

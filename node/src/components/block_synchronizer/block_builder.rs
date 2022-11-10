@@ -166,7 +166,10 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_marked_complete(&mut self) {
-        if let Err(error) = self.acquisition_state.register_marked_complete() {
+        if let Err(error) = self
+            .acquisition_state
+            .register_marked_complete(self.should_fetch_execution_state)
+        {
             error!(%error, "register marked complete failed");
             self.abort()
         } else {
@@ -196,6 +199,7 @@ impl BlockBuilder {
 
     pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
         if self.in_flight_latch() {
+            debug!("BlockSynchronizer pending response");
             return BlockAcquisitionAction::noop();
         }
         match self.peer_list.need_peers() {
@@ -325,7 +329,7 @@ impl BlockBuilder {
                     self.promote_peer(maybe_peer);
                 }
                 Ok(FinalitySignatureAcceptance::Noop) => {
-                    // noop
+                    self.touch();
                 }
             }
             Ok(())

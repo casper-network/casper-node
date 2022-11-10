@@ -14,20 +14,20 @@ pub(crate) enum StartingWith {
 impl StartingWith {
     pub(crate) fn block_hash(&self) -> BlockHash {
         match self {
-            StartingWith::LocalTip(hash, _, _)
+            StartingWith::ExecutableBlock(hash, _)
             | StartingWith::BlockIdentifier(hash, _)
             | StartingWith::SyncedBlockIdentifier(hash, _)
-            | StartingWith::ExecutableBlock(hash, _)
+            | StartingWith::LocalTip(hash, _, _)
             | StartingWith::Hash(hash) => *hash,
         }
     }
 
     pub(crate) fn block_height(&self) -> Option<u64> {
         match self {
-            StartingWith::LocalTip(_, height, _)
+            StartingWith::ExecutableBlock(_, height)
             | StartingWith::BlockIdentifier(_, height)
             | StartingWith::SyncedBlockIdentifier(_, height)
-            | StartingWith::ExecutableBlock(_, height) => Some(*height),
+            | StartingWith::LocalTip(_, height, _) => Some(*height),
             StartingWith::Hash(_) => None,
         }
     }

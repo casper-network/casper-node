@@ -844,7 +844,7 @@ fn please_add_to_distribution_impl(key: Key) {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=14) {
+        match rng.gen_range(0..=13) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),

@@ -7,4 +7,5 @@ pub(super) enum KeepUpInstruction {
     Do(Duration, Effects<MainEvent>),
     CheckLater(String, Duration),
     CatchUp,
+    ShutdownForUpgrade,
 }

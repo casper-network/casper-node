@@ -18,6 +18,8 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:34553";
 /// Automatically sets the port, but defaults publishing localhost as the public address.
 const DEFAULT_PUBLIC_ADDRESS: &str = "127.0.0.1:0";
 
+const DEFAULT_MIN_PEERS_FOR_INITIALIZATION: u16 = 1;
+
 /// Default interval for gossiping network addresses.
 const DEFAULT_GOSSIP_INTERVAL: TimeDiff = TimeDiff::from_seconds(30);
 
@@ -30,16 +32,16 @@ const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
 /// Default timeout during which the handshake needs to be completed.
 const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
-/// Default value for the parameter used for determining if node is to be considered a validator.
+/// Default value for the parameter used for determining if peer is to be considered a validator.
 const DEFAULT_ERAS_TO_DETERMINE_IF_VALIDATOR: usize = 3;
 
-// Default values for networking configuration:
 impl Default for Config {
     fn default() -> Self {
         Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
+            min_peers_for_initialization: DEFAULT_MIN_PEERS_FOR_INITIALIZATION,
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
             initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
             max_addr_pending_time: DEFAULT_MAX_ADDR_PENDING_TIME,
@@ -85,6 +87,8 @@ pub struct Config {
     pub public_address: String,
     /// Known address of a node on the network used for joining.
     pub known_addresses: Vec<String>,
+    /// Minimum number of fully-connected peers to consider component initialized.
+    pub min_peers_for_initialization: u16,
     /// Interval in milliseconds used for gossiping.
     pub gossip_interval: TimeDiff,
     /// Initial delay before the first round of gossip.

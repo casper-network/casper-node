@@ -479,6 +479,7 @@ dependencies = [
  "datasize",
  "hex",
  "hex-buffer-serde 0.3.0",
+ "hex_fmt",
  "itertools",
  "once_cell",
  "proptest",
