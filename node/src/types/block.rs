@@ -782,7 +782,7 @@ impl DocExample for EraEnd {
 }
 
 /// The header portion of a [`Block`](struct.Block.html).
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     state_root_hash: Digest,
@@ -913,6 +913,35 @@ impl BlockHeader {
     }
 }
 
+impl PartialEq for BlockHeader {
+    fn eq(&self, other: &BlockHeader) -> bool {
+        // Destructure to make sure we don't accidentally omit fields.
+        let BlockHeader {
+            parent_hash,
+            state_root_hash,
+            body_hash,
+            random_bit,
+            accumulated_seed,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            block_hash: _,
+        } = self;
+        *parent_hash == other.parent_hash
+            && *state_root_hash == other.state_root_hash
+            && *body_hash == other.body_hash
+            && *random_bit == other.random_bit
+            && *accumulated_seed == other.accumulated_seed
+            && *era_end == other.era_end
+            && *timestamp == other.timestamp
+            && *era_id == other.era_id
+            && *height == other.height
+            && *protocol_version == other.protocol_version
+    }
+}
+
 impl Display for BlockHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
@@ -1032,7 +1061,7 @@ impl BlockHeaderWithMetadata {
 }
 
 /// The body portion of a block.
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
@@ -1090,6 +1119,21 @@ impl BlockBody {
                 .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
             Digest::hash(&serialized_body)
         })
+    }
+}
+
+impl PartialEq for BlockBody {
+    fn eq(&self, other: &BlockBody) -> bool {
+        // Destructure to make sure we don't accidentally omit fields.
+        let BlockBody {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            hash: _,
+        } = self;
+        *proposer == other.proposer
+            && *deploy_hashes == other.deploy_hashes
+            && *transfer_hashes == other.transfer_hashes
     }
 }
 
@@ -1615,7 +1659,7 @@ impl Display for BlockAndDeploys {
 
 /// Represents execution results for all deploys in a single block or a chunk of this complete
 /// value.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, DataSize)]
 pub struct BlockExecutionResultsOrChunk {
     /// Block to which this value or chunk refers to.
     block_hash: BlockHash,
@@ -1649,6 +1693,18 @@ impl BlockExecutionResultsOrChunk {
     /// Returns the hash of the block this execution result belongs to.
     pub fn block_hash(&self) -> &BlockHash {
         &self.block_hash
+    }
+}
+
+impl PartialEq for BlockExecutionResultsOrChunk {
+    fn eq(&self, other: &BlockExecutionResultsOrChunk) -> bool {
+        // Destructure to make sure we don't accidentally omit fields.
+        let BlockExecutionResultsOrChunk {
+            block_hash,
+            value,
+            is_valid: _,
+        } = self;
+        *block_hash == other.block_hash && *value == other.value
     }
 }
 
