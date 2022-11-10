@@ -391,7 +391,7 @@ mod tests {
     #[test]
     fn serde_custom_serialization() {
         let serialized = serde_json::to_string(&Digest::SENTINEL_RFOLD).unwrap();
-        let expected = format!("\"{}\"", Digest::SENTINEL_RFOLD);
+        let expected = format!("\"{:?}\"", Digest::SENTINEL_RFOLD);
         assert_eq!(expected, serialized);
     }
 

@@ -12,7 +12,7 @@ mod trie_accumulator;
 
 use datasize::DataSize;
 use either::Either;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
@@ -318,7 +318,7 @@ impl BlockSynchronizer {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             let need_next = action.need_next();
-            debug!("BlockSynchronizer: needs next: {:?}", need_next);
+            trace!("BlockSynchronizer: needs next: {:?}", need_next);
             if !matches!(need_next, NeedNext::Nothing) {
                 builder.set_in_flight_latch(true);
             }
