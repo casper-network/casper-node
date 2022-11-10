@@ -1048,8 +1048,6 @@ mod tests {
         AccessRights, URef,
     };
 
-    const BLOCK_HEIGHT: u64 = 245125;
-
     const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
     const HASH_KEY: Key = Key::Hash([42; 32]);
     const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
@@ -1061,9 +1059,9 @@ mod tests {
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
     const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
+    const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
-    const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const KEYS: [Key; 14] = [
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1076,9 +1074,9 @@ mod tests {
         WITHDRAW_KEY,
         DICTIONARY_KEY,
         SYSTEM_CONTRACT_REGISTRY_KEY,
+        UNBOND_KEY,
         CHAINSPEC_REGISTRY_KEY,
         CHECKSUM_REGISTRY_KEY,
-        UNBOND_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
@@ -1361,18 +1359,14 @@ mod tests {
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
                 base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
             ),
+            format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"ChainspecRegistry":"chainspec-registry-{}"}}"#,
                 base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             ),
-            format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
             format!(
-                r#"{{"BlockExecutionResultsChecksum":"block-effects-checksum-{}"}}"#,
-                BLOCK_HEIGHT
-            ),
-            format!(
-                r#"{{"DeployApprovalsChecksum":"deploy-approvals-checksum-{}"}}"#,
-                BLOCK_HEIGHT
+                r#"{{"ChecksumRegistry":"checksum-registry-{}"}}"#,
+                base16::encode_lower(&CHECKSUM_REGISTRY_KEY_BYTES)
             ),
         ];
 
