@@ -39,6 +39,7 @@ impl Item for GossipedAddress {
 
 impl GossiperItem for GossipedAddress {
     const ID_IS_COMPLETE_ITEM: bool = true;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = false;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::All

@@ -629,7 +629,7 @@ fn put_block_to_storage(
                     block,
                     responder,
                 })),
-                QueueKind::Regular,
+                QueueKind::ToStorage,
             )
             .ignore()
     }
@@ -647,7 +647,7 @@ fn put_deploy_to_storage(
                     deploy,
                     responder,
                 })),
-                QueueKind::Regular,
+                QueueKind::ToStorage,
             )
             .ignore()
     }
@@ -667,7 +667,7 @@ fn schedule_accept_deploy(
                     source,
                     maybe_responder: Some(responder),
                 },
-                QueueKind::Regular,
+                QueueKind::Validation,
             )
             .ignore()
     }
@@ -690,7 +690,7 @@ fn inject_balance_check_for_peer(
                     account_hash: Default::default(),
                     verification_start_timestamp: Timestamp::now(),
                 },
-                QueueKind::Regular,
+                QueueKind::ContractRuntime,
             )
             .ignore()
     }

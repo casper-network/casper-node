@@ -500,8 +500,12 @@ where
             rng,
         )?;
 
+        info!(
+            "Reactor: with_metrics has: {} initial_effects",
+            initial_effects.len()
+        );
         // Run all effects from component instantiation.
-        process_effects(None, scheduler, initial_effects)
+        process_effects(None, scheduler, initial_effects, QueueKind::Regular)
             .instrument(debug_span!("process initial effects"))
             .await;
 
@@ -548,15 +552,15 @@ where
                 total,
             }) = Self::get_allocated_memory()
             {
-                debug!(%allocated, %total, "memory allocated");
+                trace!(%allocated, %total, "memory allocated");
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
                 self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);
             }
         }
 
-        let ((ancestor, event), queue) = self.scheduler.pop().await;
-        trace!(%event, %queue, "current");
+        let ((ancestor, event), queue_kind) = self.scheduler.pop().await;
+        trace!(%event, %queue_kind, "current");
         let event_desc = event.description();
 
         // Create another span for tracing the processing of one event.
@@ -570,7 +574,7 @@ where
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
 
-        let (effects, maybe_exit_code) = if event.as_control().is_some() {
+        let (effects, maybe_exit_code, queue_kind) = if event.as_control().is_some() {
             // We've received a control event, which will _not_ be handled by the reactor.
             match event.try_into_control() {
                 None => {
@@ -581,14 +585,14 @@ where
                     );
 
                     // We ignore the event.
-                    (Effects::new(), None)
+                    (Effects::new(), None, QueueKind::Control)
                 }
                 Some(ControlAnnouncement::ShutdownForUpgrade) => {
-                    (Effects::new(), Some(ExitCode::Success))
+                    (Effects::new(), Some(ExitCode::Success), QueueKind::Control)
                 }
                 Some(ControlAnnouncement::FatalError { file, line, msg }) => {
                     error!(%file, %line, %msg, "fatal error via control announcement");
-                    (Effects::new(), Some(ExitCode::Abort))
+                    (Effects::new(), Some(ExitCode::Abort), QueueKind::Control)
                 }
                 Some(ControlAnnouncement::QueueDumpRequest {
                     dump_format,
@@ -635,13 +639,14 @@ where
                     finished.respond(()).await;
 
                     // Do nothing on queue dump otherwise.
-                    (Effects::new(), None)
+                    (Default::default(), None, QueueKind::Control)
                 }
             }
         } else {
             (
                 self.reactor.dispatch_event(effect_builder, rng, event),
                 None,
+                queue_kind,
             )
         };
 
@@ -661,6 +666,7 @@ where
             NonZeroU64::new(self.current_event_id),
             self.scheduler,
             effects,
+            queue_kind,
         )
         .in_current_span()
         .await;
@@ -771,7 +777,7 @@ where
 
         let effects = create_effects(effect_builder);
 
-        process_effects(None, self.scheduler, effects)
+        process_effects(None, self.scheduler, effects, QueueKind::ProcessInjected)
             .instrument(debug_span!(
                 "process injected effects",
                 ev = self.current_event_id
@@ -835,7 +841,7 @@ impl Runner<main_reactor::MainReactor> {
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
-        process_effects(None, scheduler, initial_effects)
+        process_effects(None, scheduler, initial_effects, QueueKind::Regular)
             .instrument(span)
             .await;
 
@@ -868,12 +874,10 @@ async fn process_effects<Ev>(
     ancestor: Option<NonZeroU64>,
     scheduler: &'static Scheduler<Ev>,
     effects: Effects<Ev>,
+    queue_kind: QueueKind,
 ) where
     Ev: Send + 'static,
 {
-    // TODO: Properly carry around priorities.
-    let queue_kind = QueueKind::default();
-
     for effect in effects {
         tokio::spawn(async move {
             for event in effect.await {

@@ -87,6 +87,7 @@ pub(crate) trait FetcherItem: Item {
 pub(crate) trait GossiperItem: Item {
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool;
 
     /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
     fn target(&self) -> GossipTarget;

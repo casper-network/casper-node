@@ -759,7 +759,7 @@ mod tests {
         scheduler
             .push(
                 MainEvent::Network(small_network::Event::GossipOurAddress),
-                QueueKind::Regular,
+                QueueKind::Gossip,
             )
             .await;
 

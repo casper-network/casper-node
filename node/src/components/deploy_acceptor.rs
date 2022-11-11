@@ -8,7 +8,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::{
@@ -854,7 +854,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        trace!(?event, "DeployAcceptor: handling event");
         match event {
             Event::Accept {
                 deploy,

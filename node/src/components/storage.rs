@@ -1198,7 +1198,11 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;
-
+        debug!(
+            "Storage: marked block {} complete: {}",
+            block_height,
+            self.get_available_block_range()
+        );
         Ok(responder.respond(()).ignore())
     }
 
@@ -1845,14 +1849,14 @@ impl Storage {
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
+        era_depth: u8,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
-        let mut current_trusted_block_header = trusted_block_header.clone();
-
-        if current_trusted_block_header.era_id().is_genesis() {
+        if era_depth == 0 || trusted_block_header.is_genesis() {
             return Ok(Some(vec![]));
         }
-
+        let mut depth = 0;
         let mut result = vec![];
+        let mut current_trusted_block_header = trusted_block_header.clone();
         loop {
             let parent_hash = current_trusted_block_header.parent_hash();
             let parent_block_header: BlockHeader =
@@ -1863,14 +1867,15 @@ impl Storage {
                         return Ok(None);
                     }
                 };
-
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() {
-                break;
+                depth += 1;
+                if depth >= era_depth || parent_block_header.is_genesis() {
+                    break;
+                }
             }
             current_trusted_block_header = parent_block_header;
         }
-
         Ok(Some(result))
     }
 
@@ -2064,7 +2069,7 @@ impl Storage {
             None => {
                 info!(
                     ?block_header,
-                    "retrieved block header but block body is missing from database"
+                    "get_single_block: retrieved block header but block body is missing from database"
                 );
                 return Ok(None);
             }
@@ -2301,14 +2306,16 @@ impl Storage {
             None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
         };
 
+        let trusted_ancestors_only = sync_leap_identifier.trusted_ancestor_only();
+        let era_depth = if trusted_ancestors_only { 2 } else { 1 };
         let trusted_ancestor_headers =
-            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
+            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header, era_depth)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
 
         // highest block and signatures are not requested
-        if sync_leap_identifier.trusted_ancestor_only() {
+        if trusted_ancestors_only {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: true,
                 trusted_block_header,
@@ -2472,7 +2479,7 @@ impl Storage {
             None => {
                 info!(
                     ?block_header,
-                    "retrieved block header but block body is missing from database"
+                    "read_block_execution_results_or_chunk: retrieved block header but block body is missing from database"
                 );
                 return Ok(None);
             }

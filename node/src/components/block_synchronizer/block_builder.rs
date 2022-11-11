@@ -21,8 +21,9 @@ use crate::{
         signature_acquisition::SignatureAcquisition,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        DeployId, EraValidatorWeights, FinalitySignature, NodeId, SyncLeap, ValidatorMatrix,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
+        BlockSignatures, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, NodeId,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -87,14 +88,14 @@ impl BlockBuilder {
     }
 
     pub(super) fn new_from_sync_leap(
-        sync_leap: &SyncLeap,
+        block_header: &BlockHeader,
+        maybe_sigs: Option<&BlockSignatures>,
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
     ) -> Self {
-        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
         let block_hash = block_header.block_hash();
         let era_id = Some(block_header.era_id());
         let mut signature_acquisition =
@@ -129,7 +130,7 @@ impl BlockBuilder {
     }
 
     pub(super) fn abort(&mut self) {
-        self.acquisition_state = BlockAcquisitionState::Fatal;
+        self.acquisition_state = BlockAcquisitionState::Fatal(self.block_hash, self.block_height());
         self.flush_peers();
         self.touch();
     }
@@ -155,7 +156,7 @@ impl BlockBuilder {
     }
 
     pub(super) fn is_fatal(&self) -> bool {
-        self.acquisition_state == BlockAcquisitionState::Fatal
+        matches!(self.acquisition_state, BlockAcquisitionState::Fatal(_, _))
     }
 
     pub(super) fn is_finished(&self) -> bool {
@@ -316,10 +317,11 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         if let Some(validator_weights) = self.validator_weights.to_owned() {
-            match self
-                .acquisition_state
-                .register_finality_signature(finality_signature, validator_weights)
-            {
+            match self.acquisition_state.register_finality_signature(
+                finality_signature,
+                validator_weights,
+                self.should_fetch_execution_state,
+            ) {
                 Err(error) => {
                     self.disqualify_peer(maybe_peer);
                     return Err(Error::BlockAcquisition(error));
@@ -328,7 +330,7 @@ impl BlockBuilder {
                     self.touch();
                     self.promote_peer(maybe_peer);
                 }
-                Ok(FinalitySignatureAcceptance::Noop) => {
+                Ok(FinalitySignatureAcceptance::HadIt) => {
                     self.touch();
                 }
             }

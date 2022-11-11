@@ -450,7 +450,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 effects
             }
         };
-        if !T::ID_IS_COMPLETE_ITEM {
+        if T::REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT {
             effects.extend(
                 effect_builder
                     .announce_gossip_received(item_id, sender)

@@ -7,7 +7,7 @@ use datasize::DataSize;
 use derive_more::From;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::storage::trie::TrieRaw;
 use casper_hashing::{ChunkWithProof, Digest};
@@ -223,7 +223,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        trace!(?event, "TrieAccumulator: handling event");
         match event {
             Event::Request(TrieAccumulatorRequest {
                 hash,

@@ -328,7 +328,10 @@ impl reactor::Reactor for MainReactor {
             switch_block: None,
             sync_to_historical: config.node.sync_to_genesis,
         };
-
+        info!("MainReactor: instantiated");
+        reactor
+            .event_queue_metrics
+            .record_event_queue_counts(&event_queue);
         let effects = effect_builder
             .immediately()
             .event(|()| MainEvent::ReactorCrank);
@@ -434,8 +437,6 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, req.into()),
-                // req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
-                //     .ignore()
             ),
 
             // NETWORK CONNECTION AND ORIENTATION
@@ -497,30 +498,17 @@ impl reactor::Reactor for MainReactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
-                item_id: gossiped_address,
-                ..
-            }) => {
-                error!(%gossiped_address, "gossiper should not announce gossiped address");
-                Effects::new()
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_address,
-            )) => {
-                let reactor_event =
-                    MainEvent::Network(small_network::Event::PeerAddressReceived(gossiped_address));
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
-                ..
-            }) => {
-                // Should not be reachable.
-                Effects::new()
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
-                // We don't care about completion of gossiping an address.
-                Effects::new()
-            }
+            MainEvent::AddressGossiperAnnouncement(gossiper_ann) => match gossiper_ann {
+                GossiperAnnouncement::GossipReceived { .. }
+                | GossiperAnnouncement::NewItemBody { .. }
+                | GossiperAnnouncement::FinishedGossiping(_) => Effects::new(),
+                GossiperAnnouncement::NewCompleteItem(gossiped_address) => {
+                    let reactor_event = MainEvent::Network(
+                        small_network::Event::PeerAddressReceived(gossiped_address),
+                    );
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+            },
             MainEvent::SyncLeaper(event) => reactor::wrap_effects(
                 MainEvent::SyncLeaper,
                 self.sync_leaper.handle_event(effect_builder, rng, event),
@@ -625,7 +613,7 @@ impl reactor::Reactor for MainReactor {
                     let era_id = block.header().era_id();
                     self.validator_matrix
                         .register_validator_weights(era_id.successor(), validator_weights.clone());
-                    debug!(
+                    info!(
                         "block_accumulator added switch block (notifying components of validator weights at end of: {})",
                         era_id
                     );
@@ -744,7 +732,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_block_id,
             )) => {
-                error!(%gossiped_block_id, "gossiper should not announce new block");
+                warn!(%gossiped_block_id, "gossiper should not announce new block");
                 Effects::new()
             }
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
@@ -819,7 +807,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::FinalitySignatureGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
             ) => {
-                error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
+                warn!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
                 Effects::new()
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(
@@ -904,7 +892,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                warn!(%gossiped_deploy_id, "gossiper should not announce new deploy");
                 Effects::new()
             }
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
@@ -969,7 +957,7 @@ impl reactor::Reactor for MainReactor {
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
                 let is_switch_block = block.header().is_switch_block();
-                debug!(
+                info!(
                     %block_hash,
                     height=block.header().height(),
                     era=block.header().era_id().value(),

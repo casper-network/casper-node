@@ -144,7 +144,9 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
             Some(item_handle) => item_handle.validation_metadata(),
             None => {
                 debug!(item_id = %item.id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
-                return effect_builder
+                return Effects::new();
+                // todo! lets discuss whether its safe to disconnect here
+                //return effect_builder
                     .announce_block_peer_with_justification(
                         peer,
                         BlocklistJustification::SentBadItem { tag: T::TAG },

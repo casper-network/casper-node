@@ -102,7 +102,7 @@ impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        debug!(?event, "FakeDeployAcceptor: handling event");
         match event {
             Event::Accept {
                 deploy,

@@ -566,6 +566,7 @@ impl FetcherItem for Deploy {
 
 impl GossiperItem for Deploy {
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = false;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::All
