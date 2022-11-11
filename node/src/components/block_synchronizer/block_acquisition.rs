@@ -528,8 +528,6 @@ impl BlockAcquisitionState {
                 )
             }
 
-            // we never ask for finality signatures while in these states, thus it's always
-            // erroneous to attempt to apply any
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
@@ -590,8 +588,6 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            // we never ask for deploys in the following states, and thus it is erroneous to attempt
-            // to apply any
             BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::Initialized(..)
@@ -1023,7 +1019,7 @@ impl BlockAcquisitionState {
         &self,
         maybe_block_hash: &Option<BlockHash>,
         signer: &PublicKey,
-        acceptance: &FinalitySignatureAcceptance,
+        acceptance: &Acceptance,
     ) {
         match maybe_block_hash {
             None => {
@@ -1033,14 +1029,14 @@ impl BlockAcquisitionState {
                 );
             }
             Some(block_hash) => match acceptance {
-                FinalitySignatureAcceptance::HadIt => {
+                Acceptance::HadIt => {
                     trace!(
                         "BlockAcquisition: existing finality signature for {:?} from {}",
                         block_hash,
                         signer
                     );
                 }
-                FinalitySignatureAcceptance::NeededIt => {
+                Acceptance::NeededIt => {
                     debug!(
                         "BlockAcquisition: new finality signature for {:?} from {}",
                         block_hash, signer
