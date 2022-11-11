@@ -320,18 +320,20 @@ impl BlockSynchronizer {
             let action = builder.block_acquisition_action(rng);
             let peers = action.peers_to_ask(); // pass this to any fetcher
             let need_next = action.need_next();
-            if false == matches!(need_next, NeedNext::Nothing) {
-                debug!("BlockSynchronizer: need_next: {:?}", need_next);
+            debug!("BlockSynchronizer: {}", need_next);
+            if false == matches!(need_next, NeedNext::Nothing(_)) {
                 builder.set_in_flight_latch(true);
             }
             match need_next {
-                NeedNext::Nothing => {
-                    // currently idle or waiting, check back later
-                    results.extend(
-                        effect_builder
-                            .set_timeout(need_next_interval)
-                            .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
-                    );
+                NeedNext::Nothing(block_hash) => {
+                    if builder.block_hash() == block_hash {
+                        // currently idle or waiting, check back later
+                        results.extend(
+                            effect_builder
+                                .set_timeout(need_next_interval)
+                                .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
+                        );
+                    }
                 }
                 NeedNext::BlockHeader(block_hash) => {
                     results.extend(peers.into_iter().flat_map(|node_id| {
@@ -519,7 +521,7 @@ impl BlockSynchronizer {
         ) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => {
                 debug!(
-                    "BlockSynchronizer: fetched {} from peer {:?}",
+                    "BlockSynchronizer: fetched {} from peer {}",
                     item.hash(),
                     peer
                 );
@@ -669,7 +671,7 @@ impl BlockSynchronizer {
         let execution_results_checksum = match result {
             Ok(Some(digest)) => {
                 debug!(
-                    "BlockSynchronizer: got execution_results_checksum for {:?}",
+                    "BlockSynchronizer: got execution_results_checksum for {}",
                     block_hash
                 );
                 ExecutionResultsChecksum::Checkable(digest)

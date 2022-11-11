@@ -777,7 +777,7 @@ where
 
         let effects = create_effects(effect_builder);
 
-        process_effects(None, self.scheduler, effects, QueueKind::ProcessInjected)
+        process_effects(None, self.scheduler, effects, QueueKind::Regular)
             .instrument(debug_span!(
                 "process injected effects",
                 ev = self.current_event_id
