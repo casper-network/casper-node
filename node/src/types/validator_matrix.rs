@@ -32,6 +32,7 @@ pub(crate) struct ValidatorMatrix {
     finality_threshold_fraction: Ratio<u64>,
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
+    auction_delay: u64,
 }
 
 impl ValidatorMatrix {
@@ -39,6 +40,7 @@ impl ValidatorMatrix {
         finality_threshold_fraction: Ratio<u64>,
         secret_signing_key: Arc<SecretKey>,
         public_signing_key: PublicKey,
+        auction_delay: u64,
     ) -> Self {
         let inner = Arc::new(RwLock::new(BTreeMap::new()));
         ValidatorMatrix {
@@ -46,6 +48,7 @@ impl ValidatorMatrix {
             finality_threshold_fraction,
             secret_signing_key,
             public_signing_key,
+            auction_delay,
         }
     }
 
@@ -67,6 +70,7 @@ impl ValidatorMatrix {
             finality_threshold_fraction,
             public_signing_key,
             secret_signing_key,
+            auction_delay: 2,
         }
     }
 
@@ -137,15 +141,15 @@ impl ValidatorMatrix {
             .map(|validator_weights| validator_weights.is_validator(public_key))
     }
 
-    pub(crate) fn is_validator_in_any_of_latest_n_eras(
-        &self,
-        n: usize,
-        public_key: &PublicKey,
-    ) -> bool {
+    /// Determine if the active validator is in a current or upcoming set of active validators.
+    #[inline]
+    pub(crate) fn is_active_or_upcoming_validator(&self, public_key: &PublicKey) -> bool {
+        // This function is potentially expensive and could be memoized, with the cache being
+        // invalidated when the max value of the `BTreeMap` changes.
         self.read_inner()
             .values()
             .rev()
-            .take(n)
+            .take(self.auction_delay as usize + 1)
             .any(|validator_weights| validator_weights.is_validator(public_key))
     }
 

@@ -202,9 +202,6 @@ tarpit_chance = 0.2
 # How long peers remain blocked after they get blacklisted.
 blocklist_retain_duration = '10min'
 
-# Peer is considered a validator if it was a validator in this number of latest eras.
-eras_to_determine_if_validator = 3
-
 # Identity of a node
 #
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.

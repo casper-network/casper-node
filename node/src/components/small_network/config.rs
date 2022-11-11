@@ -32,9 +32,6 @@ const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
 /// Default timeout during which the handshake needs to be completed.
 const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
-/// Default value for the parameter used for determining if peer is to be considered a validator.
-const DEFAULT_ERAS_TO_DETERMINE_IF_VALIDATOR: usize = 3;
-
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -55,7 +52,6 @@ impl Default for Config {
             tarpit_chance: 0.2,
             max_in_flight_demands: 50,
             blocklist_retain_duration: TimeDiff::from_seconds(600),
-            eras_to_determine_if_validator: DEFAULT_ERAS_TO_DETERMINE_IF_VALIDATOR,
             identity: None,
         }
     }
@@ -115,8 +111,6 @@ pub struct Config {
     pub max_in_flight_demands: u32,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
-    /// Peer is considered a validator if it was a validator in this number of latest eras.
-    pub eras_to_determine_if_validator: usize,
     /// Small network identity configuration option.
     ///
     /// An identity will be automatically generated when starting up a node if this option is

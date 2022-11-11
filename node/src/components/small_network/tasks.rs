@@ -165,7 +165,7 @@ where
             is_peer_syncing: is_syncing,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
-                Span::current().record("validator_id", &field::display(public_key));
+                Span::current().record("consensus_key", &field::display(public_key));
             }
 
             if public_addr != peer_addr {
@@ -364,7 +364,7 @@ where
             is_peer_syncing: _,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
-                Span::current().record("validator_id", &field::display(public_key));
+                Span::current().record("consensus_key", &field::display(public_key));
             }
 
             // Establish full transport and close the receiving end.
@@ -602,7 +602,7 @@ pub(super) async fn server<P, REv>(
                 Ok((stream, peer_addr)) => {
                     // The span setup here is used throughout the entire lifetime of the connection.
                     let span =
-                        error_span!("incoming", %peer_addr, peer_id=Empty, validator_id=Empty);
+                        error_span!("incoming", %peer_addr, peer_id=Empty, consensus_key=Empty);
 
                     let context = context.clone();
                     let handler_span = span.clone();
