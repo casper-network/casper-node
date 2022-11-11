@@ -54,7 +54,6 @@ impl Limiter {
         &self,
         peer_id: NodeId,
         consensus_key: Option<PublicKey>,
-        eras_to_determine_if_validator: usize,
     ) -> LimiterHandle {
         if let Some(public_key) = consensus_key.as_ref().cloned() {
             match self.data.connected_validators.write() {
@@ -75,7 +74,6 @@ impl Limiter {
                 peer_id,
                 consensus_key,
             },
-            eras_to_determine_if_validator,
         }
     }
 
@@ -202,7 +200,6 @@ pub(super) struct LimiterHandle {
     validator_matrix: ValidatorMatrix,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
-    eras_to_determine_if_validator: usize,
 }
 
 impl LimiterHandle {
@@ -219,10 +216,10 @@ impl LimiterHandle {
         }
 
         let peer_class = if let Some(ref public_key) = self.consumer_id.consensus_key {
-            if self.validator_matrix.is_validator_in_any_of_latest_n_eras(
-                self.eras_to_determine_if_validator,
-                public_key,
-            ) {
+            if self
+                .validator_matrix
+                .is_active_or_upcoming_validator(public_key)
+            {
                 PeerClass::Validator
             } else {
                 PeerClass::NonValidator
@@ -350,7 +347,7 @@ mod tests {
             ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
-        let handle = limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3);
+        let handle = limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key));
 
         let start = Instant::now();
         handle.request_allowance(0).await;
@@ -375,8 +372,8 @@ mod tests {
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3),
-            limiter.create_handle(NodeId::random(&mut rng), None, 3),
+            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key)),
+            limiter.create_handle(NodeId::random(&mut rng), None),
         ];
 
         for handle in handles {
@@ -416,9 +413,7 @@ mod tests {
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
-            .map(|_| {
-                limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key.clone()), 3)
-            })
+            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key.clone())))
             .map(|handle| {
                 tokio::spawn(async move {
                     handle.request_allowance(500).await;
@@ -473,8 +468,8 @@ mod tests {
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3),
-            limiter.create_handle(NodeId::random(&mut rng), None, 3),
+            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key)),
+            limiter.create_handle(NodeId::random(&mut rng), None),
         ];
 
         for handle in handles {
@@ -514,9 +509,8 @@ mod tests {
             ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
-        let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None, 3);
-        let validator_handle =
-            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3);
+        let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
+        let validator_handle = limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key));
 
         // We request a large resource at once using a non-validator handle. At the same time,
         // validator requests should be still served, even while waiting for the long-delayed
