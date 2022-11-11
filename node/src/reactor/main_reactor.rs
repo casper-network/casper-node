@@ -168,6 +168,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.highway_config.finality_threshold_fraction,
             our_secret_key.clone(),
             our_public_key.clone(),
+            chainspec.core_config.auction_delay,
         );
 
         let storage_config = WithDir::new(&root_dir, config.storage.clone());

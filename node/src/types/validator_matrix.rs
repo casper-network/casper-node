@@ -32,7 +32,7 @@ pub(crate) struct ValidatorMatrix {
     finality_threshold_fraction: Ratio<u64>,
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
-    auction_delay: i64,
+    auction_delay: u64,
 }
 
 impl ValidatorMatrix {
@@ -40,6 +40,7 @@ impl ValidatorMatrix {
         finality_threshold_fraction: Ratio<u64>,
         secret_signing_key: Arc<SecretKey>,
         public_signing_key: PublicKey,
+        auction_delay: u64,
     ) -> Self {
         let inner = Arc::new(RwLock::new(BTreeMap::new()));
         ValidatorMatrix {
@@ -47,7 +48,7 @@ impl ValidatorMatrix {
             finality_threshold_fraction,
             secret_signing_key,
             public_signing_key,
-            auction_delay: todo!("add parameter to ::new"),
+            auction_delay,
         }
     }
 

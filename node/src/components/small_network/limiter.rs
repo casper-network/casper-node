@@ -463,6 +463,7 @@ mod tests {
                 Ratio::new(1, 3),
                 Arc::new(secret_key),
                 consensus_key.clone(),
+                2,
             ),
         );
 
