@@ -329,9 +329,6 @@ impl reactor::Reactor for MainReactor {
             sync_to_historical: config.node.sync_to_genesis,
         };
         info!("MainReactor: instantiated");
-        reactor
-            .event_queue_metrics
-            .record_event_queue_counts(&event_queue);
         let effects = effect_builder
             .immediately()
             .event(|()| MainEvent::ReactorCrank);
@@ -613,7 +610,7 @@ impl reactor::Reactor for MainReactor {
                     let era_id = block.header().era_id();
                     self.validator_matrix
                         .register_validator_weights(era_id.successor(), validator_weights.clone());
-                    info!(
+                    debug!(
                         "block_accumulator added switch block (notifying components of validator weights at end of: {})",
                         era_id
                     );
