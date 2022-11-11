@@ -47,7 +47,7 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> Effects<MainEvent> {
         if self.attempts > self.max_attempts {
-            return utils::new_shutdown_effect("exceeded reattempt tolerance");
+            return fatal!(effect_builder, "exceeded reattempt tolerance").ignore();
         }
         let (delay, mut effects) = self.do_crank(effect_builder, rng);
         effects.extend(
@@ -80,8 +80,13 @@ impl MainReactor {
                 }
             },
             ReactorState::CatchUp => match self.catch_up_instruction(effect_builder, rng) {
-                CatchUpInstruction::Shutdown(msg) => {
-                    (Duration::ZERO, utils::new_shutdown_effect(msg))
+                CatchUpInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                }
+                CatchUpInstruction::ShutdownForUpgrade => {
+                    info!("CatchUp: shutting down for upgrade");
+                    self.state = ReactorState::ShutdownForUpgrade;
+                    (Duration::ZERO, Effects::new())
                 }
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
                     Ok(effects) => {
@@ -118,14 +123,6 @@ impl MainReactor {
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
                 }
-                CatchUpInstruction::Fatal(msg) => {
-                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
-                }
-                CatchUpInstruction::ShutdownForUpgrade => {
-                    info!("CatchUp: shutting down for upgrade");
-                    self.state = ReactorState::ShutdownForUpgrade;
-                    (Duration::ZERO, Effects::new())
-                }
             },
             ReactorState::Upgrading => match self.upgrading_instruction() {
                 UpgradingInstruction::CheckLater(msg, wait) => {
@@ -143,12 +140,12 @@ impl MainReactor {
             },
             ReactorState::KeepUp => {
                 match self.keep_up_instruction(effect_builder, rng) {
-                    KeepUpInstruction::Shutdown(msg) => {
-                        (Duration::ZERO, utils::new_shutdown_effect(msg))
+                    KeepUpInstruction::Fatal(msg) => {
+                        (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                     }
-                    KeepUpInstruction::CatchUp => {
-                        info!("KeepUp: switch to CatchUp");
-                        self.state = ReactorState::CatchUp;
+                    KeepUpInstruction::ShutdownForUpgrade => {
+                        info!("KeepUp: switch to ShutdownForUpgrade");
+                        self.state = ReactorState::ShutdownForUpgrade;
                         (Duration::ZERO, Effects::new())
                     }
                     KeepUpInstruction::CheckLater(msg, wait) => {
@@ -159,6 +156,11 @@ impl MainReactor {
                         debug!("KeepUp: node is processing effects");
                         (wait, effects)
                     }
+                    KeepUpInstruction::CatchUp => {
+                        info!("KeepUp: switch to CatchUp");
+                        self.state = ReactorState::CatchUp;
+                        (Duration::ZERO, Effects::new())
+                    }
                     KeepUpInstruction::Validate(effects) => {
                         // node is in validator set and consensus has what it needs to validate
                         info!("KeepUp: switch to Validate");
@@ -166,21 +168,15 @@ impl MainReactor {
                         self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
-                    KeepUpInstruction::ShutdownForUpgrade => {
-                        info!("KeepUp: switch to ShutdownForUpgrade");
-                        self.state = ReactorState::ShutdownForUpgrade;
-                        (Duration::ZERO, Effects::new())
-                    }
-                    KeepUpInstruction::Fatal(msg) => {
-                        (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
-                    }
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
-                ValidateInstruction::KeepUp => {
-                    info!("Validate: switch to KeepUp");
-                    self.state = ReactorState::KeepUp;
-                    self.block_synchronizer.resume();
+                ValidateInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                }
+                ValidateInstruction::ShutdownForUpgrade => {
+                    info!("Validate: switch to ShutdownForUpgrade");
+                    self.state = ReactorState::ShutdownForUpgrade;
                     (Duration::ZERO, Effects::new())
                 }
                 ValidateInstruction::NonSwitchBlock => {
@@ -194,13 +190,11 @@ impl MainReactor {
                     trace!("Validate: node is processing effects");
                     (wait, effects)
                 }
-                ValidateInstruction::ShutdownForUpgrade => {
-                    info!("Validate: switch to ShutdownForUpgrade");
-                    self.state = ReactorState::ShutdownForUpgrade;
+                ValidateInstruction::KeepUp => {
+                    info!("Validate: switch to KeepUp");
+                    self.state = ReactorState::KeepUp;
+                    self.block_synchronizer.resume();
                     (Duration::ZERO, Effects::new())
-                }
-                ValidateInstruction::Fatal(msg) => {
-                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
             },
             ReactorState::ShutdownForUpgrade => {
@@ -738,7 +732,7 @@ impl MainReactor {
         let historical_progress = self.block_synchronizer.historical_progress();
         self.update_last_progress(&historical_progress, "Historical");
         match self.maybe_parent_block_identifier(&historical_progress) {
-            Err(msg) => KeepUpInstruction::Shutdown(msg),
+            Err(msg) => KeepUpInstruction::Fatal(msg),
             Ok(None) => KeepUpInstruction::CheckLater(
                 format!("Historical: syncing {:?}", historical_progress),
                 self.control_logic_default_delay.into(),
@@ -771,9 +765,9 @@ impl MainReactor {
                                 }
                                 error!("Historical: sync leap failed: {:?}", error);
                             }
-                            let peers_to_ask = self.small_network.peers_random_vec(
+                            let peers_to_ask = self.small_network.fully_connected_peers_random(
                                 rng,
-                                self.chainspec.core_config.simultaneous_peer_requests,
+                                self.chainspec.core_config.simultaneous_peer_requests as usize,
                             );
                             let sync_leap_identifier =
                                 SyncLeapIdentifier::sync_to_historical(parent_hash);
@@ -823,9 +817,9 @@ impl MainReactor {
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
                     debug!("Historical: register_block_by_hash: {:?}", parent_hash);
-                    let peers_to_ask = self.small_network.peers_random_vec(
+                    let peers_to_ask = self.small_network.fully_connected_peers_random(
                         rng,
-                        self.chainspec.core_config.simultaneous_peer_requests,
+                        self.chainspec.core_config.simultaneous_peer_requests as usize,
                     );
                     debug!("Historical: peers count: {:?}", peers_to_ask.len());
                     self.block_synchronizer

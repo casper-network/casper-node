@@ -379,17 +379,6 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            BlockAcquisitionState::HaveWeakFinalitySignatures(header, acquired_signatures)
-            | BlockAcquisitionState::HaveAllDeploys(header, acquired_signatures) => {
-                let added = acquired_signatures.apply_signature(signature);
-                debug!(
-                    "BlockAcquisition: registering finality signature of {} for {}, added: {}",
-                    signer,
-                    header.block_hash(),
-                    added
-                );
-                return Ok(FinalitySignatureAcceptance::Noop);
-            }
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, deploy_acquisition) => {
                 maybe_block_hash = Some(block.id());
                 added = acquired_signatures.apply_signature(signature);
