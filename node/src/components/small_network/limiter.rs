@@ -49,14 +49,14 @@ impl Limiter {
         }
     }
 
-    /// Create a handle for a connection using the given peer and optional validator id.
+    /// Create a handle for a connection using the given peer and optional consensus key.
     pub(super) fn create_handle(
         &self,
         peer_id: NodeId,
-        validator_id: Option<PublicKey>,
+        consensus_key: Option<PublicKey>,
         eras_to_determine_if_validator: usize,
     ) -> LimiterHandle {
-        if let Some(public_key) = validator_id.as_ref().cloned() {
+        if let Some(public_key) = consensus_key.as_ref().cloned() {
             match self.data.connected_validators.write() {
                 Ok(mut connected_validators) => {
                     let _ = connected_validators.insert(peer_id, public_key);
@@ -73,7 +73,7 @@ impl Limiter {
             validator_matrix: self.validator_matrix.clone(),
             consumer_id: ConsumerId {
                 peer_id,
-                validator_id,
+                consensus_key,
             },
             eras_to_determine_if_validator,
         }
@@ -218,10 +218,10 @@ impl LimiterHandle {
             return;
         }
 
-        let peer_class = if let Some(ref validator_id) = self.consumer_id.validator_id {
+        let peer_class = if let Some(ref public_key) = self.consumer_id.consensus_key {
             if self.validator_matrix.is_validator_in_any_of_latest_n_eras(
                 self.eras_to_determine_if_validator,
-                validator_id,
+                public_key,
             ) {
                 PeerClass::Validator
             } else {
@@ -295,8 +295,8 @@ struct ConsumerId {
     /// The peer's ID.
     #[allow(dead_code)]
     peer_id: NodeId,
-    /// The remote node's `validator_id`.
-    validator_id: Option<PublicKey>,
+    /// The remote node's public consensus key.
+    consensus_key: Option<PublicKey>,
 }
 
 #[cfg(test)]
@@ -343,14 +343,14 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let secret_key = SecretKey::random(&mut rng);
-        let validator_id = PublicKey::from(&secret_key);
+        let consensus_key = PublicKey::from(&secret_key);
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
-        let handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3);
+        let handle = limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3);
 
         let start = Instant::now();
         handle.request_allowance(0).await;
@@ -366,16 +366,16 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let secret_key = SecretKey::random(&mut rng);
-        let validator_id = PublicKey::from(&secret_key);
+        let consensus_key = PublicKey::from(&secret_key);
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3),
+            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3),
             limiter.create_handle(NodeId::random(&mut rng), None, 3),
         ];
 
@@ -402,7 +402,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let secret_key = SecretKey::random(&mut rng);
-        let validator_id = PublicKey::from(&secret_key);
+        let consensus_key = PublicKey::from(&secret_key);
         let wait_metric = new_wait_time_sec();
 
         let start = Instant::now();
@@ -410,13 +410,15 @@ mod tests {
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
-            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(validator_id.clone()), 3))
+            .map(|_| {
+                limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key.clone()), 3)
+            })
             .map(|handle| {
                 tokio::spawn(async move {
                     handle.request_allowance(500).await;
@@ -457,17 +459,21 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let secret_key = SecretKey::random(&mut rng);
-        let validator_id = PublicKey::from(&secret_key);
+        let consensus_key = PublicKey::from(&secret_key);
         let wait_metric = new_wait_time_sec();
         let limiter = Limiter::new(
             1_000,
             wait_metric.clone(),
-            ValidatorMatrix::new(Ratio::new(1, 3), Arc::new(secret_key), validator_id.clone()),
+            ValidatorMatrix::new(
+                Ratio::new(1, 3),
+                Arc::new(secret_key),
+                consensus_key.clone(),
+            ),
         );
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3),
+            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3),
             limiter.create_handle(NodeId::random(&mut rng), None, 3),
         ];
 
@@ -503,14 +509,14 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let secret_key = SecretKey::random(&mut rng);
-        let validator_id = PublicKey::from(&secret_key);
+        let consensus_key = PublicKey::from(&secret_key);
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), validator_id.clone());
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None, 3);
         let validator_handle =
-            limiter.create_handle(NodeId::random(&mut rng), Some(validator_id), 3);
+            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key), 3);
 
         // We request a large resource at once using a non-validator handle. At the same time,
         // validator requests should be still served, even while waiting for the long-delayed

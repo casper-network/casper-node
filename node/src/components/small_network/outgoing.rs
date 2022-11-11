@@ -392,10 +392,10 @@ where
     if let Some(outgoing) = outgoing {
         match outgoing.state {
             OutgoingState::Connected { peer_id, .. } => {
-                error_span!("outgoing", %addr, state=%outgoing.state, %peer_id, validator_id=Empty)
+                error_span!("outgoing", %addr, state=%outgoing.state, %peer_id, consensus_key=Empty)
             }
             _ => {
-                error_span!("outgoing", %addr, state=%outgoing.state, peer_id=Empty, validator_id=Empty)
+                error_span!("outgoing", %addr, state=%outgoing.state, peer_id=Empty, consensus_key=Empty)
             }
         }
     } else {
