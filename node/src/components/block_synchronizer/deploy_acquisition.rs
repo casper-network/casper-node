@@ -1,12 +1,14 @@
 use std::{
-    cmp::Ord,
+    collections::HashMap,
     fmt::{Display, Formatter},
+    hash::Hash,
 };
 
 use datasize::DataSize;
 use either::Either;
 use tracing::debug;
 
+use super::block_acquisition::Acceptance;
 use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
@@ -15,7 +17,7 @@ pub(crate) enum Error {
     EncounteredNonVacantDeployState,
 }
 
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub(super) enum DeployAcquisition {
     ByHash(Acquisition<DeployHash>),
     ById(Acquisition<DeployId>),
@@ -37,7 +39,7 @@ impl DeployAcquisition {
         DeployAcquisition::ByHash(Acquisition::new(deploy_hashes, need_execution_result))
     }
 
-    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) {
+    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) -> Acceptance {
         match self {
             DeployAcquisition::ByHash(acquisition) => {
                 acquisition.apply_deploy(*deploy_id.deploy_hash())
@@ -52,19 +54,19 @@ impl DeployAcquisition {
     ) -> Result<(), Error> {
         let new_acquisition = match self {
             DeployAcquisition::ByHash(acquisition) => {
-                let mut new_deploy_ids = vec![];
+                let mut new_deploy_ids = HashMap::new();
                 for ((deploy_hash, deploy_state), approvals_hash) in acquisition
                     .inner
-                    .drain(..)
+                    .drain()
                     .zip(approvals_hashes.approvals_hashes())
                 {
                     if !matches!(deploy_state, DeployState::Vacant) {
                         return Err(Error::EncounteredNonVacantDeployState);
                     };
-                    new_deploy_ids.push((
+                    new_deploy_ids.insert(
                         DeployId::new(deploy_hash, *approvals_hash),
                         DeployState::Vacant,
-                    ));
+                    );
                 }
 
                 DeployAcquisition::ById(Acquisition {
@@ -90,20 +92,23 @@ impl DeployAcquisition {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, DataSize, Debug, Default)]
 pub(super) enum DeployState {
     #[default]
     Vacant,
     HaveDeployBody,
 }
 
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(super) struct Acquisition<T> {
-    inner: Vec<(T, DeployState)>,
+#[derive(Clone, DataSize, Debug)]
+pub(super) struct Acquisition<T>
+where
+    T: Hash,
+{
+    inner: HashMap<T, DeployState>,
     need_execution_result: bool,
 }
 
-impl<T: Copy + Ord> Acquisition<T> {
+impl<T: Copy + Eq + Hash> Acquisition<T> {
     fn new(deploy_identifiers: Vec<T>, need_execution_result: bool) -> Self {
         let inner = deploy_identifiers
             .into_iter()
@@ -115,9 +120,16 @@ impl<T: Copy + Ord> Acquisition<T> {
         }
     }
 
-    fn apply_deploy(&mut self, deploy_identifier: T) {
-        self.inner
-            .push((deploy_identifier, DeployState::HaveDeployBody));
+    fn apply_deploy(&mut self, deploy_identifier: T) -> Acceptance {
+        if self
+            .inner
+            .insert(deploy_identifier, DeployState::HaveDeployBody)
+            .is_none()
+        {
+            Acceptance::NeededIt
+        } else {
+            Acceptance::HadIt
+        }
     }
 
     fn needs_deploy(&self) -> Option<T> {

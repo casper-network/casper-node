@@ -282,7 +282,7 @@ where
                         item: trie_or_chunk,
                         peer,
                     }) => {
-                        debug!(?peer, %trie_or_chunk, "got trie or chunk from peer");
+                        debug!(%peer, %trie_or_chunk, "got trie or chunk from peer");
                         self.consume_trie_or_chunk(effect_builder, *trie_or_chunk)
                     }
                 }

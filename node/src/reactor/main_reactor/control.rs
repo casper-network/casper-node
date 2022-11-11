@@ -1081,7 +1081,7 @@ impl MainReactor {
     fn should_commit_upgrade(&self) -> Result<bool, String> {
         let highest_switch_block_header = match &self.switch_block {
             None => {
-                return Err("switch_block should be Some".to_string());
+                return Ok(false);
             }
             Some(header) => header,
         };

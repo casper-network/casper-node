@@ -19,6 +19,8 @@ use crate::{
 pub(crate) enum BlocklistJustification {
     /// Peer sent incorrect item.
     SentBadItem { tag: Tag },
+    /// Peer sent an item which failed validation.
+    SentInvalidItem { tag: Tag, error_msg: String },
     /// A finality signature that was sent is invalid.
     SentBadFinalitySignature {
         /// Error reported by block accumulator.
@@ -76,7 +78,10 @@ impl Display for BlocklistJustification {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BlocklistJustification::SentBadItem { tag } => {
-                write!(f, "sent a {:?} item we couldn't parse", tag)
+                write!(f, "sent a {} we couldn't parse", tag)
+            }
+            BlocklistJustification::SentInvalidItem { tag, error_msg } => {
+                write!(f, "sent a {} which failed validation ({})", tag, error_msg)
             }
             BlocklistJustification::SentBadFinalitySignature { error } => write!(
                 f,

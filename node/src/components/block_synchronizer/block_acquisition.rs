@@ -1,11 +1,10 @@
 use std::{
     collections::HashMap,
-    fmt,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
 };
 
 use datasize::DataSize;
-use derive_more::From;
+use derive_more::{Display, From};
 use either::Either;
 use tracing::{debug, error, info, trace, warn};
 
@@ -110,7 +109,7 @@ impl Display for Error {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub(super) enum BlockAcquisitionState {
     Initialized(BlockHash, SignatureAcquisition),
     HaveBlockHeader(Box<BlockHeader>, SignatureAcquisition),
@@ -195,19 +194,13 @@ impl Display for BlockAcquisitionState {
     }
 }
 
-#[derive(Debug)]
-pub(super) enum FinalitySignatureAcceptance {
+#[derive(Debug, Display)]
+#[must_use]
+pub(super) enum Acceptance {
+    #[display(fmt = "had it")]
     HadIt,
+    #[display(fmt = "needed it")]
     NeededIt,
-}
-
-impl Display for FinalitySignatureAcceptance {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            FinalitySignatureAcceptance::HadIt => write!(f, "had it"),
-            FinalitySignatureAcceptance::NeededIt => write!(f, "needed it"),
-        }
-    }
 }
 
 impl BlockAcquisitionState {
@@ -227,7 +220,7 @@ impl BlockAcquisitionState {
         }
     }
 
-    pub(super) fn register_header(&mut self, header: BlockHeader) -> Result<(), Error> {
+    pub(super) fn register_header(&mut self, header: BlockHeader) -> Result<Acceptance, Error> {
         let new_state = match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
                 if header.id() == *block_hash {
@@ -250,17 +243,17 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::Fatal(..) => return Ok(()),
+            | BlockAcquisitionState::Fatal(..) => return Ok(Acceptance::HadIt),
         };
         self.set_state(new_state);
-        Ok(())
+        Ok(Acceptance::NeededIt)
     }
 
     pub(super) fn register_approvals_hashes(
         &mut self,
         approvals_hashes: &ApprovalsHashes,
         need_execution_state: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<Acceptance, Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveBlock(block, signatures, acquired)
                 if !need_execution_state =>
@@ -303,18 +296,18 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::Fatal(..) => {
-                return Ok(());
+                return Ok(Acceptance::HadIt);
             }
         };
         self.set_state(new_state);
-        Ok(())
+        Ok(Acceptance::NeededIt)
     }
 
     pub(super) fn register_block(
         &mut self,
         block: &Block,
         need_execution_state: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<Acceptance, Error> {
         let new_state = match self {
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, signatures) => {
                 let expected_block_hash = header.block_hash();
@@ -348,19 +341,19 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal(..) => {
-                return Ok(());
+                return Ok(Acceptance::HadIt);
             }
         };
         self.set_state(new_state);
-        Ok(())
+        Ok(Acceptance::NeededIt)
     }
 
     pub(super) fn register_finality_signature(
         &mut self,
         signature: FinalitySignature,
-        validator_weights: EraValidatorWeights,
+        validator_weights: &EraValidatorWeights,
         need_execution_results: bool,
-    ) -> Result<FinalitySignatureAcceptance, Error> {
+    ) -> Result<Acceptance, Error> {
         let signer = signature.public_key.clone();
         let mut added = false;
         let mut maybe_block_hash: Option<BlockHash> = None;
@@ -457,9 +450,9 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::Fatal(..) => None,
         };
         let ret = if added {
-            FinalitySignatureAcceptance::NeededIt
+            Acceptance::NeededIt
         } else {
-            FinalitySignatureAcceptance::HadIt
+            Acceptance::HadIt
         };
         trace!(
             "BlockAcquisition: finality signature for {:?} from {} ({})",
@@ -535,21 +528,24 @@ impl BlockAcquisitionState {
         &mut self,
         deploy_id: DeployId,
         need_execution_state: bool,
-    ) -> Result<(), Error> {
-        let new_state = match self {
+    ) -> Result<Acceptance, Error> {
+        let (new_state, acceptance) = match self {
             BlockAcquisitionState::HaveBlock(block, signatures, deploys)
                 if !need_execution_state =>
             {
                 info!("BlockAcquisition: registering deploy for: {}", block.id());
-                deploys.apply_deploy(deploy_id);
+                let acceptance = deploys.apply_deploy(deploy_id);
                 match deploys.needs_deploy() {
-                    None => BlockAcquisitionState::HaveAllDeploys(
-                        Box::new(block.header().clone()),
-                        signatures.clone(),
-                    ),
+                    None => {
+                        let new_state = BlockAcquisitionState::HaveAllDeploys(
+                            Box::new(block.header().clone()),
+                            signatures.clone(),
+                        );
+                        (new_state, acceptance)
+                    }
                     Some(_) => {
                         // Should not change state.
-                        return Ok(());
+                        return Ok(acceptance);
                     }
                 }
             }
@@ -557,15 +553,18 @@ impl BlockAcquisitionState {
                 if need_execution_state =>
             {
                 info!("BlockAcquisition: registering deploy for: {}", block.id());
-                deploys.apply_deploy(deploy_id);
+                let acceptance = deploys.apply_deploy(deploy_id);
                 match deploys.needs_deploy() {
-                    None => BlockAcquisitionState::HaveAllDeploys(
-                        Box::new(block.header().clone()),
-                        signatures.clone(),
-                    ),
+                    None => {
+                        let new_state = BlockAcquisitionState::HaveAllDeploys(
+                            Box::new(block.header().clone()),
+                            signatures.clone(),
+                        );
+                        (new_state, acceptance)
+                    }
                     Some(_) => {
                         // Should not change state.
-                        return Ok(());
+                        return Ok(acceptance);
                     }
                 }
             }
@@ -581,11 +580,11 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::Fatal(..) => {
-                return Ok(());
+                return Ok(Acceptance::HadIt);
             }
         };
         self.set_state(new_state);
-        Ok(())
+        Ok(acceptance)
     }
 
     pub(super) fn register_global_state(
@@ -988,10 +987,12 @@ impl BlockAcquisitionState {
                     signatures,
                 ))
             }
-            BlockAcquisitionState::HaveStrictFinalitySignatures(..) => {
-                Ok(BlockAcquisitionAction::noop())
+            BlockAcquisitionState::HaveStrictFinalitySignatures(header, ..) => {
+                Ok(BlockAcquisitionAction::noop(header.block_hash()))
             }
-            BlockAcquisitionState::Fatal(..) => Ok(BlockAcquisitionAction::noop()),
+            BlockAcquisitionState::Fatal(block_hash, ..) => {
+                Ok(BlockAcquisitionAction::noop(*block_hash))
+            }
         };
         next_action
     }
@@ -1020,10 +1021,10 @@ impl BlockAcquisitionAction {
         self.peers_to_ask.to_vec()
     }
 
-    pub(super) fn noop() -> Self {
+    pub(super) fn noop(block_hash: BlockHash) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::Nothing,
+            need_next: NeedNext::Nothing(block_hash),
         }
     }
 

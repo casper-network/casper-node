@@ -6,20 +6,16 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, trace};
 
-use crate::components::block_synchronizer::{
-    block_acquisition,
-    block_acquisition::{BlockAcquisitionAction, BlockAcquisitionState},
-};
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
+use super::{
+    block_acquisition::{self, Acceptance, BlockAcquisitionAction, BlockAcquisitionState},
+    execution_results_acquisition::ExecutionResultsChecksum,
+    peer_list::{PeerList, PeersStatus},
+    signature_acquisition::SignatureAcquisition,
+};
 use crate::{
-    components::block_synchronizer::{
-        block_acquisition::FinalitySignatureAcceptance,
-        execution_results_acquisition::ExecutionResultsChecksum,
-        peer_list::{PeerList, PeersStatus},
-        signature_acquisition::SignatureAcquisition,
-    },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, NodeId,
@@ -201,7 +197,7 @@ impl BlockBuilder {
     pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
         if self.in_flight_latch() {
             debug!("BlockSynchronizer pending response");
-            return BlockAcquisitionAction::noop();
+            return BlockAcquisitionAction::noop(self.block_hash);
         }
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
@@ -244,7 +240,7 @@ impl BlockBuilder {
             Err(err) => {
                 error!(%err);
                 self.abort();
-                BlockAcquisitionAction::noop()
+                BlockAcquisitionAction::noop(self.block_hash)
             }
         }
     }
@@ -267,13 +263,9 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let era_id = block_header.era_id();
-        if let Err(error) = self.acquisition_state.register_header(block_header) {
-            self.disqualify_peer(maybe_peer);
-            return Err(Error::BlockAcquisition(error));
-        }
+        let acceptance = self.acquisition_state.register_header(block_header);
+        self.handle_acceptance(maybe_peer, acceptance)?;
         self.era_id = Some(era_id);
-        self.touch();
-        self.promote_peer(maybe_peer);
         Ok(())
     }
 
@@ -282,16 +274,10 @@ impl BlockBuilder {
         block: &Block,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Err(error) = self
+        let acceptance = self
             .acquisition_state
-            .register_block(block, self.should_fetch_execution_state)
-        {
-            self.disqualify_peer(maybe_peer);
-            return Err(Error::BlockAcquisition(error));
-        }
-        self.touch();
-        self.promote_peer(maybe_peer);
-        Ok(())
+            .register_block(block, self.should_fetch_execution_state);
+        self.handle_acceptance(maybe_peer, acceptance)
     }
 
     pub(super) fn register_approvals_hashes(
@@ -299,16 +285,10 @@ impl BlockBuilder {
         approvals_hashes: &ApprovalsHashes,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Err(error) = self
+        let acceptance = self
             .acquisition_state
-            .register_approvals_hashes(approvals_hashes, self.should_fetch_execution_state)
-        {
-            self.disqualify_peer(maybe_peer);
-            return Err(Error::BlockAcquisition(error));
-        }
-        self.touch();
-        self.promote_peer(maybe_peer);
-        Ok(())
+            .register_approvals_hashes(approvals_hashes, self.should_fetch_execution_state);
+        self.handle_acceptance(maybe_peer, acceptance)
     }
 
     pub(super) fn register_finality_signature(
@@ -316,28 +296,16 @@ impl BlockBuilder {
         finality_signature: FinalitySignature,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Some(validator_weights) = self.validator_weights.to_owned() {
-            match self.acquisition_state.register_finality_signature(
-                finality_signature,
-                validator_weights,
-                self.should_fetch_execution_state,
-            ) {
-                Err(error) => {
-                    self.disqualify_peer(maybe_peer);
-                    return Err(Error::BlockAcquisition(error));
-                }
-                Ok(FinalitySignatureAcceptance::NeededIt) => {
-                    self.touch();
-                    self.promote_peer(maybe_peer);
-                }
-                Ok(FinalitySignatureAcceptance::HadIt) => {
-                    self.touch();
-                }
-            }
-            Ok(())
-        } else {
-            Err(Error::MissingValidatorWeights(self.block_hash))
-        }
+        let validator_weights = self
+            .validator_weights
+            .as_ref()
+            .ok_or(Error::MissingValidatorWeights(self.block_hash))?;
+        let acceptance = self.acquisition_state.register_finality_signature(
+            finality_signature,
+            validator_weights,
+            self.should_fetch_execution_state,
+        );
+        self.handle_acceptance(maybe_peer, acceptance)
     }
 
     pub(super) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
@@ -408,16 +376,10 @@ impl BlockBuilder {
         deploy_id: DeployId,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        if let Err(error) = self
+        let acceptance = self
             .acquisition_state
-            .register_deploy(deploy_id, self.should_fetch_execution_state)
-        {
-            self.disqualify_peer(maybe_peer);
-            return Err(Error::BlockAcquisition(error));
-        }
-        self.touch();
-        self.promote_peer(maybe_peer);
-        Ok(())
+            .register_deploy(deploy_id, self.should_fetch_execution_state);
+        self.handle_acceptance(maybe_peer, acceptance)
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
@@ -427,6 +389,25 @@ impl BlockBuilder {
             }
         });
         self.touch();
+    }
+
+    fn handle_acceptance(
+        &mut self,
+        maybe_peer: Option<NodeId>,
+        acceptance: Result<Acceptance, block_acquisition::Error>,
+    ) -> Result<(), Error> {
+        match acceptance {
+            Ok(Acceptance::NeededIt) => {
+                self.touch();
+                self.promote_peer(maybe_peer);
+            }
+            Ok(Acceptance::HadIt) => (),
+            Err(error) => {
+                self.disqualify_peer(maybe_peer);
+                return Err(Error::BlockAcquisition(error));
+            }
+        }
+        Ok(())
     }
 
     fn flush_peers(&mut self) {
