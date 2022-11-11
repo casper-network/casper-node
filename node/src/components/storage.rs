@@ -2307,7 +2307,7 @@ impl Storage {
         };
 
         let trusted_ancestors_only = sync_leap_identifier.trusted_ancestor_only();
-        let era_depth = if trusted_ancestors_only { 2 } else { 1 };
+        let era_depth = sync_leap_identifier.trusted_ancestor_era_count();
         let trusted_ancestor_headers =
             match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header, era_depth)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,

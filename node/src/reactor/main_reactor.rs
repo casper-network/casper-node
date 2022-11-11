@@ -729,7 +729,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_block_id,
             )) => {
-                warn!(%gossiped_block_id, "gossiper should not announce new block");
+                error!(%gossiped_block_id, "gossiper should not announce new block");
                 Effects::new()
             }
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
@@ -804,7 +804,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::FinalitySignatureGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_finality_signature_id),
             ) => {
-                warn!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
+                error!(%gossiped_finality_signature_id, "gossiper should not announce new finality signature");
                 Effects::new()
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(
@@ -889,7 +889,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
-                warn!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
                 Effects::new()
             }
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {

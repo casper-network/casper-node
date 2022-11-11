@@ -77,6 +77,14 @@ impl SyncLeapIdentifier {
     pub(crate) fn trusted_ancestor_only(&self) -> bool {
         self.trusted_ancestor_only
     }
+
+    pub(crate) fn trusted_ancestor_era_count(&self) -> u8 {
+        if self.trusted_ancestor_only {
+            2
+        } else {
+            1
+        }
+    }
 }
 
 impl Display for SyncLeapIdentifier {
@@ -205,7 +213,8 @@ impl FetcherItem for SyncLeap {
         {
             return Err(SyncLeapValidationError::TooManySwitchBlocks);
         }
-        if self.trusted_ancestor_headers.len() as u64 > chainspec.max_blocks_per_era() {
+        let era_count = self.id().trusted_ancestor_era_count() as u64;
+        if self.trusted_ancestor_headers.len() as u64 > era_count * chainspec.max_blocks_per_era() {
             return Err(SyncLeapValidationError::TooManyTrustedAncestors);
         }
         if self.trusted_ancestor_only && !self.signed_block_headers.is_empty() {
