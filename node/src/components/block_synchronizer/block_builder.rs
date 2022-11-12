@@ -51,7 +51,7 @@ pub(super) struct BlockBuilder {
 
     // progress tracking
     last_progress: Timestamp,
-    in_flight_latch: bool,
+    in_flight_latch: Option<Timestamp>,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -79,7 +79,7 @@ impl BlockBuilder {
             should_fetch_execution_state,
             requires_strict_finality,
             last_progress: Timestamp::now(),
-            in_flight_latch: false,
+            in_flight_latch: None,
         }
     }
 
@@ -121,7 +121,7 @@ impl BlockBuilder {
             should_fetch_execution_state,
             requires_strict_finality,
             last_progress: Timestamp::now(),
-            in_flight_latch: false,
+            in_flight_latch: None,
         }
     }
 
@@ -143,12 +143,19 @@ impl BlockBuilder {
         self.last_progress
     }
 
-    pub(super) fn in_flight_latch(&self) -> bool {
+    pub(super) fn in_flight_latch(&mut self) -> Option<Timestamp> {
+        if let Some(timestamp) = self.in_flight_latch {
+            // !todo move reset interval to config
+            let latch_reset_interval = TimeDiff::from_seconds(5);
+            if Timestamp::now().saturating_diff(timestamp) > latch_reset_interval {
+                self.in_flight_latch = None;
+            }
+        }
         self.in_flight_latch
     }
 
-    pub(super) fn set_in_flight_latch(&mut self, in_flight_latch: bool) {
-        self.in_flight_latch = in_flight_latch;
+    pub(super) fn set_in_flight_latch(&mut self) {
+        self.in_flight_latch = Some(Timestamp::now());
     }
 
     pub(super) fn is_fatal(&self) -> bool {
@@ -195,10 +202,6 @@ impl BlockBuilder {
     }
 
     pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
-        if self.in_flight_latch() {
-            debug!("BlockSynchronizer pending response");
-            return BlockAcquisitionAction::noop(self.block_hash);
-        }
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
                 trace!(
@@ -240,7 +243,7 @@ impl BlockBuilder {
             Err(err) => {
                 error!(%err);
                 self.abort();
-                BlockAcquisitionAction::noop(self.block_hash)
+                BlockAcquisitionAction::need_nothing(self.block_hash)
             }
         }
     }
@@ -416,6 +419,6 @@ impl BlockBuilder {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
-        self.set_in_flight_latch(false);
+        self.in_flight_latch = None;
     }
 }

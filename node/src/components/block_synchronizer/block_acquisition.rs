@@ -1006,10 +1006,10 @@ impl BlockAcquisitionState {
                 ))
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(header, ..) => {
-                Ok(BlockAcquisitionAction::noop(header.block_hash()))
+                Ok(BlockAcquisitionAction::need_nothing(header.block_hash()))
             }
             BlockAcquisitionState::Fatal(block_hash, ..) => {
-                Ok(BlockAcquisitionAction::noop(*block_hash))
+                Ok(BlockAcquisitionAction::need_nothing(*block_hash))
             }
         };
         next_action
@@ -1070,7 +1070,7 @@ impl BlockAcquisitionAction {
         self.peers_to_ask.to_vec()
     }
 
-    pub(super) fn noop(block_hash: BlockHash) -> Self {
+    pub(super) fn need_nothing(block_hash: BlockHash) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
             need_next: NeedNext::Nothing(block_hash),
@@ -1187,7 +1187,7 @@ impl BlockAcquisitionAction {
         {
             return BlockAcquisitionAction {
                 peers_to_ask: vec![],
-                need_next: NeedNext::MarkComplete(block_hash, block_height),
+                need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
             };
         }
         BlockAcquisitionAction {

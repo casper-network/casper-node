@@ -50,5 +50,5 @@ pub(crate) enum NeedNext {
         ExecutionResultsChecksum,
     ),
     #[display(fmt = "need next for {}: mark complete (height {})", _0, _1)]
-    MarkComplete(BlockHash, u64),
+    BlockMarkedComplete(BlockHash, u64),
 }

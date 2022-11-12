@@ -317,25 +317,24 @@ impl BlockSynchronizer {
         let need_next_interval = self.need_next_interval.into();
         let mut results = Effects::new();
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
+            if builder.in_flight_latch().is_some() || builder.is_finished() {
+                return;
+            }
             let action = builder.block_acquisition_action(rng);
-            let peers = action.peers_to_ask(); // pass this to any fetcher
+            let peers = action.peers_to_ask();
             let need_next = action.need_next();
             debug!("BlockSynchronizer: {}", need_next);
-            if false == matches!(need_next, NeedNext::Nothing(_)) {
-                builder.set_in_flight_latch(true);
-            }
             match need_next {
-                NeedNext::Nothing(block_hash) => {
-                    if builder.block_hash() == block_hash {
-                        // currently idle or waiting, check back later
-                        results.extend(
-                            effect_builder
-                                .set_timeout(need_next_interval)
-                                .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
-                        );
-                    }
+                NeedNext::Nothing(_) => {
+                    // currently idle or waiting, check back later
+                    results.extend(
+                        effect_builder
+                            .set_timeout(need_next_interval)
+                            .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
+                    );
                 }
                 NeedNext::BlockHeader(block_hash) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<BlockHeader>(block_hash, node_id, EmptyValidationMetadata)
@@ -343,6 +342,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::BlockBody(block_hash) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<Block>(block_hash, node_id, EmptyValidationMetadata)
@@ -350,6 +350,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         validators.iter().flat_map(move |public_key| {
                             let id = FinalitySignatureId {
@@ -364,6 +365,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::GlobalState(block_hash, global_state_root_hash) => {
+                    builder.set_in_flight_latch();
                     results.extend(
                         effect_builder
                             .sync_global_state(
@@ -375,6 +377,7 @@ impl BlockSynchronizer {
                     );
                 }
                 NeedNext::ApprovalsHashes(block_hash, block) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
@@ -382,6 +385,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::ExecutionResultsChecksum(block_hash, global_state_root_hash) => {
+                    builder.set_in_flight_latch();
                     results.extend(
                         effect_builder
                             .get_execution_results_checksum(global_state_root_hash)
@@ -392,6 +396,7 @@ impl BlockSynchronizer {
                     );
                 }
                 NeedNext::DeployByHash(block_hash, deploy_hash) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<LegacyDeploy>(deploy_hash, node_id, EmptyValidationMetadata)
@@ -402,6 +407,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::DeployById(block_hash, deploy_id) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<Deploy>(deploy_id, node_id, EmptyValidationMetadata)
@@ -412,6 +418,7 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::ExecutionResults(block_hash, id, checksum) => {
+                    builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
                             .fetch::<BlockExecutionResultsOrChunk>(id, node_id, checksum)
@@ -421,11 +428,24 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::MarkComplete(block_hash, block_height) => results.extend(
-                    effect_builder
-                        .mark_block_completed(block_height)
-                        .event(move |_| Event::MarkedComplete(block_hash)),
-                ),
+                NeedNext::BlockMarkedComplete(block_hash, block_height) => {
+                    builder.set_in_flight_latch();
+                    results.extend(
+                        effect_builder
+                            .mark_block_completed(block_height)
+                            .event(move |_| Event::MarkBlockCompleted(block_hash)),
+                    )
+                }
+                NeedNext::Peers(block_hash) => {
+                    builder.set_in_flight_latch();
+                    results.extend(
+                        effect_builder
+                            .get_block_accumulated_peers(block_hash)
+                            .event(move |maybe_peers| {
+                                Event::AccumulatedPeers(block_hash, maybe_peers)
+                            }),
+                    )
+                }
                 NeedNext::EraValidators(era_id) => {
                     warn!(
                         "block_synchronizer does not have era_validators for era_id: {}",
@@ -437,25 +457,14 @@ impl BlockSynchronizer {
                             .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
                     )
                 }
-                NeedNext::Peers(block_hash) => results.extend(
-                    effect_builder
-                        .get_block_accumulated_peers(block_hash)
-                        .event(move |maybe_peers| Event::AccumulatedPeers(block_hash, maybe_peers)),
-                ),
             }
         };
 
         if let Some(builder) = &mut self.forward {
-            if builder.in_flight_latch() == false {
-                trace!("BlockSynchronizer: checking forward need_next");
-                builder_needs_next(builder);
-            }
+            builder_needs_next(builder);
         }
         if let Some(builder) = &mut self.historical {
-            if builder.in_flight_latch() == false {
-                trace!("BlockSynchronizer: checking historical need_next");
-                builder_needs_next(builder);
-            }
+            builder_needs_next(builder);
         }
         results
     }
@@ -996,7 +1005,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     Event::AccumulatedPeers(_, None) => self.need_next(effect_builder, rng),
 
                     // do not hook need next; we're finished sync'ing this block
-                    Event::MarkedComplete(block_hash) => {
+                    Event::MarkBlockCompleted(block_hash) => {
                         self.register_marked_complete(&block_hash);
                         Effects::new()
                     }
