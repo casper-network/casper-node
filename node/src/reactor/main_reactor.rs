@@ -276,6 +276,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             highest_block_height_and_era_id,
             chainspec.core_config.unbonding_delay,
+            chainspec.highway_config.min_round_length(),
         );
         let block_synchronizer =
             BlockSynchronizer::new(config.block_synchronizer, validator_matrix.clone());
