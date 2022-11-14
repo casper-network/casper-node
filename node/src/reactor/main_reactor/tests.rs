@@ -16,12 +16,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::{
-        gossiper,
-        network::{self, Identity as NetworkIdentity},
-        storage,
-        upgrade_watcher::NextUpgrade,
-    },
+    components::{gossiper, network, storage, upgrade_watcher::NextUpgrade},
     effect::{
         requests::{ContractRuntimeRequest, DeployBufferRequest, NetworkRequest},
         EffectExt,
@@ -107,7 +102,7 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
-        let genesis_time = Timestamp::now() + 60000.into();
+        let genesis_time = Timestamp::now() + 10000.into();
         info!(
             "creating test chain configuration, genesis: {}",
             genesis_time
@@ -176,21 +171,13 @@ impl TestChain {
         for idx in 0..self.keys.len() {
             info!("creating node {}", idx);
             let cfg = self.create_node_config(idx, first_node_port);
-            let network_identity = NetworkIdentity::with_generated_certs().unwrap();
-
-            // We create an initializer reactor here and run it to completion.
-            let _ = Runner::<MainReactor>::new_with_chainspec(
-                WithDir::new(root.clone(), cfg),
-                Arc::clone(&self.chainspec),
-                Arc::clone(&self.chainspec_raw_bytes),
-                network_identity,
-                rng,
-            )
-            .await?;
-
-            let cfg = self.create_node_config(idx, first_node_port);
             network
-                .add_node_with_config(WithDir::new(root.clone(), cfg), rng)
+                .add_node_with_config_and_chainspec(
+                    WithDir::new(root.clone(), cfg),
+                    Arc::clone(&self.chainspec),
+                    Arc::clone(&self.chainspec_raw_bytes),
+                    rng,
+                )
                 .await
                 .expect("could not add node to reactor");
         }
