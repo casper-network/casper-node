@@ -58,6 +58,9 @@ pub(crate) struct DeployBuffer {
     // to allow consensus to proceed safely without risking
     // duplicating deploys
     chain_index: BTreeMap<u64, Timestamp>,
+    // Stores information about deploy hashes that have already been gossiped.
+    // Deploy whose hashes have not been gossiped will never be proposed.
+    gossiped_deploy_hashes: BTreeSet<DeployHash>,
 }
 
 impl DeployBuffer {
@@ -71,6 +74,7 @@ impl DeployBuffer {
             hold: BTreeMap::new(),
             dead: HashSet::new(),
             chain_index: BTreeMap::new(),
+            gossiped_deploy_hashes: BTreeSet::new(),
         }
     }
 
@@ -175,6 +179,7 @@ impl DeployBuffer {
                 self.buffer.insert(*hash, (expiry_time, None));
             }
             self.dead.insert(*hash);
+            self.gossiped_deploy_hashes.remove(hash);
         }
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
@@ -183,12 +188,22 @@ impl DeployBuffer {
         self.hold = hold;
     }
 
+    fn register_deploy_gossiped(&mut self, deploy_hash: DeployHash) {
+        // TODO[RC]: Can we assume that we'll get here only once per hash?
+        // If not, handle the case when we either proposed a deploy in a block or moved the deploy
+        // to dead, and only after that we received another gossip notification. In such case it'll
+        // stay in the collection forever.
+        self.gossiped_deploy_hashes.insert(deploy_hash);
+    }
+
     fn proposable(&self) -> Vec<(DeployHash, DeployFootprint, BTreeSet<Approval>)> {
-        // a deploy hash that is not in dead or hold is proposable
+        // A deploy hash that is not in dead or hold is proposable. It must also have already been
+        // gossiped.
         self.buffer
             .iter()
             .filter(|(k, _)| !self.hold.values().any(|hs| hs.contains(k)))
             .filter(|(k, _)| !self.dead.contains(k))
+            .filter(|(k, _)| self.gossiped_deploy_hashes.contains(k))
             .filter_map(|(k, (_, maybe_data))| {
                 maybe_data
                     .as_ref()
@@ -202,6 +217,9 @@ impl DeployBuffer {
         let mut holds = vec![];
         for (deploy_hash, footprint, approvals) in self.proposable() {
             let with_approvals = DeployHashWithApprovals::new(deploy_hash, approvals);
+            if !self.gossiped_deploy_hashes.remove(&deploy_hash) {
+                warn!(%deploy_hash, "appendable_block proposes deploy which was not yet gossiped");
+            }
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     holds.push(deploy_hash);
@@ -316,6 +334,10 @@ where
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Expire) => self.expire(effect_builder),
+            (ComponentStatus::Initialized, Event::DeployHashGossiped(deploy_hash)) => {
+                self.register_deploy_gossiped(deploy_hash);
+                Effects::new()
+            }
         }
     }
 }

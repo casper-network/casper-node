@@ -924,15 +924,15 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_deploy_id,
-            )) => {
-                // [TODO][Fraser]: notify DeployBuffer the deploy can be proposed
-                // let reactor_event =
-                //     MainEvent::DeployBuffer(deploy_buffer::Event::
-                // BufferDeploy(gossiped_deploy_id));
-                // self.dispatch_event(effect_builder, rng, reactor_event)
-                Effects::new()
-            }
+                gossiped_deploy_id,
+            )) => reactor::wrap_effects(
+                MainEvent::DeployBuffer,
+                self.deploy_buffer.handle_event(
+                    effect_builder,
+                    rng,
+                    deploy_buffer::Event::DeployHashGossiped(*gossiped_deploy_id.deploy_hash()),
+                ),
+            ),
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
