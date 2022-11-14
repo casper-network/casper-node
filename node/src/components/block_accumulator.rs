@@ -281,8 +281,10 @@ impl BlockAccumulator {
 
             // Prune the timestamps, so the count reflects only the most recently added acceptors.
             let purge_interval = self.purge_interval;
-            let is_expired = |(_, timestamp): &(_, Timestamp)| timestamp.elapsed() > purge_interval;
-            while block_timestamps.front().map_or(false, is_expired) {
+            while block_timestamps
+                .front()
+                .map_or(false, |(_, timestamp)| timestamp.elapsed() > purge_interval)
+            {
                 block_timestamps.pop_front();
             }
 
