@@ -42,12 +42,17 @@ pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{LmdbWasmTestBuilder, WasmTestBuilder};
 
+const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
+
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 /// Default auction delay.
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 /// Default lock-in period of 90 days
-pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
+pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
+/// Default length of total vesting schedule of 91 days.
+pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
+
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 

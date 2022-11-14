@@ -28,7 +28,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 4, 6);
+    ProtocolVersion::from_parts(1, 4, 8);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -435,7 +435,7 @@ impl DocExample for ListRpcsResult {
 }
 
 /// "rpc.discover" RPC.
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub struct ListRpcs {}
 
 #[async_trait]

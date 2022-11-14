@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.4.6")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.4.8")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -69,7 +69,11 @@ pub(crate) use types::NodeRng;
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"));
+    let mut version = format!(
+        "{}-{}",
+        env!("CARGO_PKG_VERSION"),
+        env!("VERGEN_GIT_SHA_SHORT")
+    );
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

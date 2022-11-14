@@ -7,12 +7,8 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr, crypto, EraId};
 
 use super::lmdb_ext::LmdbExtError;
-use crate::{
-    components::consensus::error::FinalitySignatureError,
-    types::{
-        error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
-        DeployHash, HashingAlgorithmVersion,
-    },
+use crate::types::{
+    error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
 };
 
 /// A fatal storage component error.
@@ -98,39 +94,13 @@ pub enum FatalStorageError {
     #[error(
         "No block header corresponding to block body found in LMDB. \
          Block body hash: {block_body_hash:?}, \
-         Hashing algorithm version: {hashing_algorithm_version:?}, \
          Block body: {block_body:?}"
     )]
     NoBlockHeaderForBlockBody {
         /// The block body hash.
         block_body_hash: Digest,
-        /// The hashing algorithm of the block body.
-        hashing_algorithm_version: HashingAlgorithmVersion,
         /// The block body.
         block_body: Box<BlockBody>,
-    },
-    /// Unexpected hashing algorithm version.
-    #[error(
-        "Unexpected hashing algorithm version. \
-         Expected: {expected_hashing_algorithm_version:?}, \
-         Actual: {actual_hashing_algorithm_version:?}"
-    )]
-    UnexpectedHashingAlgorithmVersion {
-        /// Expected hashing algorithm version.
-        expected_hashing_algorithm_version: HashingAlgorithmVersion,
-        /// Actual hashing algorithm version.
-        actual_hashing_algorithm_version: HashingAlgorithmVersion,
-    },
-    /// Could not find block body part.
-    #[error(
-        "Could not find block body part with Merkle linked list node hash: \
-         {merkle_linked_list_node_hash:?}"
-    )]
-    CouldNotFindBlockBodyPart {
-        /// The block hash queried.
-        block_hash: BlockHash,
-        /// The hash of the node in the Merkle linked list.
-        merkle_linked_list_node_hash: Digest,
     },
     /// Could not verify finality signatures for block.
     #[error("{0} in signature verification. Database is corrupted.")]
@@ -150,9 +120,6 @@ pub enum FatalStorageError {
     /// Switch block does not contain era end.
     #[error("switch block does not contain era end: {0:?}")]
     InvalidSwitchBlock(Box<BlockHeader>),
-    /// Insufficient or wrong finality signatures.
-    #[error(transparent)]
-    FinalitySignature(#[from] FinalitySignatureError),
     /// A block body was found to have more parts than expected.
     #[error(
         "Found an unexpected part of a block body in the database: \

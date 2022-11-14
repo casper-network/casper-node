@@ -1,6 +1,6 @@
 //! Support for global state queries.
-use casper_global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_hashing::Digest;
+use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{Key, StoredValue};
 
 use crate::core::tracking_copy::TrackingCopyQueryResult;

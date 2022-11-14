@@ -12,7 +12,6 @@ pub use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::EngineState;
-use casper_global_state::{shared::CorrelationId, storage::global_state::lmdb::LmdbGlobalState};
 use casper_hashing::Digest;
 use casper_node::{
     rpcs::{
@@ -29,6 +28,7 @@ use casper_node::{
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
     utils::work_queue::WorkQueue,
 };
+use casper_storage::global_state::{shared::CorrelationId, storage::state::lmdb::LmdbGlobalState};
 use casper_types::{bytesrepr, bytesrepr::Bytes};
 use futures_channel::{mpsc::UnboundedSender, oneshot};
 use futures_util::SinkExt;
@@ -397,18 +397,15 @@ pub async fn download_trie_channels(
     for peer in peers {
         let base_send = base_send.clone();
         let peer_future = async move {
-            let maybe_peer =
-                match maybe_construct_peer(base_send.clone(), *peer, client, state_root_hash).await
-                {
-                    Ok(peer) => Some(peer),
-                    Err(_err) => {
-                        // just skip those that can't be communicated with
-                        // info!("error constructing peer with address {:?} {:?}", peer,
-                        // err);
-                        None
-                    }
-                };
-            maybe_peer
+            match maybe_construct_peer(base_send.clone(), *peer, client, state_root_hash).await {
+                Ok(peer) => Some(peer),
+                Err(_err) => {
+                    // just skip those that can't be communicated with
+                    // info!("error constructing peer with address {:?} {:?}", peer,
+                    // err);
+                    None
+                }
+            }
         };
         peer_futures.push(peer_future);
     }

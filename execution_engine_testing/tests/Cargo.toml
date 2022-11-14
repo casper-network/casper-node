@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 base16 = "0.2.1"
-casper-global-state = { version = "1.4.3", path = "../../global_state" }
+casper-storage = { version = "1.4.3", path = "../../storage" }
 casper-contract = { path = "../../smart_contracts/contract", default-features = false, features = ["test-support"] }
 casper-engine-test-support = { path = "../test_support", features = ["test-support"] }
 casper-execution-engine = { path = "../../execution_engine", features = ["test-support"] }
@@ -28,6 +28,7 @@ tempfile = "3"
 wabt = "0.10.0"
 wasmi = "0.8.0"
 regex = "1.5.4"
+wat = "1.0.47"
 
 [dev-dependencies]
 assert_matches = "1.3.0"
@@ -41,6 +42,7 @@ lmdb = "0.8"
 
 [features]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
+fixture-generators = []
 
 [lib]
 bench = false

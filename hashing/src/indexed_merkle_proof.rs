@@ -12,6 +12,7 @@ use crate::{
     Digest,
 };
 
+/// A Merkle proof of the given chunk.
 #[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IndexedMerkleProof {
@@ -116,7 +117,7 @@ impl IndexedMerkleProof {
         self.count
     }
 
-    /// Returns the root hash of this proof (ie., the index hashed with the Merkle root hash).
+    /// Returns the root hash of this proof (i.e. the index hashed with the Merkle root hash).
     pub fn root_hash(&self) -> Digest {
         let IndexedMerkleProof {
             index: _,
@@ -162,6 +163,7 @@ impl IndexedMerkleProof {
         Digest::hash_merkle_root(*count, raw_root)
     }
 
+    /// Returns the full collection of hash digests of the proof.
     pub fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
     }

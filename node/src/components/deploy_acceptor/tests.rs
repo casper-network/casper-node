@@ -8,7 +8,6 @@ use std::{
 
 use derive_more::From;
 use futures::channel::oneshot;
-use num_rational::Ratio;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
@@ -17,7 +16,7 @@ use thiserror::Error;
 use tokio::time;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
-use casper_global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     CLValue, StoredValue, URef, U512,
@@ -417,9 +416,6 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
-            Ratio::new(1, 3),
-            None,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )
         .unwrap();
 
@@ -690,12 +686,7 @@ async fn run_deploy_acceptor_without_timeout(
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
-    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-
-    let block = Box::new(Block::random_with_verifiable_chunked_hash_activation(
-        &mut rng,
-        chainspec.protocol_config.verifiable_chunked_hash_activation,
-    ));
+    let block = Box::new(Block::random(&mut rng));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
     let block_responder = Responder::without_shutdown(block_sender);

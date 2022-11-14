@@ -31,17 +31,20 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_global_state::{
-    shared::CorrelationId,
-    storage::{
-        global_state::lmdb::LmdbGlobalState,
-        transaction_source::lmdb::LmdbEnvironment,
-        trie::{TrieOrChunk, TrieOrChunkId},
-        trie_store::lmdb::LmdbTrieStore,
+use casper_hashing::Digest;
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::{
+        shared::CorrelationId,
+        storage::{
+            state::lmdb::LmdbGlobalState,
+            transaction_source::lmdb::LmdbEnvironment,
+            trie::{TrieOrChunk, TrieOrChunkId},
+            trie_store::lmdb::LmdbTrieStore,
+        },
     },
 };
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -147,14 +150,11 @@ impl ExecutionPreState {
 
     /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash
     /// activation point.
-    pub fn from_block_header(
-        block_header: &BlockHeader,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Self {
+    pub fn from_block_header(block_header: &BlockHeader) -> Self {
         ExecutionPreState {
             pre_state_root_hash: *block_header.state_root_hash(),
             next_block_height: block_header.height() + 1,
-            parent_hash: block_header.hash(verifiable_chunked_hash_activation),
+            parent_hash: block_header.hash(),
             parent_seed: block_header.accumulated_seed(),
         }
     }
@@ -196,10 +196,9 @@ impl Display for Event {
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
-    verifiable_chunked_hash_activation: EraId,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -499,7 +498,6 @@ impl ContractRuntime {
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let verifiable_chunked_hash_activation = self.verifiable_chunked_hash_activation();
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -510,7 +508,6 @@ impl ContractRuntime {
                             finalized_block,
                             deploys,
                             transfers,
-                            verifiable_chunked_hash_activation,
                         )
                     })
                     .await;
@@ -545,7 +542,6 @@ impl ContractRuntime {
                             finalized_block,
                             deploys,
                             transfers,
-                            self.verifiable_chunked_hash_activation(),
                         )
                         .ignore(),
                     )
@@ -624,8 +620,8 @@ impl ContractRuntime {
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
         strict_argument_checking: bool,
+        vesting_schedule_period_millis: u64,
         registry: &Registry,
-        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -635,31 +631,44 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         }));
 
-        let environment = Arc::new(LmdbEnvironment::new(
-            storage_dir,
-            contract_runtime_config.max_global_state_size(),
-            contract_runtime_config.max_readers(),
-            contract_runtime_config.manual_sync_enabled(),
-        )?);
+        let data_access_layer = {
+            let environment = Arc::new(LmdbEnvironment::new(
+                storage_dir,
+                contract_runtime_config.max_global_state_size(),
+                contract_runtime_config.max_readers(),
+                contract_runtime_config.manual_sync_enabled(),
+            )?);
 
-        let trie_store = Arc::new(LmdbTrieStore::new(
-            &environment,
-            None,
-            DatabaseFlags::empty(),
-        )?);
+            let trie_store = Arc::new(LmdbTrieStore::new(
+                &environment,
+                None,
+                DatabaseFlags::empty(),
+            )?);
 
-        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+            let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+
+            let block_store = BlockStore::new();
+
+            DataAccessLayer {
+                state: global_state,
+                block_store,
+            }
+        };
+
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            vesting_schedule_period_millis,
             wasm_config,
             system_config,
         );
 
-        let engine_state = Arc::new(EngineState::new(global_state, engine_config));
+        let engine_state = EngineState::new(data_access_layer, engine_config);
+
+        let engine_state = Arc::new(engine_state);
 
         let metrics = Arc::new(Metrics::new(registry)?);
 
@@ -668,14 +677,9 @@ impl ContractRuntime {
             engine_state,
             metrics,
             protocol_version,
-            verifiable_chunked_hash_activation,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
         })
-    }
-
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
     }
 
     /// Commits a genesis request.
@@ -779,7 +783,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -788,7 +792,6 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-        verifiable_chunked_hash_activation: EraId,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -810,7 +813,6 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
-                verifiable_chunked_hash_activation,
             )
         })
         .await
@@ -819,10 +821,7 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        let new_execution_pre_state = ExecutionPreState::from_block_header(
-            block.header(),
-            verifiable_chunked_hash_activation,
-        );
+        let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();
@@ -874,7 +873,7 @@ impl ContractRuntime {
     }
 
     fn do_get_trie(
-        engine_state: &EngineState<LmdbGlobalState>,
+        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
@@ -886,7 +885,7 @@ impl ContractRuntime {
     }
 
     fn get_trie_full(
-        engine_state: &EngineState<LmdbGlobalState>,
+        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
         metrics: &Metrics,
         trie_key: Digest,
     ) -> Result<Option<Bytes>, engine_state::Error> {
@@ -899,7 +898,7 @@ impl ContractRuntime {
 
     /// Returns the engine state, for testing only.
     #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
         &self.engine_state
     }
 }

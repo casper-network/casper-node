@@ -25,8 +25,8 @@ impl<T> Deref for SharedObject<T> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         match self {
-            SharedObject::Owned(obj) => &*obj,
-            SharedObject::Shared(shared) => &*shared,
+            SharedObject::Owned(obj) => obj,
+            SharedObject::Shared(shared) => shared,
         }
     }
 }

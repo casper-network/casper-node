@@ -8,7 +8,6 @@ use std::{
 };
 
 use derive_more::From;
-use num_rational::Ratio;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -20,7 +19,10 @@ use tracing::debug;
 
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+        engine_config::{
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        },
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
@@ -228,9 +230,6 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
-        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
-        let verifiable_chunked_hash_activation = rng.gen_range(0..=10);
-
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
@@ -238,9 +237,6 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
-            Ratio::new(1, 3),
-            None,
-            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 
@@ -255,8 +251,8 @@ impl reactor::Reactor for Reactor {
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             registry,
-            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 

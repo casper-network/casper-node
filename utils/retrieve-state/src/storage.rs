@@ -5,21 +5,23 @@ use std::{
 };
 
 use lmdb::DatabaseFlags;
+use tracing::info;
 
 use casper_execution_engine::core::engine_state::{EngineConfig, EngineState};
-use casper_global_state::storage::{
-    global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-    trie_store::lmdb::LmdbTrieStore,
-};
 use casper_hashing::Digest;
 use casper_node::{
     storage::Storage,
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
-use casper_types::{EraId, ProtocolVersion};
-use num_rational::Ratio;
-use tracing::info;
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::storage::{
+        state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
+    },
+};
+use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
 
@@ -59,12 +61,19 @@ fn create_lmdb_environment(
 }
 
 /// Loads an existing execution engine.
+#[allow(clippy::type_complexity)]
 pub fn load_execution_engine(
     ee_lmdb_path: impl AsRef<Path>,
     default_max_db_size: usize,
     state_root_hash: Digest,
     manual_sync_enabled: bool,
-) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
+) -> Result<
+    (
+        Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+        Arc<LmdbEnvironment>,
+    ),
+    anyhow::Error,
+> {
     let lmdb_data_file = ee_lmdb_path.as_ref().join("data.lmdb");
     if !ee_lmdb_path.as_ref().join("data.lmdb").exists() {
         return Err(anyhow::anyhow!(
@@ -80,8 +89,12 @@ pub fn load_execution_engine(
         lmdb_trie_store,
         state_root_hash,
     );
+    let data_access_layer = DataAccessLayer {
+        block_store: BlockStore::new(),
+        state: global_state,
+    };
     Ok((
-        Arc::new(EngineState::new(global_state, EngineConfig::default())),
+        Arc::new(EngineState::new(data_access_layer, EngineConfig::default())),
         lmdb_environment,
     ))
 }
@@ -126,10 +139,7 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> 
     }
 }
 
-pub fn create_storage(
-    chain_download_path: impl AsRef<Path>,
-    verifiable_chunked_hash_activation: EraId,
-) -> Result<Storage, anyhow::Error> {
+pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
     storage_config.path = chain_download_path.clone();
@@ -138,9 +148,6 @@ pub fn create_storage(
         None,
         ProtocolVersion::from_parts(0, 0, 0),
         "test",
-        Ratio::new(1, 3),
-        None,
-        verifiable_chunked_hash_activation,
     )?)
 }
 
@@ -164,8 +171,7 @@ mod tests {
             .clone();
 
         let dir = tempfile::tempdir().unwrap().into_path();
-        let mut storage =
-            create_storage(dir, example_block.header.height.into()).expect("should create storage");
+        let mut storage = create_storage(dir).expect("should create storage");
 
         let example_deploy = GetDeployResult::doc_example().deploy.clone();
 

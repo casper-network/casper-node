@@ -723,7 +723,7 @@ where
         match msg.try_into_highway() {
             Err(msg) => {
                 warn!(?msg, "received a message for the wrong consensus protocol");
-                return vec![ProtocolOutcome::Disconnect(sender)];
+                vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (self.evidence_only && !v.is_evidence()) =>

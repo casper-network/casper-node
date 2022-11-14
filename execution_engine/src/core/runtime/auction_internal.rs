@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use casper_global_state::storage::global_state::StateReader;
+use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
@@ -135,6 +135,10 @@ where
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         crypto::blake2b(data)
+    }
+
+    fn vesting_schedule_period_millis(&self) -> u64 {
+        self.config.vesting_schedule_period_millis()
     }
 }
 

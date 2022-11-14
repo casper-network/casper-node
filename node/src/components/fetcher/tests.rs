@@ -79,28 +79,13 @@ reactor!(Reactor {
             chainspec_loader.hard_reset_to_start_of_era(),
             chainspec_loader.chainspec().protocol_config.version,
             &chainspec_loader.chainspec().network_config.name,
-            chainspec_loader
-                .chainspec()
-                .core_config
-                .finality_threshold_fraction,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .last_emergency_restart,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation,
         );
         fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(
             "deploy",
             cfg.fetcher_config,
-            registry,
-            chainspec_loader
-                .chainspec()
-                .protocol_config
-                .verifiable_chunked_hash_activation);
+            chainspec_loader.chainspec().core_config.finality_threshold_fraction,
+            registry);
     }
 
     events: {
@@ -112,6 +97,7 @@ reactor!(Reactor {
         // This test contains no linear chain requests, so we panic if we receive any.
         NetworkRequest<Message> -> network;
         StorageRequest -> storage;
+        MarkBlockCompletedRequest -> storage;
         StateStoreRequest -> storage;
         FetcherRequest<Deploy> -> deploy_fetcher;
         TrieDemand -> !;

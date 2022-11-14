@@ -22,7 +22,7 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{error, info};
 
-use casper_global_state::storage::trie::TrieOrChunk;
+use casper_storage::global_state::storage::trie::TrieOrChunk;
 
 use crate::{
     components::{
@@ -67,6 +67,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
     types::{
@@ -669,75 +670,97 @@ impl reactor::Reactor for Reactor {
             }
             JoiningOutcome::Synced {
                 highest_block_header,
-            } => highest_block_header,
-            JoiningOutcome::RanUpgradeOrGenesis {
-                block_and_execution_effects:
-                    BlockAndExecutionEffects {
-                        block,
-                        execution_results,
-                        maybe_step_effect_and_upcoming_era_validators,
-                    },
-                validators_to_sign_immediate_switch_block,
-                highest_block_header,
             } => {
-                // The outcome of joining in this case caused a new switch block to be created, so
-                // we need to emit the effects which would have been created by that execution, but
-                // add them to the participating reactor's event queues so they don't get dropped as
-                // the joining reactor shuts down.
-                effects.extend(
-                    effect_builder
-                        .announce_new_linear_chain_block(block.clone(), execution_results)
-                        .ignore(),
-                );
-
-                let current_era_id = block.header().era_id();
-                if let Some(step_effect_and_upcoming_era_validators) =
-                    maybe_step_effect_and_upcoming_era_validators
+                if let Some(BlockAndExecutionEffects {
+                    block,
+                    execution_results,
+                    maybe_step_effect_and_upcoming_era_validators,
+                }) = chainspec_loader
+                    .maybe_immediate_switch_block_data()
+                    .cloned()
                 {
+                    // The outcome of joining in this case caused a new switch block to be created,
+                    // so we need to emit the effects which would have been created by that
+                    // execution, but add them to the participating reactor's event queues so they
+                    // don't get dropped as the joining reactor shuts down.
                     effects.extend(
                         effect_builder
-                            .announce_commit_step_success(
-                                current_era_id,
-                                step_effect_and_upcoming_era_validators.step_execution_journal,
-                            )
+                            .announce_new_linear_chain_block(block.clone(), execution_results)
                             .ignore(),
                     );
-                    effects.extend(
-                        effect_builder
-                            .announce_upcoming_era_validators(
-                                current_era_id,
-                                step_effect_and_upcoming_era_validators.upcoming_era_validators,
-                            )
-                            .ignore(),
-                    );
-                }
 
-                // We're responsible for signing the new block if we're in the provided list.
-                if validators_to_sign_immediate_switch_block.contains(&our_public_key) {
-                    let signature = FinalitySignature::new(
-                        *block.hash(),
-                        current_era_id,
-                        &our_secret_key,
-                        our_public_key.clone(),
-                    );
+                    let current_era_id = block.header().era_id();
+                    if let Some(step_effect_and_upcoming_era_validators) =
+                        maybe_step_effect_and_upcoming_era_validators
+                    {
+                        effects.extend(
+                            effect_builder
+                                .announce_commit_step_success(
+                                    current_era_id,
+                                    step_effect_and_upcoming_era_validators.step_execution_journal,
+                                )
+                                .ignore(),
+                        );
+                        effects.extend(
+                            effect_builder
+                                .announce_upcoming_era_validators(
+                                    current_era_id,
+                                    step_effect_and_upcoming_era_validators.upcoming_era_validators,
+                                )
+                                .ignore(),
+                        );
+                    }
+
+                    let secret_key = our_secret_key.clone();
+                    let public_key = our_public_key.clone();
+                    let block_hash = *block.hash();
                     effects.extend(
                         async move {
-                            effect_builder
-                                .announce_created_finality_signature(signature.clone())
-                                .await;
-                            // Allow a short period for peers to establish connections.  This delay
-                            // can be removed once we move to a single reactor model.
-                            effect_builder
-                                .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
-                                .await;
-                            let message = Message::FinalitySignature(Box::new(signature));
-                            effect_builder.broadcast_message(message).await
+                            let validator_weights =
+                                match linear_chain::era_validator_weights_for_block(
+                                    block.header(),
+                                    effect_builder,
+                                )
+                                .await
+                                {
+                                    Ok((_era_id, weights)) => weights,
+                                    Err(error) => {
+                                        return fatal!(
+                                            effect_builder,
+                                            "couldn't get era validators for header: {}",
+                                            error
+                                        )
+                                        .await;
+                                    }
+                                };
+
+                            // We're responsible for signing the new block if we're in the provided
+                            // list.
+                            if validator_weights.contains_key(&public_key) {
+                                let signature = FinalitySignature::new(
+                                    block_hash,
+                                    current_era_id,
+                                    &secret_key,
+                                    public_key.clone(),
+                                );
+
+                                effect_builder
+                                    .announce_created_finality_signature(signature.clone())
+                                    .await;
+                                // Allow a short period for peers to establish connections. This
+                                // delay can be removed once we move to a single reactor model.
+                                effect_builder
+                                    .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
+                                    .await;
+                                let message = Message::FinalitySignature(Box::new(signature));
+                                effect_builder.broadcast_message(message).await;
+                            }
                         }
                         .ignore(),
                     );
                 }
 
-                highest_block_header
+                *highest_block_header
             }
         };
 
@@ -776,8 +799,8 @@ impl reactor::Reactor for Reactor {
 
         let fetcher_builder = FetcherBuilder::new(
             config.fetcher,
+            chainspec.core_config.finality_threshold_fraction,
             registry,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
         );
 
         let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
@@ -835,10 +858,8 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
-            &highest_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
-        ))?;
+        contract_runtime
+            .set_initial_state(ExecutionPreState::from_block_header(&highest_block_header))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = LinearChainComponent::new(
@@ -848,7 +869,6 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.core_config.finality_threshold_fraction,
             next_upgrade_activation_point,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
 
         let (chain_synchronizer, chain_synchronizer_effects) =
@@ -1216,7 +1236,6 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
-                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -1348,12 +1367,7 @@ impl reactor::Reactor for Reactor {
                 let reactor_event_consensus =
                     ParticipatingEvent::Consensus(consensus::Event::BlockAdded {
                         header: Box::new(block.header().clone()),
-                        header_hash: block.header().hash(
-                            self.chainspec_loader
-                                .chainspec()
-                                .protocol_config
-                                .verifiable_chunked_hash_activation,
-                        ),
+                        header_hash: *block.hash(),
                     });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block),
@@ -1434,19 +1448,7 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             ParticipatingEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
-                let verifiable_chunked_hash_activation = self
-                    .chainspec_loader
-                    .chainspec()
-                    .protocol_config
-                    .verifiable_chunked_hash_activation;
-                reactor::handle_get_response(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    message,
-                    verifiable_chunked_hash_activation,
-                )
+                reactor::handle_get_response(self, effect_builder, rng, sender, message)
             }
             ParticipatingEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
                 ParticipatingEvent::ContractRuntime,
@@ -1470,10 +1472,6 @@ impl reactor::Reactor for Reactor {
                     rng,
                     sender,
                     &message.0,
-                    self.chainspec_loader
-                        .chainspec()
-                        .protocol_config
-                        .verifiable_chunked_hash_activation,
                 )
             }
             ParticipatingEvent::FinalitySignatureIncoming(incoming) => reactor::wrap_effects(

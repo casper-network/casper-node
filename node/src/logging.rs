@@ -13,7 +13,7 @@ use tracing::{
 };
 use tracing_subscriber::{
     fmt::{
-        format,
+        format::{self, Writer},
         time::{FormatTime, SystemTime},
         FmtContext, FormatEvent, FormatFields, FormattedFields,
     },
@@ -148,13 +148,13 @@ where
     fn format_event(
         &self,
         ctx: &FmtContext<'_, S, N>,
-        writer: &mut dyn fmt::Write,
+        mut writer: Writer<'_>,
         event: &Event<'_>,
     ) -> fmt::Result {
         // print the date/time with dimmed style if `ansi_color` is true
-        self.enable_dimmed_if_ansi(writer)?;
-        SystemTime.format_time(writer)?;
-        self.disable_dimmed_if_ansi(writer)?;
+        self.enable_dimmed_if_ansi(&mut writer)?;
+        SystemTime.format_time(&mut writer)?;
+        self.disable_dimmed_if_ansi(&mut writer)?;
 
         // print the log level
         let meta = event.metadata();
@@ -241,13 +241,13 @@ where
         let line = meta.line().or(field_visitor.line).unwrap_or_default();
 
         if !module.is_empty() && (!file.is_empty() || self.abbreviate_modules) {
-            self.enable_dimmed_if_ansi(writer)?;
+            self.enable_dimmed_if_ansi(&mut writer)?;
             write!(writer, "[{} {}:{}] ", module, file, line,)?;
-            self.disable_dimmed_if_ansi(writer)?;
+            self.disable_dimmed_if_ansi(&mut writer)?;
         }
 
         // print the log message and other fields
-        ctx.format_fields(writer, event)?;
+        ctx.format_fields(writer.by_ref(), event)?;
         writeln!(writer)
     }
 }

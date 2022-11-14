@@ -5,20 +5,22 @@ use thiserror::Error;
 use tokio::{sync::AcquireError, task::JoinError};
 
 use casper_execution_engine::core::{engine_state, engine_state::GetEraValidatorsError};
-use casper_global_state::storage::trie::TrieOrChunk;
 use casper_hashing::Digest;
+use casper_storage::global_state::storage::trie::TrieOrChunk;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{
-        consensus::error::FinalitySignatureError, contract_runtime::BlockExecutionError,
-        fetcher::FetcherError,
+        contract_runtime::BlockExecutionError, fetcher::FetcherError, linear_chain,
+        linear_chain::BlockSignatureError,
     },
     types::{
         Block, BlockAndDeploys, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockHeadersBatch,
-        BlockWithMetadata, Deploy, FinalizedApprovalsWithId,
+        BlockWithMetadata, Deploy, FinalizedApprovalsWithId, Item,
     },
 };
+
+use super::operations::FetchWithRetryError;
 
 #[derive(Error, Debug, Serialize)]
 pub(crate) enum Error {
@@ -29,21 +31,34 @@ pub(crate) enum Error {
         engine_state::Error,
     ),
 
+    #[error(transparent)]
+    LinearChain(#[from] linear_chain::Error),
+
     #[error(
-        "cannot get trusted validators for such an early era. \
+        "trusted header is from before the last upgrade and isn't the last header before \
+         activation. \
          trusted header: {trusted_header:?}, \
-         last emergency restart era id: {maybe_last_emergency_restart_era_id:?}"
+         current protocol version: {current_protocol_version:?}, \
+         current version activation point: {activation_point:?}"
     )]
-    TrustedHeaderEraTooEarly {
+    TrustedHeaderTooEarly {
         trusted_header: Box<BlockHeader>,
-        maybe_last_emergency_restart_era_id: Option<EraId>,
+        current_protocol_version: ProtocolVersion,
+        activation_point: EraId,
     },
 
-    #[error("cannot get switch block for era: {era_id}")]
-    NoSwitchBlockForEra { era_id: EraId },
+    #[error("no blocks have been found in storage (should provide recent trusted hash)")]
+    NoBlocksInStorage,
 
-    #[error("switch block at height {height} for era {era_id} contains no validator weights")]
-    MissingNextEraValidators { height: u64, era_id: EraId },
+    #[error(
+        "configured trusted block is different from the stored block at the same height \
+         configured block header: {config_header:?}, \
+         stored block header: {stored_header_at_same_height:?}"
+    )]
+    TrustedHeaderOnDifferentFork {
+        config_header: Box<BlockHeader>,
+        stored_header_at_same_height: Box<BlockHeader>,
+    },
 
     #[error(
         "current version is {current_version}, but retrieved block header with future version: \
@@ -88,24 +103,11 @@ pub(crate) enum Error {
     FinalitySignatures(
         #[from]
         #[serde(skip_serializing)]
-        FinalitySignatureError,
+        BlockSignatureError,
     ),
 
     #[error(transparent)]
     BlockExecution(#[from] BlockExecutionError),
-
-    #[error(
-        "joining with trusted hash before emergency restart not supported - find a more recent \
-         hash from after the restart. \
-         last emergency restart era: {last_emergency_restart_era}, \
-         trusted hash: {trusted_hash:?}, \
-         trusted block header: {trusted_block_header:?}"
-    )]
-    TryingToJoinBeforeLastEmergencyRestartEra {
-        last_emergency_restart_era: EraId,
-        trusted_hash: BlockHash,
-        trusted_block_header: Box<BlockHeader>,
-    },
 
     #[error("hit genesis block trying to get trusted era validators")]
     HitGenesisBlockTryingToGetTrustedEraValidators { trusted_header: BlockHeader },
@@ -172,6 +174,9 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         AcquireError,
     ),
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
 }
 
 #[derive(Error, Debug)]
@@ -193,6 +198,50 @@ pub(crate) enum FetchTrieError {
          by a peer somehow. Trie digest: {digest:?}"
     )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
+}
+
+impl<T> From<FetchWithRetryError<T>> for FetchTrieError
+where
+    FetchTrieError: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => FetchTrieError::AttemptsExhausted,
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
+}
+
+impl<T> From<FetchWithRetryError<T>> for FetchBlockHeadersBatchError
+where
+    FetchBlockHeadersBatchError: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => {
+                FetchBlockHeadersBatchError::AttemptsExhausted
+            }
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
+}
+
+impl<T> From<FetchWithRetryError<T>> for Error
+where
+    Error: From<FetcherError<T>>,
+    T: Item,
+{
+    fn from(err: FetchWithRetryError<T>) -> Self {
+        match err {
+            FetchWithRetryError::AttemptsExhausted { .. } => Error::AttemptsExhausted,
+            FetchWithRetryError::FetcherError(err) => err.into(),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -203,4 +252,7 @@ pub(crate) enum FetchBlockHeadersBatchError {
 
     #[error("Batch from storage was empty")]
     EmptyBatchFromStorage,
+
+    #[error("fetch attempts exhausted")]
+    AttemptsExhausted,
 }

@@ -1,8 +1,8 @@
 use std::convert::TryInto;
 
-use casper_global_state::{
+use casper_storage::global_state::{
     shared::CorrelationId,
-    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
+    storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -12,17 +12,19 @@ use casper_types::{
 
 use crate::core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy};
 
+/// Higher-level operations on the state via a `TrackingCopy`.
 pub trait TrackingCopyExt<R> {
+    /// The type for the returned errors.
     type Error;
 
-    /// Gets the account at a given account address
+    /// Gets the account at a given account address.
     fn get_account(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
     ) -> Result<Account, Self::Error>;
 
-    /// Reads the account at a given account address
+    /// Reads the account at a given account address.
     fn read_account(
         &mut self,
         correlation_id: CorrelationId,
@@ -30,55 +32,56 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<Account, Self::Error>;
 
     // TODO: make this a static method
-    /// Gets the purse balance key for a given purse id
+    /// Gets the purse balance key for a given purse id.
     fn get_purse_balance_key(
         &self,
         correlation_id: CorrelationId,
         purse_key: Key,
     ) -> Result<Key, Self::Error>;
 
-    /// Gets the balance at a given balance key
+    /// Gets the balance at a given balance key.
     fn get_purse_balance(
         &self,
         correlation_id: CorrelationId,
         balance_key: Key,
     ) -> Result<Motes, Self::Error>;
 
-    /// Gets the purse balance key for a given purse id and provides a Merkle proof
+    /// Gets the purse balance key for a given purse id and provides a Merkle proof.
     fn get_purse_balance_key_with_proof(
         &self,
         correlation_id: CorrelationId,
         purse_key: Key,
     ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
-    /// Gets the balance at a given balance key and provides a Merkle proof
+    /// Gets the balance at a given balance key and provides a Merkle proof.
     fn get_purse_balance_with_proof(
         &self,
         correlation_id: CorrelationId,
         balance_key: Key,
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
-    /// Gets a contract by Key
+    /// Gets a contract by Key.
     fn get_contract_wasm(
         &mut self,
         correlation_id: CorrelationId,
         contract_wasm_hash: ContractWasmHash,
     ) -> Result<ContractWasm, Self::Error>;
 
-    /// Gets a contract header by Key
+    /// Gets a contract header by Key.
     fn get_contract(
         &mut self,
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
     ) -> Result<Contract, Self::Error>;
 
-    /// Gets a contract package by Key
+    /// Gets a contract package by Key.
     fn get_contract_package(
         &mut self,
         correlation_id: CorrelationId,
         contract_package_hash: ContractPackageHash,
     ) -> Result<ContractPackage, Self::Error>;
 
+    /// Gets the system contract registry.
     fn get_system_contracts(
         &mut self,
         correlation_id: CorrelationId,

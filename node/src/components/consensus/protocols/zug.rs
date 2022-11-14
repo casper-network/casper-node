@@ -1938,7 +1938,7 @@ where
         match msg.try_into_zug() {
             Err(_msg) => {
                 warn!(%sender, "received a message for the wrong consensus protocol");
-                return vec![ProtocolOutcome::Disconnect(sender)];
+                vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(zug_msg) if zug_msg.instance_id() != self.instance_id() => {
                 let instance_id = zug_msg.instance_id();

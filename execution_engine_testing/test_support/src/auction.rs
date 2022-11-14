@@ -1,6 +1,6 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
-use casper_global_state::storage::lmdb::{Cursor, Transaction};
+use casper_storage::global_state::storage::lmdb::{Cursor, Transaction};
 use tempfile::TempDir;
 
 use casper_execution_engine::core::{
@@ -10,14 +10,14 @@ use casper_execution_engine::core::{
     },
     execution,
 };
-use casper_global_state::{
+use casper_hashing::Digest;
+use casper_storage::global_state::{
     shared::CorrelationId,
     storage::{
-        global_state::{CommitProvider, StateProvider},
+        state::{CommitProvider, StateProvider},
         trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
     PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
@@ -118,15 +118,15 @@ pub fn run_blocks_with_transfers_and_step(
     let mut total_transfers = 0;
     {
         let engine_state = builder.get_engine_state();
-        let lmdb_env = engine_state.get_state().environment().env();
-        let db = engine_state.get_state().trie_store().get_db();
+        let lmdb_env = engine_state.get_state().state().environment().env();
+        let db = engine_state.get_state().state().trie_store().get_db();
 
         let txn = lmdb_env.begin_ro_txn().unwrap();
         let mut cursor = txn.open_ro_cursor(db).unwrap();
 
         let existing_keys = cursor
             .iter()
-            .map(|(key, _)| Digest::try_from(&*key).expect("should be a digest"));
+            .map(|(key, _)| Digest::try_from(key).expect("should be a digest"));
         necessary_tries.extend(existing_keys);
     }
     writeln!(
@@ -178,8 +178,8 @@ pub fn run_blocks_with_transfers_and_step(
 
         let total_tries = {
             let engine_state = builder.get_engine_state();
-            let lmdb_env = engine_state.get_state().environment().env();
-            let db = engine_state.get_state().trie_store().get_db();
+            let lmdb_env = engine_state.get_state().state().environment().env();
+            let db = engine_state.get_state().state().trie_store().get_db();
             let txn = lmdb_env.begin_ro_txn().unwrap();
             let mut cursor = txn.open_ro_cursor(db).unwrap();
             cursor.iter().count()
@@ -238,7 +238,7 @@ fn find_necessary_tries<S>(
             TrieOrChunk::ChunkWithProof(_) => continue,
         };
 
-        if let Some(0) = trie_bytes.get(0) {
+        if let Some(0) = trie_bytes.first() {
             continue;
         }
 

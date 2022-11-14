@@ -34,6 +34,8 @@ pub struct CoreConfig {
     pub(crate) auction_delay: u64,
     /// The period after genesis during which a genesis validator's bid is locked.
     pub(crate) locked_funds_period: TimeDiff,
+    /// The period in which genesis validator's bid is released over time after it's unlocked.
+    pub(crate) vesting_schedule_period: TimeDiff,
     /// The delay in number of eras for paying out the the unbonding amount.
     pub(crate) unbonding_delay: u64,
     /// Round seigniorage rate represented as a fractional number.
@@ -78,6 +80,7 @@ impl CoreConfig {
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
         let auction_delay = rng.gen::<u32>() as u64;
         let locked_funds_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
+        let vesting_schedule_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
         let unbonding_delay = rng.gen_range(1..1_000_000_000);
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1..1_000_000_000),
@@ -97,6 +100,7 @@ impl CoreConfig {
             finality_threshold_fraction,
             auction_delay,
             locked_funds_period,
+            vesting_schedule_period,
             unbonding_delay,
             round_seigniorage_rate,
             max_associated_keys,
@@ -118,6 +122,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
+        buffer.extend(self.vesting_schedule_period.to_bytes()?);
         buffer.extend(self.unbonding_delay.to_bytes()?);
         buffer.extend(self.round_seigniorage_rate.to_bytes()?);
         buffer.extend(self.max_associated_keys.to_bytes()?);
@@ -136,6 +141,7 @@ impl ToBytes for CoreConfig {
             + self.finality_threshold_fraction.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
+            + self.vesting_schedule_period.serialized_length()
             + self.unbonding_delay.serialized_length()
             + self.round_seigniorage_rate.serialized_length()
             + self.max_associated_keys.serialized_length()
@@ -155,6 +161,7 @@ impl FromBytes for CoreConfig {
         let (finality_threshold_fraction, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (vesting_schedule_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (unbonding_delay, remainder) = u64::from_bytes(remainder)?;
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
@@ -170,6 +177,7 @@ impl FromBytes for CoreConfig {
             finality_threshold_fraction,
             auction_delay,
             locked_funds_period,
+            vesting_schedule_period,
             unbonding_delay,
             round_seigniorage_rate,
             max_associated_keys,

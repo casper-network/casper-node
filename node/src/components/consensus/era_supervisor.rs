@@ -220,13 +220,6 @@ impl EraSupervisor {
         Ok((era_supervisor, effects))
     }
 
-    /// Returns the merkle tree hash activation from the chainspec.
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.chainspec
-            .protocol_config
-            .verifiable_chunked_hash_activation
-    }
-
     /// Returns a list of status changes of active validators.
     pub(super) fn get_validator_changes(
         &self,
@@ -379,7 +372,7 @@ impl EraSupervisor {
         let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
-                booking_block.hash(self.verifiable_chunked_hash_activation())
+                booking_block.hash()
             } else {
                 // If there's no booking block for the `era_id`
                 // (b/c it would have been from before Genesis, upgrade or emergency restart),
@@ -407,7 +400,7 @@ impl EraSupervisor {
             .collect();
 
         let chainspec_hash = self.chainspec.hash();
-        let key_block_hash = key_block.hash(self.verifiable_chunked_hash_activation());
+        let key_block_hash = key_block.hash();
         let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
         let now = Timestamp::now();
 
@@ -727,7 +720,7 @@ impl EraSupervisor {
             effects.extend(
                 effect_builder
                     .announce_created_finality_signature(FinalitySignature::new(
-                        block_header.hash(self.verifiable_chunked_hash_activation()),
+                        block_header.hash(),
                         era_id,
                         &our_sk,
                         our_pk,

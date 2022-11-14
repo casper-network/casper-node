@@ -5,8 +5,6 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::EraId;
-
 use super::Item;
 use crate::{
     components::fetcher::FetchedOrNotFound,
@@ -69,15 +67,7 @@ pub(crate) enum Event<T: Item> {
         responder: FetchResponder<T>,
     },
     /// An announcement from a different component that we have accepted and stored the given item.
-    GotRemotely {
-        // TODO[RC]: `verifiable_chunked_hash_activation` is scattered around, because this is a
-        // piece of information obtained in the top-level code (read from the chainspec),
-        // but required across all the layers, including the very bottom ones. At some
-        // point we should consider refactoring to get rid of such "tramp data".
-        verifiable_chunked_hash_activation: Option<EraId>,
-        item: Box<T>,
-        source: Source,
-    },
+    GotRemotely { item: Box<T>, source: Source },
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
@@ -92,11 +82,9 @@ impl<T: Item> Event<T> {
     pub(crate) fn from_get_response_serialized_item(
         peer: NodeId,
         serialized_item: &[u8],
-        verifiable_chunked_hash_activation: EraId,
     ) -> Option<Self> {
         match bincode::deserialize::<FetchedOrNotFound<T, T::Id>>(serialized_item) {
             Ok(FetchedOrNotFound::Fetched(item)) => Some(Event::GotRemotely {
-                verifiable_chunked_hash_activation: Some(verifiable_chunked_hash_activation),
                 item: Box::new(item),
                 source: Source::Peer(peer),
             }),
@@ -122,7 +110,6 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
         match announcement {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => {
                 Event::GotRemotely {
-                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 }
@@ -150,24 +137,8 @@ impl<T: Item> Display for Event<T> {
                     write!(formatter, "failed to fetch {} from storage", id)
                 }
             }
-            Event::GotRemotely {
-                verifiable_chunked_hash_activation,
-                item,
-                source,
-            } => {
-                // If `verifiable_chunked_hash_activation` is not present here then our T is an
-                // object that doesn't require the activation point to calculate its
-                // `id`, hence we can provide any value to the `id()` method, as
-                // it'll be ignored.
-                let verifiable_chunked_hash_activation =
-                    verifiable_chunked_hash_activation.unwrap_or_default();
-
-                write!(
-                    formatter,
-                    "got {} from {}",
-                    item.id(verifiable_chunked_hash_activation),
-                    source
-                )
+            Event::GotRemotely { item, source } => {
+                write!(formatter, "got {} from {}", item.id(), source)
             }
             Event::RejectedRemotely { id, source } => {
                 write!(formatter, "other component rejected {} from {}", id, source)

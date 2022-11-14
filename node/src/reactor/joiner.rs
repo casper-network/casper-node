@@ -19,7 +19,7 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
-use casper_global_state::storage::trie::TrieOrChunk;
+use casper_storage::global_state::storage::trie::TrieOrChunk;
 
 use crate::{
     components::{
@@ -569,10 +569,6 @@ impl reactor::Reactor for Reactor {
             sync_effects,
         ));
 
-        let verifiable_chunked_hash_activation = chainspec_loader
-            .chainspec()
-            .protocol_config
-            .verifiable_chunked_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
@@ -587,8 +583,11 @@ impl reactor::Reactor for Reactor {
             *protocol_version,
         )?;
 
-        let fetcher_builder =
-            FetcherBuilder::new(config.fetcher, registry, verifiable_chunked_hash_activation);
+        let fetcher_builder = FetcherBuilder::new(
+            config.fetcher,
+            chainspec.core_config.finality_threshold_fraction,
+            registry,
+        );
 
         let deploy_fetcher = fetcher_builder.build("deploy")?;
         let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
@@ -603,7 +602,7 @@ impl reactor::Reactor for Reactor {
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
-        let deploy_acceptor = DeployAcceptor::new(&*chainspec_loader.chainspec(), registry)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
 
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -697,7 +696,6 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
-                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -958,19 +956,7 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
-                let verifiable_chunked_hash_activation = self
-                    .chainspec_loader
-                    .chainspec()
-                    .protocol_config
-                    .verifiable_chunked_hash_activation;
-                reactor::handle_get_response(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    message,
-                    verifiable_chunked_hash_activation,
-                )
+                reactor::handle_get_response(self, effect_builder, rng, sender, message)
             }
             JoinerEvent::TrieRequestIncoming(incoming) => reactor::wrap_effects(
                 JoinerEvent::ContractRuntime,
@@ -992,10 +978,6 @@ impl reactor::Reactor for Reactor {
                     rng,
                     sender,
                     &message.0,
-                    self.chainspec_loader
-                        .chainspec()
-                        .protocol_config
-                        .verifiable_chunked_hash_activation,
                 )
             }
 
@@ -1047,9 +1029,7 @@ impl reactor::Reactor for Reactor {
                 JoiningOutcome::ShouldExitForUpgrade => {
                     ReactorExit::ProcessShouldExit(ExitCode::Success)
                 }
-                JoiningOutcome::Synced { .. } | JoiningOutcome::RanUpgradeOrGenesis { .. } => {
-                    ReactorExit::ProcessShouldContinue
-                }
+                JoiningOutcome::Synced { .. } => ReactorExit::ProcessShouldContinue,
             })
     }
 
