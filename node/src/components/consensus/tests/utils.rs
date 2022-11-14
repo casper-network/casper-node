@@ -27,6 +27,12 @@ pub static ALICE_NODE_ID: Lazy<NodeId> = Lazy::new(|| {
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
+pub static BOB_NODE_ID: Lazy<NodeId> = Lazy::new(|| {
+    NodeId::from(KeyFingerprint::from(Sha512::new(match *BOB_PUBLIC_KEY {
+        PublicKey::Ed25519(pub_key) => pub_key,
+        _ => panic!("BOB_PUBLIC_KEY is Ed25519"),
+    })))
+});
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
 /// The test `Chainspec` returned has eras with exactly two blocks.

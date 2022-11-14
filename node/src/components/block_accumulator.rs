@@ -4,6 +4,8 @@ mod error;
 mod event;
 mod starting_with;
 mod sync_instruction;
+#[cfg(test)]
+mod tests;
 
 use std::{
     cmp::Ordering,
