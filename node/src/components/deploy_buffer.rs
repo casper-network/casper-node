@@ -292,13 +292,7 @@ impl DeployBuffer {
                     current_deploy_details.already_gossiped,
                 );
             })
-            .or_insert_with(|| {
-                DeployDetails::new(
-                    deploy_details.expiry_time,
-                    deploy_details.footprint_and_approvals,
-                    deploy_details.already_gossiped,
-                )
-            });
+            .or_insert(deploy_details);
     }
 }
 
