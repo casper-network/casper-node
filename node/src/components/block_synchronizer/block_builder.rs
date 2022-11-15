@@ -126,7 +126,8 @@ impl BlockBuilder {
     }
 
     pub(super) fn abort(&mut self) {
-        self.acquisition_state = BlockAcquisitionState::Fatal(self.block_hash, self.block_height());
+        self.acquisition_state =
+            BlockAcquisitionState::Failed(self.block_hash, self.block_height());
         self.flush_peers();
         self.touch();
     }
@@ -159,7 +160,7 @@ impl BlockBuilder {
     }
 
     pub(super) fn is_fatal(&self) -> bool {
-        matches!(self.acquisition_state, BlockAcquisitionState::Fatal(_, _))
+        matches!(self.acquisition_state, BlockAcquisitionState::Failed(_, _))
     }
 
     pub(super) fn is_finished(&self) -> bool {
@@ -303,11 +304,9 @@ impl BlockBuilder {
             .validator_weights
             .as_ref()
             .ok_or(Error::MissingValidatorWeights(self.block_hash))?;
-        let acceptance = self.acquisition_state.register_finality_signature(
-            finality_signature,
-            validator_weights,
-            self.should_fetch_execution_state,
-        );
+        let acceptance = self
+            .acquisition_state
+            .register_finality_signature(finality_signature, validator_weights);
         self.handle_acceptance(maybe_peer, acceptance)
     }
 

@@ -12,6 +12,7 @@ mod trie_accumulator;
 
 use datasize::DataSize;
 use either::Either;
+use std::fmt::{Display, Formatter};
 use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::core::engine_state;
@@ -104,6 +105,28 @@ pub(crate) enum BlockSynchronizerProgress {
     Synced(BlockHash, u64),
 }
 
+impl Display for BlockSynchronizerProgress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockSynchronizerProgress::Idle => write!(f, "Idle",),
+            BlockSynchronizerProgress::Syncing(block_hash, block_height, timestamp) => {
+                write!(
+                    f,
+                    "block_height: {:?} timestamp: {} block_hash: {}",
+                    block_height, timestamp, block_hash
+                )
+            }
+            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+                write!(
+                    f,
+                    "block_height: {} block_hash: {}",
+                    block_height, block_hash
+                )
+            }
+        }
+    }
+}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     status: ComponentStatus,
@@ -147,12 +170,20 @@ impl BlockSynchronizer {
         }
     }
 
+    pub(crate) fn historical_purge(&mut self) {
+        self.historical = None;
+    }
+
     /// Returns the progress being made on the forward syncing.
-    pub(crate) fn keep_up_progress(&mut self) -> BlockSynchronizerProgress {
+    pub(crate) fn forward_progress(&mut self) -> BlockSynchronizerProgress {
         match &self.forward {
             None => BlockSynchronizerProgress::Idle,
             Some(builder) => self.progress(builder),
         }
+    }
+
+    pub(crate) fn forward_purge(&mut self) {
+        self.forward = None;
     }
 
     /// Pauses block synchronization.
@@ -173,33 +204,25 @@ impl BlockSynchronizer {
         requires_strict_finality: bool,
         max_simultaneous_peers: u32,
     ) -> bool {
-        if should_fetch_execution_state {
-            if let Some(block_builder) = &self.historical {
-                if block_builder.block_hash() == block_hash {
-                    return false;
-                }
+        if let (true, Some(builder), _) | (false, _, Some(builder)) = (
+            should_fetch_execution_state,
+            &self.historical,
+            &self.forward,
+        ) {
+            if builder.block_hash() == block_hash && !builder.is_fatal() {
+                return false;
             }
-            let builder = BlockBuilder::new(
-                block_hash,
-                should_fetch_execution_state,
-                requires_strict_finality,
-                max_simultaneous_peers,
-                self.peer_refresh_interval,
-            );
+        }
+        let builder = BlockBuilder::new(
+            block_hash,
+            should_fetch_execution_state,
+            requires_strict_finality,
+            max_simultaneous_peers,
+            self.peer_refresh_interval,
+        );
+        if should_fetch_execution_state {
             self.historical.replace(builder);
         } else {
-            if let Some(block_builder) = &self.forward {
-                if block_builder.block_hash() == block_hash {
-                    return false;
-                }
-            }
-            let builder = BlockBuilder::new(
-                block_hash,
-                should_fetch_execution_state,
-                requires_strict_finality,
-                max_simultaneous_peers,
-                self.peer_refresh_interval,
-            );
             self.forward.replace(builder);
         }
         true

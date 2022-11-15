@@ -606,6 +606,7 @@ impl MainReactor {
                 if self.should_shutdown_for_upgrade() {
                     return CatchUpInstruction::ShutdownForUpgrade;
                 }
+                self.block_synchronizer.historical_purge();
             }
         }
         // there are no catch up or shutdown instructions, so we must be caught up
@@ -645,15 +646,16 @@ impl MainReactor {
                 // remain in KeepUp
             }
         }
-        let keep_up_progress = self.block_synchronizer.keep_up_progress();
-        self.update_last_progress(&keep_up_progress, "KeepUp");
-        let starting_with = match keep_up_progress {
+        let forward_progress = self.block_synchronizer.forward_progress();
+        self.update_last_progress(&forward_progress, "KeepUp");
+        let starting_with = match forward_progress {
             BlockSynchronizerProgress::Idle => match self.storage.read_highest_complete_block() {
                 Ok(Some(block)) => {
                     StartingWith::LocalTip(block.id(), block.height(), block.header().era_id())
                 }
                 Ok(None) => {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
+                    self.block_synchronizer.forward_purge();
                     return KeepUpInstruction::CatchUp;
                 }
                 Err(error) => {
@@ -676,7 +678,10 @@ impl MainReactor {
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
         debug!("KeepUp: sync_instruction {:?}", sync_instruction);
         match sync_instruction {
-            SyncInstruction::Leap { .. } => return KeepUpInstruction::CatchUp,
+            SyncInstruction::Leap { .. } => {
+                self.block_synchronizer.forward_purge();
+                return KeepUpInstruction::CatchUp;
+            }
             SyncInstruction::BlockSync { block_hash } => {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
                 if self.block_synchronizer.register_block_by_hash(
@@ -832,8 +837,9 @@ impl MainReactor {
                         }),
                     );
                 } else {
+                    self.block_synchronizer.historical_purge();
                     KeepUpInstruction::CheckLater(
-                        format!("Historical: has {:?} but is stuck for some reason", era_id),
+                        "Historical: purged".to_string(),
                         self.control_logic_default_delay.into(),
                     )
                 }
@@ -855,13 +861,13 @@ impl MainReactor {
                 // if any progress has been made, reset attempts
                 self.attempts = 0;
             }
-            if Timestamp::now().saturating_diff(self.last_progress) > self.idle_tolerance {
+            if self.last_progress.elapsed() > self.idle_tolerance {
                 self.attempts += 1;
             }
         }
         debug!(
-            "{}: syncing last_progress: {}",
-            phase_prefix, self.last_progress
+            "{}: last_progress: {} {}",
+            phase_prefix, self.last_progress, block_synchronizer_progress
         );
     }
 
