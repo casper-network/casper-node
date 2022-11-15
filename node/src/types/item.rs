@@ -29,24 +29,33 @@ use crate::effect::GossipTarget;
 #[repr(u8)]
 pub enum Tag {
     /// A deploy identified by its hash and its approvals hash.
+    #[display(fmt = "deploy")]
     Deploy,
     /// A legacy deploy identified by its hash alone.
+    #[display(fmt = "legacy deploy")]
     LegacyDeploy,
     /// A block.
+    #[display(fmt = "block")]
     Block,
     /// A block header.
+    #[display(fmt = "block header")]
     BlockHeader,
     /// A trie or chunk of a trie from global state.
+    #[display(fmt = "trie or chunk")]
     TrieOrChunk,
     /// A finality signature for a block.
+    #[display(fmt = "finality signature")]
     FinalitySignature,
     /// Headers and signatures required to prove that if a given trusted block hash is on the
     /// correct chain, then so is a later header, which should be the most recent one according
     /// to the sender.
+    #[display(fmt = "sync leap")]
     SyncLeap,
     /// The hashes of the finalized deploy approvals sets for a single block.
+    #[display(fmt = "approvals hashes")]
     ApprovalsHashes,
     /// The execution results for a single block.
+    #[display(fmt = "block execution results")]
     BlockExecutionResults,
 }
 
@@ -87,6 +96,7 @@ pub(crate) trait FetcherItem: Item {
 pub(crate) trait GossiperItem: Item {
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool;
 
     /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
     fn target(&self) -> GossipTarget;

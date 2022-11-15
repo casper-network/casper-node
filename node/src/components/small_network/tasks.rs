@@ -681,30 +681,6 @@ where
 
                     let effect_builder = EffectBuilder::new(event_queue);
 
-                    /*/ todo! Handle correctly if we don't know any validator yet. We know validators only
-                    // 1) after executing block (implemented)
-                    // 2) after we "accumulated" switch block (to be possibly implemented)
-                    match msg.payload_is_valid(limiter.validator_matrix()) {
-                        Validity::Valid => (),
-                        Validity::NotValid => {
-                            warn!(
-                                message_kind = ?msg,
-                                ?peer_id,
-                                "not valid payload received"
-                            );
-                            continue;
-                        }
-                        Validity::Malicious => {
-                            warn!(
-                                message_kind = ?msg,
-                                ?peer_id,
-                                "malicious payload received"
-                            );
-                            effect_builder.announce_disconnect_from_peer(peer_id).await;
-                            break;
-                        }
-                    }*/
-
                     match msg.try_into_demand(effect_builder, peer_id) {
                         Ok((event, wait_for_response)) => {
                             // Note: For now, demands bypass the limiter, as we expect the

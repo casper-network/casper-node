@@ -1549,6 +1549,7 @@ impl FetcherItem for Block {
 
 impl GossiperItem for Block {
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::NonValidators(self.header.era_id)
@@ -2229,6 +2230,7 @@ impl Item for FinalitySignature {
 
 impl GossiperItem for FinalitySignature {
     const ID_IS_COMPLETE_ITEM: bool = false;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn target(&self) -> GossipTarget {
         GossipTarget::All

@@ -437,7 +437,7 @@ max_parallel_trie_fetches = 5000
 peer_refresh_interval = '90sec'
 
 # Time interval for the node to check what the block synchronizer needs to acquire next.
-need_next_interval = '300ms'
+need_next_interval = '1s'
 
 # Time interval for recurring disconnection of dishonest peers.
 disconnect_dishonest_peers_interval = '10sec'

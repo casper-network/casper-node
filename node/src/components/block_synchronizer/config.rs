@@ -9,7 +9,7 @@ const DEFAULT_TIMEOUT: &str = "10mins";
 const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
 const DEFAULT_PEER_REFRESH_INTERVAL: &str = "90sec";
 const DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL: &str = "10sec";
-const NEED_NEXT_INTERVAL: &str = "30ms";
+const NEED_NEXT_INTERVAL: &str = "1s";
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]

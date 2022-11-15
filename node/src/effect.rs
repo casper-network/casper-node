@@ -787,7 +787,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkInfoRequest::FullyConnectedPeers { count, responder },
-            QueueKind::Regular,
+            QueueKind::NetworkInfo,
         )
         .await
     }
@@ -799,7 +799,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder },
-            QueueKind::Regular,
+            QueueKind::NetworkInfo,
         )
         .await
     }
@@ -812,7 +812,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 DeployBufferAnnouncement::DeploysExpired(hashes),
-                QueueKind::Regular,
+                QueueKind::Validation,
             )
             .await;
     }
@@ -845,7 +845,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 GossiperAnnouncement::NewCompleteItem(item),
-                QueueKind::Regular,
+                QueueKind::Gossip,
             )
             .await;
     }
@@ -862,7 +862,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 GossiperAnnouncement::NewItemBody { item, sender },
-                QueueKind::Regular,
+                QueueKind::Gossip,
             )
             .await;
     }
@@ -875,7 +875,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
-                QueueKind::Regular,
+                QueueKind::Validation,
             )
             .await;
     }
@@ -890,7 +890,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
-                QueueKind::Regular,
+                QueueKind::FinalitySignature,
             )
             .await;
     }
@@ -909,7 +909,7 @@ impl<REv> EffectBuilder<REv> {
                 block_height,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -941,7 +941,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue.schedule(
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-            QueueKind::Regular,
+            QueueKind::Validation,
         )
     }
 
@@ -955,7 +955,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 GossiperAnnouncement::GossipReceived { item_id, sender },
-                QueueKind::Regular,
+                QueueKind::Gossip,
             )
             .await;
     }
@@ -969,7 +969,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 GossiperAnnouncement::FinishedGossiping(item_id),
-                QueueKind::Regular,
+                QueueKind::Gossip,
             )
             .await;
     }
@@ -985,7 +985,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue.schedule(
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
-            QueueKind::Regular,
+            QueueKind::Validation,
         )
     }
 
@@ -997,7 +997,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-                QueueKind::Regular,
+                QueueKind::Control,
             )
             .await
     }
@@ -1016,7 +1016,7 @@ impl<REv> EffectBuilder<REv> {
                     era_id,
                     execution_effect: ExecutionEffect::from(&execution_journal),
                 },
-                QueueKind::Regular,
+                QueueKind::ContractRuntime,
             )
             .await
     }
@@ -1037,7 +1037,7 @@ impl<REv> EffectBuilder<REv> {
                     approvals_hashes,
                     execution_results,
                 },
-                QueueKind::Regular,
+                QueueKind::ContractRuntime,
             )
             .await
     }
@@ -1056,7 +1056,7 @@ impl<REv> EffectBuilder<REv> {
                     era_that_is_ending,
                     upcoming_era_validators,
                 },
-                QueueKind::Regular,
+                QueueKind::ContractRuntime,
             )
             .await
     }
@@ -1073,7 +1073,7 @@ impl<REv> EffectBuilder<REv> {
                 source,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::Gossip,
         )
         .await
     }
@@ -1085,7 +1085,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutBlock { block, responder },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1103,7 +1103,7 @@ impl<REv> EffectBuilder<REv> {
                 approvals_hashes,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1125,7 +1125,7 @@ impl<REv> EffectBuilder<REv> {
                 execution_results,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1140,7 +1140,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1158,7 +1158,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1176,7 +1176,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1196,7 +1196,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1215,7 +1215,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1230,7 +1230,7 @@ impl<REv> EffectBuilder<REv> {
                 block_height,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1248,7 +1248,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1268,7 +1268,7 @@ impl<REv> EffectBuilder<REv> {
                 public_key,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1283,7 +1283,7 @@ impl<REv> EffectBuilder<REv> {
                 block_header,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1301,7 +1301,7 @@ impl<REv> EffectBuilder<REv> {
                 signatures,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1318,7 +1318,7 @@ impl<REv> EffectBuilder<REv> {
                 signature: Box::new(signature),
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1336,7 +1336,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1354,7 +1354,7 @@ impl<REv> EffectBuilder<REv> {
                 deploy_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1366,7 +1366,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1378,7 +1378,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetHighestCompleteBlockHeader { responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1393,7 +1393,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1405,7 +1405,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetAvailableBlockRange { responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1427,7 +1427,7 @@ impl<REv> EffectBuilder<REv> {
                 peers,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::SyncGlobalState,
         )
         .await
     }
@@ -1445,7 +1445,7 @@ impl<REv> EffectBuilder<REv> {
                 trie_or_chunk_id,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1463,7 +1463,7 @@ impl<REv> EffectBuilder<REv> {
                 trie_key,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1481,7 +1481,7 @@ impl<REv> EffectBuilder<REv> {
                 trie_bytes,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1499,7 +1499,7 @@ impl<REv> EffectBuilder<REv> {
                 trie_key,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1511,7 +1511,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutDeploy { deploy, responder },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1532,7 +1532,7 @@ impl<REv> EffectBuilder<REv> {
                 deploy_hashes,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1553,7 +1553,7 @@ impl<REv> EffectBuilder<REv> {
                 deploy_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1571,7 +1571,7 @@ impl<REv> EffectBuilder<REv> {
                 deploy_id,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1591,7 +1591,7 @@ impl<REv> EffectBuilder<REv> {
                 execution_results,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -1609,7 +1609,7 @@ impl<REv> EffectBuilder<REv> {
                 deploy_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1629,7 +1629,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1644,7 +1644,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetFinalitySignature { id, responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1664,7 +1664,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1684,7 +1684,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1704,7 +1704,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1724,7 +1724,7 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1738,7 +1738,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlockWithMetadata { responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -1761,7 +1761,7 @@ impl<REv> EffectBuilder<REv> {
                 validation_metadata,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::Fetch,
         )
         .await
     }
@@ -1780,7 +1780,7 @@ impl<REv> EffectBuilder<REv> {
                 peers,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::SyncGlobalState,
         )
         .await
     }
@@ -1795,7 +1795,7 @@ impl<REv> EffectBuilder<REv> {
                 timestamp,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::Consensus,
         )
         .await
     }
@@ -1820,7 +1820,7 @@ impl<REv> EffectBuilder<REv> {
                     finalized_block,
                     deploys,
                 },
-                QueueKind::Regular,
+                QueueKind::ContractRuntime,
             )
             .await
     }
@@ -1854,7 +1854,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ConsensusAnnouncement::Proposed(Box::new(proposed_block)),
-                QueueKind::Regular,
+                QueueKind::Consensus,
             )
             .await
     }
@@ -1867,7 +1867,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
-                QueueKind::Regular,
+                QueueKind::Consensus,
             )
             .await
     }
@@ -1888,7 +1888,7 @@ impl<REv> EffectBuilder<REv> {
                     public_key: Box::new(public_key),
                     timestamp,
                 },
-                QueueKind::Regular,
+                QueueKind::Consensus,
             )
             .await
     }
@@ -1910,7 +1910,7 @@ impl<REv> EffectBuilder<REv> {
                     offender: Box::new(offender),
                     justification: Box::new(justification),
                 },
-                QueueKind::Regular,
+                QueueKind::NetworkInfo,
             )
             .await
     }
@@ -1930,7 +1930,7 @@ impl<REv> EffectBuilder<REv> {
                 chainspec_raw_bytes,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1948,7 +1948,7 @@ impl<REv> EffectBuilder<REv> {
                 upgrade_config,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1958,7 +1958,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<UpgradeWatcherRequest> + Send,
     {
-        self.make_request(UpgradeWatcherRequest, QueueKind::Regular)
+        self.make_request(UpgradeWatcherRequest, QueueKind::Control)
             .await
     }
 
@@ -1976,7 +1976,7 @@ impl<REv> EffectBuilder<REv> {
         // serialized bytes. Hence we retrieve raw bytes from storage and then deserialize here.
         self.make_request(
             move |responder| AppStateRequest::Load { key, responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
         .map(|data| bincode::deserialize(&data))
@@ -2007,7 +2007,7 @@ impl<REv> EffectBuilder<REv> {
                         data,
                         responder,
                     },
-                    QueueKind::Regular,
+                    QueueKind::ToStorage,
                 )
                 .await;
                 true
@@ -2033,7 +2033,7 @@ impl<REv> EffectBuilder<REv> {
                 query_request,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2122,7 +2122,7 @@ impl<REv> EffectBuilder<REv> {
                 balance_request,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2139,7 +2139,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2157,7 +2157,7 @@ impl<REv> EffectBuilder<REv> {
                 get_bids_request,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2176,7 +2176,7 @@ impl<REv> EffectBuilder<REv> {
                 state_root_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2195,7 +2195,7 @@ impl<REv> EffectBuilder<REv> {
                 state_root_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2253,7 +2253,7 @@ impl<REv> EffectBuilder<REv> {
                             public_key: validator,
                             responder,
                         },
-                        QueueKind::Regular,
+                        QueueKind::ContractRuntime,
                     )
                     .await
                     .or_else(|error| {
@@ -2274,7 +2274,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ConsensusRequest>,
     {
-        self.make_request(ConsensusRequest::Status, QueueKind::Regular)
+        self.make_request(ConsensusRequest::Status, QueueKind::Consensus)
             .await
     }
 
@@ -2285,7 +2285,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ConsensusRequest>,
     {
-        self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
+        self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Consensus)
             .await
     }
 
@@ -2333,7 +2333,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             ChainspecRawBytesRequest::GetChainspecRawBytes,
-            QueueKind::Regular,
+            QueueKind::NetworkInfo,
         )
         .await
     }
@@ -2354,7 +2354,7 @@ impl<REv> EffectBuilder<REv> {
                 finalized_approvals,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ToStorage,
         )
         .await
     }
@@ -2375,7 +2375,7 @@ impl<REv> EffectBuilder<REv> {
                 deploy: Box::new(deploy),
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -2390,7 +2390,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlockExecutionResultsOrChunk { id, responder },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -2408,7 +2408,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::FromStorage,
         )
         .await
     }
@@ -2426,7 +2426,7 @@ impl<REv> EffectBuilder<REv> {
                 block_hash,
                 responder,
             },
-            QueueKind::Regular,
+            QueueKind::NetworkInfo,
         )
         .await
     }

@@ -7,6 +7,7 @@ use datasize::DataSize;
 use either::Either;
 use tracing::debug;
 
+use super::block_acquisition::Acceptance;
 use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
@@ -37,7 +38,7 @@ impl DeployAcquisition {
         DeployAcquisition::ByHash(Acquisition::new(deploy_hashes, need_execution_result))
     }
 
-    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) {
+    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) -> Acceptance {
         match self {
             DeployAcquisition::ByHash(acquisition) => {
                 acquisition.apply_deploy(*deploy_id.deploy_hash())
@@ -115,9 +116,17 @@ impl<T: Copy + Ord> Acquisition<T> {
         }
     }
 
-    fn apply_deploy(&mut self, deploy_identifier: T) {
-        self.inner
-            .push((deploy_identifier, DeployState::HaveDeployBody));
+    fn apply_deploy(&mut self, deploy_identifier: T) -> Acceptance {
+        if self
+            .inner
+            .contains(&(deploy_identifier, DeployState::HaveDeployBody))
+        {
+            Acceptance::HadIt
+        } else {
+            self.inner
+                .push((deploy_identifier, DeployState::HaveDeployBody));
+            Acceptance::NeededIt
+        }
     }
 
     fn needs_deploy(&self) -> Option<T> {

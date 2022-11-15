@@ -237,7 +237,7 @@ impl ReactorEvent for MainEvent {
     #[inline]
     fn description(&self) -> &'static str {
         match self {
-            MainEvent::ReactorCrank => "CheckStatus",
+            MainEvent::ReactorCrank => "ReactorCrank",
             MainEvent::Network(_) => "SmallNetwork",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::DeployBuffer(_) => "DeployBuffer",
@@ -328,7 +328,7 @@ impl ReactorEvent for MainEvent {
 impl Display for MainEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            MainEvent::ReactorCrank => write!(f, "check status"),
+            MainEvent::ReactorCrank => write!(f, "reactor crank"),
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
             MainEvent::Network(event) => write!(f, "small network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),

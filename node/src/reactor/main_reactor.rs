@@ -330,7 +330,7 @@ impl reactor::Reactor for MainReactor {
             switch_block: None,
             sync_to_historical: config.node.sync_to_genesis,
         };
-
+        info!("MainReactor: instantiated");
         let effects = effect_builder
             .immediately()
             .event(|()| MainEvent::ReactorCrank);
@@ -436,8 +436,6 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, req.into()),
-                // req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
-                //     .ignore()
             ),
 
             // NETWORK CONNECTION AND ORIENTATION
@@ -499,30 +497,17 @@ impl reactor::Reactor for MainReactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
-                item_id: gossiped_address,
-                ..
-            }) => {
-                error!(%gossiped_address, "gossiper should not announce gossiped address");
-                Effects::new()
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_address,
-            )) => {
-                let reactor_event =
-                    MainEvent::Network(small_network::Event::PeerAddressReceived(gossiped_address));
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
-                ..
-            }) => {
-                // Should not be reachable.
-                Effects::new()
-            }
-            MainEvent::AddressGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_)) => {
-                // We don't care about completion of gossiping an address.
-                Effects::new()
-            }
+            MainEvent::AddressGossiperAnnouncement(gossiper_ann) => match gossiper_ann {
+                GossiperAnnouncement::GossipReceived { .. }
+                | GossiperAnnouncement::NewItemBody { .. }
+                | GossiperAnnouncement::FinishedGossiping(_) => Effects::new(),
+                GossiperAnnouncement::NewCompleteItem(gossiped_address) => {
+                    let reactor_event = MainEvent::Network(
+                        small_network::Event::PeerAddressReceived(gossiped_address),
+                    );
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+            },
             MainEvent::SyncLeaper(event) => reactor::wrap_effects(
                 MainEvent::SyncLeaper,
                 self.sync_leaper.handle_event(effect_builder, rng, event),
@@ -971,7 +956,7 @@ impl reactor::Reactor for MainReactor {
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
                 let is_switch_block = block.header().is_switch_block();
-                debug!(
+                info!(
                     %block_hash,
                     height=block.header().height(),
                     era=block.header().era_id().value(),

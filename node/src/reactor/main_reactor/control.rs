@@ -46,6 +46,9 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Effects<MainEvent> {
+        if self.attempts > self.max_attempts {
+            return fatal!(effect_builder, "exceeded reattempt tolerance").ignore();
+        }
         let (delay, mut effects) = self.do_crank(effect_builder, rng);
         effects.extend(
             async move {
@@ -77,6 +80,14 @@ impl MainReactor {
                 }
             },
             ReactorState::CatchUp => match self.catch_up_instruction(effect_builder, rng) {
+                CatchUpInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                }
+                CatchUpInstruction::ShutdownForUpgrade => {
+                    info!("CatchUp: shutting down for upgrade");
+                    self.state = ReactorState::ShutdownForUpgrade;
+                    (Duration::ZERO, Effects::new())
+                }
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
                     Ok(effects) => {
                         info!("CatchUp: switch to Validate at genesis");
@@ -99,26 +110,18 @@ impl MainReactor {
                         fatal!(effect_builder, "failed to commit upgrade: {}", msg).ignore(),
                     ),
                 },
-                CatchUpInstruction::CaughtUp => {
-                    info!("CatchUp: switch to KeepUp");
-                    self.state = ReactorState::KeepUp;
-                    (Duration::ZERO, Effects::new())
-                }
-                CatchUpInstruction::Fatal(msg) => {
-                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
-                }
-                CatchUpInstruction::ShutdownForUpgrade => {
-                    info!("CatchUp: shutting down for upgrade");
-                    self.state = ReactorState::ShutdownForUpgrade;
-                    (Duration::ZERO, Effects::new())
+                CatchUpInstruction::CheckLater(msg, wait) => {
+                    debug!("CatchUp: {}", msg);
+                    (wait, Effects::new())
                 }
                 CatchUpInstruction::Do(wait, effects) => {
                     debug!("CatchUp: node is processing effects");
                     (wait, effects)
                 }
-                CatchUpInstruction::CheckLater(msg, wait) => {
-                    debug!("CatchUp: {}", msg);
-                    (wait, Effects::new())
+                CatchUpInstruction::CaughtUp => {
+                    info!("CatchUp: switch to KeepUp");
+                    self.state = ReactorState::KeepUp;
+                    (Duration::ZERO, Effects::new())
                 }
             },
             ReactorState::Upgrading => match self.upgrading_instruction() {
@@ -137,6 +140,27 @@ impl MainReactor {
             },
             ReactorState::KeepUp => {
                 match self.keep_up_instruction(effect_builder, rng) {
+                    KeepUpInstruction::Fatal(msg) => {
+                        (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                    }
+                    KeepUpInstruction::ShutdownForUpgrade => {
+                        info!("KeepUp: switch to ShutdownForUpgrade");
+                        self.state = ReactorState::ShutdownForUpgrade;
+                        (Duration::ZERO, Effects::new())
+                    }
+                    KeepUpInstruction::CheckLater(msg, wait) => {
+                        debug!("KeepUp: {}", msg);
+                        (wait, Effects::new())
+                    }
+                    KeepUpInstruction::Do(wait, effects) => {
+                        debug!("KeepUp: node is processing effects");
+                        (wait, effects)
+                    }
+                    KeepUpInstruction::CatchUp => {
+                        info!("KeepUp: switch to CatchUp");
+                        self.state = ReactorState::CatchUp;
+                        (Duration::ZERO, Effects::new())
+                    }
                     KeepUpInstruction::Validate(effects) => {
                         // node is in validator set and consensus has what it needs to validate
                         info!("KeepUp: switch to Validate");
@@ -144,54 +168,33 @@ impl MainReactor {
                         self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
-                    KeepUpInstruction::CatchUp => {
-                        info!("KeepUp: switch to CatchUp");
-                        self.state = ReactorState::CatchUp;
-                        (Duration::ZERO, Effects::new())
-                    }
-                    KeepUpInstruction::Do(wait, effects) => {
-                        debug!("KeepUp: node is processing effects");
-                        (wait, effects)
-                    }
-                    KeepUpInstruction::CheckLater(msg, wait) => {
-                        debug!("KeepUp: {}", msg);
-                        (wait, Effects::new())
-                    }
-                    KeepUpInstruction::ShutdownForUpgrade => {
-                        info!("KeepUp: switch to ShutdownForUpgrade");
-                        self.state = ReactorState::ShutdownForUpgrade;
-                        (Duration::ZERO, Effects::new())
-                    }
-                    KeepUpInstruction::Fatal(msg) => {
-                        (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
-                    }
                 }
             }
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
-                ValidateInstruction::NonSwitchBlock => {
-                    (VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK, Effects::new())
-                }
-                ValidateInstruction::KeepUp => {
-                    info!("Validate: switch to KeepUp");
-                    self.state = ReactorState::KeepUp;
-                    self.block_synchronizer.resume();
-                    (Duration::ZERO, Effects::new())
-                }
-                ValidateInstruction::Do(wait, effects) => {
-                    trace!("Validate: node is processing effects");
-                    (wait, effects)
-                }
-                ValidateInstruction::CheckLater(msg, wait) => {
-                    debug!("Validate: {}", msg);
-                    (wait, Effects::new())
+                ValidateInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
                 ValidateInstruction::ShutdownForUpgrade => {
                     info!("Validate: switch to ShutdownForUpgrade");
                     self.state = ReactorState::ShutdownForUpgrade;
                     (Duration::ZERO, Effects::new())
                 }
-                ValidateInstruction::Fatal(msg) => {
-                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                ValidateInstruction::NonSwitchBlock => {
+                    (VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK, Effects::new())
+                }
+                ValidateInstruction::CheckLater(msg, wait) => {
+                    debug!("Validate: {}", msg);
+                    (wait, Effects::new())
+                }
+                ValidateInstruction::Do(wait, effects) => {
+                    trace!("Validate: node is processing effects");
+                    (wait, effects)
+                }
+                ValidateInstruction::KeepUp => {
+                    info!("Validate: switch to KeepUp");
+                    self.state = ReactorState::KeepUp;
+                    self.block_synchronizer.resume();
+                    (Duration::ZERO, Effects::new())
                 }
             },
             ReactorState::ShutdownForUpgrade => {
@@ -347,9 +350,9 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> CatchUpInstruction {
-        let block_sync_progress = self.block_synchronizer.historical_progress();
-        debug!("CatchUp: {:?}", block_sync_progress);
-        let starting_with = match block_sync_progress {
+        let catch_up_progress = self.block_synchronizer.historical_progress();
+        self.update_last_progress(&catch_up_progress, "CatchUp");
+        let starting_with = match catch_up_progress {
             BlockSynchronizerProgress::Idle => {
                 match self.trusted_hash {
                     None => {
@@ -371,12 +374,12 @@ impl MainReactor {
                                 if let ActivationPoint::Genesis(timestamp) =
                                     self.chainspec.protocol_config.activation_point
                                 {
-                                    let timediff = timestamp.saturating_diff(Timestamp::now());
-                                    if timediff > TimeDiff::default() {
+                                    let diff = timestamp.saturating_diff(Timestamp::now());
+                                    if diff > TimeDiff::default() {
                                         return CatchUpInstruction::CheckLater(
                                             "CatchUp: waiting for genesis activation point"
                                                 .to_string(),
-                                            Duration::from(timediff),
+                                            Duration::from(diff),
                                         );
                                     } else {
                                         match self.chainspec.network_config.is_genesis_validator(
@@ -603,6 +606,7 @@ impl MainReactor {
                 if self.should_shutdown_for_upgrade() {
                     return CatchUpInstruction::ShutdownForUpgrade;
                 }
+                self.block_synchronizer.historical_purge();
             }
         }
         // there are no catch up or shutdown instructions, so we must be caught up
@@ -642,14 +646,16 @@ impl MainReactor {
                 // remain in KeepUp
             }
         }
-
-        let starting_with = match self.block_synchronizer.keep_up_progress() {
+        let forward_progress = self.block_synchronizer.forward_progress();
+        self.update_last_progress(&forward_progress, "KeepUp");
+        let starting_with = match forward_progress {
             BlockSynchronizerProgress::Idle => match self.storage.read_highest_complete_block() {
                 Ok(Some(block)) => {
                     StartingWith::LocalTip(block.id(), block.height(), block.header().era_id())
                 }
                 Ok(None) => {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
+                    self.block_synchronizer.forward_purge();
                     return KeepUpInstruction::CatchUp;
                 }
                 Err(error) => {
@@ -659,23 +665,10 @@ impl MainReactor {
                     ))
                 }
             },
-            BlockSynchronizerProgress::Syncing(block_hash, block_height, last_progress) => {
-                // do idleness / reattempt checking
-                if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
-                    self.attempts += 1;
-                } else {
-                    // if any progress has been made, reset attempts
-                    if last_progress > self.last_progress {
-                        debug!("KeepUp: syncing last_progress: {}", last_progress);
-                        self.last_progress = last_progress;
-                        self.attempts = 0;
-                    }
-                }
-                match block_height {
-                    None => StartingWith::Hash(block_hash),
-                    Some(height) => StartingWith::BlockIdentifier(block_hash, height),
-                }
-            }
+            BlockSynchronizerProgress::Syncing(block_hash, block_height, _) => match block_height {
+                None => StartingWith::Hash(block_hash),
+                Some(height) => StartingWith::BlockIdentifier(block_hash, height),
+            },
             BlockSynchronizerProgress::Synced(block_hash, block_height) => {
                 debug!("KeepUp: executable block: {}", block_hash);
                 StartingWith::ExecutableBlock(block_hash, block_height)
@@ -685,7 +678,10 @@ impl MainReactor {
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
         debug!("KeepUp: sync_instruction {:?}", sync_instruction);
         match sync_instruction {
-            SyncInstruction::Leap { .. } => return KeepUpInstruction::CatchUp,
+            SyncInstruction::Leap { .. } => {
+                self.block_synchronizer.forward_purge();
+                return KeepUpInstruction::CatchUp;
+            }
             SyncInstruction::BlockSync { block_hash } => {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
                 if self.block_synchronizer.register_block_by_hash(
@@ -699,11 +695,6 @@ impl MainReactor {
                         effect_builder.immediately().event(|_| {
                             MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                         }),
-                    );
-                } else {
-                    return KeepUpInstruction::CheckLater(
-                        "KeepUp is syncing".to_string(),
-                        Duration::from_millis(500),
                     );
                 }
             }
@@ -736,135 +727,182 @@ impl MainReactor {
                 // noop
             }
         }
-        error!(
-            "XXX checking historical syncing: {:?}",
-            self.sync_to_historical
-        );
-        if self.sync_to_historical {
-            match self.block_synchronizer.historical_progress() {
-                ev @ BlockSynchronizerProgress::Idle
-                | ev @ BlockSynchronizerProgress::Synced(_, _) => {
-                    error!("XXX checking historical syncing: {:?}", ev);
-                    if let Some(block_header) = self.storage.get_highest_orphaned_block_header() {
-                        error!("XXX starting historical syncing: {:?}", block_header);
-                        let parent_hash = block_header.parent_hash();
-                        let required_era_id = match self.storage.read_block_header(parent_hash) {
-                            Ok(None) => block_header.era_id().predecessor(),
-                            Ok(Some(parent_header)) => Some(parent_header.era_id()),
-                            Err(error) => {
-                                return KeepUpInstruction::Fatal(format!(
-                                    "failed to read block header: {}",
-                                    error
-                                ));
-                            }
-                        };
-                        if let Some(previous_era_id) = required_era_id {
-                            if false == self.validator_matrix.has_era(&previous_era_id) {
-                                error!(
-                                    "XXX attempting historical sync leap: {:?}",
-                                    previous_era_id
-                                );
-                                let leap_status = self.sync_leaper.leap_status();
-                                match leap_status {
-                                    ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
-                                        if let LeapStatus::Failed {
+        if false == self.sync_to_historical {
+            // if nothing else needs to be done, check later
+            return KeepUpInstruction::CheckLater(
+                "at perceived tip of chain".to_string(),
+                self.control_logic_default_delay.into(),
+            );
+        }
+        let historical_progress = self.block_synchronizer.historical_progress();
+        self.update_last_progress(&historical_progress, "Historical");
+        match self.maybe_parent_block_identifier(&historical_progress) {
+            Err(msg) => KeepUpInstruction::Fatal(msg),
+            Ok(None) => KeepUpInstruction::CheckLater(
+                format!("Historical: syncing {:?}", historical_progress),
+                self.control_logic_default_delay.into(),
+            ),
+            Ok(Some((parent_hash, era_id))) => {
+                if false == self.validator_matrix.has_era(&era_id) {
+                    debug!("Historical: sync leaping for: {}", parent_hash);
+                    let leap_status = self.sync_leaper.leap_status();
+                    debug!("Historical: {:?}", leap_status);
+                    match leap_status {
+                        ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
+                            if let LeapStatus::Failed {
+                                error,
+                                sync_leap_identifier: _,
+                                from_peers: _,
+                                in_flight: _,
+                            } = ls
+                            {
+                                self.attempts += 1;
+                                if self.attempts > self.max_attempts {
+                                    // self.crank will ensure shut down if no other progress
+                                    // is made before this event is processed
+                                    return KeepUpInstruction::CheckLater(
+                                        format!(
+                                            "Historical: failed leap back exceeded reattempt tolerance: {}",
                                             error,
-                                            sync_leap_identifier: _,
-                                            from_peers: _,
-                                            in_flight: _,
-                                        } = ls
-                                        {
-                                            error!("KeepUp: historical leap failed: {:?}", error);
-                                        }
-                                        let peers_to_ask =
-                                            self.small_network.fully_connected_peers_random(
-                                                rng,
-                                                self.chainspec
-                                                    .core_config
-                                                    .simultaneous_peer_requests
-                                                    as usize,
-                                            );
-                                        let sync_leap_identifier =
-                                            SyncLeapIdentifier::sync_to_historical(*parent_hash);
-                                        let effects =
-                                            effect_builder.immediately().event(move |_| {
-                                                MainEvent::SyncLeaper(
-                                                    sync_leaper::Event::AttemptLeap {
-                                                        sync_leap_identifier,
-                                                        peers_to_ask,
-                                                    },
-                                                )
-                                            });
-                                        info!("KeepUp: initiating sync leap for: {}", parent_hash);
-                                        return KeepUpInstruction::Do(Duration::ZERO, effects);
-                                    }
-                                    LeapStatus::Awaiting { .. } => {
-                                        // noop
-                                    }
-                                    LeapStatus::Received {
-                                        best_available,
-                                        from_peers,
-                                        ..
-                                    } => {
-                                        debug!("KeepUp: sync leap received: {:?}", best_available);
-                                        info!(
-                                            "KeepUp: sync leap received for: {:?}",
-                                            best_available.trusted_block_header.block_hash()
-                                        );
-                                        for validator_weights in best_available
-                                            .era_validator_weights(
-                                                self.validator_matrix.fault_tolerance_threshold(),
-                                            )
-                                        {
-                                            self.validator_matrix
-                                                .register_era_validator_weights(validator_weights);
-                                        }
-                                        self.block_synchronizer.register_sync_leap(
-                                            &*best_available,
-                                            from_peers,
-                                            true,
-                                            self.chainspec.core_config.simultaneous_peer_requests,
-                                        );
-                                        self.block_accumulator.handle_validators(effect_builder);
-                                        let effects = effect_builder.immediately().event(|_| {
-                                            MainEvent::BlockSynchronizerRequest(
-                                                BlockSynchronizerRequest::NeedNext,
-                                            )
-                                        });
-                                        return KeepUpInstruction::Do(Duration::ZERO, effects);
-                                    }
+                                        ),
+                                        Duration::ZERO,
+                                    );
                                 }
-                            } else if self.block_synchronizer.register_block_by_hash(
-                                *block_header.parent_hash(),
-                                true,
-                                true,
-                                self.chainspec.core_config.simultaneous_peer_requests,
-                            ) {
-                                let effects = effect_builder.immediately().event(|_| {
-                                    MainEvent::BlockSynchronizerRequest(
-                                        BlockSynchronizerRequest::NeedNext,
-                                    )
-                                });
-                                return KeepUpInstruction::Do(Duration::ZERO, effects);
+                                error!("Historical: sync leap failed: {:?}", error);
                             }
+                            let peers_to_ask = self.small_network.fully_connected_peers_random(
+                                rng,
+                                self.chainspec.core_config.simultaneous_peer_requests as usize,
+                            );
+                            let sync_leap_identifier =
+                                SyncLeapIdentifier::sync_to_historical(parent_hash);
+                            let effects = effect_builder.immediately().event(move |_| {
+                                MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                                    sync_leap_identifier,
+                                    peers_to_ask,
+                                })
+                            });
+                            info!("Historical: initiating sync leap for: {}", parent_hash);
+                            KeepUpInstruction::Do(Duration::ZERO, effects)
                         }
+                        LeapStatus::Received {
+                            best_available,
+                            from_peers: _,
+                            ..
+                        } => {
+                            info!(
+                                "Historical: sync leap received for: {:?}",
+                                best_available.trusted_block_header.block_hash()
+                            );
+                            let era_validator_weights = best_available.era_validator_weights(
+                                self.validator_matrix.fault_tolerance_threshold(),
+                            );
+                            for evw in era_validator_weights {
+                                let era_id = evw.era_id();
+                                if self.validator_matrix.register_era_validator_weights(evw) {
+                                    debug!("Historical: got era: {}", era_id);
+                                } else {
+                                    debug!("Historical: already had era: {}", era_id);
+                                }
+                            }
+                            KeepUpInstruction::CheckLater(
+                                "Historical: sync leap received".to_string(),
+                                Duration::ZERO,
+                            )
+                        }
+                        LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(
+                            "Historical: sync leap awaiting".to_string(),
+                            self.control_logic_default_delay.into(),
+                        ),
                     }
-                }
-                BlockSynchronizerProgress::Syncing(_, maybe_block_height, last_progress) => {
-                    error!(
-                        "XXX attempting historical syncing maybe_block_height: {:?}",
-                        maybe_block_height
+                } else if self.block_synchronizer.register_block_by_hash(
+                    parent_hash,
+                    true,
+                    true,
+                    self.chainspec.core_config.simultaneous_peer_requests,
+                ) {
+                    debug!("Historical: register_block_by_hash: {:?}", parent_hash);
+                    let peers_to_ask = self.small_network.fully_connected_peers_random(
+                        rng,
+                        self.chainspec.core_config.simultaneous_peer_requests as usize,
                     );
-                    if self.last_progress < last_progress {
-                        self.last_progress = last_progress;
-                    }
+                    debug!("Historical: peers count: {:?}", peers_to_ask.len());
+                    self.block_synchronizer
+                        .register_peers(parent_hash, peers_to_ask);
+
+                    return KeepUpInstruction::Do(
+                        Duration::ZERO,
+                        effect_builder.immediately().event(|_| {
+                            MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+                        }),
+                    );
+                } else {
+                    self.block_synchronizer.historical_purge();
+                    KeepUpInstruction::CheckLater(
+                        "Historical: purged".to_string(),
+                        self.control_logic_default_delay.into(),
+                    )
                 }
             }
         }
-        KeepUpInstruction::CheckLater(
-            "KeepUp: at perceived tip of chain".to_string(),
-            self.control_logic_default_delay.into(),
-        )
+    }
+
+    fn update_last_progress(
+        &mut self,
+        block_synchronizer_progress: &BlockSynchronizerProgress,
+        phase_prefix: &str,
+    ) {
+        if let BlockSynchronizerProgress::Syncing(_, _, last_progress) = block_synchronizer_progress
+        {
+            // do idleness / reattempt checking
+            let sync_progress = *last_progress;
+            if sync_progress > self.last_progress {
+                self.last_progress = sync_progress;
+                // if any progress has been made, reset attempts
+                self.attempts = 0;
+            }
+            if self.last_progress.elapsed() > self.idle_tolerance {
+                self.attempts += 1;
+            }
+        }
+        debug!(
+            "{}: last_progress: {} {}",
+            phase_prefix, self.last_progress, block_synchronizer_progress
+        );
+    }
+
+    fn maybe_parent_block_identifier(
+        &mut self,
+        block_synchronizer_progress: &BlockSynchronizerProgress,
+    ) -> Result<Option<(BlockHash, EraId)>, String> {
+        if matches!(
+            block_synchronizer_progress,
+            BlockSynchronizerProgress::Syncing(_, _, _)
+        ) {
+            return Ok(None);
+        }
+        if let Some(block_header) = self.storage.get_highest_orphaned_block_header() {
+            if block_header.is_genesis() {
+                return Ok(None);
+            }
+            debug!(
+                "Historical: attempting({}) for: {}",
+                block_header.height().saturating_sub(1),
+                block_header.parent_hash()
+            );
+            match self.storage.read_block_header(block_header.parent_hash()) {
+                Ok(Some(parent)) => Ok(Some((parent.block_hash(), parent.era_id()))),
+                Ok(None) => match block_header.era_id().predecessor() {
+                    Some(previous_era_id) => {
+                        Ok(Some((*block_header.parent_hash(), previous_era_id)))
+                    }
+                    None => Ok(None),
+                },
+                Err(err) => Err(err.to_string()),
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     fn validate_instruction(
@@ -1049,7 +1087,7 @@ impl MainReactor {
     fn should_commit_upgrade(&self) -> Result<bool, String> {
         let highest_switch_block_header = match &self.switch_block {
             None => {
-                return Err("switch_block should be Some".to_string());
+                return Ok(false);
             }
             Some(header) => header,
         };

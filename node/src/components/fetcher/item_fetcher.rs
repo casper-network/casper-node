@@ -144,21 +144,19 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
             Some(item_handle) => item_handle.validation_metadata(),
             None => {
                 debug!(item_id = %item.id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
-                return effect_builder
-                    .announce_block_peer_with_justification(
-                        peer,
-                        BlocklistJustification::SentBadItem { tag: T::TAG },
-                    )
-                    .ignore();
+                return Effects::new();
             }
         };
 
         if let Err(err) = item.validate(validation_metadata) {
-            debug!(?peer, ?err, ?item, "peer sent invalid item, banning peer");
+            debug!(%peer, %err, ?item, "peer sent invalid item, banning peer");
             effect_builder
                 .announce_block_peer_with_justification(
                     peer,
-                    BlocklistJustification::SentBadItem { tag: T::TAG },
+                    BlocklistJustification::SentInvalidItem {
+                        tag: T::TAG,
+                        error_msg: err.to_string(),
+                    },
                 )
                 .ignore()
         } else {

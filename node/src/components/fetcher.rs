@@ -13,7 +13,7 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::{
     components::Component,
@@ -84,7 +84,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        trace!(?event, "Fetcher: handling event");
         match event {
             Event::Fetch(FetcherRequest {
                 id,

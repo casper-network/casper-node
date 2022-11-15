@@ -254,7 +254,7 @@ impl LimiterHandle {
 
                         // Add appropriate amount of resources, capped at `max_stored_bytes`. We
                         // are still maintaining the lock here to avoid issues with other
-                        // low-priority requesters.
+                        // low-priority requestors.
                         resources.available += ((elapsed.as_nanos()
                             * self.data.resources_per_second as u128)
                             / 1_000_000_000) as i64;
@@ -319,19 +319,6 @@ mod tests {
 
     #[tokio::test]
     async fn unlimited_limiter_is_unlimited() {
-        // let mut rng = crate::new_rng();
-        //
-        // let unlimited = Unlimited;
-        //
-        // let handle = unlimited.create_handle(NodeId::random(&mut rng), None);
-        //
-        // let start = Instant::now();
-        // handle.request_allowance(0).await;
-        // handle.request_allowance(u32::MAX).await;
-        // handle.request_allowance(1).await;
-        // let end = Instant::now();
-        //
-        // assert!(end - start < SHORT_TIME);
         panic!("ensure behaviour of setting limit to 0 is maintained");
     }
 

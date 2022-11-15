@@ -355,7 +355,7 @@ fn next_installed_version(
         let version = match ProtocolVersion::from_str(&subdir_name) {
             Ok(version) => version,
             Err(error) => {
-                trace!(%error, path=%path.display(), "failed to get a version");
+                trace!(%error, path=%path.display(), "UpgradeWatcher: failed to get a version");
                 continue;
             }
         };
