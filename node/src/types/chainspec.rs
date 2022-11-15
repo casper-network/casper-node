@@ -85,7 +85,6 @@ impl Chainspec {
             );
         }
 
-
         if self.core_config.unbonding_delay <= self.core_config.auction_delay {
             warn!(
                 "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
