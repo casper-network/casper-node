@@ -13,9 +13,8 @@ pub(crate) use crate::components::deploy_acceptor::{Error, Event};
 use crate::{
     components::{deploy_acceptor::EventMetadata, Component},
     effect::{
-        announcements::DeployAcceptorAnnouncement,
-        requests::{ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
+        EffectExt, Effects, Responder,
     },
     types::Deploy,
     utils::Source,
@@ -23,20 +22,12 @@ use crate::{
 };
 
 pub(crate) trait ReactorEventT:
-    From<Event>
-    + From<DeployAcceptorAnnouncement>
-    + From<StorageRequest>
-    + From<ContractRuntimeRequest>
-    + Send
+    From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event>
-        + From<DeployAcceptorAnnouncement>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + Send
+    REv: From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
 {
 }
 
