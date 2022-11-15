@@ -74,6 +74,7 @@ smallvec = { version = "1", features = ["serde"] }
 static_assertions = "1"
 stats_alloc = "0.1.8"
 structopt = "0.3.14"
+strum = { version = "0.24.1", features = ["derive"] }
 sys-info = "0.8.0"
 tempfile = "3"
 thiserror = "1"
