@@ -85,6 +85,13 @@ impl Chainspec {
             );
         }
 
+        if self.core_config.unbonding_delay <= self.core_config.auction_delay {
+            warn!(
+                "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
+                self.core_config.unbonding_delay, self.core_config.auction_delay);
+            return false;
+        }
+
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
         if self.core_config.era_duration.millis() > 0
