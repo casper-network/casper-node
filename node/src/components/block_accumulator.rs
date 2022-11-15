@@ -112,7 +112,7 @@ pub(crate) struct BlockAccumulator {
     /// created the block acceptor, from oldest to newest.
     peer_block_timestamps: BTreeMap<NodeId, VecDeque<(BlockHash, Timestamp)>>,
     /// The minimum time between a block and its child.
-    block_time: TimeDiff,
+    min_block_time: TimeDiff,
 }
 
 impl BlockAccumulator {
@@ -121,7 +121,7 @@ impl BlockAccumulator {
         validator_matrix: ValidatorMatrix,
         local_tip_height_and_era_id: Option<(u64, EraId)>,
         recent_era_interval: u64,
-        block_time: TimeDiff,
+        min_block_time: TimeDiff,
     ) -> Self {
         Self {
             validator_matrix,
@@ -135,7 +135,7 @@ impl BlockAccumulator {
                 .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id)),
             recent_era_interval,
             peer_block_timestamps: Default::default(),
-            block_time,
+            min_block_time,
         }
     }
 
@@ -289,8 +289,8 @@ impl BlockAccumulator {
             }
 
             // Assume a block time of at least 1 millisecond, so we don't divide by zero.
-            let block_time = self.block_time.max(TimeDiff::from(1));
-            let expected_blocks = (purge_interval / block_time) as usize;
+            let min_block_time = self.min_block_time.max(TimeDiff::from(1));
+            let expected_blocks = (purge_interval / min_block_time) as usize;
             let max_block_count = PEER_RATE_LIMIT_MULTIPLIER.saturating_mul(expected_blocks);
             if block_timestamps.len() >= max_block_count {
                 warn!(
