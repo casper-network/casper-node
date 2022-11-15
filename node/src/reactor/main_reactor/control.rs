@@ -126,6 +126,9 @@ impl MainReactor {
                 }
             },
             ReactorState::Upgrading => match self.upgrading_instruction() {
+                UpgradingInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                }
                 UpgradingInstruction::CheckLater(msg, wait) => {
                     debug!("Upgrading: {}", msg);
                     (wait, Effects::new())
@@ -134,9 +137,6 @@ impl MainReactor {
                     info!("Upgrading: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
-                }
-                UpgradingInstruction::Fatal(msg) => {
-                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
             },
             ReactorState::KeepUp => {
