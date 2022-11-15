@@ -1849,12 +1849,10 @@ impl Storage {
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
-        era_depth: u8,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
-        if era_depth == 0 || trusted_block_header.is_genesis() {
+        if trusted_block_header.is_genesis() {
             return Ok(Some(vec![]));
         }
-        let mut depth = 0;
         let mut result = vec![];
         let mut current_trusted_block_header = trusted_block_header.clone();
         loop {
@@ -1867,12 +1865,10 @@ impl Storage {
                         return Ok(None);
                     }
                 };
+
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() {
-                depth += 1;
-                if depth >= era_depth || parent_block_header.is_genesis() {
-                    break;
-                }
+                break;
             }
             current_trusted_block_header = parent_block_header;
         }
@@ -2307,9 +2303,8 @@ impl Storage {
         };
 
         let trusted_ancestors_only = sync_leap_identifier.trusted_ancestor_only();
-        let era_depth = sync_leap_identifier.trusted_ancestor_era_count();
         let trusted_ancestor_headers =
-            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header, era_depth)? {
+            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
