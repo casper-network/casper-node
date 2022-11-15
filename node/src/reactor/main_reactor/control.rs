@@ -25,6 +25,7 @@ use crate::{
         self,
         main_reactor::{
             catch_up_instruction::CatchUpInstruction, keep_up_instruction::KeepUpInstruction,
+            upgrade_shutdown_instruction::UpgradeShutdownInstruction,
             upgrading_instruction::UpgradingInstruction, utils,
             validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
         },
@@ -198,60 +199,19 @@ impl MainReactor {
                 }
             },
             ReactorState::ShutdownForUpgrade => {
-                let highest_switch_block_era = match self.recent_switch_block_headers.last() {
-                    None => {
-                        let effects = fatal!(
-                            effect_builder,
-                            "ShutdownForUpgrade: recent_switch_block_headers cannot be empty"
-                        )
-                        .ignore();
-                        return (Duration::ZERO, effects);
-                    }
-                    Some(block_header) => block_header.era_id(),
-                };
-                match self
-                    .validator_matrix
-                    .validator_weights(highest_switch_block_era)
-                {
-                    Some(validator_weights) => {
-                        let should_stop = match self
-                            .storage
-                            .era_has_sufficient_finality_signatures(&validator_weights)
-                        {
-                            Ok(should_stop) => should_stop,
-                            Err(error) => {
-                                let effects = fatal!(
-                                    effect_builder,
-                                    "failed check for sufficient finality signatures: {}",
-                                    error
-                                )
-                                .ignore();
-                                return (Duration::ZERO, effects);
-                            }
-                        };
-                        let effects = if should_stop {
-                            // Allow a short delay for further finality signatures to arrive and be
-                            // stored.
-                            effect_builder
-                                .set_timeout(DELAY_BEFORE_SHUTDOWN)
-                                .event(|_| {
-                                    MainEvent::ControlAnnouncement(
-                                        ControlAnnouncement::ShutdownForUpgrade,
-                                    )
-                                })
-                        } else {
-                            Effects::new()
-                        };
-                        (DELAY_BEFORE_SHUTDOWN, effects)
-                    }
-                    None => (
+                match self.upgrade_shutdown_instruction(effect_builder) {
+                    UpgradeShutdownInstruction::Fatal(msg) => (
                         Duration::ZERO,
-                        fatal!(
-                            effect_builder,
-                            "validator_weights cannot be missing in Upgrade state"
-                        )
-                        .ignore(),
+                        fatal!(effect_builder, "ShutdownForUpgrade: {}", msg).ignore(),
                     ),
+                    UpgradeShutdownInstruction::CheckLater(msg, wait) => {
+                        debug!("ShutdownForUpgrade: {}", msg);
+                        (wait, Effects::new())
+                    }
+                    UpgradeShutdownInstruction::Do(wait, effects) => {
+                        trace!("ShutdownForUpgrade: node is processing effects");
+                        (wait, effects)
+                    }
                 }
             }
         }
@@ -621,6 +581,57 @@ impl MainReactor {
             ),
             Ok(false) => UpgradingInstruction::CatchUp,
             Err(msg) => UpgradingInstruction::Fatal(msg),
+        }
+    }
+
+    fn upgrade_shutdown_instruction(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> UpgradeShutdownInstruction {
+        let highest_switch_block_era = match self.recent_switch_block_headers.last() {
+            None => {
+                return UpgradeShutdownInstruction::Fatal(
+                    "recent_switch_block_headers cannot be empty".to_string(),
+                );
+            }
+            Some(block_header) => block_header.era_id(),
+        };
+        match self
+            .validator_matrix
+            .validator_weights(highest_switch_block_era)
+        {
+            Some(validator_weights) => {
+                let era_has_sufficient_finality = match self
+                    .storage
+                    .era_has_sufficient_finality_signatures(&validator_weights)
+                {
+                    Ok(is_sufficient) => is_sufficient,
+                    Err(error) => {
+                        return UpgradeShutdownInstruction::Fatal(format!(
+                            "failed check for sufficient finality signatures: {}",
+                            error
+                        ));
+                    }
+                };
+                if era_has_sufficient_finality {
+                    // Allow a delay to acquire more finality signatures
+                    let effects = effect_builder
+                        .set_timeout(DELAY_BEFORE_SHUTDOWN)
+                        .event(|_| {
+                            MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade)
+                        });
+                    // should not need to crank the control logic again as the reactor will shutdown
+                    UpgradeShutdownInstruction::Do(Duration::MAX, effects)
+                } else {
+                    UpgradeShutdownInstruction::CheckLater(
+                        "waiting for sufficient finality".to_string(),
+                        DELAY_BEFORE_SHUTDOWN,
+                    )
+                }
+            }
+            None => {
+                UpgradeShutdownInstruction::Fatal("validator_weights cannot be missing".to_string())
+            }
         }
     }
 

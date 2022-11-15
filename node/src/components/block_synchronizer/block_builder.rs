@@ -159,7 +159,7 @@ impl BlockBuilder {
         self.in_flight_latch = Some(Timestamp::now());
     }
 
-    pub(super) fn is_fatal(&self) -> bool {
+    pub(super) fn is_failed(&self) -> bool {
         matches!(self.acquisition_state, BlockAcquisitionState::Failed(_, _))
     }
 
@@ -386,7 +386,7 @@ impl BlockBuilder {
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
         peers.into_iter().for_each(|peer| {
-            if !(self.is_finished() || self.is_fatal()) {
+            if !(self.is_finished() || self.is_failed()) {
                 self.peer_list.register_peer(peer)
             }
         });
