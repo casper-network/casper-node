@@ -33,6 +33,35 @@ pub(crate) use event::Event;
 type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
 
 #[derive(DataSize, Debug)]
+struct DeployDetails {
+    expiry_time: Option<Timestamp>,
+    footprint_and_approvals: Option<FootprintAndApprovals>,
+    already_gossiped: bool,
+}
+
+impl DeployDetails {
+    fn new(
+        expiry_time: Option<Timestamp>,
+        footprint_and_approvals: Option<FootprintAndApprovals>,
+        already_gossiped: bool,
+    ) -> Self {
+        Self {
+            expiry_time,
+            footprint_and_approvals,
+            already_gossiped,
+        }
+    }
+
+    fn new_gossiped() -> Self {
+        Self {
+            expiry_time: None,
+            footprint_and_approvals: None,
+            already_gossiped: true,
+        }
+    }
+}
+
+#[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
     status: ComponentStatus,
     cfg: Config,
@@ -43,7 +72,7 @@ pub(crate) struct DeployBuffer {
     //
     // The timestamp is the time when the deploy expires.
     // Expired items are removed via a self-perpetuating expire event.
-    buffer: HashMap<DeployHash, (Timestamp, Option<FootprintAndApprovals>)>,
+    buffer: HashMap<DeployHash, DeployDetails>,
     // when a maybe-block is in flight, we pause inclusion
     // of the deploys within it in other proposed blocks
     // if the maybe-block becomes an actual block the
@@ -58,9 +87,6 @@ pub(crate) struct DeployBuffer {
     // to allow consensus to proceed safely without risking
     // duplicating deploys
     chain_index: BTreeMap<u64, Timestamp>,
-    // Stores information about deploy hashes that have already been gossiped.
-    // Deploy whose hashes have not been gossiped will never be proposed.
-    gossiped_deploy_hashes: BTreeSet<DeployHash>,
 }
 
 impl DeployBuffer {
@@ -74,7 +100,6 @@ impl DeployBuffer {
             hold: BTreeMap::new(),
             dead: HashSet::new(),
             chain_index: BTreeMap::new(),
-            gossiped_deploy_hashes: BTreeSet::new(),
         }
     }
 
@@ -111,7 +136,9 @@ impl DeployBuffer {
         let now = Timestamp::now();
         let (buffer, freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
             .into_iter()
-            .partition(|(_, (expiry_time, _))| *expiry_time >= now);
+            .partition(|(_, DeployDetails { expiry_time, .. })| {
+                expiry_time.map_or(true, |expiry_time| expiry_time >= now)
+            });
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold.iter_mut().for_each(|(_, held_deploys)| {
@@ -157,8 +184,11 @@ impl DeployBuffer {
         };
         let expiry_time = deploy.header().expires();
         let approvals = deploy.approvals().clone();
-        self.buffer
-            .insert(*deploy_hash, (expiry_time, Some((footprint, approvals))));
+
+        self.add_deploy_to_buffer(
+            deploy_hash,
+            DeployDetails::new(Some(expiry_time), Some((footprint, approvals)), false),
+        );
     }
 
     fn register_block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
@@ -176,10 +206,9 @@ impl DeployBuffer {
                 let expiry_time = finalized_block
                     .timestamp()
                     .saturating_add(self.deploy_config.max_ttl);
-                self.buffer.insert(*hash, (expiry_time, None));
+                self.add_deploy_to_buffer(hash, DeployDetails::new(Some(expiry_time), None, false));
             }
             self.dead.insert(*hash);
-            self.gossiped_deploy_hashes.remove(hash);
         }
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
@@ -189,11 +218,7 @@ impl DeployBuffer {
     }
 
     fn register_deploy_gossiped(&mut self, deploy_hash: DeployHash) {
-        // TODO[RC]: Can we assume that we'll get here only once per hash?
-        // If not, handle the case when we either proposed a deploy in a block or moved the deploy
-        // to dead, and only after that we received another gossip notification. In such case it'll
-        // stay in the collection forever.
-        self.gossiped_deploy_hashes.insert(deploy_hash);
+        self.add_deploy_to_buffer(&deploy_hash, DeployDetails::new_gossiped());
     }
 
     fn proposable(&self) -> Vec<(DeployHash, DeployFootprint, BTreeSet<Approval>)> {
@@ -203,9 +228,10 @@ impl DeployBuffer {
             .iter()
             .filter(|(k, _)| !self.hold.values().any(|hs| hs.contains(k)))
             .filter(|(k, _)| !self.dead.contains(k))
-            .filter(|(k, _)| self.gossiped_deploy_hashes.contains(k))
-            .filter_map(|(k, (_, maybe_data))| {
-                maybe_data
+            .filter(|(_, deploy_details)| deploy_details.already_gossiped)
+            .filter_map(|(k, deploy_details)| {
+                deploy_details
+                    .footprint_and_approvals
                     .as_ref()
                     .map(|(footprint, approvals)| (*k, footprint.clone(), approvals.clone()))
             })
@@ -217,9 +243,6 @@ impl DeployBuffer {
         let mut holds = vec![];
         for (deploy_hash, footprint, approvals) in self.proposable() {
             let with_approvals = DeployHashWithApprovals::new(deploy_hash, approvals);
-            if !self.gossiped_deploy_hashes.remove(&deploy_hash) {
-                warn!(%deploy_hash, "appendable_block proposes deploy which was not yet gossiped");
-            }
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     holds.push(deploy_hash);
@@ -256,6 +279,26 @@ impl DeployBuffer {
         // put a hold on all proposed deploys / transfers
         self.hold.insert(timestamp, holds.iter().copied().collect());
         ret
+    }
+
+    fn add_deploy_to_buffer(&mut self, deploy_hash: &DeployHash, deploy_details: DeployDetails) {
+        self.buffer
+            .entry(*deploy_hash)
+            .and_modify(|current_deploy_details| {
+                // For existing items, we keep the gossiped flag intact.
+                *current_deploy_details = DeployDetails::new(
+                    deploy_details.expiry_time,
+                    deploy_details.footprint_and_approvals.clone(),
+                    current_deploy_details.already_gossiped,
+                );
+            })
+            .or_insert_with(|| {
+                DeployDetails::new(
+                    deploy_details.expiry_time,
+                    deploy_details.footprint_and_approvals,
+                    deploy_details.already_gossiped,
+                )
+            });
     }
 }
 
