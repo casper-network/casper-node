@@ -12,7 +12,7 @@ pub(crate) mod error;
 mod metrics;
 mod protocols;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod traits;
 mod validator_change;
 

@@ -4,8 +4,14 @@ mod error;
 mod event;
 mod starting_with;
 mod sync_instruction;
+#[cfg(test)]
+mod tests;
 
-use std::{cmp::Ordering, collections::BTreeMap, iter};
+use std::{
+    cmp::Ordering,
+    collections::{btree_map, BTreeMap, VecDeque},
+    iter,
+};
 
 use datasize::DataSize;
 use futures::FutureExt;
@@ -35,6 +41,10 @@ pub use error::Error;
 pub(crate) use event::Event;
 pub(crate) use starting_with::StartingWith;
 pub(crate) use sync_instruction::SyncInstruction;
+
+/// If a peer "informs" us about more than the expected number of new blocks times this factor,
+/// they are probably spamming, and we refuse to create new block acceptors for them.
+const PEER_RATE_LIMIT_MULTIPLIER: usize = 2;
 
 #[derive(Clone, Copy, DataSize, Debug, Eq, PartialEq)]
 struct LocalTipIdentifier {
@@ -98,6 +108,11 @@ pub(crate) struct BlockAccumulator {
     recent_era_interval: u64,
     /// Tracks activity and assists with perceived tip determination.
     last_progress: Timestamp,
+    /// For each peer, a list of block hashes we first heard from them, and the timestamp when we
+    /// created the block acceptor, from oldest to newest.
+    peer_block_timestamps: BTreeMap<NodeId, VecDeque<(BlockHash, Timestamp)>>,
+    /// The minimum time between a block and its child.
+    min_block_time: TimeDiff,
 }
 
 impl BlockAccumulator {
@@ -106,6 +121,7 @@ impl BlockAccumulator {
         validator_matrix: ValidatorMatrix,
         local_tip_height_and_era_id: Option<(u64, EraId)>,
         recent_era_interval: u64,
+        min_block_time: TimeDiff,
     ) -> Self {
         Self {
             validator_matrix,
@@ -118,6 +134,8 @@ impl BlockAccumulator {
             local_tip: local_tip_height_and_era_id
                 .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id)),
             recent_era_interval,
+            peer_block_timestamps: Default::default(),
+            min_block_time,
         }
     }
 
@@ -227,37 +245,65 @@ impl BlockAccumulator {
             .max();
     }
 
-    fn register_peer(
+    /// Registers a peer with an existing acceptor, or creates a new one.
+    ///
+    /// If the era is outdated or the peer has already caused us to create more acceptors than
+    /// expected, no new acceptor will be created.
+    fn upsert_acceptor(
         &mut self,
         block_hash: BlockHash,
         maybe_era_id: Option<EraId>,
-        sender: NodeId,
+        maybe_sender: Option<NodeId>,
     ) {
-        let maybe_local_tip_era_id = self.local_tip.map(|local_tip| local_tip.era_id);
-        match (maybe_era_id, maybe_local_tip_era_id) {
-            // When the era of the item sent by this peer is known, we check it
-            // against our local tip era. If it is recent (within a number of
-            // eras of our local tip), we create an acceptor for it along with
-            // registering the peer.
-            (Some(era_id), Some(local_tip_era_id))
-                if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
-            {
-                let acceptor = self
-                    .block_acceptors
-                    .entry(block_hash)
-                    .or_insert_with(|| BlockAcceptor::new(block_hash, None));
-                acceptor.register_peer(sender);
-            }
-            // In all other cases (i.e. the item's era is not provided, the
-            // local tip doesn't have an era or the item's era is older than
-            // the local tip era by more than `recent_era_interval`), we only
-            // register the peer if there is an acceptor for the item already.
-            _ => {
-                if let Some(acceptor) = self.block_acceptors.get_mut(&block_hash) {
-                    acceptor.register_peer(sender)
+        // If the acceptor already exists, just register the peer, if applicable.
+        let entry = match self.block_acceptors.entry(block_hash) {
+            btree_map::Entry::Occupied(entry) => {
+                if let Some(sender) = maybe_sender {
+                    entry.into_mut().register_peer(sender);
                 }
+                return;
             }
+            btree_map::Entry::Vacant(entry) => entry,
+        };
+
+        // The acceptor doesn't exist. Don't create it if the item's era is not provided, the local
+        // tip doesn't have an era or the item's era is older than the local tip era by more than
+        // `recent_era_interval`.
+        match (maybe_era_id, self.local_tip) {
+            (Some(era_id), Some(local_tip))
+                if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
+            _ => return,
         }
+
+        // Check that the sender isn't telling us about more blocks than expected.
+        if let Some(sender) = maybe_sender {
+            let block_timestamps = self.peer_block_timestamps.entry(sender).or_default();
+
+            // Prune the timestamps, so the count reflects only the most recently added acceptors.
+            let purge_interval = self.purge_interval;
+            while block_timestamps
+                .front()
+                .map_or(false, |(_, timestamp)| timestamp.elapsed() > purge_interval)
+            {
+                block_timestamps.pop_front();
+            }
+
+            // Assume a block time of at least 1 millisecond, so we don't divide by zero.
+            let min_block_time = self.min_block_time.max(TimeDiff::from(1));
+            let expected_blocks = (purge_interval / min_block_time) as usize;
+            let max_block_count = PEER_RATE_LIMIT_MULTIPLIER.saturating_mul(expected_blocks);
+            if block_timestamps.len() >= max_block_count {
+                warn!(
+                    ?sender, %block_hash,
+                    "rejecting block hash from peer who sent us more than {} within {}",
+                    max_block_count, self.purge_interval,
+                );
+                return;
+            }
+            block_timestamps.push_back((block_hash, Timestamp::now()));
+        }
+
+        entry.insert(BlockAcceptor::new(block_hash, maybe_sender));
     }
 
     fn register_block<REv>(
@@ -280,11 +326,12 @@ impl BlockAccumulator {
             debug!(%block_hash, "ignoring outdated block");
             return Effects::new();
         }
+        self.upsert_acceptor(*block_hash, Some(era_id), sender);
 
-        let acceptor = self
-            .block_acceptors
-            .entry(*block_hash)
-            .or_insert_with(|| BlockAcceptor::new(*block_hash, None));
+        let acceptor = match self.block_acceptors.get_mut(block_hash) {
+            None => return Effects::new(),
+            Some(acceptor) => acceptor,
+        };
 
         match acceptor.register_block(block, sender) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
@@ -357,30 +404,13 @@ impl BlockAccumulator {
     {
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
-        let maybe_local_tip_era_id = self.local_tip.map(|local_tip| local_tip.era_id);
-        let acceptor = match maybe_local_tip_era_id {
-            // When the era of the finality signature being registered is
-            // known, we check it against our local tip era. If it is recent
-            // (within a number of eras of our local tip), we create an
-            // acceptor for it if one is not already present before registering
-            // the finality signature.
-            Some(local_tip_era_id)
-                if era_id >= local_tip_era_id.saturating_sub(self.recent_era_interval) =>
-            {
-                self.block_acceptors
-                    .entry(block_hash)
-                    .or_insert_with(|| BlockAcceptor::new(block_hash, sender))
-            }
-            // In all other cases (i.e. the local tip doesn't have an era or
-            // the signature's era is older than the local tip era by more than
-            // `recent_era_interval`), we only register the signature if there
-            // is an acceptor for it already.
-            _ => match self.block_acceptors.get_mut(&block_hash) {
-                Some(acceptor) => acceptor,
-                // When there is no acceptor for it, this function returns
-                // early, ignoring the signature.
-                None => return Effects::new(),
-            },
+        self.upsert_acceptor(block_hash, Some(era_id), sender);
+
+        let acceptor = match self.block_acceptors.get_mut(&block_hash) {
+            Some(acceptor) => acceptor,
+            // When there is no acceptor for it, this function returns
+            // early, ignoring the signature.
+            None => return Effects::new(),
         };
 
         match acceptor.register_finality_signature(finality_signature, sender) {
@@ -540,6 +570,15 @@ impl BlockAccumulator {
         });
         self.block_children
             .retain(|_parent, child| false == purged.contains(child));
+        self.peer_block_timestamps.retain(|_, block_timestamps| {
+            while block_timestamps
+                .front()
+                .map_or(false, |(_, timestamp)| timestamp.elapsed() > purge_interval)
+            {
+                block_timestamps.pop_front();
+            }
+            !block_timestamps.is_empty()
+        });
     }
 
     fn store_block_and_finality_signatures<REv, I>(
@@ -633,7 +672,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 era_id,
                 sender,
             } => {
-                self.register_peer(block_hash, era_id, sender);
+                self.upsert_acceptor(block_hash, era_id, Some(sender));
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
