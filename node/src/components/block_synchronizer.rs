@@ -209,7 +209,7 @@ impl BlockSynchronizer {
             &self.historical,
             &self.forward,
         ) {
-            if builder.block_hash() == block_hash && !builder.is_fatal() {
+            if builder.block_hash() == block_hash && !builder.is_failed() {
                 return false;
             }
         }
