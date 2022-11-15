@@ -315,6 +315,73 @@ where
     Ok(missing_descendants)
 }
 
+/// Given a serialized trie, find any children that are referenced but not present in the database.
+pub fn missing_children<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &T,
+    store: &S,
+    trie_raw: &[u8],
+) -> Result<Vec<Digest>, E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    // Optimization: Don't deserialize leaves as they have no descendants.
+    if let Some(&Trie::<K, V>::LEAF_TAG) = trie_raw.first() {
+        return Ok(vec![]);
+    }
+
+    // Parse the trie, handling errors gracefully.
+    let trie = match bytesrepr::deserialize_from_slice(trie_raw) {
+        Ok(trie) => trie,
+        // Couldn't parse; treat as missing and continue.
+        Err(err) => {
+            error!(?err, "unable to parse trie");
+            return Err(err.into());
+        }
+    };
+
+    let is_present = |trie_key| matches!(store.get_raw(txn, &trie_key), Ok(Some(_)));
+
+    Ok(match trie {
+        // Should be unreachable due to checking the first byte as a shortcut above.
+        Trie::<K, V>::Leaf { .. } => {
+            error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
+            vec![]
+        }
+        // If we hit a pointer block, queue up all of the nodes it points to
+        Trie::Node { pointer_block } => pointer_block
+            .as_indexed_pointers()
+            .filter_map(|(_, pointer)| match pointer {
+                Pointer::LeafPointer(descendant_leaf_trie_key)
+                    if !is_present(descendant_leaf_trie_key) =>
+                {
+                    Some(descendant_leaf_trie_key)
+                }
+                Pointer::NodePointer(descendant_node_trie_key)
+                    if !is_present(descendant_node_trie_key) =>
+                {
+                    Some(descendant_node_trie_key)
+                }
+                _ => None,
+            })
+            .collect(),
+        // If we hit an extension block, add its pointer to the queue
+        Trie::Extension { pointer, .. } => {
+            let trie_key = pointer.into_hash();
+            if is_present(trie_key) {
+                vec![]
+            } else {
+                vec![trie_key]
+            }
+        }
+    })
+}
+
 /// Returns a collection of all descendant trie keys.
 pub fn descendant_trie_keys<K, V, T, S, E>(
     txn: &T,

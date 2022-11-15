@@ -21,8 +21,8 @@ use crate::{
         trie_store::{
             in_memory::InMemoryTrieStore,
             operations::{
-                self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof,
-                ReadResult, WriteResult,
+                self, keys_with_prefix, missing_children, missing_trie_keys, put_trie, read,
+                read_with_proof, ReadResult, WriteResult,
             },
         },
     },
@@ -285,6 +285,25 @@ impl StateProvider for InMemoryGlobalState {
             trie_keys,
             &Default::default(),
         )?;
+        txn.commit()?;
+        Ok(missing_descendants)
+    }
+
+    /// Finds all of the keys of missing directly descendant `Trie<Key,StoredValue>` values.
+    fn missing_children(
+        &self,
+        correlation_id: CorrelationId,
+        trie_raw: &[u8],
+    ) -> Result<Vec<Digest>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let missing_descendants =
+            missing_children::<
+                Key,
+                StoredValue,
+                InMemoryReadTransaction,
+                InMemoryTrieStore,
+                Self::Error,
+            >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
     }

@@ -120,6 +120,13 @@ pub trait StateProvider {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error>;
+
+    /// Finds all the children of `trie_raw` which aren't present in the state.
+    fn missing_children(
+        &self,
+        correlation_id: CorrelationId,
+        trie_raw: &[u8],
+    ) -> Result<Vec<Digest>, Self::Error>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.

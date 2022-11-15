@@ -13,7 +13,7 @@ use crate::{
     },
     shared::wasm_prep,
     storage,
-    storage::global_state::CommitError,
+    storage::{global_state::CommitError, trie::TrieRaw},
 };
 
 /// Engine state errors.
@@ -101,6 +101,14 @@ pub enum Error {
     /// Failed to retrieve the current EraId from the auction state.
     #[error("Failed to retrieve the era_id from the auction state")]
     FailedToRetrieveEraId,
+    /// Failed to put a trie node into global state because some of its children were missing.
+    #[error("Failed to put a trie into global state because some of its children were missing")]
+    MissingTrieNodeChildren {
+        /// The raw trie that is missing some children.
+        trie_raw: TrieRaw,
+        /// Digests of missing children.
+        missing_children: Vec<Digest>,
+    },
 }
 
 impl Error {

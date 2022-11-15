@@ -1119,7 +1119,7 @@ pub(crate) enum ContractRuntimeRequest {
         trie_bytes: TrieRaw,
         /// Responder to call with the result. Contains the missing descendants of the inserted
         /// trie.
-        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
+        responder: Responder<Result<Digest, engine_state::Error>>,
     },
     /// Find the missing descendants for a trie key
     FindMissingDescendantTrieKeys {
@@ -1366,7 +1366,11 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
-    BlockExecuted { block_hash: BlockHash, height: u64 },
+    BlockExecuted {
+        block_hash: BlockHash,
+        height: u64,
+        state_root_hash: Digest,
+    },
 }
 
 impl Display for BlockSynchronizerRequest {
@@ -1378,11 +1382,16 @@ impl Display for BlockSynchronizerRequest {
             BlockSynchronizerRequest::DishonestPeers => {
                 write!(f, "block synchronizer request: dishonest peers")
             }
-            BlockSynchronizerRequest::BlockExecuted { block_hash, height } => {
+            BlockSynchronizerRequest::BlockExecuted {
+                block_hash,
+                height,
+                state_root_hash,
+            } => {
                 write!(
                     f,
-                    "block synchronizer request: executed block {} at height {}",
-                    block_hash, height
+                    "block synchronizer request: executed block {} at height {}, state root hash \
+                    {}",
+                    block_hash, height, state_root_hash
                 )
             }
         }
