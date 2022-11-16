@@ -1687,24 +1687,6 @@ where
         }
     }
 
-    /// Puts a trie and finds missing descendant trie keys.
-    /// TODO: Remove this when no longer used in utils/retrieve-state - this doesn't ensure
-    /// integrity of the global state!
-    pub fn put_trie_and_find_missing_descendant_trie_keys(
-        &self,
-        correlation_id: CorrelationId,
-        trie_bytes: &[u8],
-    ) -> Result<Vec<Digest>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
-        let missing_descendant_trie_keys = self
-            .state
-            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
-        Ok(missing_descendant_trie_keys)
-    }
-
     /// Performs a lookup for a list of missing root hashes.
     pub fn missing_trie_keys(
         &self,
