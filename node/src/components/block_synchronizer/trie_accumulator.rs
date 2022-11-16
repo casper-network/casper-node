@@ -5,6 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use rand::seq::SliceRandom;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
@@ -220,7 +221,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         trace!(?event, "TrieAccumulator: handling event");
@@ -228,8 +229,9 @@ where
             Event::Request(TrieAccumulatorRequest {
                 hash,
                 responder,
-                peers,
+                mut peers,
             }) => {
+                peers.shuffle(rng);
                 let trie_id = TrieOrChunkId(0, hash);
                 let peer = match peers.last() {
                     Some(peer) => *peer,
