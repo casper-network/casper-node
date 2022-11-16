@@ -1198,7 +1198,7 @@ impl MainReactor {
         let mut effects = Effects::new();
         match self.storage.make_executable_block(&block_hash) {
             Ok(Some((finalized_block, deploys))) => {
-                debug!("KeepUp: enqueue_executable_block: {:?}", block_hash);
+                info!("KeepUp: enqueue_executable_block: {:?}", block_hash);
                 effects.extend(
                     effect_builder
                         .enqueue_block_for_execution(finalized_block, deploys)
@@ -1207,7 +1207,7 @@ impl MainReactor {
             }
             Ok(None) => {
                 // noop
-                warn!(
+                debug!(
                     "KeepUp: idempotent enqueue_executable_block: {:?}",
                     block_hash
                 );
