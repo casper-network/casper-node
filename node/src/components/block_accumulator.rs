@@ -10,7 +10,6 @@ mod tests;
 use std::{
     cmp::Ordering,
     collections::{btree_map, BTreeMap, VecDeque},
-    iter,
 };
 
 use datasize::DataSize;
@@ -123,6 +122,9 @@ impl BlockAccumulator {
         recent_era_interval: u64,
         min_block_time: TimeDiff,
     ) -> Self {
+        let local_tip = local_tip_height_and_era_id
+            .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id));
+        info!(?local_tip, "starting local tip");
         Self {
             validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
@@ -131,8 +133,7 @@ impl BlockAccumulator {
             block_children: Default::default(),
             last_progress: Timestamp::now(),
             purge_interval: config.purge_interval(),
-            local_tip: local_tip_height_and_era_id
-                .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id)),
+            local_tip,
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
@@ -242,11 +243,14 @@ impl BlockAccumulator {
     /// subsequent attempts to register a block lower than tip will be rejected.
     pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
         self.purge();
-        self.local_tip = self
-            .local_tip
-            .into_iter()
-            .chain(iter::once(LocalTipIdentifier::new(height, era_id)))
-            .max();
+        let new_local_tip = match self.local_tip {
+            Some(current) => current.height < height && current.era_id <= era_id,
+            None => true,
+        };
+        if new_local_tip {
+            self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
+            info!(local_tip=?self.local_tip, "new local tip detected");
+        }
     }
 
     /// Registers a peer with an existing acceptor, or creates a new one.
@@ -557,7 +561,7 @@ impl BlockAccumulator {
     fn maybe_new_local_tip(&self, starting_with: &StartingWith) -> Option<LocalTipIdentifier> {
         match (starting_with.maybe_local_tip_identifier(), self.local_tip) {
             (Some((block_height, era_id)), Some(local_tip)) => {
-                if local_tip.height < block_height && local_tip.era_id < era_id {
+                if local_tip.height < block_height && local_tip.era_id <= era_id {
                     return Some(LocalTipIdentifier::new(block_height, era_id));
                 }
             }

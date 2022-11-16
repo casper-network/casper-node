@@ -217,94 +217,6 @@ impl MainReactor {
         }
     }
 
-    fn initialize_next_component(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-    ) -> Option<Effects<MainEvent>> {
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.diagnostics_port,
-            MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.upgrade_watcher,
-            MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.small_network,
-            MainEvent::Network(small_network::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.event_stream_server,
-            MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rest_server,
-            MainEvent::RestServer(rest_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.block_synchronizer,
-            MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
-        {
-            let timestamp = self.recent_switch_block_headers.last().map_or_else(
-                Timestamp::now,
-                |switch_block| {
-                    switch_block
-                        .timestamp()
-                        .saturating_sub(self.chainspec.deploy_config.max_ttl)
-                },
-            );
-            let blocks = match self.storage.read_blocks_since(timestamp) {
-                Ok(blocks) => blocks,
-                Err(err) => {
-                    return Some(
-                        fatal!(
-                            effect_builder,
-                            "fatal block store error when attempting to read highest blocks: {}",
-                            err
-                        )
-                        .ignore(),
-                    )
-                }
-            };
-            let event = deploy_buffer::Event::Initialize(blocks);
-            if let Some(effects) = utils::initialize_component(
-                effect_builder,
-                &mut self.deploy_buffer,
-                MainEvent::DeployBuffer(event),
-            ) {
-                return Some(effects);
-            }
-        }
-        None
-    }
-
     fn catch_up_instruction(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -331,31 +243,34 @@ impl MainReactor {
                                 )
                             }
                             Ok(None) if self.switch_block.is_none() => {
-                                if let ActivationPoint::Genesis(timestamp) =
-                                    self.chainspec.protocol_config.activation_point
-                                {
-                                    let diff = timestamp.saturating_diff(Timestamp::now());
-                                    if diff > TimeDiff::default() {
-                                        return CatchUpInstruction::CheckLater(
-                                            "CatchUp: waiting for genesis activation point"
-                                                .to_string(),
-                                            Duration::from(diff),
+                                if let Some(timestamp) = self.is_genesis() {
+                                    let is_validator = self.should_commit_genesis();
+                                    if false == is_validator {
+                                        return CatchUpInstruction::Fatal(
+                                            "CatchUp: only validating nodes may participate in genesis; cannot proceed without trusted hash".to_string(),
                                         );
-                                    } else {
-                                        match self.chainspec.network_config.is_genesis_validator(
-                                            self.validator_matrix.public_signing_key(),
-                                        ) {
-                                            Some(true) => {
-                                                info!("CatchUp: genesis validator");
-                                                return CatchUpInstruction::CommitGenesis;
-                                            }
-                                            Some(false) | None => {
-                                                info!("CatchUp: genesis non-validator");
-                                            }
-                                        }
                                     }
+                                    let now = Timestamp::now();
+                                    let grace_period =
+                                        timestamp.saturating_add(TimeDiff::from_seconds(180));
+                                    if now > grace_period {
+                                        return CatchUpInstruction::Fatal(
+                                            "CatchUp: late for genesis; cannot proceed without trusted hash".to_string(),
+                                        );
+                                    }
+                                    let time_remaining = timestamp.saturating_diff(now);
+                                    if time_remaining > TimeDiff::default() {
+                                        return CatchUpInstruction::CheckLater(
+                                            format!(
+                                                "CatchUp: waiting for genesis activation at {}",
+                                                timestamp
+                                            ),
+                                            Duration::from(time_remaining),
+                                        );
+                                    }
+                                    return CatchUpInstruction::CommitGenesis;
                                 }
-                                // -- : no trusted hash, no local block
+                                // -- : no trusted hash, no local block, not genesis
                                 return CatchUpInstruction::Fatal(
                                     "CatchUp: cannot proceed without trusted hash".to_string(),
                                 );
@@ -621,7 +536,7 @@ impl MainReactor {
                             MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade)
                         });
                     // should not need to crank the control logic again as the reactor will shutdown
-                    UpgradeShutdownInstruction::Do(Duration::MAX, effects)
+                    UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
                 } else {
                     UpgradeShutdownInstruction::CheckLater(
                         "waiting for sufficient finality".to_string(),
@@ -644,7 +559,7 @@ impl MainReactor {
             return KeepUpInstruction::ShutdownForUpgrade;
         }
 
-        match self.check_should_validate(effect_builder, rng) {
+        match self.should_validate(effect_builder, rng) {
             (true, Some(effects)) => {
                 info!("KeepUp: go to Validate");
                 return KeepUpInstruction::Validate(effects);
@@ -858,6 +773,128 @@ impl MainReactor {
         }
     }
 
+    fn validate_instruction(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+    ) -> ValidateInstruction {
+        if self.switch_block.is_none() {
+            // validate status is only checked at switch blocks
+            return ValidateInstruction::NonSwitchBlock;
+        }
+
+        if self.should_shutdown_for_upgrade() {
+            return ValidateInstruction::ShutdownForUpgrade;
+        }
+
+        match self.create_required_eras(effect_builder, rng) {
+            Ok(Some(effects)) => {
+                let last_progress = self.consensus.last_progress();
+                if last_progress > self.last_progress {
+                    self.last_progress = last_progress;
+                }
+                if effects.is_empty() {
+                    ValidateInstruction::CheckLater(
+                        "consensus state is up to date".to_string(),
+                        self.control_logic_default_delay.into(),
+                    )
+                } else {
+                    ValidateInstruction::Do(Duration::ZERO, effects)
+                }
+            }
+            Ok(None) => ValidateInstruction::KeepUp,
+            Err(msg) => ValidateInstruction::Fatal(msg),
+        }
+    }
+
+    fn initialize_next_component(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> Option<Effects<MainEvent>> {
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.diagnostics_port,
+            MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.upgrade_watcher,
+            MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.small_network,
+            MainEvent::Network(small_network::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.event_stream_server,
+            MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rest_server,
+            MainEvent::RestServer(rest_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rpc_server,
+            MainEvent::RpcServer(rpc_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.block_synchronizer,
+            MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
+        {
+            let timestamp = self.recent_switch_block_headers.last().map_or_else(
+                Timestamp::now,
+                |switch_block| {
+                    switch_block
+                        .timestamp()
+                        .saturating_sub(self.chainspec.deploy_config.max_ttl)
+                },
+            );
+            let blocks = match self.storage.read_blocks_since(timestamp) {
+                Ok(blocks) => blocks,
+                Err(err) => {
+                    return Some(
+                        fatal!(
+                            effect_builder,
+                            "fatal block store error when attempting to read highest blocks: {}",
+                            err
+                        )
+                        .ignore(),
+                    )
+                }
+            };
+            let event = deploy_buffer::Event::Initialize(blocks);
+            if let Some(effects) = utils::initialize_component(
+                effect_builder,
+                &mut self.deploy_buffer,
+                MainEvent::DeployBuffer(event),
+            ) {
+                return Some(effects);
+            }
+        }
+        None
+    }
+
     fn update_last_progress(
         &mut self,
         block_synchronizer_progress: &BlockSynchronizerProgress,
@@ -916,41 +953,7 @@ impl MainReactor {
         }
     }
 
-    fn validate_instruction(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> ValidateInstruction {
-        if self.switch_block.is_none() {
-            // validate status is only checked at switch blocks
-            return ValidateInstruction::NonSwitchBlock;
-        }
-
-        if self.should_shutdown_for_upgrade() {
-            return ValidateInstruction::ShutdownForUpgrade;
-        }
-
-        match self.create_required_eras(effect_builder, rng) {
-            Ok(Some(effects)) => {
-                let last_progress = self.consensus.last_progress();
-                if last_progress > self.last_progress {
-                    self.last_progress = last_progress;
-                }
-                if effects.is_empty() {
-                    ValidateInstruction::CheckLater(
-                        "consensus state is up to date".to_string(),
-                        self.control_logic_default_delay.into(),
-                    )
-                } else {
-                    ValidateInstruction::Do(Duration::ZERO, effects)
-                }
-            }
-            Ok(None) => ValidateInstruction::KeepUp,
-            Err(msg) => ValidateInstruction::Fatal(msg),
-        }
-    }
-
-    fn check_should_validate(
+    fn should_validate(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
@@ -1036,6 +1039,20 @@ impl MainReactor {
             create_required_eras
                 .map(|effects| reactor::wrap_effects(MainEvent::Consensus, effects)),
         )
+    }
+
+    fn is_genesis(&self) -> Option<Timestamp> {
+        match self.chainspec.protocol_config.activation_point {
+            ActivationPoint::Genesis(timestamp) => Some(timestamp),
+            ActivationPoint::EraId(_) => None,
+        }
+    }
+
+    fn should_commit_genesis(&self) -> bool {
+        self.chainspec
+            .network_config
+            .is_genesis_validator(self.validator_matrix.public_signing_key())
+            .unwrap_or(false)
     }
 
     fn commit_genesis(
