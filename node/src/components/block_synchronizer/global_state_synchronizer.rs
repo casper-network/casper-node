@@ -113,16 +113,8 @@ impl TrieAwaitingChildren {
 
     /// Handles `written_trie` being written to the database - removes the trie as a dependency and
     /// returns the next trie to be downloaded.
-    fn trie_written(&mut self, written_trie: Digest) -> Option<(Digest, HashSet<Digest>)> {
-        if self.missing_children.remove(&written_trie) {
-            self.missing_children
-                .iter()
-                .copied()
-                .next()
-                .map(|trie_hash| (trie_hash, self.request_root_hashes.clone()))
-        } else {
-            None
-        }
+    fn trie_written(&mut self, written_trie: Digest) {
+        self.missing_children.remove(&written_trie);
     }
 
     fn ready_to_be_written(&self) -> bool {
@@ -160,10 +152,10 @@ impl FetchQueue {
 
     fn take(&mut self, num_to_take: usize) -> Vec<(Digest, HashSet<Digest>)> {
         let num_to_take = num_to_take.min(self.queue.len());
-        let mut to_return = self.queue.split_off(num_to_take);
-        // make sure that to_return has the entries from the beginning of the queue, and the
-        // entries from the end are left in the queue
-        std::mem::swap(&mut to_return, &mut self.queue);
+        // `to_return` will contain `num_to_take` elements from the end of the queue.
+        // Taking elements from the end will essentially make our traversal depth-first instead of
+        // breadth-first.
+        let to_return = self.queue.split_off(self.queue.len() - num_to_take);
         to_return
             .into_iter()
             .filter_map(|trie_hash| {
@@ -375,13 +367,9 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
-        let to_enqueue: Vec<_> = self
-            .tries_awaiting_children
-            .values_mut()
-            .filter_map(|trie_awaiting| trie_awaiting.trie_written(written_trie))
-            .collect();
-        for (trie_to_fetch, request_root_hashes) in to_enqueue {
-            self.enqueue_trie_for_fetching(trie_to_fetch, request_root_hashes);
+        // Remove the written trie from dependencies of the tries that are waiting.
+        for trie_awaiting in self.tries_awaiting_children.values_mut() {
+            trie_awaiting.trie_written(written_trie);
         }
 
         let (ready_tries, still_incomplete) = std::mem::take(&mut self.tries_awaiting_children)
@@ -436,18 +424,14 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + Send,
     {
-        if let Some(first_child) = missing_children.first() {
-            self.fetch_queue
-                .insert(*first_child, request_root_hashes.clone());
-            self.tries_awaiting_children.insert(
-                trie_hash,
-                TrieAwaitingChildren::new(trie_raw, missing_children, request_root_hashes),
-            );
-            self.parallel_fetch(effect_builder)
-        } else {
-            error!(%trie_hash, "trie reported to be missing children, but missing_children is empty!");
-            Effects::new()
+        for child in &missing_children {
+            self.enqueue_trie_for_fetching(*child, request_root_hashes.clone());
         }
+        self.tries_awaiting_children.insert(
+            trie_hash,
+            TrieAwaitingChildren::new(trie_raw, missing_children, request_root_hashes),
+        );
+        self.parallel_fetch(effect_builder)
     }
 }
 
