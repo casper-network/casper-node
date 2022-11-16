@@ -447,8 +447,8 @@ impl MainReactor {
                     Some(block_height) => StartingWith::BlockIdentifier(block_hash, block_height),
                 }
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
-                StartingWith::SyncedBlockIdentifier(block_hash, block_height)
+            BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
+                StartingWith::SyncedBlockIdentifier(block_hash, block_height, era_id)
             }
         };
         debug!("CatchUp: starting with {:?}", starting_with);
@@ -680,9 +680,9 @@ impl MainReactor {
                 None => StartingWith::Hash(block_hash),
                 Some(height) => StartingWith::BlockIdentifier(block_hash, height),
             },
-            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+            BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 debug!("KeepUp: executable block: {}", block_hash);
-                StartingWith::ExecutableBlock(block_hash, block_height)
+                StartingWith::ExecutableBlock(block_hash, block_height, era_id)
             }
         };
         debug!("KeepUp: starting with {:?}", starting_with);

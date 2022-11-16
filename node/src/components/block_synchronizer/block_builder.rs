@@ -140,6 +140,15 @@ impl BlockBuilder {
         self.acquisition_state.block_height()
     }
 
+    pub(super) fn block_height_and_era(&self) -> Option<(u64, EraId)> {
+        if let Some(block_height) = self.acquisition_state.block_height() {
+            if let Some(evw) = &self.validator_weights {
+                return Some((block_height, evw.era_id()));
+            }
+        }
+        None
+    }
+
     pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
     }

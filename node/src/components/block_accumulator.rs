@@ -16,7 +16,7 @@ use std::{
 use datasize::DataSize;
 use futures::FutureExt;
 use itertools::Itertools;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, TimeDiff, Timestamp};
 
@@ -195,8 +195,9 @@ impl BlockAccumulator {
             };
         }
 
-        if let StartingWith::LocalTip(_, height, era_id) = starting_with {
-            self.register_local_tip(height, era_id);
+        if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
+            self.local_tip = Some(new_local_tip);
+            info!(local_tip=?self.local_tip, "new local tip detected");
         }
 
         if self.should_sync(block_height) {
@@ -209,7 +210,10 @@ impl BlockAccumulator {
                     // and is either at tip or within execution range of tip
                     None
                 }
-                (true, Some(child_hash)) => Some(child_hash),
+                (true, Some(child_hash)) => {
+                    // we know of the child of this synced block
+                    Some(child_hash)
+                }
                 (false, _) => Some(block_hash),
             };
 
@@ -548,6 +552,21 @@ impl BlockAccumulator {
             }
             None => false,
         }
+    }
+
+    fn maybe_new_local_tip(&self, starting_with: &StartingWith) -> Option<LocalTipIdentifier> {
+        match (starting_with.maybe_local_tip_identifier(), self.local_tip) {
+            (Some((block_height, era_id)), Some(local_tip)) => {
+                if local_tip.height < block_height && local_tip.era_id < era_id {
+                    return Some(LocalTipIdentifier::new(block_height, era_id));
+                }
+            }
+            (Some((block_height, era_id)), None) => {
+                return Some(LocalTipIdentifier::new(block_height, era_id));
+            }
+            (None, _) => (),
+        }
+        None
     }
 
     fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
