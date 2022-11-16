@@ -1,6 +1,6 @@
 //! Fully connected overlay network
 //!
-//! The *network* is an overlay network where each node participating is attempting to
+//! The *network component* is an overlay network where each node participating is attempting to
 //! maintain a connection to every other node identified on the same network. The component does not
 //! guarantee message delivery, so in between reconnections, messages may be lost.
 //!
