@@ -4,8 +4,8 @@ use serde::Deserialize;
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,
     ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig, DiagnosticsPortConfig,
-    EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig,
-    SmallNetworkConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
+    EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
+    RpcServerConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -16,7 +16,7 @@ pub(crate) struct Config {
     pub(crate) node: NodeConfig,
     pub(crate) logging: LoggingConfig,
     pub(crate) consensus: ConsensusConfig,
-    pub(crate) network: SmallNetworkConfig,
+    pub(crate) network: NetworkConfig,
     pub(crate) event_stream_server: EventStreamServerConfig,
     pub(crate) rest_server: RestServerConfig,
     pub(crate) rpc_server: RpcServerConfig,

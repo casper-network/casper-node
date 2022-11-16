@@ -38,9 +38,9 @@ use crate::{
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, Gossiper},
         metrics::Metrics,
+        network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
-        small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
@@ -88,7 +88,7 @@ pub(crate) struct MainReactor {
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
-    small_network: SmallNetwork<MainEvent, Message>,
+    net: Network<MainEvent, Message>,
     consensus: EraSupervisor,
 
     // block handling
@@ -198,7 +198,7 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let small_network = SmallNetwork::new(
+        let network = Network::new(
             config.network.clone(),
             network_identity,
             Some((our_secret_key.clone(), our_public_key.clone())),
@@ -294,7 +294,7 @@ impl reactor::Reactor for MainReactor {
             storage,
             contract_runtime,
             upgrade_watcher,
-            small_network,
+            net: network,
             address_gossiper,
 
             rpc_server,
@@ -441,14 +441,14 @@ impl reactor::Reactor for MainReactor {
             // NETWORK CONNECTION AND ORIENTATION
             MainEvent::Network(event) => reactor::wrap_effects(
                 MainEvent::Network,
-                self.small_network.handle_event(effect_builder, rng, event),
+                self.net.handle_event(effect_builder, rng, event),
             ),
             MainEvent::NetworkRequest(req) => {
-                let event = MainEvent::Network(small_network::Event::from(req));
+                let event = MainEvent::Network(network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             MainEvent::NetworkInfoRequest(req) => {
-                let event = MainEvent::Network(small_network::Event::from(req));
+                let event = MainEvent::Network(network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
@@ -502,9 +502,8 @@ impl reactor::Reactor for MainReactor {
                 | GossiperAnnouncement::NewItemBody { .. }
                 | GossiperAnnouncement::FinishedGossiping(_) => Effects::new(),
                 GossiperAnnouncement::NewCompleteItem(gossiped_address) => {
-                    let reactor_event = MainEvent::Network(
-                        small_network::Event::PeerAddressReceived(gossiped_address),
-                    );
+                    let reactor_event =
+                        MainEvent::Network(network::Event::PeerAddressReceived(gossiped_address));
                     self.dispatch_event(effect_builder, rng, reactor_event)
                 }
             },
@@ -1149,6 +1148,6 @@ impl MainReactor {
 #[cfg(test)]
 impl NetworkedReactor for MainReactor {
     fn node_id(&self) -> NodeId {
-        self.small_network.node_id()
+        self.net.node_id()
     }
 }

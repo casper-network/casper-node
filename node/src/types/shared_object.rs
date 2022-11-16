@@ -110,7 +110,7 @@ mod tests {
     use tokio_serde::{Deserializer, Serializer};
 
     use crate::{
-        components::small_network::{BincodeFormat, Message},
+        components::network::{BincodeFormat, Message},
         types::Deploy,
     };
 

@@ -1,7 +1,7 @@
-//! Tests for the `small_network` component.
+//! Tests for the `network` component.
 //!
 //! Calling these "unit tests" would be a bit of a misnomer, since they deal mostly with multiple
-//! instances of `small_net` arranged in a network.
+//! instances of `net` arranged in a network.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, FromIncoming, GossipedAddress,
-    Identity, MessageKind, Payload, SmallNetwork,
+    chain_info::ChainInfo, Config, Event as NetworkEvent, FromIncoming, GossipedAddress, Identity,
+    MessageKind, Network, Payload,
 };
 use crate::{
     components::{
@@ -39,7 +39,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
     testing::{
         self, init_logging,
-        network::{Network, NetworkedReactor, Nodes},
+        network::{NetworkedReactor, Nodes, TestingNetwork},
         ConditionCheckReactor,
     },
     types::{Chainspec, ChainspecRawBytes, NodeId, ValidatorMatrix},
@@ -50,7 +50,7 @@ use crate::{
 #[derive(Debug, From, Serialize)]
 enum Event {
     #[from]
-    SmallNet(#[serde(skip_serializing)] SmallNetworkEvent<Message>),
+    Net(#[serde(skip_serializing)] NetworkEvent<Message>),
     #[from]
     AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
@@ -91,9 +91,9 @@ impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for Event {
     }
 }
 
-impl From<NetworkRequest<Message>> for SmallNetworkEvent<Message> {
-    fn from(request: NetworkRequest<Message>) -> SmallNetworkEvent<Message> {
-        SmallNetworkEvent::NetworkRequest {
+impl From<NetworkRequest<Message>> for NetworkEvent<Message> {
+    fn from(request: NetworkRequest<Message>) -> NetworkEvent<Message> {
+        NetworkEvent::NetworkRequest {
             req: Box::new(request),
         }
     }
@@ -170,10 +170,10 @@ impl Payload for Message {
 
 /// Test reactor.
 ///
-/// Runs a single small network.
+/// Runs a single network.
 #[derive(Debug)]
 struct TestReactor {
-    net: SmallNetwork<Event, Message>,
+    net: Network<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
 }
 
@@ -193,7 +193,7 @@ impl Reactor for TestReactor {
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let secret_key = SecretKey::random(rng);
         let public_key = PublicKey::from(&secret_key);
-        let net = SmallNetwork::new(
+        let net = Network::new(
             cfg,
             our_identity,
             None,
@@ -221,17 +221,16 @@ impl Reactor for TestReactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::SmallNet(ev) => reactor::wrap_effects(
-                Event::SmallNet,
-                self.net.handle_event(effect_builder, rng, ev),
-            ),
+            Event::Net(ev) => {
+                reactor::wrap_effects(Event::Net, self.net.handle_event(effect_builder, rng, ev))
+            }
             Event::AddressGossiper(event) => reactor::wrap_effects(
                 Event::AddressGossiper,
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequest(req) => reactor::wrap_effects(
-                Event::SmallNet,
+                Event::Net,
                 self.net.handle_event(effect_builder, rng, req.into()),
             ),
             Event::ControlAnnouncement(ctrl_ann) => {
@@ -240,11 +239,11 @@ impl Reactor for TestReactor {
             Event::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
             )) => reactor::wrap_effects(
-                Event::SmallNet,
+                Event::Net,
                 self.net.handle_event(
                     effect_builder,
                     rng,
-                    SmallNetworkEvent::PeerAddressReceived(gossiped_address),
+                    NetworkEvent::PeerAddressReceived(gossiped_address),
                 ),
             ),
 
@@ -322,7 +321,7 @@ fn network_is_complete(
 }
 
 /// Checks whether or not a given network has at least one other node in it
-fn network_started(net: &Network<TestReactor>) -> bool {
+fn network_started(net: &TestingNetwork<TestReactor>) -> bool {
     net.nodes()
         .iter()
         .map(|(_, runner)| runner.reactor().inner().net.peers())
@@ -344,7 +343,7 @@ async fn run_two_node_network_five_times() {
     for i in 0..5 {
         info!("two-network test round {}", i);
 
-        let mut net = Network::new();
+        let mut net = TestingNetwork::new();
 
         let start = Instant::now();
         net.add_node_with_config(
@@ -415,7 +414,7 @@ async fn bind_to_real_network_interface() {
 
     let local_net_config = Config::new((local_addr, port).into());
 
-    let mut net = Network::<TestReactor>::new();
+    let mut net = TestingNetwork::<TestReactor>::new();
     net.add_node_with_config(local_net_config, &mut rng)
         .await
         .unwrap();
@@ -444,7 +443,7 @@ async fn check_varying_size_network_connects() {
     for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
         let timeout = Duration::from_secs(3 * number_of_nodes as u64);
 
-        let mut net = Network::new();
+        let mut net = TestingNetwork::new();
 
         // Pick a random port in the higher ranges that is likely to be unused.
         let first_node_port = testing::unused_port_on_localhost();
@@ -497,7 +496,7 @@ async fn ensure_peers_metric_is_correct() {
     for &number_of_nodes in &[2u16, 3, 5] {
         let timeout = Duration::from_secs(3 * number_of_nodes as u64);
 
-        let mut net = Network::new();
+        let mut net = TestingNetwork::new();
 
         // Pick a random port in the higher ranges that is likely to be unused.
         let first_node_port = testing::unused_port_on_localhost();

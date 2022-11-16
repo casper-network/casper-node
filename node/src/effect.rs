@@ -139,7 +139,7 @@ use crate::{
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,

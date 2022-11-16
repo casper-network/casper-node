@@ -54,7 +54,7 @@ pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
-use super::small_network::blocklist::BlocklistJustification;
+use super::network::blocklist::BlocklistJustification;
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>

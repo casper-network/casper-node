@@ -8,7 +8,7 @@ use prometheus::Registry;
 
 use super::network::NetworkedReactor;
 use crate::{
-    components::small_network::Identity as NetworkIdentity,
+    components::network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor},
     types::{Chainspec, ChainspecRawBytes, NodeId},

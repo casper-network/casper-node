@@ -9,7 +9,7 @@ use tracing::{debug, error, trace};
 
 use super::{Error, Event, FetchResponder, FetchedData, ItemHandle, Metrics};
 use crate::{
-    components::small_network::blocklist::BlocklistJustification,
+    components::network::blocklist::BlocklistJustification,
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},

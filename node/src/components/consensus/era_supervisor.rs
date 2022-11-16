@@ -42,7 +42,7 @@ use crate::{
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
             ReactorEventT, ResolveValidity, TimerId,
         },
-        small_network::blocklist::BlocklistJustification,
+        network::blocklist::BlocklistJustification,
     },
     effect::{
         announcements::FatalAnnouncement,

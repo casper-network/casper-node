@@ -14,7 +14,7 @@ use crate::{
 
 pub(super) type Result<T> = result::Result<T, Error>;
 
-/// Error type returned by the `SmallNetwork` component.
+/// Error type returned by the `Network` component.
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
     /// We do not have any known hosts.

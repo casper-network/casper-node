@@ -409,7 +409,7 @@ mod tests {
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
     use tokio_serde::{Deserializer, Serializer};
 
-    use crate::{components::small_network::message_pack_format::MessagePackFormat, protocol};
+    use crate::{components::network::message_pack_format::MessagePackFormat, protocol};
 
     use super::*;
 
