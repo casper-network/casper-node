@@ -272,7 +272,10 @@ impl BlockAccumulator {
         match (maybe_era_id, self.local_tip) {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
-            _ => return,
+            _ => {
+                debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
+                return;
+            }
         }
 
         // Check that the sender isn't telling us about more blocks than expected.
@@ -690,9 +693,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::ExecutedBlock { block } => {
                 let height = block.header().height();
                 let era_id = block.header().era_id();
-                let effects = self.register_block(effect_builder, *block, None);
                 self.register_local_tip(height, era_id);
-                effects
+                self.register_block(effect_builder, *block, None)
             }
             Event::Stored {
                 block,
