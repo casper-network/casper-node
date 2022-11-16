@@ -304,14 +304,14 @@ async fn run_participating_network() {
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(1)),
-        Duration::from_secs(300),
+        Duration::from_secs(500),
     )
     .await;
 
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(2)),
-        Duration::from_secs(300),
+        Duration::from_secs(500),
     )
     .await;
 }
