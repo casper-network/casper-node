@@ -1363,7 +1363,7 @@ fn should_get_trusted_ancestor_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, requested_block_header, 1)
+            .get_trusted_ancestor_headers(&mut txn, requested_block_header)
             .unwrap()
             .unwrap()
             .iter()
