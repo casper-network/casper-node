@@ -88,7 +88,7 @@ use crate::{
 };
 
 /// The maximum amount of motes that payment code execution can cost.
-pub const MAX_PAYMENT_AMOUNT: u64 = 20_000_000_000;
+pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// The maximum amount of gas a payment code can use.
 ///
 /// This value also indicates the minimum balance of the main purse of an account when

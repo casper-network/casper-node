@@ -143,9 +143,9 @@ mod internal {
         let refund_purse = get_refund_purse(provider)?;
 
         if let Some(refund_purse) = refund_purse {
+            // Make sure we're not refunding into a payment purse to invalidate payment code
+            // postconditions.
             if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
-                // Make sure we're not refunding into a payment purse to invalidate payment code
-                // postconditions.
                 return Err(Error::RefundPurseIsPaymentPurse);
             }
         }

@@ -5,26 +5,9 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-            DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        },
-        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
-    shared::{
-        host_function_costs::HostFunctionCosts,
-        opcode_costs::OpcodeCosts,
-        storage_costs::StorageCosts,
-        system_config::SystemConfig,
-        transform::Transform,
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
-    storage::global_state::in_memory::InMemoryGlobalState,
-};
+use casper_execution_engine::{self, shared::transform::Transform};
 use casper_types::{
     runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef, U512,
 };
@@ -37,34 +20,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     // This many operations will be scattered among these URefs.
     const N_OPS: usize = 1000;
 
-    let mut opcode_costs = OpcodeCosts::default();
-    opcode_costs.control_flow = 440;
-
-    let wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
-        opcode_costs,
-        StorageCosts::default(),
-        HostFunctionCosts::default(),
-    );
-
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        wasm_config,
-        SystemConfig::default(),
-    );
-
-    // let mut builder = InMemoryWasmTestBuilder::default();
-    let mut builder = InMemoryWasmTestBuilder::new(
-        InMemoryGlobalState::empty().expect("should create global state"),
-        engine_config,
-        None,
-    );
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let mut rng = StdRng::seed_from_u64(0);
@@ -110,7 +66,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
                 DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
                     .with_empty_payment_bytes(runtime_args! {
-                        standard_payment::ARG_AMOUNT => U512::from(10_000_000_000_u64),
+                        standard_payment::ARG_AMOUNT => U512::from(150_000_000_000_u64),
                     })
                     .with_stored_session_hash(
                         contract_hash,
