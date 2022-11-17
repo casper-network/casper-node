@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
@@ -686,13 +686,12 @@ impl MainReactor {
                                 if self.attempts > self.max_attempts {
                                     // self.crank will ensure shut down if no other progress
                                     // is made before this event is processed
-                                    return KeepUpInstruction::CheckLater(
-                                        format!(
-                                            "Historical: failed leap back exceeded reattempt tolerance: {}",
-                                            error,
-                                        ),
-                                        Duration::ZERO,
+                                    let msg = format!(
+                                        "Historical: failed leap back exceeded reattempt tolerance: {}",
+                                        error,
                                     );
+                                    warn!("{}", msg);
+                                    return KeepUpInstruction::CheckLater(msg, Duration::ZERO);
                                 }
                                 error!("Historical: sync leap failed: {:?}", error);
                             }
@@ -726,7 +725,7 @@ impl MainReactor {
                             for evw in era_validator_weights {
                                 let era_id = evw.era_id();
                                 if self.validator_matrix.register_era_validator_weights(evw) {
-                                    debug!("Historical: got era: {}", era_id);
+                                    info!("Historical: got era: {}", era_id);
                                 } else {
                                     debug!("Historical: already had era: {}", era_id);
                                 }
@@ -747,7 +746,7 @@ impl MainReactor {
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
-                    debug!("Historical: register_block_by_hash: {:?}", parent_hash);
+                    info!("Historical: register_block_by_hash: {:?}", parent_hash);
                     let peers_to_ask = self.net.fully_connected_peers_random(
                         rng,
                         self.chainspec.core_config.simultaneous_peer_requests as usize,
