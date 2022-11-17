@@ -437,6 +437,7 @@ impl TriesAwaitingChildren {
     fn handle_result(
         &mut self,
         trie_key: Digest,
+        trie_raw: TrieRaw,
         put_result: Result<Digest, engine_state::Error>,
     ) -> Vec<Digest> {
         match put_result {
@@ -445,10 +446,9 @@ impl TriesAwaitingChildren {
                 error!(%written_trie, %trie_key, "trie was written under a different key");
                 vec![]
             }
-            Err(engine_state::Error::MissingTrieNodeChildren {
-                trie_raw,
-                missing_children,
-            }) => self.handle_missing_children(trie_key, trie_raw, missing_children),
+            Err(engine_state::Error::MissingTrieNodeChildren(missing_children)) => {
+                self.handle_missing_children(trie_key, trie_raw, missing_children)
+            }
             Err(error) => {
                 error!(%error, "couldn't put trie to the database");
                 vec![]
@@ -517,9 +517,11 @@ pub async fn download_trie_channels(
                             engine_state
                                 .put_trie_if_all_children_present(CorrelationId::new(), trie_bytes)
                         });
-                        process_queue.extend(
-                            tries_awaiting_children.handle_result(next_trie_key, put_result),
-                        );
+                        process_queue.extend(tries_awaiting_children.handle_result(
+                            next_trie_key,
+                            TrieRaw::new(trie_bytes.clone()),
+                            put_result,
+                        ));
                     } else {
                         let mut sender = peer.sender.clone();
                         sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap();
@@ -548,14 +550,16 @@ pub async fn download_trie_channels(
 
                     // count of all tries we know about
                     total_tries_count += match &put_result {
-                        Err(engine_state::Error::MissingTrieNodeChildren {
-                            missing_children,
-                            ..
-                        }) => missing_children.len(),
+                        Err(engine_state::Error::MissingTrieNodeChildren(missing_children)) => {
+                            missing_children.len()
+                        }
                         _ => 0,
                     };
-                    process_queue
-                        .extend(tries_awaiting_children.handle_result(trie_key, put_result));
+                    process_queue.extend(tries_awaiting_children.handle_result(
+                        trie_key,
+                        TrieRaw::new(trie_bytes),
+                        put_result,
+                    ));
                     bytes_downloaded_since_last_iteration += len_in_bytes;
 
                     // in-flight requests
@@ -1008,19 +1012,20 @@ async fn sync_trie_store_worker(
 
         let job_result = if let Some(bytes) = sync_state.get_awaiting(&job).await {
             let engine_state_clone = engine_state.clone();
+            let bytes_clone = bytes.clone();
             match tokio::task::spawn_blocking(move || {
-                engine_state_clone.put_trie_if_all_children_present(CorrelationId::new(), &bytes)
+                engine_state_clone
+                    .put_trie_if_all_children_present(CorrelationId::new(), &bytes_clone)
             })
             .await
             {
                 Ok(Ok(written_trie)) => Ok(FetchAndStoreResult::Written(written_trie)),
-                Ok(Err(engine_state::Error::MissingTrieNodeChildren {
-                    trie_raw,
-                    missing_children,
-                })) => Ok(FetchAndStoreResult::MissingChildren {
-                    trie_raw,
-                    missing_children,
-                }),
+                Ok(Err(engine_state::Error::MissingTrieNodeChildren(missing_children))) => {
+                    Ok(FetchAndStoreResult::MissingChildren {
+                        trie_raw: TrieRaw::new(bytes),
+                        missing_children,
+                    })
+                }
                 Ok(Err(error)) => Err(error.into()),
                 Err(error) => Err(error.into()),
             }
@@ -1105,19 +1110,19 @@ async fn fetch_and_store_trie(
             }
 
             // similar to how the contract-runtime does related operations, spawn in a blocking task
+            let bytes_clone = bytes.clone();
             match tokio::task::spawn_blocking(move || {
-                engine_state.put_trie_if_all_children_present(CorrelationId::new(), &bytes)
+                engine_state.put_trie_if_all_children_present(CorrelationId::new(), &bytes_clone)
             })
             .await?
             {
                 Ok(written_trie) => Ok(FetchAndStoreResult::Written(written_trie)),
-                Err(engine_state::Error::MissingTrieNodeChildren {
-                    trie_raw,
-                    missing_children,
-                }) => Ok(FetchAndStoreResult::MissingChildren {
-                    trie_raw,
-                    missing_children,
-                }),
+                Err(engine_state::Error::MissingTrieNodeChildren(missing_children)) => {
+                    Ok(FetchAndStoreResult::MissingChildren {
+                        trie_raw: TrieRaw::new(bytes.into()),
+                        missing_children,
+                    })
+                }
                 Err(error) => Err(error.into()),
             }
         }

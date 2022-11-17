@@ -13,7 +13,7 @@ use crate::{
     },
     shared::wasm_prep,
     storage,
-    storage::{global_state::CommitError, trie::TrieRaw},
+    storage::global_state::CommitError,
 };
 
 /// Engine state errors.
@@ -103,12 +103,7 @@ pub enum Error {
     FailedToRetrieveEraId,
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
-    MissingTrieNodeChildren {
-        /// The raw trie that is missing some children.
-        trie_raw: TrieRaw,
-        /// Digests of missing children.
-        missing_children: Vec<Digest>,
-    },
+    MissingTrieNodeChildren(Vec<Digest>),
 }
 
 impl Error {

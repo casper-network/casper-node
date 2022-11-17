@@ -1117,8 +1117,7 @@ pub(crate) enum ContractRuntimeRequest {
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
         trie_bytes: TrieRaw,
-        /// Responder to call with the result. Contains the missing descendants of the inserted
-        /// trie.
+        /// Responder to call with the result. Contains the hash of the stored trie.
         responder: Responder<Result<Digest, engine_state::Error>>,
     },
     /// Find the missing descendants for a trie key

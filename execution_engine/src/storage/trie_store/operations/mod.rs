@@ -338,7 +338,6 @@ where
     // Parse the trie, handling errors gracefully.
     let trie = match bytesrepr::deserialize_from_slice(trie_raw) {
         Ok(trie) => trie,
-        // Couldn't parse; treat as missing and continue.
         Err(err) => {
             error!(?err, "unable to parse trie");
             return Err(err.into());
@@ -356,19 +355,8 @@ where
         // If we hit a pointer block, queue up all of the nodes it points to
         Trie::Node { pointer_block } => pointer_block
             .as_indexed_pointers()
-            .filter_map(|(_, pointer)| match pointer {
-                Pointer::LeafPointer(descendant_leaf_trie_key)
-                    if !is_present(descendant_leaf_trie_key) =>
-                {
-                    Some(descendant_leaf_trie_key)
-                }
-                Pointer::NodePointer(descendant_node_trie_key)
-                    if !is_present(descendant_node_trie_key) =>
-                {
-                    Some(descendant_node_trie_key)
-                }
-                _ => None,
-            })
+            .map(|(_, pointer)| *pointer.hash())
+            .filter(|pointer_hash| !is_present(*pointer_hash))
             .collect(),
         // If we hit an extension block, add its pointer to the queue
         Trie::Extension { pointer, .. } => {

@@ -1680,10 +1680,7 @@ where
         if missing_children.is_empty() {
             Ok(self.state.put_trie(correlation_id, trie_bytes)?)
         } else {
-            Err(Error::MissingTrieNodeChildren {
-                trie_raw: TrieRaw::new(trie_bytes.to_vec().into()),
-                missing_children,
-            })
+            Err(Error::MissingTrieNodeChildren(missing_children))
         }
     }
 
@@ -2215,7 +2212,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
-            | Error::MissingTrieNodeChildren { .. } => false,
+            | Error::MissingTrieNodeChildren(_) => false,
         },
         ExecutionResult::Success { .. } => false,
     }
