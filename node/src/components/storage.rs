@@ -1198,7 +1198,7 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;
-        debug!(
+        info!(
             "Storage: marked block {} complete: {}",
             block_height,
             self.get_available_block_range()

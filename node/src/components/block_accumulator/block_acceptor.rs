@@ -196,6 +196,11 @@ impl BlockAcceptor {
         }
 
         if self.block.is_none() || self.signatures.is_empty() {
+            debug!(
+                no_block = self.block.is_none(),
+                no_sigs = self.signatures.is_empty(),
+                "not storing block"
+            );
             return (ShouldStore::Nothing, Vec::new());
         }
 

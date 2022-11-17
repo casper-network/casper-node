@@ -17,7 +17,7 @@ use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -102,7 +102,7 @@ impl<REv> ReactorEvent for REv where
 pub(crate) enum BlockSynchronizerProgress {
     Idle,
     Syncing(BlockHash, Option<u64>, Timestamp),
-    Synced(BlockHash, u64),
+    Synced(BlockHash, u64, EraId),
 }
 
 impl Display for BlockSynchronizerProgress {
@@ -116,11 +116,11 @@ impl Display for BlockSynchronizerProgress {
                     block_height, timestamp, block_hash
                 )
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+            BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 write!(
                     f,
-                    "block_height: {} block_hash: {}",
-                    block_height, block_hash
+                    "block_height: {} block_hash: {} era_id: {}",
+                    block_height, block_hash, era_id
                 )
             }
         }
@@ -209,7 +209,7 @@ impl BlockSynchronizer {
             &self.historical,
             &self.forward,
         ) {
-            if builder.block_hash() == block_hash && !builder.is_fatal() {
+            if builder.block_hash() == block_hash && !builder.is_failed() {
                 return false;
             }
         }
@@ -840,10 +840,14 @@ impl BlockSynchronizer {
 
     fn progress(&self, builder: &BlockBuilder) -> BlockSynchronizerProgress {
         if builder.is_finished() {
-            match builder.block_height() {
-                None => error!("finished builder should have block height"),
-                Some(block_height) => {
-                    return BlockSynchronizerProgress::Synced(builder.block_hash(), block_height)
+            match builder.block_height_and_era() {
+                None => error!("finished builder should have block height and era"),
+                Some((block_height, era_id)) => {
+                    return BlockSynchronizerProgress::Synced(
+                        builder.block_hash(),
+                        block_height,
+                        era_id,
+                    )
                 }
             }
         }
