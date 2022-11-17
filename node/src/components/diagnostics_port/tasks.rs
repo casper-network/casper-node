@@ -525,7 +525,7 @@ mod tests {
     use crate::{
         components::{
             diagnostics_port::{self, Config as DiagnosticsPortConfig, DiagnosticsPort},
-            small_network::{self, Identity as NetworkIdentity},
+            network::{self, Identity as NetworkIdentity},
             Component,
         },
         effect::{
@@ -539,7 +539,7 @@ mod tests {
         },
         testing::{
             self,
-            network::{Network, NetworkedReactor},
+            network::{NetworkedReactor, TestingNetwork},
         },
         types::{Chainspec, ChainspecRawBytes},
         utils::WeightedRoundRobin,
@@ -671,7 +671,7 @@ mod tests {
     /// Runs a single mini-node with a diagnostics console and requests a dump of the (empty)
     /// event queue, then returns it.
     async fn run_single_node_console_and_dump_events(dump_format: &'static str) -> String {
-        let mut network = Network::<Reactor>::new();
+        let mut network = TestingNetwork::<Reactor>::new();
         let mut rng = TestRng::new();
 
         let base_dir = tempfile::tempdir().expect("could not create tempdir");
@@ -752,13 +752,13 @@ mod tests {
         let scheduler = WeightedRoundRobin::new(QueueKind::weights());
         scheduler
             .push(
-                MainEvent::Network(small_network::Event::SweepOutgoing),
+                MainEvent::Network(network::Event::SweepOutgoing),
                 QueueKind::Network,
             )
             .await;
         scheduler
             .push(
-                MainEvent::Network(small_network::Event::GossipOurAddress),
+                MainEvent::Network(network::Event::GossipOurAddress),
                 QueueKind::Gossip,
             )
             .await;

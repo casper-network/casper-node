@@ -19,7 +19,7 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
-        small_network::blocklist::BlocklistJustification,
+        network::blocklist::BlocklistJustification,
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,

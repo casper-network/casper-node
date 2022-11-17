@@ -12,7 +12,7 @@ use crate::{
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
         deploy_buffer::{self, DeployBuffer},
-        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
+        diagnostics_port, event_stream_server, network, rest_server, rpc_server, sync_leaper,
         sync_leaper::LeapStatus,
         upgrade_watcher, InitializedComponent, ValidatorBoundComponent,
     },
@@ -71,7 +71,7 @@ impl MainReactor {
             ReactorState::Initialize => match self.initialize_next_component(effect_builder) {
                 Some(effects) => (Duration::ZERO, effects),
                 None => {
-                    if false == self.small_network.has_sufficient_fully_connected_peers() {
+                    if false == self.net.has_sufficient_fully_connected_peers() {
                         info!("Initialize: awaiting sufficient fully-connected peers");
                         return (Duration::from_secs(2), Effects::new());
                     }
@@ -394,7 +394,7 @@ impl MainReactor {
                                 ));
                             }
                         }
-                        let peers_to_ask = self.small_network.fully_connected_peers_random(
+                        let peers_to_ask = self.net.fully_connected_peers_random(
                             rng,
                             self.chainspec.core_config.simultaneous_peer_requests as usize,
                         );
@@ -696,7 +696,7 @@ impl MainReactor {
                                 }
                                 error!("Historical: sync leap failed: {:?}", error);
                             }
-                            let peers_to_ask = self.small_network.fully_connected_peers_random(
+                            let peers_to_ask = self.net.fully_connected_peers_random(
                                 rng,
                                 self.chainspec.core_config.simultaneous_peer_requests as usize,
                             );
@@ -748,7 +748,7 @@ impl MainReactor {
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
                     debug!("Historical: register_block_by_hash: {:?}", parent_hash);
-                    let peers_to_ask = self.small_network.fully_connected_peers_random(
+                    let peers_to_ask = self.net.fully_connected_peers_random(
                         rng,
                         self.chainspec.core_config.simultaneous_peer_requests as usize,
                     );
@@ -827,8 +827,8 @@ impl MainReactor {
         }
         if let Some(effects) = utils::initialize_component(
             effect_builder,
-            &mut self.small_network,
-            MainEvent::Network(small_network::Event::Initialize),
+            &mut self.net,
+            MainEvent::Network(network::Event::Initialize),
         ) {
             return Some(effects);
         }

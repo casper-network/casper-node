@@ -20,15 +20,15 @@ use crate::{
     protocol::Message as ProtocolMessage,
 };
 
-const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-// const_assert!(_SMALL_NETWORK_EVENT_SIZE < 90);
+const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
+// const_assert!(_NETWORK_EVENT_SIZE < 90);
 
 #[test]
 fn fix_it() {
     todo!("fix the const assert above")
 }
 
-/// A small network event.
+/// A network event.
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event<P> {
     Initialize,

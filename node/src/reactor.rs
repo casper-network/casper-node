@@ -60,7 +60,7 @@ use crate::{
     components::{
         block_accumulator, deploy_acceptor, fetcher,
         fetcher::FetchResponse,
-        small_network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
+        network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
