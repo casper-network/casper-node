@@ -574,3 +574,37 @@ pub(super) async fn message_sender<P>(
         };
     }
 }
+
+/// Receives data from an async channel and forwards it into a suitable sink.
+///
+/// Will loop forever, until either told to stop through the `stop` flag, or a send error occurs.
+async fn shovel_data<P, S>(
+    mut source: UnboundedReceiver<MessageQueueItem<P>>,
+    mut dest: S,
+    stop: StickyFlag,
+) -> Result<(), <S as Sink<Arc<Message<P>>>>::Error>
+where
+    P: Send + Sync,
+    S: Sink<Arc<Message<P>>> + Unpin,
+{
+    loop {
+        let recv = source.recv();
+        pin_mut!(recv);
+        let stop_wait = stop.wait();
+        pin_mut!(stop_wait);
+
+        match future::select(recv, stop_wait).await {
+            Either::Left((Some((message, responder)), _)) => {
+                dest.send(message).await?;
+            }
+            Either::Left((None, _)) => {
+                trace!("sink closed");
+                return Ok(());
+            }
+            Either::Right((_, _)) => {
+                trace!("received stop signal");
+                return Ok(());
+            }
+        }
+    }
+}
