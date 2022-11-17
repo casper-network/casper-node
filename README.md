@@ -148,11 +148,11 @@ This is comprised of the following parts:
 `RUST_LOG` can be set to enable varying levels for different modules.  Simply set it to a comma-separated list of
 `module-path=level`, where the module path is as shown above in the typical log message, with the end truncated to suit.
 
-For example, to enable `trace` level logging for the `small_network` module in `components`, `info` level for all other
+For example, to enable `trace` level logging for the `network` module in `components`, `info` level for all other
 modules in `components`, and `warn` level for the remaining codebase:
 
 ```
-RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
+RUST_LOG=casper_node::components::network=trace,casper_node::comp=info,warn
 ```
 
 ### Logging network messages and tracing events

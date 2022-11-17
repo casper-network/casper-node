@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
-    components::{small_network::blocklist::BlocklistJustification, Component},
+    components::{network::blocklist::BlocklistJustification, Component},
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement,

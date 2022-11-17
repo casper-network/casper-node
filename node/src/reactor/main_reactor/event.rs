@@ -8,9 +8,9 @@ use crate::{
         block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
-        diagnostics_port, event_stream_server, fetcher, gossiper, rest_server, rpc_server,
-        small_network::{self, GossipedAddress},
-        storage, sync_leaper, upgrade_watcher,
+        diagnostics_port, event_stream_server, fetcher, gossiper,
+        network::{self, GossipedAddress},
+        rest_server, rpc_server, storage, sync_leaper, upgrade_watcher,
     },
     effect::{
         announcements::{
@@ -79,7 +79,7 @@ pub(crate) enum MainEvent {
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
     #[from]
-    Network(small_network::Event<Message>),
+    Network(network::Event<Message>),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
     #[from]
@@ -238,7 +238,7 @@ impl ReactorEvent for MainEvent {
     fn description(&self) -> &'static str {
         match self {
             MainEvent::ReactorCrank => "ReactorCrank",
-            MainEvent::Network(_) => "SmallNetwork",
+            MainEvent::Network(_) => "Network",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::DeployBuffer(_) => "DeployBuffer",
             MainEvent::Storage(_) => "Storage",
@@ -330,7 +330,7 @@ impl Display for MainEvent {
         match self {
             MainEvent::ReactorCrank => write!(f, "reactor crank"),
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
-            MainEvent::Network(event) => write!(f, "small network: {}", event),
+            MainEvent::Network(event) => write!(f, "network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),

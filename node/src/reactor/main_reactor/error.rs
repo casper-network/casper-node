@@ -5,7 +5,7 @@ use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 
 use crate::{
     components::{
-        contract_runtime, contract_runtime::BlockExecutionError, diagnostics_port, small_network,
+        contract_runtime, contract_runtime::BlockExecutionError, diagnostics_port, network,
         storage, upgrade_watcher,
     },
     utils::{ListeningError, LoadError},
@@ -22,9 +22,9 @@ pub(crate) enum Error {
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
 
-    /// `SmallNetwork` component error.
-    #[error("small network error: {0}")]
-    SmallNetwork(#[from] small_network::Error),
+    /// `Network` component error.
+    #[error("network error: {0}")]
+    Network(#[from] network::Error),
 
     /// An error starting one of the HTTP servers.
     #[error("http server listening error: {0}")]

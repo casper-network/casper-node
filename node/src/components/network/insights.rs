@@ -2,7 +2,7 @@
 //!
 //! The `insights` module exposes some internals of the networking component, mainly for inspection
 //! through the diagnostics console. It should specifically not be used for any business logic and
-//! affordances made in other corners of the `small_network` module to allow collecting these
+//! affordances made in other corners of the `network` module to allow collecting these
 //! insights should neither be abused just because they are available.
 
 use std::{
@@ -22,8 +22,8 @@ use crate::{
 };
 
 use super::{
-    error::ConnectionError, outgoing::OutgoingState, symmetry::ConnectionSymmetry, OutgoingHandle,
-    Payload, SmallNetwork,
+    error::ConnectionError, outgoing::OutgoingState, symmetry::ConnectionSymmetry, Network,
+    OutgoingHandle, Payload,
 };
 
 /// A collection of insights into the active networking component.
@@ -230,7 +230,7 @@ impl ConnectionSymmetryInsight {
 
 impl NetworkInsights {
     /// Collect networking insights from a given networking component.
-    pub(super) fn collect_from_component<REv, P>(net: &SmallNetwork<REv, P>) -> Self
+    pub(super) fn collect_from_component<REv, P>(net: &Network<REv, P>) -> Self
     where
         P: Payload,
     {
