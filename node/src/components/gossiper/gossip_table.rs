@@ -98,7 +98,6 @@ pub(crate) struct State {
     /// The relevant target for this data.
     target: GossipTarget,
     /// The set of peers we attempted to infect.
-    // TODO[RC]: How/when to prune it?
     attempted_to_infect: HashSet<NodeId>,
 }
 
