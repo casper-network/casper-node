@@ -602,33 +602,32 @@ pub(super) async fn message_sender<P>(
 /// least one channel sender has shut down for any reason, the others will be signaled to shut down
 /// as well.
 ///
-/// A passed in counter will be decremented
-///
 /// This function only returns when all senders have been shut down.
 pub(super) async fn encoded_message_sender(
     queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
     carrier: OutgoingCarrier,
     limiter: Box<dyn LimiterHandle>,
+    global_stop: StickyFlag,
 ) -> Result<(), OutgoingCarrierError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
     let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
-    let stop: StickyFlag = StickyFlag::new();
+    let local_stop: StickyFlag = StickyFlag::new();
 
     let mut boiler_room = FuturesUnordered::new();
 
     for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
         let mux_handle = carrier.create_channel_handle(channel as u8);
         let channel: OutgoingChannel = Fragmentizer::new(fragment_size, mux_handle);
-        boiler_room.push(shovel_data(queue, channel, stop.clone()));
+        boiler_room.push(shovel_data(queue, channel, local_stop.clone()));
     }
 
     // We track only the first result we receive from a sender, as subsequent errors may just be
     // caused by the first one shutting down and are not the root cause.
     let mut first_result = None;
     loop {
-        let stop_wait = stop.wait();
-        pin_mut!(stop_wait);
-        match future::select(boiler_room.next(), stop_wait).await {
+        let global_stop_wait = global_stop.wait();
+        pin_mut!(global_stop_wait);
+        match future::select(boiler_room.next(), global_stop_wait).await {
             Either::Left((None, _)) => {
                 // There are no more running senders left, so we can finish.
                 debug!("all senders finished");
@@ -643,14 +642,14 @@ pub(super) async fn encoded_message_sender(
                 }
 
                 // Signal all other senders stop as well.
-                stop.set();
+                local_stop.set();
             }
             Either::Right((_, _)) => {
                 debug!("global shutdown");
 
                 // The component is shutting down, tell all existing data shovelers to put down
                 // their shovels and call it a day.
-                stop.set();
+                local_stop.set();
             }
         }
     }
