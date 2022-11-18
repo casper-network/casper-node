@@ -12,6 +12,8 @@ mod trie_accumulator;
 
 use datasize::DataSize;
 use either::Either;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use tracing::{debug, error, trace, warn};
 
@@ -125,6 +127,14 @@ impl Display for BlockSynchronizerProgress {
             }
         }
     }
+}
+
+#[derive(Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BlockSyncStatus {
+    block_hash: BlockHash,
+    block_height: Option<u64>,
+    acquisition_state: String, // BlockAcquisitionState.to_string()
 }
 
 #[derive(DataSize, Debug)]
@@ -861,6 +871,18 @@ impl BlockSynchronizer {
             ),
         )
     }
+
+    pub fn status(&self) -> Vec<BlockSyncStatus> {
+        self.historical
+            .iter()
+            .chain(self.forward.iter())
+            .map(|builder| BlockSyncStatus {
+                block_hash: builder.block_hash(),
+                block_height: builder.block_height(),
+                acquisition_state: builder.block_acquisition_state().to_string(),
+            })
+            .collect()
+    }
 }
 
 impl<REv> InitializedComponent<REv> for BlockSynchronizer
@@ -948,6 +970,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                                 }),
                         );
                         effects
+                    }
+                    Event::Request(BlockSynchronizerRequest::Status { responder }) => {
+                        responder.respond(self.status()).ignore()
                     }
 
                     // tunnel event to global state synchronizer

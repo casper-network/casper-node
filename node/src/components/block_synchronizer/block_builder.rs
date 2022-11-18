@@ -132,6 +132,10 @@ impl BlockBuilder {
         self.touch();
     }
 
+    pub(crate) fn block_acquisition_state(&self) -> &BlockAcquisitionState {
+        &self.acquisition_state
+    }
+
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }

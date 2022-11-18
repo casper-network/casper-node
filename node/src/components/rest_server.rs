@@ -40,13 +40,14 @@ use crate::{
     },
     effect::{
         requests::{
-            ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            RestRequest, StorageRequest, UpgradeWatcherRequest,
+            BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest,
+            NetworkInfoRequest, ReactorStatusRequest, RestRequest, StorageRequest,
+            UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::{ChainspecInfo, NodeState, StatusFeed},
+    types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -63,6 +64,8 @@ pub(crate) trait ReactorEventT:
     + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
+    + From<ReactorStatusRequest>
+    + From<BlockSynchronizerRequest>
     + Send
 {
 }
@@ -76,6 +79,8 @@ impl<REv> ReactorEventT for REv where
         + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
+        + From<ReactorStatusRequest>
+        + From<BlockSynchronizerRequest>
         + Send
         + 'static
 {
@@ -165,20 +170,38 @@ where
                 let node_uptime = self.node_startup_instant.elapsed();
                 let network_name = self.network_name.clone();
                 async move {
-                    let (last_added_block, peers, next_upgrade, consensus_status) = join!(
+                    let (
+                        last_added_block,
+                        peers,
+                        next_upgrade,
+                        consensus_status,
+                        (reactor_state, last_progress),
+                        available_block_range,
+                        block_sync,
+                    ) = join!(
                         effect_builder.get_highest_block_from_storage(),
                         effect_builder.network_peers(),
                         effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
+                        effect_builder.get_reactor_status(),
+                        effect_builder.get_available_block_range_from_storage(),
+                        effect_builder.get_block_synchronizer_status(),
                     );
-
+                    let starting_state_root_hash = effect_builder
+                        .get_block_header_at_height_from_storage(available_block_range.low(), true)
+                        .await
+                        .map(|header| *header.state_root_hash());
                     let status_feed = StatusFeed::new(
                         last_added_block,
                         peers,
                         ChainspecInfo::new(network_name, next_upgrade),
                         consensus_status,
                         node_uptime,
-                        NodeState::Participating,
+                        reactor_state,
+                        last_progress,
+                        available_block_range,
+                        block_sync,
+                        starting_state_root_hash,
                     );
                     responder.respond(status_feed).await;
                 }
