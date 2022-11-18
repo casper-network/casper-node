@@ -1,6 +1,6 @@
 # global-state-update-gen
 
-If the network experiences a catastrophic failure, it might become impossible to make changes to the global state required for fixing the situation via normal channels (ie., executing deploys on the network), and we might instead need to resort to social consensus outside of the blockchain and applying the changes manually. This tool facilitates generating files specifying such changes, which can then be applied during an emergency upgrade.
+If the network experiences a catastrophic failure, it might become impossible to make changes to the global state required for fixing the situation via normal channels (i.e. executing deploys on the network), and we might instead need to resort to social consensus outside the blockchain and applying the changes manually. This tool facilitates generating files specifying such changes, which can then be applied during an emergency upgrade.
 
 The tool consists of 1 main subcommand and 3 legacy subcommands:
 - `generic` - a generic update based on a config file,
@@ -18,11 +18,15 @@ All subcommands share 3 parameters:
 
 ### `generic`
 
-Usage: `global-state-update-gen -d DATA-DIRECTORY -s STATE-ROOT-HASH CONFIG-FILE`
+Usage: `global-state-update-gen generic -d DATA-DIRECTORY -s STATE-ROOT-HASH CONFIG-FILE`
 
 The config file should be a TOML file, which can contain the following values:
 
 ```toml
+# can be true or false, optional, false if not present; more detailed description below
+# *must* be listed before all [[accounts]] and [[transfers]] entries
+only_listed_validators = false
+
 # multiple [[accounts]] definitions are possible
 [[accounts]]
 public_key = "..." # the public key of the account owner
@@ -34,8 +38,6 @@ balance = "..."    # account balance, in motes (optional)
 from = "account-hash-..." # the account hash to transfer funds from
 to = "account-hash-..."   # the account hash to transfer funds to
 amount = "..."            # the amount to be transferred, in motes
-
-only_listed_validators = false # can be true or false, optional, false if not present; more detailed description below
 ```
 
 The `[[accounts]]` definitions control the balances and stakes of accounts on the network. It is possible to change the set of validators using these definitions, by changing the staked amounts.
