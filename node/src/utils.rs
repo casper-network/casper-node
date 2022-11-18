@@ -254,6 +254,7 @@ impl StickyFlag {
 /// Upon construction, `TokenizedCount` increases a given `IntGauge` by one for metrics purposed.
 ///
 /// Once it is dropped, the underlying gauge will be decreased by one.
+#[derive(Debug)]
 pub(crate) struct TokenizedCount {
     /// The gauge modified on construction/drop.
     gauge: Option<IntGauge>,
@@ -566,7 +567,7 @@ mod tests {
     use futures::FutureExt;
     use prometheus::IntGauge;
 
-    use crate::utils::SharedFlag;
+    use crate::utils::{SharedFlag, TokenizedCount};
 
     use super::{wait_for_arc_drop, xor, StickyFlag};
 
@@ -661,6 +662,15 @@ mod tests {
 
         gauge.inc();
         gauge.inc();
+        assert_eq!(gauge.get(), 2);
+
+        let ticket1 = TokenizedCount::new(gauge.clone());
+        let ticket2 = TokenizedCount::new(gauge.clone());
+
+        assert_eq!(gauge.get(), 4);
+        drop(ticket2);
+        assert_eq!(gauge.get(), 3);
+        drop(ticket1);
         assert_eq!(gauge.get(), 2);
     }
 
