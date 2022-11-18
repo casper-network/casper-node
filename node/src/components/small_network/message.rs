@@ -95,6 +95,14 @@ impl<P: Payload> Message<P> {
             }
         }
     }
+
+    /// Determine which channel this message should be sent on.
+    pub(super) fn get_channel(&self) -> Channel {
+        match self {
+            Message::Handshake { .. } => Channel::Network,
+            Message::Payload(payload) => payload.get_channel(),
+        }
+    }
 }
 
 /// A pair of secret keys used by consensus.
@@ -761,5 +769,12 @@ mod tests {
     #[test]
     fn bincode_roundtrip_certificate() {
         roundtrip_certificate(false)
+    }
+
+    #[test]
+    fn channels_enum_does_not_have_holes() {
+        for idx in 0..Channel::COUNT {
+            let _ = Channel::from_repr(idx as u8).expect("must not have holes in channel enum");
+        }
     }
 }
