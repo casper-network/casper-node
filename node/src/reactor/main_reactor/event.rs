@@ -26,12 +26,11 @@ use crate::{
             TrieResponseIncoming,
         },
         requests::{
-            AppStateRequest, BeginGossipRequest, BlockAccumulatorRequest,
-            BlockCompleteConfirmationRequest, BlockSynchronizerRequest, BlockValidationRequest,
-            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
-            TrieAccumulatorRequest, UpgradeWatcherRequest,
+            BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
+            BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
+            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
+            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
+            StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -213,8 +212,6 @@ pub(crate) enum MainEvent {
     Storage(storage::Event),
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
-    #[from]
-    AppStateRequest(AppStateRequest),
 }
 
 impl ReactorEvent for MainEvent {
@@ -283,7 +280,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             MainEvent::StorageRequest(_) => "StorageRequest",
             MainEvent::BlockCompleteConfirmationRequest(_) => "MarkBlockCompletedRequest",
-            MainEvent::AppStateRequest(_) => "StateStoreRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
@@ -400,7 +396,6 @@ impl Display for MainEvent {
             MainEvent::BlockCompleteConfirmationRequest(req) => {
                 write!(f, "mark block completed request: {}", req)
             }
-            MainEvent::AppStateRequest(req) => write!(f, "state store request: {}", req),
             MainEvent::BlockHeaderFetcherRequest(request) => {
                 write!(f, "block header fetcher request: {}", request)
             }

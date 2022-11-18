@@ -316,20 +316,9 @@ fn get_block_header_by_height(
 }
 
 /// Loads a block's signatures from a storage component.
-fn get_block_signatures(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    block_hash: BlockHash,
-) -> Option<BlockSignatures> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetBlockSignatures {
-            block_hash,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
-    response
+fn get_block_signatures(storage: &mut Storage, block_hash: BlockHash) -> Option<BlockSignatures> {
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    storage.get_block_signatures(&mut txn, &block_hash).unwrap()
 }
 
 /// Loads a set of deploys from a storage component.
@@ -1177,7 +1166,7 @@ fn should_hard_reset() {
 
         // Check signatures of deleted blocks can't be retrieved.
         for (index, block) in blocks.iter().enumerate() {
-            let result = get_block_signatures(&mut harness, &mut storage, *block.hash());
+            let result = get_block_signatures(&mut storage, *block.hash());
             let should_get_sigs = index < blocks_per_era * reset_era;
             assert_eq!(should_get_sigs, result.is_some());
         }

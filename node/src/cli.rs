@@ -266,15 +266,3 @@ impl Cli {
         Ok(WithDir::new(root, main_config))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn reminder_to_not_allow_unused() {
-        panic!(
-            "#![allow(unused)] was introduced in several modules to minimize the warning bloat \
-             during the mob development of the new fast sync. This is a reminder that this flag \
-             should be disabled once the source code stabilizes."
-        )
-    }
-}

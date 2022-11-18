@@ -59,8 +59,7 @@ pub(crate) struct DiagnosticsPort {
     status: ComponentStatus,
     /// Sender which will cause server and client connections to exit when dropped.
     #[data_size(skip)]
-    #[allow(dead_code)] // only used for its `Drop` impl.
-    shutdown_sender: Option<watch::Sender<()>>,
+    _shutdown_sender: Option<watch::Sender<()>>, // only used for its `Drop` impl
     config: WithDir<Config>,
 }
 
@@ -70,7 +69,7 @@ impl DiagnosticsPort {
         DiagnosticsPort {
             status: ComponentStatus::Uninitialized,
             config,
-            shutdown_sender: None,
+            _shutdown_sender: None,
         }
     }
 }
@@ -158,7 +157,7 @@ where
     ) -> Result<Effects<Event>, Self::Error> {
         let (shutdown_sender, shutdown_receiver) = watch::channel(());
 
-        self.shutdown_sender = Some(shutdown_sender);
+        self._shutdown_sender = Some(shutdown_sender);
 
         let cfg = self.config.value();
 

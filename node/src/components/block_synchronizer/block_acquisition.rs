@@ -27,7 +27,6 @@ use crate::{
     NodeRng,
 };
 
-#[allow(dead_code)] // todo! do a pass on error variants
 #[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {
     InvalidStateTransition,
@@ -41,15 +40,6 @@ pub(crate) enum Error {
     },
     #[from]
     InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
-    InvalidAttemptToApplyGlobalState {
-        root_hash: Digest,
-    },
-    InvalidAttemptToApplyDeploy {
-        deploy_id: DeployId,
-    },
-    InvalidAttemptToApplyExecutionResults,
-    InvalidAttemptToApplyExecutionResultsChecksum,
-    InvalidAttemptToApplyStoredExecutionResults,
     InvalidAttemptToAcquireExecutionResults,
     InvalidAttemptToMarkComplete,
     ExecutionResults(super::execution_results_acquisition::Error),
@@ -61,25 +51,6 @@ impl Display for Error {
             Error::InvalidStateTransition => write!(f, "invalid state transition"),
             Error::InvalidAttemptToMarkComplete => {
                 write!(f, "invalid attempt to mark complete")
-            }
-            Error::InvalidAttemptToApplyGlobalState { root_hash } => {
-                write!(
-                    f,
-                    "invalid attempt to apply invalid global hash root hash: {}",
-                    root_hash
-                )
-            }
-            Error::InvalidAttemptToApplyDeploy { deploy_id } => {
-                write!(f, "invalid attempt to apply invalid deploy {}", deploy_id)
-            }
-            Error::InvalidAttemptToApplyExecutionResults => {
-                write!(f, "invalid attempt to apply execution results")
-            }
-            Error::InvalidAttemptToApplyExecutionResultsChecksum => {
-                write!(f, "invalid attempt to apply execution results checksum")
-            }
-            Error::InvalidAttemptToApplyStoredExecutionResults => {
-                write!(f, "invalid attempt to apply stored execution results notification; execution results are not in terminal state")
             }
             Error::InvalidAttemptToAcquireExecutionResults => {
                 write!(

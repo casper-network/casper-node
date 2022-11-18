@@ -26,8 +26,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        GetEraValidatorsError, GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig,
-        UpgradeSuccess,
+        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -309,20 +308,6 @@ impl ContractRuntime {
             + Send,
     {
         match request {
-            ContractRuntimeRequest::CommitGenesis {
-                chainspec,
-                chainspec_raw_bytes,
-                responder,
-            } => {
-                let result = self.commit_genesis(&chainspec, &chainspec_raw_bytes);
-                responder.respond(result).ignore()
-            }
-            ContractRuntimeRequest::Upgrade {
-                upgrade_config,
-                responder,
-            } => responder
-                .respond(self.commit_upgrade(*upgrade_config))
-                .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -358,39 +343,6 @@ impl ContractRuntime {
                     metrics.get_balance.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "balance result");
                     responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::IsBonded {
-                state_root_hash,
-                era_id,
-                protocol_version,
-                public_key: validator_key,
-                responder,
-            } => {
-                trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                let system_contract_registry = self.system_contract_registry.clone();
-                let request = GetEraValidatorsRequest::new(state_root_hash, protocol_version);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let era_validators = engine_state.get_era_validators(
-                        correlation_id,
-                        system_contract_registry,
-                        request,
-                    );
-                    metrics
-                        .get_validator_weights
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "is validator bonded result");
-                    let is_bonded =
-                        era_validators.and_then(|validator_map| match validator_map.get(&era_id) {
-                            None => Err(GetEraValidatorsError::EraValidatorsMissing),
-                            Some(era_validators) => Ok(era_validators.contains_key(&validator_key)),
-                        });
-                    responder.respond(is_bonded).await
                 }
                 .ignore()
             }
@@ -527,20 +479,6 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetApprovalsChecksum {
-                state_root_hash,
-                responder,
-            } => {
-                let correlation_id = CorrelationId::new();
-                let result = self
-                    .engine_state
-                    .get_checksum_registry(correlation_id, state_root_hash)
-                    .map(|maybe_registry| {
-                        maybe_registry
-                            .and_then(|registry| registry.get(APPROVALS_CHECKSUM_NAME).copied())
-                    });
-                responder.respond(result).ignore()
-            }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
                 responder,
@@ -555,25 +493,6 @@ impl ContractRuntime {
                         })
                     });
                 responder.respond(result).ignore()
-            }
-            ContractRuntimeRequest::FindMissingDescendantTrieKeys {
-                trie_key,
-                responder,
-            } => {
-                trace!(?trie_key, "find missing descendant trie keys");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
-                    metrics
-                        .missing_trie_keys
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "find missing descendant trie keys");
-                    responder.respond(result).await
-                }
-                .ignore()
             }
             ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
