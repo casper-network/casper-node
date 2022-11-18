@@ -16,7 +16,7 @@
   "devDependencies": {
     "@assemblyscript/loader": "^0.9.4",
     "assemblyscript": "^0.10.0",
-    "ava": "^3.12.1",
+    "ava": "^5.1.0",
     "concat-md": "^0.3.5",
     "trim": "^0.0.3",
     "ts-loader": "^6.2.1",
