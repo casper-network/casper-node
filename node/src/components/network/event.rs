@@ -5,11 +5,13 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::PublicKey;
 use derive_more::From;
 use futures::stream::{SplitSink, SplitStream};
 use serde::Serialize;
+use static_assertions::const_assert;
 use tracing::Span;
+
+use casper_types::PublicKey;
 
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
@@ -21,12 +23,7 @@ use crate::{
 };
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-// const_assert!(_NETWORK_EVENT_SIZE < 90);
-
-#[test]
-fn fix_it() {
-    todo!("fix the const assert above")
-}
+const_assert!(_NETWORK_EVENT_SIZE < 65);
 
 /// A network event.
 #[derive(Debug, From, Serialize)]

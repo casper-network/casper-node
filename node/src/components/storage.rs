@@ -138,11 +138,6 @@ const_assert!(_STORAGE_EVENT_SIZE <= 32);
 
 type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>);
 
-#[test]
-fn size() {
-    todo!("fix _STORAGE_EVENT_SIZE check")
-}
-
 const STORAGE_FILES: [&str; 5] = [
     "data.lmdb",
     "data.lmdb-lock",

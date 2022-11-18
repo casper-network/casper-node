@@ -13,6 +13,7 @@ use std::{
 use datasize::DataSize;
 use serde::Serialize;
 use smallvec::SmallVec;
+use static_assertions::const_assert;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -57,12 +58,7 @@ use crate::{
 use super::GossipTarget;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-// const_assert!(_STORAGE_REQUEST_SIZE < 89);
-
-#[test]
-fn size() {
-    todo!("fix _STORAGE_REQUEST_SIZE check")
-}
+const_assert!(_STORAGE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -83,13 +79,7 @@ impl Display for MetricsRequest {
 }
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<String>>();
-//const_assert!(_NETWORK_EVENT_SIZE < 92);
-
-#[test]
-fn poop() {
-    eprintln!("{}", mem::size_of::<NetworkRequest<String>>());
-    panic!("poop is a bad name");
-}
+const_assert!(_NETWORK_EVENT_SIZE < 105);
 
 /// A networking request.
 #[derive(Debug, Serialize)]
@@ -129,8 +119,6 @@ pub(crate) enum NetworkRequest<P> {
         /// Node IDs of nodes to exclude from gossiping to.
         #[serde(skip_serializing)]
         exclude: HashSet<NodeId>,
-        // ///
-        // gossip_to_validators: bool,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<HashSet<NodeId>>,
@@ -431,7 +419,7 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve a finality signature by block hash and public key.
     GetFinalitySignature {
-        id: FinalitySignatureId,
+        id: Box<FinalitySignatureId>,
         responder: Responder<Option<FinalitySignature>>,
     },
     /// Retrieve block and its metadata at a given height.
@@ -454,7 +442,7 @@ pub(crate) enum StorageRequest {
         /// The hash for the request.
         block_hash: BlockHash,
         /// The public key of the signer.
-        public_key: PublicKey,
+        public_key: Box<PublicKey>,
         /// Responder to call with the result.
         responder: Responder<Option<FinalitySignature>>,
     },

@@ -1213,7 +1213,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockSignature {
                 block_hash,
-                public_key,
+                public_key: Box::new(public_key),
                 responder,
             },
             QueueKind::FromStorage,
@@ -1558,7 +1558,10 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetFinalitySignature { id, responder },
+            |responder| StorageRequest::GetFinalitySignature {
+                id: Box::new(id),
+                responder,
+            },
             QueueKind::FromStorage,
         )
         .await
