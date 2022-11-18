@@ -53,6 +53,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bincode::Options;
 use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -82,15 +83,6 @@ use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use casper_types::{EraId, PublicKey};
 
-pub(crate) use self::{
-    bincode_format::BincodeFormat,
-    config::Config,
-    error::Error,
-    event::Event,
-    gossiped_address::GossipedAddress,
-    insights::NetworkInsights,
-    message::{Channel, EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
-};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
@@ -103,6 +95,14 @@ use self::{
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
+};
+pub(crate) use self::{
+    config::Config,
+    error::Error,
+    event::Event,
+    gossiped_address::GossipedAddress,
+    insights::NetworkInsights,
+    message::{Channel, EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 
 use crate::{
@@ -1265,6 +1265,41 @@ type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
 
 /// An instance of a channel on an incoming carrier.
 type IncomingChannel = Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>;
+
+/// Setups bincode encoding used on the networking transport.
+fn bincode_config() -> impl Options {
+    bincode::options()
+        .with_no_limit() // We rely on `muxink` to impose limits.
+        .with_little_endian() // Default at the time of this writing, we are merely pinning it.
+        .with_varint_encoding() // Same as above.
+        .reject_trailing_bytes() // There is no reason for us not to reject trailing bytes.
+}
+
+/// Serializes a network message with the protocol specified encoding.
+///
+/// This function exists as a convenience, because there never should be a failure in serializing
+/// messages we produced ourselves.
+fn serialize_network_message<P>(msg: &Message<P>) -> Option<Bytes>
+where
+    P: Payload,
+{
+    bincode_config()
+        .serialize(&msg)
+        .map(Bytes::from)
+        .map_err(|err| {
+            error!(?msg, %err, "serialization failure when encoding outgoing message");
+            err
+        })
+        .ok()
+}
+
+/// Deserializes a networking message from the protocol specified encoding.
+fn deserialize_network_message<P>(bytes: &[u8]) -> Result<Message<P>, bincode::Error>
+where
+    P: Payload,
+{
+    bincode_config().deserialize(bytes)
+}
 
 impl<R, P> Debug for SmallNetwork<R, P>
 where

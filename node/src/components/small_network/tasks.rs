@@ -8,7 +8,6 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use bincode::{self, Options};
 use bytes::Bytes;
 use futures::{
     future::{self, Either},
@@ -53,6 +52,7 @@ use super::{
 };
 
 use crate::{
+    components::small_network::deserialize_network_message,
     effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
@@ -401,15 +401,6 @@ pub(super) async fn server<P, REv>(
     }
 }
 
-/// Setups bincode encoding used on the networking transport.
-fn bincode_config() -> impl Options {
-    bincode::options()
-        .with_no_limit() // We rely on `muxink` to impose limits.
-        .with_little_endian() // Default at the time of this writing, we are merely pinning it.
-        .with_varint_encoding() // Same as above.
-        .reject_trailing_bytes() // There is no reason for us not to reject trailing bytes.
-}
-
 /// Network message reader.
 ///
 /// Schedules all received messages until the stream is closed or an error occurs.
@@ -430,8 +421,7 @@ where
     let read_messages = async move {
         while let Some(frame_result) = stream.next().await {
             let frame = frame_result.map_err(MessageReaderError::ReceiveError)?;
-            let msg: Message<P> = bincode_config()
-                .deserialize(&frame)
+            let msg: Message<P> = deserialize_network_message(&frame)
                 .map_err(MessageReaderError::DeserializationError)?;
 
             trace!(%msg, "message received");
