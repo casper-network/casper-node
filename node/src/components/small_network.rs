@@ -23,7 +23,6 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
-mod bincode_format;
 pub(crate) mod blocklist;
 mod chain_info;
 mod config;
