@@ -2601,7 +2601,7 @@ mod payment {
             let deploy_hash = rng.gen();
             let sender = *DEFAULT_ACCOUNT_ADDR;
             let args = runtime_args! {
-                ARG_CALLS => subcalls.clone(),
+                ARG_CALLS => subcalls,
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
@@ -2636,7 +2636,7 @@ mod payment {
             let sender = *DEFAULT_ACCOUNT_ADDR;
 
             let args = runtime_args! {
-                ARG_CALLS => subcalls.clone(),
+                ARG_CALLS => subcalls,
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
@@ -2677,7 +2677,7 @@ mod payment {
             let deploy_hash = rng.gen();
             let sender = *DEFAULT_ACCOUNT_ADDR;
             let args = runtime_args! {
-                ARG_CALLS => subcalls.clone(),
+                ARG_CALLS => subcalls,
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
@@ -2717,7 +2717,7 @@ mod payment {
             let sender = *DEFAULT_ACCOUNT_ADDR;
 
             let args = runtime_args! {
-                ARG_CALLS => subcalls.clone(),
+                ARG_CALLS => subcalls,
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
@@ -2757,7 +2757,7 @@ mod payment {
             let deploy_hash = rng.gen();
             let sender = *DEFAULT_ACCOUNT_ADDR;
             let args = runtime_args! {
-                ARG_CALLS => subcalls.clone(),
+                ARG_CALLS => subcalls,
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
