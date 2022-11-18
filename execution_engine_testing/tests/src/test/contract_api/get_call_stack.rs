@@ -2581,7 +2581,7 @@ mod payment {
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
     use casper_execution_engine::core::engine_state::{Error as CoreError, ExecError};
-    use casper_types::{runtime_args, system::mint, RuntimeArgs, HashAddr};
+    use casper_types::{runtime_args, system::mint, HashAddr, RuntimeArgs};
     use get_call_stack_recursive_subcall::Call;
 
     use crate::wasm_utils;
@@ -2624,7 +2624,11 @@ mod payment {
         }
     }
 
-    fn execute_stored_payment_by_package_name(builder: &mut InMemoryWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
+    fn execute_stored_payment_by_package_name(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+    ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
             let deploy_hash = rng.gen();
@@ -2632,10 +2636,10 @@ mod payment {
             let sender = *DEFAULT_ACCOUNT_ADDR;
 
             let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(call_depth),
-                };
+                ARG_CALLS => subcalls.clone(),
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
 
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
@@ -2662,16 +2666,21 @@ mod payment {
         }
     }
 
-    fn execute_stored_payment_by_package_hash(builder: &mut InMemoryWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>, current_contract_package_hash: HashAddr) {
+    fn execute_stored_payment_by_package_hash(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+        current_contract_package_hash: HashAddr,
+    ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
             let deploy_hash = rng.gen();
             let sender = *DEFAULT_ACCOUNT_ADDR;
             let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(call_depth),
-                };
+                ARG_CALLS => subcalls.clone(),
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_stored_versioned_payment_contract_by_hash(
@@ -2696,7 +2705,11 @@ mod payment {
         }
     }
 
-    fn execute_stored_payment_by_contract_name(builder: &mut InMemoryWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
+    fn execute_stored_payment_by_contract_name(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+    ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
             let deploy_hash = rng.gen();
@@ -2704,10 +2717,10 @@ mod payment {
             let sender = *DEFAULT_ACCOUNT_ADDR;
 
             let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(call_depth),
-                };
+                ARG_CALLS => subcalls.clone(),
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
 
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
@@ -2733,16 +2746,21 @@ mod payment {
         }
     }
 
-    fn execute_stored_payment_by_contract_hash(builder: &mut InMemoryWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>, current_contract_hash: HashAddr) {
+    fn execute_stored_payment_by_contract_hash(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+        current_contract_hash: HashAddr,
+    ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
             let deploy_hash = rng.gen();
             let sender = *DEFAULT_ACCOUNT_ADDR;
             let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(call_depth),
-                };
+                ARG_CALLS => subcalls.clone(),
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_stored_payment_hash(
@@ -2765,7 +2783,6 @@ mod payment {
             assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
         }
     }
-
 
     // Session + recursive subcall
 
@@ -2823,8 +2840,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_session(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_session(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
@@ -2846,8 +2865,10 @@ mod payment {
         let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
         let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-        let subcalls =
-            vec![super::stored_contract(current_contract_hash.into()), super::stored_session(current_contract_hash.into())];
+        let subcalls = vec![
+            super::stored_contract(current_contract_hash.into()),
+            super::stored_session(current_contract_hash.into()),
+        ];
         execute(&mut builder, call_depth, subcalls)
     }
 
@@ -2859,12 +2880,12 @@ mod payment {
         let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
         let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-        let subcalls =
-            vec![super::stored_session(current_contract_hash.into()), super::stored_contract(current_contract_hash.into())];
+        let subcalls = vec![
+            super::stored_session(current_contract_hash.into()),
+            super::stored_contract(current_contract_hash.into()),
+        ];
         execute(&mut builder, call_depth, subcalls)
     }
-
-
 
     // Session + recursive subcall failure cases
 
@@ -2922,8 +2943,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
@@ -2942,8 +2965,10 @@ mod payment {
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
@@ -2963,7 +2988,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
             execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls);
         }
@@ -2978,9 +3006,17 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-           execute_stored_payment_by_package_hash(&mut builder, *call_depth, subcalls, current_contract_package_hash)
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
@@ -3009,7 +3045,12 @@ mod payment {
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
-            execute_stored_payment_by_package_hash(&mut builder, *call_depth, subcalls, current_contract_package_hash)
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
@@ -3022,10 +3063,12 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
             execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
-
         }
     }
 
@@ -3039,9 +3082,17 @@ mod payment {
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            execute_stored_payment_by_contract_hash(&mut builder, *call_depth, subcalls, current_contract_hash)
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
         }
     }
 
@@ -3069,7 +3120,12 @@ mod payment {
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
-            execute_stored_payment_by_contract_hash(&mut builder, *call_depth, subcalls, current_contract_hash)
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
         }
     }
 
@@ -3082,7 +3138,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
             execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
@@ -3097,9 +3156,17 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            execute_stored_payment_by_package_hash(&mut builder, *call_depth, subcalls, current_contract_package_hash)
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
@@ -3128,7 +3195,12 @@ mod payment {
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
-            execute_stored_payment_by_package_hash(&mut builder, *call_depth, subcalls, current_contract_package_hash)
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
@@ -3141,7 +3213,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
             execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
@@ -3157,9 +3232,17 @@ mod payment {
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *call_depth];
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            execute_stored_payment_by_contract_hash(&mut builder, *call_depth, subcalls, current_contract_hash)
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
         }
     }
 
@@ -3187,7 +3270,12 @@ mod payment {
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
-            execute_stored_payment_by_contract_hash(&mut builder, *call_depth, subcalls, current_contract_hash)
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
         }
     }
 
@@ -3236,7 +3324,12 @@ mod payment {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            execute_stored_payment_by_package_hash(&mut builder, *call_depth, subcalls, current_contract_package_hash)
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
@@ -3250,8 +3343,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
@@ -3271,13 +3366,20 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            execute_stored_payment_by_package_hash(&mut builder, *call_depth, subcalls, current_contract_package_hash)
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
@@ -3323,7 +3425,12 @@ mod payment {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            execute_stored_payment_by_contract_hash(&mut builder, *call_depth, subcalls, current_contract_hash)
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
         }
     }
 
@@ -3336,8 +3443,10 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
@@ -3356,8 +3465,10 @@ mod payment {
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); call_depth.saturating_sub(1)];
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
             if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
