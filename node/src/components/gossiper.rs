@@ -281,6 +281,10 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             );
         }
 
+        // Remember which peers we *tried* to infect.
+        self.table
+            .register_infection_attempt(&item_id, peers.iter());
+
         // Set timeouts to check later that the specified peers all responded.
         for peer in peers {
             let item_id = item_id.clone();

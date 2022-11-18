@@ -838,17 +838,11 @@ impl reactor::Reactor for MainReactor {
                 let mut effects = self.dispatch_event(
                     effect_builder,
                     rng,
-                    MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
-                );
-
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
                     MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
                         item_id: deploy.id(),
                         source: source.clone(),
                     }),
-                ));
+                );
 
                 effects.extend(self.dispatch_event(
                     effect_builder,
@@ -910,14 +904,12 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_deploy_id,
+                gossiped_deploy_id,
             )) => {
-                // [TODO][Fraser]: notify DeployBuffer the deploy can be proposed
-                // let reactor_event =
-                //     MainEvent::DeployBuffer(deploy_buffer::Event::
-                // BufferDeploy(gossiped_deploy_id));
-                // self.dispatch_event(effect_builder, rng, reactor_event)
-                Effects::new()
+                let reactor_event = MainEvent::DeployBuffer(
+                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,

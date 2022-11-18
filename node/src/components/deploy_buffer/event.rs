@@ -6,7 +6,7 @@ use derive_more::From;
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::requests::DeployBufferRequest,
-    types::{Block, Deploy, FinalizedBlock},
+    types::{Block, Deploy, DeployId, FinalizedBlock},
 };
 
 #[derive(Debug, From, DataSize)]
@@ -14,7 +14,8 @@ pub(crate) enum Event {
     Initialize(Vec<Block>),
     #[from]
     Request(DeployBufferRequest),
-    ReceiveDeploy(Box<Deploy>),
+    ReceiveDeployGossiped(DeployId),
+    GotDeployFromStorage(Box<Option<Deploy>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     Block(Box<Block>),
     BlockFinalized(Box<FinalizedBlock>),
@@ -30,9 +31,15 @@ impl Display for Event {
             Event::Request(DeployBufferRequest::GetAppendableBlock { .. }) => {
                 write!(formatter, "get appendable block request")
             }
-            Event::ReceiveDeploy(deploy) => {
-                write!(formatter, "receive deploy {}", deploy.hash())
+            Event::ReceiveDeployGossiped(deploy_id) => {
+                write!(formatter, "receive deploy gossiped {}", deploy_id)
             }
+            Event::GotDeployFromStorage(maybe_deploy) => match maybe_deploy.as_ref() {
+                Some(deploy) => {
+                    write!(formatter, "got deploy from storage {}", deploy.hash())
+                }
+                None => write!(formatter, "could not find requested deploy in storage"),
+            },
             Event::BlockProposed(_) => {
                 write!(formatter, "proposed block")
             }
