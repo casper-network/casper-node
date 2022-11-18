@@ -22,7 +22,6 @@ use openssl::{
     ssl::Ssl,
     x509::X509,
 };
-use prometheus::IntGauge;
 use serde::de::DeserializeOwned;
 use strum::{EnumCount, IntoEnumIterator};
 use tokio::{
@@ -31,7 +30,7 @@ use tokio::{
 };
 use tokio_openssl::SslStream;
 use tracing::{
-    debug, error, error_span,
+    debug, error_span,
     field::{self, Empty},
     info, trace, warn, Instrument, Span,
 };
@@ -46,8 +45,8 @@ use super::{
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    BincodeFormat, Channel, EstimatorWeights, Event, FromIncoming, IncomingChannel, Message,
-    Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, IncomingChannel, Message, Metrics,
+    OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -60,13 +59,8 @@ use crate::{
     utils::{display_error, LockedLineWriter, StickyFlag, TokenizedCount},
 };
 
-/// An item on the internal outgoing message queue.
-///
-/// Contains a reference counted message and an optional responder to call once the message has been
-/// successfully handed over to the kernel for sending.
-pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
-
 /// An encoded network message, ready to be sent out.
+#[derive(Debug)]
 pub(super) struct EncodedMessage {
     /// The encoded payload of the outgoing message.
     payload: Bytes,
@@ -76,6 +70,26 @@ pub(super) struct EncodedMessage {
     send_finished: Option<AutoClosingResponder<()>>,
     /// We track the number of messages still buffered in memory, the token ensures accurate counts.
     send_token: TokenizedCount,
+}
+
+impl EncodedMessage {
+    /// Creates a new encoded message.
+    pub(super) fn new(
+        payload: Bytes,
+        send_finished: Option<AutoClosingResponder<()>>,
+        send_token: TokenizedCount,
+    ) -> Self {
+        Self {
+            payload,
+            send_finished,
+            send_token,
+        }
+    }
+
+    /// Get the encoded message's payload.
+    pub(super) fn payload(&self) -> &Bytes {
+        &self.payload
+    }
 }
 
 /// Low-level TLS connection function.
@@ -521,66 +535,6 @@ where
     }
 
     Ok(())
-}
-
-/// Network message sender.
-///
-/// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
-pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<MessageQueueItem<P>>,
-    mut sink: OutgoingChannel,
-    limiter: Box<dyn LimiterHandle>,
-    counter: IntGauge,
-) where
-    P: Payload,
-{
-    while let Some((message, opt_responder)) = queue.recv().await {
-        counter.dec();
-
-        let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
-            Ok(size) => size as u32,
-            Err(error) => {
-                error!(
-                    error = display_error(&error),
-                    "failed to get serialized size of outgoing message, closing outgoing connection"
-                );
-                break;
-            }
-        };
-        limiter.request_allowance(estimated_wire_size).await;
-
-        let serialized = match bincode_config().serialize(&message) {
-            Ok(vec) => Bytes::from(vec),
-            Err(err) => {
-                error!(%err, "failed to serialize an outoging message");
-                return;
-            }
-        };
-        let mut outcome = sink.send(serialized).await;
-
-        // Notify via responder that the message has been buffered by the kernel.
-        if let Some(auto_closing_responder) = opt_responder {
-            // Since someone is interested in the message, flush the socket to ensure it was sent.
-            outcome = outcome.and(sink.flush().await);
-            auto_closing_responder.respond(()).await;
-        }
-
-        // We simply error-out if the sink fails, it means that our connection broke.
-        if let Err(ref err) = outcome {
-            info!(
-                err = display_error(err),
-                "message send failed, closing outgoing connection"
-            );
-
-            // To ensure, metrics are up to date, we close the queue and drain it.
-            queue.close();
-            while queue.recv().await.is_some() {
-                counter.dec();
-            }
-
-            break;
-        };
-    }
 }
 
 /// Multi-channel encoded message sender.

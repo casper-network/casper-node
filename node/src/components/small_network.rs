@@ -43,15 +43,16 @@ mod tests;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    convert::Infallible,
+    convert::{Infallible, TryInto},
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
+    marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    num::NonZeroUsize,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+use array_init::array_init;
 use bincode::Options;
 use bytes::Bytes;
 use datasize::DataSize;
@@ -67,11 +68,12 @@ use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
 use rand::{prelude::SliceRandom, seq::IteratorRandom};
+use strum::EnumCount;
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
     sync::{
-        mpsc::{self, UnboundedSender},
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
         watch,
     },
     task::JoinHandle,
@@ -93,7 +95,7 @@ use self::{
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::{MessageQueueItem, NetworkContext},
+    tasks::{EncodedMessage, NetworkContext},
 };
 pub(crate) use self::{
     config::Config,
@@ -117,7 +119,7 @@ use crate::{
         ValidationError,
     },
     types::NodeId,
-    utils::{self, display_error, LockedLineWriter, Source, WithDir},
+    utils::{self, display_error, LockedLineWriter, Source, StickyFlag, TokenizedCount, WithDir},
     NodeRng,
 };
 
@@ -140,13 +142,13 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 const MESSAGE_FRAGMENT_SIZE: usize = 4096;
 
 #[derive(Clone, DataSize, Debug)]
-pub(crate) struct OutgoingHandle<P> {
+pub(crate) struct OutgoingHandle {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<MessageQueueItem<P>>,
+    senders: [UnboundedSender<EncodedMessage>; Channel::COUNT],
     peer_addr: SocketAddr,
 }
 
-impl<P> Display for OutgoingHandle<P> {
+impl Display for OutgoingHandle {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "outgoing handle to {}", self.peer_addr)
     }
@@ -164,7 +166,7 @@ where
     context: Arc<NetworkContext<REv>>,
 
     /// Outgoing connections manager.
-    outgoing_manager: OutgoingManager<OutgoingHandle<P>, ConnectionError>,
+    outgoing_manager: OutgoingManager<OutgoingHandle, ConnectionError>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
@@ -204,6 +206,9 @@ where
 
     /// The era that is considered the active era by the small network component.
     active_era: EraId,
+
+    /// Marker for what kind of payload this small network instance supports.
+    _payload: PhantomData<P>,
 }
 
 impl<REv, P> SmallNetwork<REv, P>
@@ -399,6 +404,7 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
+            _payload: PhantomData,
         };
 
         let effect_builder = EffectBuilder::new(event_queue);
@@ -479,15 +485,38 @@ where
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            if let Err(msg) = connection.sender.send((msg, opt_responder)) {
-                // We lost the connection, but that fact has not reached us yet.
-                warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
+            let channel = msg.get_channel();
+            let sender = &connection.senders[channel as usize];
+            let payload = if let Some(payload) = serialize_network_message(&msg) {
+                payload
             } else {
-                self.net_metrics.queued_messages.inc();
+                // The `AutoClosingResponder` will respond by itself.
+                return;
+            };
+
+            let send_token = TokenizedCount::new(self.net_metrics.queued_messages.clone());
+
+            if let Err(refused_message) =
+                sender.send(EncodedMessage::new(payload, opt_responder, send_token))
+            {
+                match deserialize_network_message::<P>(refused_message.0.payload()) {
+                    Ok(reconstructed_message) => {
+                        // We lost the connection, but that fact has not reached us as an event yet.
+                        debug!(our_id=%self.context.our_id, %dest, msg=%reconstructed_message, "dropped outgoing message, lost connection");
+                    }
+                    Err(err) => {
+                        error!(our_id=%self.context.our_id,
+                               %dest,
+                               reconstruction_error=%err,
+                               payload=?refused_message.0.payload(),
+                               "dropped outgoing message, but also failed to reconstruct it"
+                        );
+                    }
+                }
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            debug!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, no connection");
+            debug!(our_id=%self.context.our_id, %dest, %msg, "dropped outgoing message, no connection");
         }
     }
 
@@ -761,8 +790,9 @@ where
             } => {
                 info!("new outgoing connection established");
 
-                let (sender, receiver) = mpsc::unbounded_channel();
-                let handle = OutgoingHandle { sender, peer_addr };
+                let (senders, receivers) = unbounded_channels::<_, { Channel::COUNT }>();
+
+                let handle = OutgoingHandle { senders, peer_addr };
 
                 let request = self
                     .outgoing_manager
@@ -791,20 +821,18 @@ where
                 let carrier: OutgoingCarrier =
                     Multiplexer::new(FrameWriter::new(LengthDelimited, compat_transport));
 
-                // TOOD: Replace with `NonZeroUsize::new(_).unwrap()` in const once stabilized.
-                let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
-
-                // Now we can setup a channel (TODO: Setup multiple channels instead).
-                let mux_123 = carrier.create_channel_handle(123);
-                let channel_123: OutgoingChannel = Fragmentizer::new(fragment_size, mux_123);
+                // TODO: Move to top / component state (unify with other stopping signals).
+                let global_stop = StickyFlag::new();
 
                 effects.extend(
-                    tasks::message_sender(
-                        receiver,
-                        channel_123,
-                        self.outgoing_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
-                        self.net_metrics.queued_messages.clone(),
+                    tasks::encoded_message_sender(
+                        receivers,
+                        carrier,
+                        Arc::from(
+                            self.outgoing_limiter
+                                .create_handle(peer_id, peer_consensus_public_key),
+                        ),
+                        global_stop,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
@@ -838,7 +866,7 @@ where
     /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
     fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
     where
-        T: IntoIterator<Item = DialRequest<OutgoingHandle<P>>>,
+        T: IntoIterator<Item = DialRequest<OutgoingHandle>>,
     {
         let mut effects = Effects::new();
 

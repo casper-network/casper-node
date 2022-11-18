@@ -93,9 +93,9 @@ fn time_delta(now: SystemTime, then: SystemTime) -> impl Display {
 
 impl OutgoingStateInsight {
     /// Constructs a new outgoing state insight from a given outgoing state.
-    fn from_outgoing_state<P>(
+    fn from_outgoing_state(
         anchor: &TimeAnchor,
-        state: &OutgoingState<OutgoingHandle<P>, ConnectionError>,
+        state: &OutgoingState<OutgoingHandle, ConnectionError>,
     ) -> Self {
         match state {
             OutgoingState::Connecting {
