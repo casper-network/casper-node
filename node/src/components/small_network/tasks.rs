@@ -57,7 +57,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{display_error, LockedLineWriter, StickyFlag},
+    utils::{display_error, LockedLineWriter, StickyFlag, TokenizedCount},
 };
 
 /// An item on the internal outgoing message queue.
@@ -74,6 +74,8 @@ pub(super) struct EncodedMessage {
     ///
     /// If `None`, the sender is not interested in knowing.
     send_finished: Option<AutoClosingResponder<()>>,
+    /// We track the number of messages still buffered in memory, the token ensures accurate counts.
+    send_token: TokenizedCount,
 }
 
 /// Low-level TLS connection function.
@@ -676,7 +678,7 @@ where
                 Some(EncodedMessage {
                     payload: data,
                     send_finished,
-                    ..
+                    send_token,
                 }),
                 _,
             )) => {
@@ -688,6 +690,9 @@ where
                     //       flushed eventually?
                     dest.feed(data).await?;
                 }
+
+                // We only drop the token once the message is sent or at least buffered.
+                drop(send_token);
             }
             Either::Left((None, _)) => {
                 trace!("sink closed");

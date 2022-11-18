@@ -32,7 +32,7 @@ use fs2::FileExt;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 #[cfg(test)]
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, Registry};
+use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::Notify;
@@ -246,6 +246,32 @@ impl StickyFlag {
         }
 
         notified.await;
+    }
+}
+
+/// An "unlimited semaphore".
+///
+/// Upon construction, `TokenizedCount` increases a given `IntGauge` by one for metrics purposed.
+///
+/// Once it is dropped, the underlying gauge will be decreased by one.
+pub(crate) struct TokenizedCount {
+    /// The gauge modified on construction/drop.
+    gauge: Option<IntGauge>,
+}
+
+impl TokenizedCount {
+    /// Create a new tokenized count, increasing the given gauge.
+    pub(crate) fn new(gauge: IntGauge) -> Self {
+        gauge.inc();
+        TokenizedCount { gauge: Some(gauge) }
+    }
+}
+
+impl Drop for TokenizedCount {
+    fn drop(&mut self) {
+        if let Some(gauge) = self.gauge.take() {
+            gauge.dec();
+        }
     }
 }
 
@@ -538,6 +564,7 @@ mod tests {
     use std::{sync::Arc, time::Duration};
 
     use futures::FutureExt;
+    use prometheus::IntGauge;
 
     use crate::utils::SharedFlag;
 
@@ -625,6 +652,16 @@ mod tests {
 
         // Should finish immediately due to the flag being set.
         assert!(flag.wait().now_or_never().is_some());
+    }
+
+    #[test]
+    fn tokenized_count_sanity_check() {
+        let gauge = IntGauge::new("sanity_gauge", "tokenized count test gauge")
+            .expect("failed to construct IntGauge in test");
+
+        gauge.inc();
+        gauge.inc();
+        assert_eq!(gauge.get(), 2);
     }
 
     #[test]
