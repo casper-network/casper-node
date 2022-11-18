@@ -119,7 +119,7 @@ use crate::{
         ValidationError,
     },
     types::NodeId,
-    utils::{self, display_error, LockedLineWriter, Source, StickyFlag, TokenizedCount, WithDir},
+    utils::{self, display_error, LockedLineWriter, Source, TokenizedCount, WithDir},
     NodeRng,
 };
 
@@ -821,9 +821,6 @@ where
                 let carrier: OutgoingCarrier =
                     Multiplexer::new(FrameWriter::new(LengthDelimited, compat_transport));
 
-                // TODO: Move to top / component state (unify with other stopping signals).
-                let global_stop = StickyFlag::new();
-
                 effects.extend(
                     tasks::encoded_message_sender(
                         receivers,
@@ -832,7 +829,6 @@ where
                             self.outgoing_limiter
                                 .create_handle(peer_id, peer_consensus_public_key),
                         ),
-                        global_stop,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {

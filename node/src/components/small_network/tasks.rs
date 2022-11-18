@@ -551,7 +551,6 @@ pub(super) async fn encoded_message_sender(
     queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
     carrier: OutgoingCarrier,
     limiter: Arc<dyn LimiterHandle>,
-    global_stop: StickyFlag,
 ) -> Result<(), OutgoingCarrierError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
     let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
@@ -573,35 +572,21 @@ pub(super) async fn encoded_message_sender(
     // We track only the first result we receive from a sender, as subsequent errors may just be
     // caused by the first one shutting down and are not the root cause.
     let mut first_result = None;
-    loop {
-        let global_stop_wait = global_stop.wait();
-        pin_mut!(global_stop_wait);
-        match future::select(boiler_room.next(), global_stop_wait).await {
-            Either::Left((None, _)) => {
-                // There are no more running senders left, so we can finish.
-                debug!("all senders finished");
 
-                return first_result.unwrap_or(Ok(()));
-            }
-            Either::Left((Some(sender_outcome), _)) => {
-                debug!(outcome=?sender_outcome, "sender stopped");
+    while let Some(sender_outcome) = boiler_room.next().await {
+        debug!(outcome=?sender_outcome, "sender stopped");
 
-                if first_result.is_none() {
-                    first_result = Some(sender_outcome);
-                }
-
-                // Signal all other senders stop as well.
-                local_stop.set();
-            }
-            Either::Right((_, _)) => {
-                debug!("global shutdown");
-
-                // The component is shutting down, tell all existing data shovelers to put down
-                // their shovels and call it a day.
-                local_stop.set();
-            }
+        if first_result.is_none() {
+            first_result = Some(sender_outcome);
         }
+
+        // Signal all other senders stop as well.
+        local_stop.set();
     }
+
+    // There are no more running senders left, so we can finish.
+    debug!("all senders finished");
+    first_result.unwrap_or(Ok(()))
 }
 
 /// Receives network messages from an async channel, encodes and forwards it into a suitable sink.
