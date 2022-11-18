@@ -606,7 +606,7 @@ pub(super) async fn message_sender<P>(
 pub(super) async fn encoded_message_sender(
     queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
     carrier: OutgoingCarrier,
-    limiter: Box<dyn LimiterHandle>,
+    limiter: Arc<dyn LimiterHandle>,
     global_stop: StickyFlag,
 ) -> Result<(), OutgoingCarrierError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
@@ -618,7 +618,12 @@ pub(super) async fn encoded_message_sender(
     for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
         let mux_handle = carrier.create_channel_handle(channel as u8);
         let channel: OutgoingChannel = Fragmentizer::new(fragment_size, mux_handle);
-        boiler_room.push(shovel_data(queue, channel, local_stop.clone()));
+        boiler_room.push(shovel_data(
+            queue,
+            channel,
+            local_stop.clone(),
+            limiter.clone(),
+        ));
     }
 
     // We track only the first result we receive from a sender, as subsequent errors may just be
@@ -662,6 +667,7 @@ async fn shovel_data<S>(
     mut source: UnboundedReceiver<EncodedMessage>,
     mut dest: S,
     stop: StickyFlag,
+    limiter: Arc<dyn LimiterHandle>,
 ) -> Result<(), <S as Sink<Bytes>>::Error>
 where
     S: Sink<Bytes> + Unpin,
@@ -681,6 +687,7 @@ where
                 }),
                 _,
             )) => {
+                limiter.request_allowance(data.len() as u32).await;
                 if let Some(responder) = send_finished {
                     dest.send(data).await?;
                     responder.respond(()).await;
