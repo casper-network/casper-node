@@ -21,7 +21,7 @@ use toml::{value::Table, Value};
 use tracing::info;
 
 use crate::{
-    components::small_network::Identity as NetworkIdentity,
+    components::network::Identity as NetworkIdentity,
     logging,
     reactor::{main_reactor, ReactorExit, Runner},
     setup_signal_hooks,

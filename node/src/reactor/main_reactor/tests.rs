@@ -18,7 +18,7 @@ use casper_types::{
 use crate::{
     components::{
         gossiper,
-        small_network::{self, Identity as NetworkIdentity},
+        network::{self, Identity as NetworkIdentity},
         storage,
         upgrade_watcher::NextUpgrade,
     },
@@ -31,7 +31,9 @@ use crate::{
         main_reactor::{Config, MainEvent, MainReactor},
         Runner,
     },
-    testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
+    testing::{
+        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
+    },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
         ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, NodeRng,
@@ -135,9 +137,9 @@ impl TestChain {
         // Set the network configuration.
         let mut cfg = Config {
             network: if idx == 0 {
-                small_network::Config::default_local_net_first_node(first_node_port)
+                network::Config::default_local_net_first_node(first_node_port)
             } else {
-                small_network::Config::default_local_net(first_node_port)
+                network::Config::default_local_net(first_node_port)
             },
             gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
@@ -161,10 +163,10 @@ impl TestChain {
     async fn create_initialized_network(
         &mut self,
         rng: &mut NodeRng,
-    ) -> anyhow::Result<Network<FilterReactor<MainReactor>>> {
+    ) -> anyhow::Result<TestingNetwork<FilterReactor<MainReactor>>> {
         let root = RESOURCES_PATH.join("local");
 
-        let mut network: Network<FilterReactor<MainReactor>> = Network::new();
+        let mut network: TestingNetwork<FilterReactor<MainReactor>> = TestingNetwork::new();
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {

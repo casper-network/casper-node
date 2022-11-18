@@ -18,7 +18,7 @@ use crate::{
     components::{
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        small_network::{GossipedAddress, Identity as NetworkIdentity},
+        network::{GossipedAddress, Identity as NetworkIdentity},
         storage::{self, Storage},
     },
     effect::{
@@ -39,7 +39,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Reactor as ReactorTrait, ReactorEvent, Runner},
     testing::{
         self,
-        network::{Network, NetworkedReactor},
+        network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
@@ -395,7 +395,7 @@ fn fetch_deploy(
 async fn store_deploy(
     deploy: &Deploy,
     node_id: &NodeId,
-    network: &mut Network<Reactor>,
+    network: &mut TestingNetwork<Reactor>,
     responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     rng: &mut TestRng,
 ) {
@@ -438,7 +438,7 @@ async fn assert_settled(
     deploy_id: DeployId,
     expected_result: ExpectedFetchedDeployResult,
     fetched: FetchedDeployResult,
-    network: &mut Network<Reactor>,
+    network: &mut TestingNetwork<Reactor>,
     rng: &mut TestRng,
     timeout: Duration,
 ) {
@@ -496,7 +496,7 @@ async fn should_fetch_from_local() {
 
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
-        let mut network = Network::<Reactor>::new();
+        let mut network = TestingNetwork::<Reactor>::new();
         let mut rng = TestRng::new();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
@@ -543,7 +543,7 @@ async fn should_fetch_from_peer() {
 
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
-        let mut network = Network::<Reactor>::new();
+        let mut network = TestingNetwork::<Reactor>::new();
         let mut rng = TestRng::new();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
@@ -592,7 +592,7 @@ async fn should_timeout_fetch_from_peer() {
 
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
-        let mut network = Network::<Reactor>::new();
+        let mut network = TestingNetwork::<Reactor>::new();
         let mut rng = TestRng::new();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)

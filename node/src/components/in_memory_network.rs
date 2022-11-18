@@ -299,7 +299,7 @@ use crate::{
     NodeRng,
 };
 
-use super::small_network::FromIncoming;
+use super::network::FromIncoming;
 
 /// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;

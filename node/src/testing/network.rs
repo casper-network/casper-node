@@ -57,12 +57,12 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub(crate) struct Network<R: Reactor + NetworkedReactor> {
+pub(crate) struct TestingNetwork<R: Reactor + NetworkedReactor> {
     /// Current network.
     nodes: HashMap<NodeId, Runner<ConditionCheckReactor<R>>>,
 }
 
-impl<R> Network<R>
+impl<R> TestingNetwork<R>
 where
     R: Reactor + NetworkedReactor,
     R::Config: Default,
@@ -94,7 +94,7 @@ where
     }
 }
 
-impl<R> Network<R>
+impl<R> TestingNetwork<R>
 where
     R: Reactor + NetworkedReactor,
     R::Event: Serialize,
@@ -102,7 +102,7 @@ where
 {
     /// Creates a new network.
     pub(crate) fn new() -> Self {
-        Network {
+        TestingNetwork {
             nodes: HashMap::new(),
         }
     }
@@ -336,7 +336,7 @@ where
     }
 }
 
-impl<R> Finalize for Network<R>
+impl<R> Finalize for TestingNetwork<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::Event: Serialize + Send + Sync,

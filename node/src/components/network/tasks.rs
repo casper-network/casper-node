@@ -54,7 +54,7 @@ use super::{
     Transport,
 };
 use crate::{
-    components::small_network::{framed_transport, BincodeFormat, Config, FromIncoming},
+    components::network::{framed_transport, BincodeFormat, Config, FromIncoming},
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
         EffectBuilder,

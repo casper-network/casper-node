@@ -57,7 +57,7 @@ impl Default for Config {
     }
 }
 
-/// Small network identity configuration.
+/// Network identity configuration.
 #[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -70,7 +70,7 @@ pub struct IdentityConfig {
     pub ca_certificate: PathBuf,
 }
 
-/// Small network configuration.
+/// Network configuration.
 #[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -111,7 +111,7 @@ pub struct Config {
     pub max_in_flight_demands: u32,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
-    /// Small network identity configuration option.
+    /// Network identity configuration option.
     ///
     /// An identity will be automatically generated when starting up a node if this option is
     /// unspecified.

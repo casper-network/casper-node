@@ -40,7 +40,7 @@ use crate::{
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         fetcher::FetchResult,
-        small_network::NetworkInsights,
+        network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},

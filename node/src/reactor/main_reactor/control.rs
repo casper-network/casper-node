@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
@@ -12,7 +12,7 @@ use crate::{
         consensus::EraReport,
         contract_runtime::ExecutionPreState,
         deploy_buffer::{self, DeployBuffer},
-        diagnostics_port, event_stream_server, rest_server, rpc_server, small_network, sync_leaper,
+        diagnostics_port, event_stream_server, network, rest_server, rpc_server, sync_leaper,
         sync_leaper::LeapStatus,
         upgrade_watcher, InitializedComponent, ValidatorBoundComponent,
     },
@@ -71,7 +71,7 @@ impl MainReactor {
             ReactorState::Initialize => match self.initialize_next_component(effect_builder) {
                 Some(effects) => (Duration::ZERO, effects),
                 None => {
-                    if false == self.small_network.has_sufficient_fully_connected_peers() {
+                    if false == self.net.has_sufficient_fully_connected_peers() {
                         info!("Initialize: awaiting sufficient fully-connected peers");
                         return (Duration::from_secs(2), Effects::new());
                     }
@@ -394,7 +394,7 @@ impl MainReactor {
                                 ));
                             }
                         }
-                        let peers_to_ask = self.small_network.fully_connected_peers_random(
+                        let peers_to_ask = self.net.fully_connected_peers_random(
                             rng,
                             self.chainspec.core_config.simultaneous_peer_requests as usize,
                         );
@@ -686,17 +686,16 @@ impl MainReactor {
                                 if self.attempts > self.max_attempts {
                                     // self.crank will ensure shut down if no other progress
                                     // is made before this event is processed
-                                    return KeepUpInstruction::CheckLater(
-                                        format!(
-                                            "Historical: failed leap back exceeded reattempt tolerance: {}",
-                                            error,
-                                        ),
-                                        Duration::ZERO,
+                                    let msg = format!(
+                                        "Historical: failed leap back exceeded reattempt tolerance: {}",
+                                        error,
                                     );
+                                    warn!("{}", msg);
+                                    return KeepUpInstruction::CheckLater(msg, Duration::ZERO);
                                 }
                                 error!("Historical: sync leap failed: {:?}", error);
                             }
-                            let peers_to_ask = self.small_network.fully_connected_peers_random(
+                            let peers_to_ask = self.net.fully_connected_peers_random(
                                 rng,
                                 self.chainspec.core_config.simultaneous_peer_requests as usize,
                             );
@@ -726,7 +725,7 @@ impl MainReactor {
                             for evw in era_validator_weights {
                                 let era_id = evw.era_id();
                                 if self.validator_matrix.register_era_validator_weights(evw) {
-                                    debug!("Historical: got era: {}", era_id);
+                                    info!("Historical: got era: {}", era_id);
                                 } else {
                                     debug!("Historical: already had era: {}", era_id);
                                 }
@@ -747,8 +746,8 @@ impl MainReactor {
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
-                    debug!("Historical: register_block_by_hash: {:?}", parent_hash);
-                    let peers_to_ask = self.small_network.fully_connected_peers_random(
+                    info!("Historical: register_block_by_hash: {:?}", parent_hash);
+                    let peers_to_ask = self.net.fully_connected_peers_random(
                         rng,
                         self.chainspec.core_config.simultaneous_peer_requests as usize,
                     );
@@ -827,8 +826,8 @@ impl MainReactor {
         }
         if let Some(effects) = utils::initialize_component(
             effect_builder,
-            &mut self.small_network,
-            MainEvent::Network(small_network::Event::Initialize),
+            &mut self.net,
+            MainEvent::Network(network::Event::Initialize),
         ) {
             return Some(effects);
         }
