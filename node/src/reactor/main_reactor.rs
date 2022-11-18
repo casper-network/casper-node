@@ -58,7 +58,6 @@ use crate::{
         requests::{BlockSynchronizerRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    fatal,
     protocol::Message,
     reactor::{
         self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
@@ -907,33 +906,10 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 gossiped_deploy_id,
             )) => {
-                let deploy_hash = gossiped_deploy_id.deploy_hash();
-                let maybe_deploy = match self
-                    .storage
-                    .read_deploy_by_hash(gossiped_deploy_id.deploy_hash())
-                {
-                    Ok(maybe_deploy) => maybe_deploy,
-                    Err(_) => {
-                        return fatal!(
-                            effect_builder,
-                            "fatal error while reading deploy from storage, hash={}",
-                            deploy_hash,
-                        )
-                        .ignore();
-                    }
-                };
-                if let Some(deploy) = maybe_deploy {
-                    let reactor_event = MainEvent::DeployBuffer(
-                        deploy_buffer::Event::ReceiveDeploy(Box::new(deploy)),
-                    );
-                    self.dispatch_event(effect_builder, rng, reactor_event)
-                } else {
-                    error!(
-                        %deploy_hash,
-                        "reported gossip finished for deploy which is not in storage"
-                    );
-                    Effects::new()
-                }
+                let reactor_event = MainEvent::DeployBuffer(
+                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
