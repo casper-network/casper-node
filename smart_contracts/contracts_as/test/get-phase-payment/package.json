@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/get_phase_payment.wasm   --optimize --use abort=",
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/get_phase_payment_unused.wasm   --optimize --use abort=",
     "asbuild": "npm run asbuild:optimized"
   },
   "devDependencies": {
