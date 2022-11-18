@@ -10,14 +10,15 @@ use std::{
 };
 
 use derive_more::From;
+use futures::FutureExt;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    chain_info::ChainInfo, Config, Event as SmallNetworkEvent, FromIncoming, GossipedAddress,
-    MessageKind, Payload, SmallNetwork,
+    chain_info::ChainInfo, unbounded_channels, Config, Event as SmallNetworkEvent, FromIncoming,
+    GossipedAddress, MessageKind, Payload, SmallNetwork,
 };
 use crate::{
     components::{
@@ -518,4 +519,22 @@ async fn ensure_peers_metric_is_correct() {
 
         net.finalize().await;
     }
+}
+
+#[test]
+fn unbounded_channels_wires_up_correctly() {
+    let (senders, mut receivers) = unbounded_channels::<char, 3>();
+
+    assert_eq!(senders.len(), 3);
+
+    senders[0].send('A').unwrap();
+    senders[0].send('a').unwrap();
+    senders[1].send('B').unwrap();
+    senders[2].send('C').unwrap();
+
+    assert_eq!(receivers[0].recv().now_or_never().unwrap().unwrap(), 'A');
+    assert_eq!(receivers[0].recv().now_or_never().unwrap().unwrap(), 'a');
+    assert_eq!(receivers[1].recv().now_or_never().unwrap().unwrap(), 'B');
+    assert_eq!(receivers[2].recv().now_or_never().unwrap().unwrap(), 'C');
+    assert!(receivers[0].recv().now_or_never().is_none());
 }

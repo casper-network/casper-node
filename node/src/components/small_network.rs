@@ -1241,6 +1241,26 @@ impl From<&SmallNetworkIdentity> for NodeId {
     }
 }
 
+/// Setup a fixed amount of senders/receivers.
+fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [UnboundedReceiver<T>; N]) {
+    // TODO: Improve this somehow to avoid the extra allocation required (turning a
+    //       `Vec` into a fixed size array).
+    let mut senders_vec = Vec::with_capacity(Channel::COUNT);
+
+    let receivers: [_; N] = array_init(|_| {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        senders_vec.push(sender);
+
+        receiver
+    });
+
+    let senders: [_; N] = senders_vec
+        .try_into()
+        .expect("constant size array conversion failed");
+
+    (senders, receivers)
+}
+
 /// Transport type for base encrypted connections.
 type Transport = SslStream<TcpStream>;
 
