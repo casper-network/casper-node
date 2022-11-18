@@ -14,7 +14,7 @@ use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use strum::{EnumCount, EnumIter};
+use strum::{EnumCount, EnumIter, FromRepr};
 
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
@@ -322,7 +322,7 @@ impl Display for MessageKind {
 ///
 /// Further separation is done to improve quality of service of certain subsystems, e.g. to
 /// guarantee that consensus is not impaired by the transfer of large trie nodes.
-#[derive(Copy, Clone, Debug, Eq, EnumCount, EnumIter, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, EnumCount, EnumIter, FromRepr, PartialEq, Ord, PartialOrd)]
 #[repr(u8)]
 pub(crate) enum Channel {
     /// Networking layer messages, e.g. address gossip.

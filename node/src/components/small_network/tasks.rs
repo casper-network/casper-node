@@ -3,6 +3,7 @@
 use std::{
     fmt::Display,
     net::SocketAddr,
+    num::NonZeroUsize,
     pin::Pin,
     sync::{Arc, Weak},
 };
@@ -11,9 +12,12 @@ use bincode::{self, Options};
 use bytes::Bytes;
 use futures::{
     future::{self, Either},
-    SinkExt, StreamExt,
+    pin_mut,
+    stream::FuturesUnordered,
+    Sink, SinkExt, StreamExt,
 };
 
+use muxink::fragmented::Fragmentizer;
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
@@ -21,6 +25,7 @@ use openssl::{
 };
 use prometheus::IntGauge;
 use serde::de::DeserializeOwned;
+use strum::{EnumCount, IntoEnumIterator};
 use tokio::{
     net::TcpStream,
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
@@ -42,8 +47,9 @@ use super::{
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    BincodeFormat, EstimatorWeights, Event, FromIncoming, IncomingChannel, Message, Metrics,
-    OutgoingChannel, Payload, Transport,
+    BincodeFormat, Channel, EstimatorWeights, Event, FromIncoming, IncomingChannel, Message,
+    Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    MESSAGE_FRAGMENT_SIZE,
 };
 
 use crate::{
@@ -51,7 +57,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{display_error, LockedLineWriter},
+    utils::{display_error, LockedLineWriter, StickyFlag},
 };
 
 /// An item on the internal outgoing message queue.
@@ -59,6 +65,16 @@ use crate::{
 /// Contains a reference counted message and an optional responder to call once the message has been
 /// successfully handed over to the kernel for sending.
 pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
+
+/// An encoded network message, ready to be sent out.
+pub(super) struct EncodedMessage {
+    /// The encoded payload of the outgoing message.
+    payload: Bytes,
+    /// The responder to send the notification once the message has been flushed or dropped.
+    ///
+    /// If `None`, the sender is not interested in knowing.
+    send_finished: Option<AutoClosingResponder<()>>,
+}
 
 /// Low-level TLS connection function.
 ///
@@ -575,17 +591,79 @@ pub(super) async fn message_sender<P>(
     }
 }
 
-/// Receives data from an async channel and forwards it into a suitable sink.
+/// Multi-channel encoded message sender.
+///
+/// This tasks starts multiple message senders, each handling a single outgoing channel on the given
+/// carrier.
+///
+/// A channel sender will shut down if its receiving channel is closed or an error occurs. Once at
+/// least one channel sender has shut down for any reason, the others will be signaled to shut down
+/// as well.
+///
+/// A passed in counter will be decremented
+///
+/// This function only returns when all senders have been shut down.
+pub(super) async fn encoded_message_sender(
+    queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
+    carrier: OutgoingCarrier,
+    limiter: Box<dyn LimiterHandle>,
+) -> Result<(), OutgoingCarrierError> {
+    // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
+    let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
+    let stop: StickyFlag = StickyFlag::new();
+
+    let mut boiler_room = FuturesUnordered::new();
+
+    for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
+        let mux_handle = carrier.create_channel_handle(channel as u8);
+        let channel: OutgoingChannel = Fragmentizer::new(fragment_size, mux_handle);
+        boiler_room.push(shovel_data(queue, channel, stop.clone()));
+    }
+
+    // We track only the first result we receive from a sender, as subsequent errors may just be
+    // caused by the first one shutting down and are not the root cause.
+    let mut first_result = None;
+    loop {
+        let stop_wait = stop.wait();
+        pin_mut!(stop_wait);
+        match future::select(boiler_room.next(), stop_wait).await {
+            Either::Left((None, _)) => {
+                // There are no more running senders left, so we can finish.
+                debug!("all senders finished");
+
+                return first_result.unwrap_or(Ok(()));
+            }
+            Either::Left((Some(sender_outcome), _)) => {
+                debug!(outcome=?sender_outcome, "sender stopped");
+
+                if first_result.is_none() {
+                    first_result = Some(sender_outcome);
+                }
+
+                // Signal all other senders stop as well.
+                stop.set();
+            }
+            Either::Right((_, _)) => {
+                debug!("global shutdown");
+
+                // The component is shutting down, tell all existing data shovelers to put down
+                // their shovels and call it a day.
+                stop.set();
+            }
+        }
+    }
+}
+
+/// Receives network messages from an async channel, encodes and forwards it into a suitable sink.
 ///
 /// Will loop forever, until either told to stop through the `stop` flag, or a send error occurs.
-async fn shovel_data<P, S>(
-    mut source: UnboundedReceiver<MessageQueueItem<P>>,
+async fn shovel_data<S>(
+    mut source: UnboundedReceiver<EncodedMessage>,
     mut dest: S,
     stop: StickyFlag,
-) -> Result<(), <S as Sink<Arc<Message<P>>>>::Error>
+) -> Result<(), <S as Sink<Bytes>>::Error>
 where
-    P: Send + Sync,
-    S: Sink<Arc<Message<P>>> + Unpin,
+    S: Sink<Bytes> + Unpin,
 {
     loop {
         let recv = source.recv();
@@ -594,8 +672,22 @@ where
         pin_mut!(stop_wait);
 
         match future::select(recv, stop_wait).await {
-            Either::Left((Some((message, responder)), _)) => {
-                dest.send(message).await?;
+            Either::Left((
+                Some(EncodedMessage {
+                    payload: data,
+                    send_finished,
+                    ..
+                }),
+                _,
+            )) => {
+                if let Some(responder) = send_finished {
+                    dest.send(data).await?;
+                    responder.respond(()).await;
+                } else {
+                    // TODO: Using `feed` here may not be a good idea - can we rely on data being
+                    //       flushed eventually?
+                    dest.feed(data).await?;
+                }
             }
             Either::Left((None, _)) => {
                 trace!("sink closed");

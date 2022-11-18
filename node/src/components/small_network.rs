@@ -61,7 +61,7 @@ use muxink::{
     fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
     framing::length_delimited::LengthDelimited,
     io::{FrameReader, FrameWriter},
-    mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerHandle},
+    mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
 };
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
@@ -1250,6 +1250,9 @@ type OutgoingFrameWriter =
 
 /// The multiplexer to send fragments over an underlying frame writer.
 type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
+
+/// The error type associated with the primary sink implementation of `OutgoingCarrier`.
+type OutgoingCarrierError = MultiplexerError<std::io::Error>;
 
 /// An instance of a channel on an outgoing carrier.
 type OutgoingChannel = Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>;
