@@ -1,7 +1,9 @@
 mod block_acquisition;
+mod block_acquisition_action;
 mod block_builder;
 mod config;
 mod deploy_acquisition;
+mod error;
 mod event;
 mod execution_results_acquisition;
 mod global_state_synchronizer;
@@ -21,9 +23,10 @@ use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
+use super::network::blocklist::BlocklistJustification;
 use crate::{
     components::{
-        fetcher::{Error, FetchResult, FetchedData},
+        fetcher::{Error as FetcherError, FetchResult, FetchedData},
         Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
@@ -43,8 +46,10 @@ use crate::{
     },
     NodeRng,
 };
+
 use block_builder::BlockBuilder;
 pub(crate) use config::Config;
+pub(crate) use error::BlockAcquisitionError;
 pub(crate) use event::Event;
 use execution_results_acquisition::ExecutionResultsAcquisition;
 pub(crate) use execution_results_acquisition::ExecutionResultsChecksum;
@@ -55,8 +60,6 @@ pub(crate) use global_state_synchronizer::{
 pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
-
-use super::network::blocklist::BlocklistJustification;
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
@@ -513,7 +516,7 @@ impl BlockSynchronizer {
 
     fn block_header_fetched(
         &mut self,
-        result: Result<FetchedData<BlockHeader>, Error<BlockHeader>>,
+        result: Result<FetchedData<BlockHeader>, FetcherError<BlockHeader>>,
     ) {
         let (block_hash, maybe_block_header, maybe_peer_id): (
             BlockHash,
@@ -555,7 +558,7 @@ impl BlockSynchronizer {
         }
     }
 
-    fn block_fetched(&mut self, result: Result<FetchedData<Block>, Error<Block>>) {
+    fn block_fetched(&mut self, result: Result<FetchedData<Block>, FetcherError<Block>>) {
         let (block_hash, maybe_block, maybe_peer_id): (
             BlockHash,
             Option<Box<Block>>,
@@ -601,7 +604,7 @@ impl BlockSynchronizer {
 
     fn approvals_hashes_fetched(
         &mut self,
-        result: Result<FetchedData<ApprovalsHashes>, Error<ApprovalsHashes>>,
+        result: Result<FetchedData<ApprovalsHashes>, FetcherError<ApprovalsHashes>>,
     ) {
         let (block_hash, maybe_approvals_hashes, maybe_peer_id): (
             BlockHash,
@@ -645,7 +648,7 @@ impl BlockSynchronizer {
 
     fn finality_signature_fetched(
         &mut self,
-        result: Result<FetchedData<FinalitySignature>, Error<FinalitySignature>>,
+        result: Result<FetchedData<FinalitySignature>, FetcherError<FinalitySignature>>,
     ) {
         let (id, maybe_finality_signature, maybe_peer) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => (item.id(), Some(item), Some(peer)),
@@ -716,19 +719,19 @@ impl BlockSynchronizer {
                     "BlockSynchronizer: got execution_results_checksum for {}",
                     block_hash
                 );
-                ExecutionResultsChecksum::Checkable(digest)
+                ExecutionResultsChecksum::ApprovalsCheckable(digest)
             }
             Err(engine_state::Error::MissingChecksumRegistry) => {
                 // The registry will not exist for legacy blocks.
-                ExecutionResultsChecksum::Uncheckable
+                ExecutionResultsChecksum::ApprovalsUncheckable
             }
             Ok(None) => {
                 warn!("the checksum registry should contain the execution results checksum");
-                ExecutionResultsChecksum::Uncheckable
+                ExecutionResultsChecksum::ApprovalsUncheckable
             }
             Err(error) => {
                 error!(%error, "unexpected error getting checksum registry");
-                ExecutionResultsChecksum::Uncheckable
+                ExecutionResultsChecksum::ApprovalsUncheckable
             }
         };
 

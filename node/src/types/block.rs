@@ -1676,7 +1676,7 @@ impl FetcherItem for BlockExecutionResultsOrChunk {
         if let ValueOrChunk::ChunkWithProof(chunk_with_proof) = &self.value {
             chunk_with_proof.verify()?;
         }
-        if let ExecutionResultsChecksum::Checkable(expected) = *metadata {
+        if let ExecutionResultsChecksum::ApprovalsCheckable(expected) = *metadata {
             if !self
                 .validate(&expected)
                 .map_err(ChunkWithProofVerificationError::Bytesrepr)?

@@ -10,10 +10,12 @@ use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
 use super::{
-    block_acquisition::{self, Acceptance, BlockAcquisitionAction, BlockAcquisitionState},
+    block_acquisition::{Acceptance, BlockAcquisitionState},
+    block_acquisition_action::BlockAcquisitionAction,
     execution_results_acquisition::ExecutionResultsChecksum,
     peer_list::{PeerList, PeersStatus},
     signature_acquisition::SignatureAcquisition,
+    BlockAcquisitionError,
 };
 use crate::{
     types::{
@@ -26,7 +28,7 @@ use crate::{
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum Error {
-    BlockAcquisition(block_acquisition::Error),
+    BlockAcquisition(BlockAcquisitionError),
     MissingValidatorWeights(BlockHash),
 }
 
@@ -280,7 +282,7 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let era_id = block_header.era_id();
-        let acceptance = self.acquisition_state.register_header(block_header);
+        let acceptance = self.acquisition_state.register_block_header(block_header);
         self.handle_acceptance(maybe_peer, acceptance)?;
         self.era_id = Some(era_id);
         Ok(())
@@ -409,7 +411,7 @@ impl BlockBuilder {
     fn handle_acceptance(
         &mut self,
         maybe_peer: Option<NodeId>,
-        acceptance: Result<Acceptance, block_acquisition::Error>,
+        acceptance: Result<Acceptance, BlockAcquisitionError>,
     ) -> Result<(), Error> {
         match acceptance {
             Ok(Acceptance::NeededIt) => {
