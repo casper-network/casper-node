@@ -283,6 +283,8 @@ impl<T> WithDir<T> {
 #[derive(Clone, Debug, Serialize)]
 pub(crate) enum Source {
     /// A peer with the wrapped ID.
+    PeerGossiped(NodeId),
+    /// A peer with the wrapped ID.
     Peer(NodeId),
     /// A client.
     Client,
@@ -299,7 +301,7 @@ impl Source {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
-            Source::Peer(node_id) => Some(*node_id),
+            Source::Peer(node_id) | Source::PeerGossiped(node_id) => Some(*node_id),
             Source::Client | Source::Ourself => None,
         }
     }
@@ -308,6 +310,7 @@ impl Source {
 impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Source::PeerGossiped(node_id) => Display::fmt(node_id, formatter),
             Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
             Source::Ourself => write!(formatter, "ourself"),

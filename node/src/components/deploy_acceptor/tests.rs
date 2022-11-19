@@ -866,6 +866,12 @@ async fn run_deploy_acceptor_without_timeout(
                         source: Source::Peer(_),
                         ..
                     })
+                ) || matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
+                        source: Source::PeerGossiped(_),
+                        ..
+                    })
                 )
             }
             // Check that a, new and valid, deploy sent by a peer raises an `AcceptedNewDeploy`
@@ -880,6 +886,14 @@ async fn run_deploy_acceptor_without_timeout(
                     Event::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy {
                             source: Source::Peer(_),
+                            ..
+                        }
+                    )
+                ) || matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                            source: Source::PeerGossiped(_),
                             ..
                         }
                     )

@@ -839,29 +839,45 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                let mut effects = self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                        item_id: deploy.id(),
-                        source: source.clone(),
-                    }),
-                );
+                // let mut effects = self.dispatch_event(
+                //     effect_builder,
+                //     rng,
+                //     MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
+                // );
+                let mut effects = Effects::new();
+
+                match source {
+                    Source::Client | Source::Ourself => (),
+                    Source::PeerGossiped(_) => {
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
+                                item_id: deploy.id(),
+                                source,
+                            }),
+                        ));
+                    }
+                    Source::Peer(_) => {
+                        effects.extend(self.fetchers.dispatch_fetcher_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::DeployAcceptorAnnouncement(
+                                DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                                    deploy: deploy.clone(),
+                                    source,
+                                },
+                            ),
+                        ));
+                    }
+                }
 
                 effects.extend(self.dispatch_event(
                     effect_builder,
                     rng,
                     MainEvent::EventStreamServer(event_stream_server::Event::DeployAccepted(
-                        deploy.clone(),
+                        deploy,
                     )),
-                ));
-
-                effects.extend(self.fetchers.dispatch_fetcher_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::DeployAcceptorAnnouncement(
-                        DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-                    ),
                 ));
 
                 effects
@@ -902,7 +918,7 @@ impl reactor::Reactor for MainReactor {
                     rng,
                     deploy_acceptor::Event::Accept {
                         deploy: item,
-                        source: Source::Peer(sender),
+                        source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
                 ),

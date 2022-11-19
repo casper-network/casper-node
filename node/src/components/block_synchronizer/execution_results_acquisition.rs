@@ -5,10 +5,12 @@ use std::{
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+
 use tracing::error;
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::bytesrepr::{self};
+use casper_types::ExecutionResult;
 
 use crate::types::{
     BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, DeployHash,
@@ -47,9 +49,6 @@ pub(crate) enum Error {
         block_hash: BlockHash,
     },
     InvalidAttemptToApplyChecksum {
-        block_hash: BlockHash,
-    },
-    InvalidAttemptToApplyDeployHashes {
         block_hash: BlockHash,
     },
     AttemptToApplyDataAfterCompleted {
@@ -124,13 +123,6 @@ impl Display for Error {
                     block_hash
                 )
             }
-            Error::InvalidAttemptToApplyDeployHashes { block_hash } => {
-                write!(
-                    f,
-                    "attempt to apply deploy_hashes in a state other than Complete, block_hash: {}",
-                    block_hash
-                )
-            }
             Error::AttemptToApplyDataAfterCompleted { block_hash } => {
                 write!(
                     f,
@@ -192,15 +184,10 @@ pub(super) enum ExecutionResultsAcquisition {
         chunk_count: u64,
         next: u64,
     },
-    Acquired {
-        block_hash: BlockHash,
-        checksum: ExecutionResultsChecksum,
-        results: Vec<casper_types::ExecutionResult>,
-    },
     Complete {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
-        results: HashMap<DeployHash, casper_types::ExecutionResult>,
+        results: HashMap<DeployHash, ExecutionResult>,
     },
 }
 
@@ -210,7 +197,6 @@ impl ExecutionResultsAcquisition {
     ) -> Option<(BlockExecutionResultsOrChunkId, ExecutionResultsChecksum)> {
         match self {
             ExecutionResultsAcquisition::Needed { .. }
-            | ExecutionResultsAcquisition::Acquired { .. }
             | ExecutionResultsAcquisition::Complete { .. } => None,
             ExecutionResultsAcquisition::Pending {
                 block_hash,
@@ -238,7 +224,6 @@ impl ExecutionResultsAcquisition {
             }
             ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
-            | ExecutionResultsAcquisition::Acquired { block_hash, .. }
             | ExecutionResultsAcquisition::Complete { block_hash, .. } => {
                 Err(Error::InvalidAttemptToApplyChecksum { block_hash })
             }
@@ -248,6 +233,7 @@ impl ExecutionResultsAcquisition {
     pub(super) fn apply_block_execution_results_or_chunk(
         self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
+        deploy_hashes: Vec<DeployHash>,
     ) -> Result<Self, Error> {
         let block_hash = *block_execution_results_or_chunk.block_hash();
         let value = block_execution_results_or_chunk.into_value();
@@ -260,30 +246,39 @@ impl ExecutionResultsAcquisition {
             });
         }
 
-        match (self, value) {
-            (ExecutionResultsAcquisition::Needed { block_hash }, _) => {
-                Err(Error::AttemptToApplyDataWhenMissingChecksum { block_hash })
-            }
-            (ExecutionResultsAcquisition::Acquired { .. }, _)
-            | (ExecutionResultsAcquisition::Complete { .. }, _) => {
-                Err(Error::AttemptToApplyDataAfterCompleted { block_hash })
-            }
+        let (checksum, execution_results) = match (self, value) {
             (
                 ExecutionResultsAcquisition::Pending { checksum, .. },
-                ValueOrChunk::Value(results),
+                ValueOrChunk::Value(execution_results),
             )
             | (
                 ExecutionResultsAcquisition::Acquiring { checksum, .. },
-                ValueOrChunk::Value(results),
-            ) => Ok(Self::Acquired {
-                block_hash,
-                checksum,
-                results,
-            }),
+                ValueOrChunk::Value(execution_results),
+            ) => (checksum, execution_results),
             (
                 ExecutionResultsAcquisition::Pending { checksum, .. },
                 ValueOrChunk::ChunkWithProof(chunk),
-            ) => apply_chunk(block_hash, checksum, HashMap::new(), chunk, None),
+            ) => match apply_chunk(block_hash, checksum, HashMap::new(), chunk, None) {
+                Ok(ApplyChunkOutcome::NeedNext {
+                    chunks,
+                    chunk_count,
+                    next,
+                }) => {
+                    return Ok(ExecutionResultsAcquisition::Acquiring {
+                        block_hash,
+                        checksum,
+                        chunks,
+                        chunk_count,
+                        next,
+                    });
+                }
+                Ok(ApplyChunkOutcome::Complete { execution_results }) => {
+                    (checksum, execution_results)
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            },
             (
                 ExecutionResultsAcquisition::Acquiring {
                     checksum,
@@ -292,39 +287,48 @@ impl ExecutionResultsAcquisition {
                     ..
                 },
                 ValueOrChunk::ChunkWithProof(chunk),
-            ) => apply_chunk(block_hash, checksum, chunks, chunk, Some(chunk_count)),
-        }
-    }
-
-    pub(super) fn apply_deploy_hashes(self, deploy_hashes: Vec<DeployHash>) -> Result<Self, Error> {
-        match self {
-            ExecutionResultsAcquisition::Needed { block_hash, .. }
-            | ExecutionResultsAcquisition::Pending { block_hash, .. }
-            | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
-            | ExecutionResultsAcquisition::Complete { block_hash, .. } => {
-                Err(Error::InvalidAttemptToApplyDeployHashes { block_hash })
-            }
-            ExecutionResultsAcquisition::Acquired {
-                block_hash,
-                checksum,
-                results,
-                ..
-            } => {
-                if deploy_hashes.len() != results.len() {
-                    return Err(Error::ExecutionResultToDeployHashLengthDiscrepancy {
+            ) => match apply_chunk(block_hash, checksum, chunks, chunk, Some(chunk_count)) {
+                Ok(ApplyChunkOutcome::NeedNext {
+                    chunks,
+                    chunk_count,
+                    next,
+                }) => {
+                    return Ok(ExecutionResultsAcquisition::Acquiring {
                         block_hash,
-                        expected: deploy_hashes.len(),
-                        actual: results.len(),
+                        checksum,
+                        chunks,
+                        chunk_count,
+                        next,
                     });
                 }
-                let ret = deploy_hashes.into_iter().zip(results).collect();
-                Ok(Self::Complete {
-                    block_hash,
-                    checksum,
-                    results: ret,
-                })
+                Ok(ApplyChunkOutcome::Complete { execution_results }) => {
+                    (checksum, execution_results)
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            },
+            (ExecutionResultsAcquisition::Needed { block_hash }, _) => {
+                return Err(Error::AttemptToApplyDataWhenMissingChecksum { block_hash });
             }
+            (ExecutionResultsAcquisition::Complete { .. }, _) => {
+                return Err(Error::AttemptToApplyDataAfterCompleted { block_hash });
+            }
+        };
+
+        if deploy_hashes.len() != execution_results.len() {
+            return Err(Error::ExecutionResultToDeployHashLengthDiscrepancy {
+                block_hash,
+                expected: deploy_hashes.len(),
+                actual: execution_results.len(),
+            });
         }
+        let results = deploy_hashes.into_iter().zip(execution_results).collect();
+        Ok(ExecutionResultsAcquisition::Complete {
+            block_hash,
+            results,
+            checksum,
+        })
     }
 
     fn block_hash(&self) -> BlockHash {
@@ -332,9 +336,32 @@ impl ExecutionResultsAcquisition {
             ExecutionResultsAcquisition::Needed { block_hash }
             | ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
-            | ExecutionResultsAcquisition::Acquired { block_hash, .. }
             | ExecutionResultsAcquisition::Complete { block_hash, .. } => *block_hash,
         }
+    }
+}
+
+enum ApplyChunkOutcome {
+    NeedNext {
+        chunks: HashMap<u64, ChunkWithProof>,
+        chunk_count: u64,
+        next: u64,
+    },
+    Complete {
+        execution_results: Vec<ExecutionResult>,
+    },
+}
+
+impl ApplyChunkOutcome {
+    fn need_next(chunks: HashMap<u64, ChunkWithProof>, chunk_count: u64, next: u64) -> Self {
+        ApplyChunkOutcome::NeedNext {
+            chunks,
+            chunk_count,
+            next,
+        }
+    }
+    fn execution_results(execution_results: Vec<ExecutionResult>) -> Self {
+        ApplyChunkOutcome::Complete { execution_results }
     }
 }
 
@@ -344,7 +371,7 @@ fn apply_chunk(
     mut chunks: HashMap<u64, ChunkWithProof>,
     chunk: ChunkWithProof,
     expected_count: Option<u64>,
-) -> Result<ExecutionResultsAcquisition, Error> {
+) -> Result<ApplyChunkOutcome, Error> {
     let digest = chunk.proof().root_hash();
     let index = chunk.proof().index();
     let chunk_count = chunk.proof().count();
@@ -384,13 +411,7 @@ fn apply_chunk(
     let _ = chunks.insert(index, chunk);
 
     match (0..chunk_count).find(|idx| !chunks.contains_key(idx)) {
-        Some(next) => Ok(ExecutionResultsAcquisition::Acquiring {
-            block_hash,
-            checksum,
-            chunks,
-            chunk_count,
-            next,
-        }),
+        Some(next) => Ok(ApplyChunkOutcome::need_next(chunks, chunk_count, next)),
         None => {
             let serialized: Vec<u8> = (0..chunk_count)
                 .filter_map(|index| chunks.get(&index))
@@ -398,11 +419,7 @@ fn apply_chunk(
                 .copied()
                 .collect();
             match bytesrepr::deserialize(serialized) {
-                Ok(results) => Ok(ExecutionResultsAcquisition::Acquired {
-                    block_hash,
-                    checksum,
-                    results,
-                }),
+                Ok(results) => Ok(ApplyChunkOutcome::execution_results(results)),
                 Err(error) => {
                     error!(%error, "failed to deserialize execution results");
                     Err(Error::FailedToDeserialize { block_hash })

@@ -568,48 +568,17 @@ impl BlockAcquisitionState {
                     "BlockAcquisition: registering execution result or chunk for: {}",
                     block.id()
                 );
+                let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect();
                 match exec_results_acq
                     .clone()
-                    .apply_block_execution_results_or_chunk(block_execution_results_or_chunk)
-                {
+                    .apply_block_execution_results_or_chunk(
+                        block_execution_results_or_chunk,
+                        deploy_hashes,
+                    ) {
                     Ok(new_effects) => match new_effects {
                         ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. }
                         | ExecutionResultsAcquisition::Acquiring { .. } => return Ok(None),
-                        ExecutionResultsAcquisition::Acquired { .. } => {
-                            let deploy_hashes =
-                                block.deploy_and_transfer_hashes().copied().collect();
-                            match new_effects.apply_deploy_hashes(deploy_hashes) {
-                                Ok(ExecutionResultsAcquisition::Complete {
-                                    block_hash,
-                                    checksum,
-                                    results,
-                                }) => (
-                                    BlockAcquisitionState::HaveGlobalState(
-                                        block.clone(),
-                                        signatures.clone(),
-                                        deploys.clone(),
-                                        ExecutionResultsAcquisition::Complete {
-                                            block_hash,
-                                            checksum,
-                                            results: results.clone(),
-                                        },
-                                    ),
-                                    Some(results),
-                                ),
-                                Ok(ExecutionResultsAcquisition::Needed { .. })
-                                | Ok(ExecutionResultsAcquisition::Pending { .. })
-                                | Ok(ExecutionResultsAcquisition::Acquiring { .. })
-                                | Ok(ExecutionResultsAcquisition::Acquired { .. }) => {
-                                    return Err(Error::InvalidStateTransition)
-                                }
-                                // todo! - when `apply_deploy_hashes` returns an
-                                // `ExecutionResultToDeployHashLengthDiscrepancy`, we must
-                                // disconnect from the peer that gave us the execution results
-                                // and start over using another peer.
-                                Err(error) => return Err(Error::ExecutionResults(error)),
-                            }
-                        }
                         ExecutionResultsAcquisition::Complete { ref results, .. } => (
                             BlockAcquisitionState::HaveGlobalState(
                                 block.clone(),
@@ -817,10 +786,6 @@ impl BlockAcquisitionState {
                     ))
                 } else {
                     match exec_results {
-                        ExecutionResultsAcquisition::Acquired { .. }
-                        | ExecutionResultsAcquisition::Complete { .. } => {
-                            Err(Error::InvalidAttemptToAcquireExecutionResults)
-                        }
                         ExecutionResultsAcquisition::Needed { .. } => {
                             Ok(BlockAcquisitionAction::execution_results_checksum(
                                 *block.hash(),
@@ -845,6 +810,9 @@ impl BlockAcquisitionState {
                                 }
                             }
                         }
+                        ExecutionResultsAcquisition::Complete { .. } => Ok(
+                            BlockAcquisitionAction::approvals_hashes(block, peer_list, rng),
+                        ),
                     }
                 }
             }
