@@ -4,7 +4,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use either::Either;
 use tracing::debug;
 
 use super::block_acquisition::Acceptance;
@@ -16,12 +15,6 @@ pub(crate) enum Error {
     EncounteredNonVacantDeployState,
 }
 
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(super) enum DeployAcquisition {
-    ByHash(Acquisition<DeployHash>),
-    ById(Acquisition<DeployId>),
-}
-
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -31,6 +24,18 @@ impl Display for Error {
             }
         }
     }
+}
+
+#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+pub(super) enum DeployIdentifier {
+    ByHash(DeployHash),
+    ById(DeployId),
+}
+
+#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+pub(super) enum DeployAcquisition {
+    ByHash(Acquisition<DeployHash>),
+    ById(Acquisition<DeployId>),
 }
 
 impl DeployAcquisition {
@@ -83,10 +88,10 @@ impl DeployAcquisition {
         Ok(())
     }
 
-    pub(super) fn needs_deploy(&self) -> Option<Either<DeployHash, DeployId>> {
+    pub(super) fn needs_deploy(&self) -> Option<DeployIdentifier> {
         match self {
-            DeployAcquisition::ByHash(acquisition) => acquisition.needs_deploy().map(Either::Left),
-            DeployAcquisition::ById(acquisition) => acquisition.needs_deploy().map(Either::Right),
+            DeployAcquisition::ByHash(acq) => acq.needs_deploy().map(DeployIdentifier::ByHash),
+            DeployAcquisition::ById(acq) => acq.needs_deploy().map(DeployIdentifier::ById),
         }
     }
 }

@@ -5,7 +5,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Display, From};
-use either::Either;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
@@ -15,9 +14,11 @@ use super::deploy_acquisition;
 
 use crate::{
     components::block_synchronizer::{
-        deploy_acquisition::DeployAcquisition, need_next::NeedNext, peer_list::PeerList,
-        signature_acquisition::SignatureAcquisition, ExecutionResultsAcquisition,
-        ExecutionResultsChecksum,
+        deploy_acquisition::{DeployAcquisition, DeployIdentifier},
+        need_next::NeedNext,
+        peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition,
+        ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
@@ -722,7 +723,7 @@ impl BlockAcquisitionState {
         rng: &mut NodeRng,
         should_fetch_execution_state: bool,
     ) -> Result<BlockAcquisitionAction, Error> {
-        let next_action = match self {
+        let ret = match self {
             BlockAcquisitionState::Initialized(block_hash, ..) => Ok(
                 BlockAcquisitionAction::block_header(peer_list, rng, *block_hash),
             ),
@@ -821,75 +822,31 @@ impl BlockAcquisitionState {
                 signatures,
                 deploys,
                 checksum,
-            ) => {
-                if should_fetch_execution_state == false {
-                    Err(Error::InvalidStateTransition)
-                } else {
-                    match deploys.needs_deploy() {
-                        Some(missing_deploys) => {
-                            if let ExecutionResultsChecksum::Checkable(_) = checksum {
-                                Ok(BlockAcquisitionAction::approvals_hashes(
-                                    block, peer_list, rng,
-                                ))
-                            } else {
-                                match missing_deploys {
-                                    Either::Left(deploy_hash) => {
-                                        Ok(BlockAcquisitionAction::deploy_by_hash(
-                                            *block.hash(),
-                                            deploy_hash,
-                                            peer_list,
-                                            rng,
-                                        ))
-                                    }
-                                    Either::Right(deploy_id) => {
-                                        Ok(BlockAcquisitionAction::deploy_by_id(
-                                            *block.hash(),
-                                            deploy_id,
-                                            peer_list,
-                                            rng,
-                                        ))
-                                    }
-                                }
-                            }
-                        }
-                        None => Ok(BlockAcquisitionAction::strict_finality_signatures(
-                            peer_list,
-                            rng,
-                            block.header(),
-                            validator_weights,
-                            signatures,
-                        )),
-                    }
-                }
-            }
-            BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
-                match deploys.needs_deploy() {
-                    Some(Either::Right(deploy_id)) => {
-                        info!("BlockAcquisition: requesting missing deploys by ID");
-                        Ok(BlockAcquisitionAction::deploy_by_id(
-                            *block.hash(),
-                            deploy_id,
-                            peer_list,
-                            rng,
-                        ))
-                    }
-                    Some(Either::Left(deploy_hash)) => {
-                        info!("BlockAcquisition: requesting missing deploys by hash");
-                        Ok(BlockAcquisitionAction::deploy_by_hash(
-                            *block.hash(),
-                            deploy_hash,
-                            peer_list,
-                            rng,
-                        ))
-                    }
-                    None => Ok(BlockAcquisitionAction::strict_finality_signatures(
+            ) => match (should_fetch_execution_state, checksum) {
+                (false, _) => Err(Error::InvalidStateTransition),
+                (true, ExecutionResultsChecksum::Checkable(_)) => Ok(
+                    BlockAcquisitionAction::approvals_hashes(block, peer_list, rng),
+                ),
+                (true, ExecutionResultsChecksum::Uncheckable) => {
+                    Ok(BlockAcquisitionAction::maybe_needs_deploy(
+                        block.header(),
                         peer_list,
                         rng,
-                        block.header(),
                         validator_weights,
                         signatures,
-                    )),
+                        deploys.needs_deploy(),
+                    ))
                 }
+            },
+            BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
+                Ok(BlockAcquisitionAction::maybe_needs_deploy(
+                    block.header(),
+                    peer_list,
+                    rng,
+                    validator_weights,
+                    signatures,
+                    deploys.needs_deploy(),
+                ))
             }
             BlockAcquisitionState::HaveAllDeploys(header, signatures) => {
                 Ok(BlockAcquisitionAction::strict_finality_signatures(
@@ -907,7 +864,15 @@ impl BlockAcquisitionState {
                 Ok(BlockAcquisitionAction::need_nothing(*block_hash))
             }
         };
-        next_action
+        match &ret {
+            Ok(next_action) => {
+                info!(%next_action, %self);
+            }
+            Err(err) => {
+                error!(%err, %self);
+            }
+        }
+        ret
     }
 
     fn log_finality_signature_acceptance(
@@ -954,6 +919,17 @@ impl BlockAcquisitionState {
 pub(crate) struct BlockAcquisitionAction {
     peers_to_ask: Vec<NodeId>,
     need_next: NeedNext,
+}
+
+impl Display for BlockAcquisitionAction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "need_next: {} from {} peers",
+            self.need_next,
+            self.peers_to_ask.len()
+        )
+    }
 }
 
 impl BlockAcquisitionAction {
@@ -1130,6 +1106,43 @@ impl BlockAcquisitionAction {
         BlockAcquisitionAction {
             peers_to_ask,
             need_next,
+        }
+    }
+
+    pub(super) fn maybe_needs_deploy(
+        block_header: &BlockHeader,
+        peer_list: &PeerList,
+        rng: &mut NodeRng,
+        validator_weights: &EraValidatorWeights,
+        signatures: &SignatureAcquisition,
+        needs_deploy: Option<DeployIdentifier>,
+    ) -> Self {
+        match needs_deploy {
+            Some(DeployIdentifier::ById(deploy_id)) => {
+                info!("BlockAcquisition: requesting missing deploys by ID");
+                BlockAcquisitionAction::deploy_by_id(
+                    block_header.block_hash(),
+                    deploy_id,
+                    peer_list,
+                    rng,
+                )
+            }
+            Some(DeployIdentifier::ByHash(deploy_hash)) => {
+                info!("BlockAcquisition: requesting missing deploys by hash");
+                BlockAcquisitionAction::deploy_by_hash(
+                    block_header.block_hash(),
+                    deploy_hash,
+                    peer_list,
+                    rng,
+                )
+            }
+            None => BlockAcquisitionAction::strict_finality_signatures(
+                peer_list,
+                rng,
+                block_header,
+                validator_weights,
+                signatures,
+            ),
         }
     }
 }
