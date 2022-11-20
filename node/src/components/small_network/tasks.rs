@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     pin::Pin,
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex, Weak},
 };
 
 use bytes::Bytes;
@@ -13,10 +13,13 @@ use futures::{
     future::{self, Either},
     pin_mut,
     stream::FuturesUnordered,
-    Sink, SinkExt, StreamExt,
+    Sink, SinkExt, Stream, StreamExt,
 };
 
-use muxink::fragmented::Fragmentizer;
+use muxink::{
+    demux::Demultiplexer,
+    fragmented::{Defragmentizer, Fragmentizer},
+};
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
@@ -30,7 +33,7 @@ use tokio::{
 };
 use tokio_openssl::SslStream;
 use tracing::{
-    debug, error_span,
+    debug, error, error_span,
     field::{self, Empty},
     info, trace, warn, Instrument, Span,
 };
@@ -45,8 +48,8 @@ use super::{
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, IncomingChannel, Message, Metrics,
-    OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, IncomingCarrier, IncomingChannel, Message,
+    Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -533,6 +536,110 @@ where
         Either::Left(_) => info!("shutting down incoming connection message reader"),
         Either::Right(_) => (),
     }
+
+    Ok(())
+}
+
+/// Multi-channel message receiver.
+pub(super) async fn new_message_receiver<REv, P>(
+    context: Arc<NetworkContext<REv>>,
+    carrier: IncomingCarrier,
+    limiter: Box<dyn LimiterHandle>,
+    mut close_incoming_receiver: watch::Receiver<()>,
+    peer_id: NodeId,
+    span: Span,
+) -> Result<(), MessageReaderError>
+where
+    P: DeserializeOwned + Send + Display + Payload,
+    REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
+{
+    // Sets up all channels on top of the carrier.
+    let carrier = Arc::new(Mutex::new(carrier));
+
+    async fn read_next(
+        mut incoming: IncomingChannel,
+        channel: Channel,
+    ) -> (
+        IncomingChannel,
+        Channel,
+        Option<<IncomingChannel as Stream>::Item>,
+    ) {
+        let rv = incoming.next().await;
+        (incoming, channel, rv)
+    }
+
+    let mut readers = FuturesUnordered::new();
+    for channel in Channel::iter() {
+        let demuxer =
+            Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
+                .expect("mutex poisoned");
+        let incoming = Defragmentizer::new(
+            context.chain_info.maximum_net_message_size as usize,
+            demuxer,
+        );
+
+        readers.push(read_next(incoming, channel));
+    }
+
+    while let Some((incoming, channel, rv)) = readers.next().await {
+        match rv {
+            None => {
+                // All good. One incoming channel closed, so we just exit, dropping all the others.
+                return Ok(());
+            }
+            Some(Err(err)) => {
+                // An incoming channel failed, so exit with the error.
+                return Err(MessageReaderError::ReceiveError(err));
+            }
+            Some(Ok(frame)) => {
+                let msg: Message<P> = deserialize_network_message(&frame)
+                    .map_err(MessageReaderError::DeserializationError)?;
+                trace!(%msg, "message received");
+
+                // TODO: Re-add support for demands when backpressure is added.
+
+                // The limiter stops _all_ channels, as they share a resource pool anyway.
+                limiter
+                    .request_allowance(
+                        msg.payload_incoming_resource_estimate(&context.payload_weights),
+                    )
+                    .await;
+
+                // Ensure the peer did not try to sneak in a message on a different channel.
+                let msg_channel = msg.get_channel();
+                if msg_channel != channel {
+                    return Err(MessageReaderError::WrongChannel {
+                        got: msg_channel,
+                        expected: channel,
+                    });
+                }
+
+                let queue_kind = if msg.is_low_priority() {
+                    QueueKind::NetworkLowPriority
+                } else {
+                    QueueKind::NetworkIncoming
+                };
+
+                context
+                    .event_queue
+                    .schedule(
+                        Event::IncomingMessage {
+                            peer_id: Box::new(peer_id),
+                            msg: Box::new(msg),
+                            span: span.clone(),
+                        },
+                        queue_kind,
+                    )
+                    .await;
+
+                // Recreata a future receiving on this particular channel.
+                readers.push(read_next(incoming, channel));
+            }
+        }
+    }
+
+    // We ran out of channels to read. Should not happen if there's at least one channel defined.
+    error!("did not expect to run out of channels to read");
 
     Ok(())
 }

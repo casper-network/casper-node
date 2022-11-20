@@ -13,6 +13,8 @@ use crate::{
     utils::{LoadError, Loadable, ResolveAddressError},
 };
 
+use super::Channel;
+
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]
 pub enum Error {
@@ -237,4 +239,12 @@ pub enum MessageReaderError {
     /// Error deserializing message.
     #[error("message deserialization error")]
     DeserializationError(bincode::Error),
+    /// Wrong channel for received message.
+    #[error("received a {got} message on channel {expected}")]
+    WrongChannel {
+        /// The channel the message was actually received on.
+        got: Channel,
+        /// The channel on which the message should have been sent.
+        expected: Channel,
+    },
 }
