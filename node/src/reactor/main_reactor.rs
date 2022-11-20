@@ -839,16 +839,22 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                // let mut effects = self.dispatch_event(
-                //     effect_builder,
-                //     rng,
-                //     MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
-                // );
                 let mut effects = Effects::new();
 
                 match source {
-                    Source::Client | Source::Ourself => (),
-                    Source::PeerGossiped(_) => {
+                    Source::Ourself => (), // internal activity does not require further action
+                    Source::Peer(_) => {
+                        // this is a response to a deploy fetch request, dispatch to fetcher
+                        effects.extend(self.fetchers.dispatch_fetcher_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::DeployAcceptorAnnouncement(
+                                DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+                            ),
+                        ));
+                    }
+                    Source::Client | Source::PeerGossiped(_) => {
+                        // we must attempt to gossip onwards
                         effects.extend(self.dispatch_event(
                             effect_builder,
                             rng,
@@ -857,28 +863,16 @@ impl reactor::Reactor for MainReactor {
                                 source,
                             }),
                         ));
-                    }
-                    Source::Peer(_) => {
-                        effects.extend(self.fetchers.dispatch_fetcher_event(
+                        // notify event stream
+                        effects.extend(self.dispatch_event(
                             effect_builder,
                             rng,
-                            MainEvent::DeployAcceptorAnnouncement(
-                                DeployAcceptorAnnouncement::AcceptedNewDeploy {
-                                    deploy: deploy.clone(),
-                                    source,
-                                },
+                            MainEvent::EventStreamServer(
+                                event_stream_server::Event::DeployAccepted(deploy),
                             ),
                         ));
                     }
                 }
-
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::EventStreamServer(event_stream_server::Event::DeployAccepted(
-                        deploy,
-                    )),
-                ));
 
                 effects
             }

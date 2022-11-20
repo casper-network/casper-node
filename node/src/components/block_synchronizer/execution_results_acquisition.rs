@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::bytesrepr::{self};
-use casper_types::ExecutionResult;
+use casper_types::{
+    bytesrepr::{self},
+    ExecutionResult,
+};
 
 use crate::types::{
     BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, DeployHash,

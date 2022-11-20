@@ -4,11 +4,10 @@ use tracing::{info, warn};
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::components::block_synchronizer::deploy_acquisition::DeployIdentifier;
-use crate::components::block_synchronizer::BlockAcquisitionError;
 use crate::{
     components::block_synchronizer::{
-        need_next::NeedNext, peer_list::PeerList, signature_acquisition::SignatureAcquisition,
+        deploy_acquisition::DeployIdentifier, need_next::NeedNext, peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition, BlockAcquisitionError,
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{

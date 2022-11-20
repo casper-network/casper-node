@@ -23,16 +23,11 @@ use crate::{
     NodeRng,
 };
 
-// BlockAcquisitionState is milestone oriented state machine; it is always in a resting state
+// BlockAcquisitionState is a milestone oriented state machine; it is always in a resting state
 // indicating the last completed step, while attempting to acquire the necessary data to transition
-// to the next resting state milestone. the start and end of the workflow is fairly linear, but the
+// to the next resting state milestone. the start and end of the workflow is linear, but the
 // middle steps conditionally branch depending upon if this is a historical block (needs execution
 // state) or a block we intend to execute, and if the block body has one or more deploys.
-//
-// the state transitions are in a particular order, but there are divergent paths
-// based upon whether we are attempting to acquire global state and execution effects
-// (collectively referred to as execution state), and whether this particular block
-// contains any deploys
 //
 // blocks always require a header & body and sufficient finality signatures; blocks may contain
 // one or more deploys. if a block has any deploys, we must also acquire execution effects
@@ -40,30 +35,35 @@ use crate::{
 // we must also acquire approvals hashes (which correlate to which authorized account holders
 // signed the deploys).
 //
-// there are two levels of finality, weak and strict. we first get the bare minimum data about
-// a block, and then attempt to acquire at least weak finality before doing further work
-// acquiring data for a block, to avoid being tricked into wasting resources downloading bogus
-// blocks. with at least weak finality, we can relatively safely go about acquiring the rest
-// of the block's required records. if we have not acquired strong finality by the time we've
-// downloaded everything else, we do another round of asking for remaining signatures before
-// accepting the sync'd block.
+// there are two levels of finality, weak and strict. we first get the block header (which is
+// the minimum amount of necessary information we need to function), and then attempt to acquire
+// at least weak finality before doing further work acquiring data for a block, to avoid being
+// tricked into wasting resources downloading bogus blocks. with at least weak finality, we can
+// go about acquiring the rest of the block's required records relatively safely. if we have not
+// acquired strong finality by the time we've downloaded everything else, we do another round
+// of asking for remaining signatures before accepting the sync'd block.
 //
 // when acquiring data for a historical block, we want global state (always) and execution
-// effects (if any). when acquiring sufficient data to execute a block, we do not acquired
+// effects (if any). when acquiring sufficient data to execute a block, we do not acquire
 // global state or execution effects. however, we still check for existence of an execution
-// effect _checksum_ in global state as an expedient way to determine if a block was
-// created post-1.5
+// effect _checksum_ leaf in global state at the block's root hash as an expedient way to
+// determine if a block was created post-1.5
 //
-// note that we check local storage prior to deciding to ask peers for records, as we may have
-// received records we need via gossiping. similarly, we collect finality signatures during each
-// state between HaveBlockHeader and HaveStrictFinalitySignatures inclusive and may acquire
-// strict finality before we check for it at the very end. finally due to the trie store nature
-// of global state, other than the first downloaded historical block we likely have the vast
-// majority of global state data locally already. for these reasons, it is common for most
-// blocks to transition thru the various states very quickly...particularly blocks with deploys.
-// however, the first block downloaded or blocks with a lot of deploys and / or execution state
-// churn can take arbitrarily longer on their relevant steps.
-//                                          ¯\_(ツ)_/¯
+// note that fetchers are used to acquire the required records, which by default check local
+// storage for existence and only ask peers if we don't already have the record being fetched
+// similarly, we collect finality signatures during each state between HaveBlockHeader and
+// HaveStrictFinalitySignatures inclusive, and therefore may have already acquired strict
+// finality before we check for it at the very end. finally due to the trie store structure
+// of global state, other than the first downloaded historical block we likely already have
+// the vast majority of global state data locally. for these reasons, it is common for most
+// blocks to transition thru the various states very quickly...particularly blocks without
+// deploys. however, the first block downloaded or blocks with a lot of deploys and / or
+// execution state delta can take arbitrarily longer on their relevant steps.
+//
+// similarly, it is possible that the peer set available to us to acquire this data can become
+// partitioned. the block synchronizer will periodically attempt to refresh its peer list to
+// mitigate this, but this strategy is less effective on small networks. we periodically
+// reattempt until we succeed or the node shuts down, in which case: ¯\_(ツ)_/¯
 #[derive(Clone, DataSize, Debug)]
 pub(super) enum BlockAcquisitionState {
     Initialized(BlockHash, SignatureAcquisition),
@@ -191,6 +191,7 @@ impl BlockAcquisitionState {
     //   HaveStrictFinalitySignatures -> HaveStrictFinalitySignatures (success / terminal)
     //
     //   Failed -> Failed (terminal)
+    //
     /// Determines what action should be taken to acquire the next needed block related data.
     pub(super) fn next_action(
         &mut self,
