@@ -108,7 +108,7 @@ impl Display for BlockAcquisitionState {
             ),
             BlockAcquisitionState::HaveBlock(block, _, _) => write!(
                 f,
-                "have block({}) for: {}",
+                "have block body({}) for: {}",
                 block.header().height(),
                 block.id()
             ),

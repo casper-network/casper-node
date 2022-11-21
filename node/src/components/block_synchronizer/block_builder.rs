@@ -61,6 +61,18 @@ pub(super) struct BlockBuilder {
     validator_weights: Option<EraValidatorWeights>,
 }
 
+impl Display for BlockBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "is_historical: {:?}, has_validators: {:?}, block builder: {}",
+            self.should_fetch_execution_state,
+            self.validator_weights.is_some(),
+            self.acquisition_state
+        )
+    }
+}
+
 impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,

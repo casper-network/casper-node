@@ -17,7 +17,6 @@ use datasize::DataSize;
 use either::Either;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::core::engine_state;
@@ -158,10 +157,6 @@ impl BlockSynchronizer {
         }
     }
 
-    pub(crate) fn historical_purge(&mut self) {
-        self.historical = None;
-    }
-
     /// Returns the progress being made on the forward syncing.
     pub(crate) fn forward_progress(&mut self) -> BlockSynchronizerProgress {
         match &self.forward {
@@ -170,7 +165,17 @@ impl BlockSynchronizer {
         }
     }
 
-    pub(crate) fn forward_purge(&mut self) {
+    pub(crate) fn purge(&mut self, historical_only: bool) {
+        if let Some(builder) = &self.historical {
+            debug!(%builder, "BlockSynchronizer: purging block builder");
+        }
+        self.historical = None;
+        if historical_only {
+            return;
+        }
+        if let Some(builder) = &self.forward {
+            debug!(%builder, "BlockSynchronizer: purging block builder");
+        }
         self.forward = None;
     }
 

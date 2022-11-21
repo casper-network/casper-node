@@ -116,7 +116,10 @@ impl DeployBuffer {
             .into_iter()
             .partition(|(_, (expiry_time, _))| *expiry_time >= now);
 
-        debug!("DeployBuffer: expiring {} deploys", freed.len());
+        let freed_count = freed.len();
+        if freed_count > 0 {
+            info!("DeployBuffer: expiring {} deploys", freed_count);
+        }
         // clear expired deploy from all holds, then clear any entries that have no items remaining
         self.hold.iter_mut().for_each(|(_, held_deploys)| {
             held_deploys.retain(|deploy_hash| !freed.contains_key(deploy_hash))
