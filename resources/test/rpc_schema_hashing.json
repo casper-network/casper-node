@@ -78,7 +78,7 @@
           },
           "Approval": {
             "additionalProperties": false,
-            "description": "A struct containing a signature and the public key of the signer.",
+            "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
             "properties": {
               "signature": {
                 "$ref": "#/components/schemas/Signature"
@@ -149,6 +149,29 @@
               "block_height",
               "era_validators",
               "state_root_hash"
+            ],
+            "type": "object"
+          },
+          "AvailableBlockRange": {
+            "additionalProperties": false,
+            "description": "An unbroken, inclusive range of blocks.",
+            "properties": {
+              "high": {
+                "description": "The inclusive upper bound of the range.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "low": {
+                "description": "The inclusive lower bound of the range.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "high",
+              "low"
             ],
             "type": "object"
           },
@@ -259,6 +282,30 @@
               }
             ],
             "description": "Identifier for possible ways to retrieve a block."
+          },
+          "BlockSyncStatus": {
+            "additionalProperties": false,
+            "properties": {
+              "acquisition_state": {
+                "type": "string"
+              },
+              "block_hash": {
+                "$ref": "#/components/schemas/BlockHash"
+              },
+              "block_height": {
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "acquisition_state",
+              "block_hash"
+            ],
+            "type": "object"
           },
           "CLType": {
             "anyOf": [
@@ -655,7 +702,7 @@
           },
           "DeployHeader": {
             "additionalProperties": false,
-            "description": "The header portion of a [`Deploy`](struct.Deploy.html).",
+            "description": "The header portion of a [`Deploy`].",
             "properties": {
               "account": {
                 "$ref": "#/components/schemas/PublicKey"
@@ -1371,151 +1418,6 @@
             ],
             "description": "The result of executing a single deploy."
           },
-          "FastSync": {
-            "anyOf": [
-              {
-                "enum": [
-                  "not yet started",
-                  "starting",
-                  "finished"
-                ],
-                "type": "string"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently fetching the trusted block header.",
-                "properties": {
-                  "fetching_trusted_block_header": {
-                    "$ref": "#/components/schemas/BlockHash"
-                  }
-                },
-                "required": [
-                  "fetching_trusted_block_header"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently syncing the trie-store under the given state root hash.",
-                "properties": {
-                  "fetching_global_state_under_given_block": {
-                    "properties": {
-                      "block_height": {
-                        "description": "The height of the block containing the given state root hash.",
-                        "format": "uint64",
-                        "minimum": 0.0,
-                        "type": "integer"
-                      },
-                      "number_of_remaining_tries_to_fetch": {
-                        "description": "The number of remaining tries to fetch (this value can rise and fall as the task proceeds).",
-                        "format": "uint",
-                        "minimum": 0.0,
-                        "type": "integer"
-                      },
-                      "reason": {
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/FetchingTriesReason"
-                          }
-                        ],
-                        "description": "The reason for syncing the trie-store."
-                      },
-                      "state_root_hash": {
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/Digest"
-                          }
-                        ],
-                        "description": "The global state root hash."
-                      }
-                    },
-                    "required": [
-                      "block_height",
-                      "number_of_remaining_tries_to_fetch",
-                      "reason",
-                      "state_root_hash"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "fetching_global_state_under_given_block"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently fetching the block at the given height and its deploys in preparation for executing it.",
-                "properties": {
-                  "fetching_block_and_deploys_at_given_block_height_before_execution": {
-                    "format": "uint64",
-                    "minimum": 0.0,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "fetching_block_and_deploys_at_given_block_height_before_execution"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently executing the block at the given height.",
-                "properties": {
-                  "executing_block_at_height": {
-                    "format": "uint64",
-                    "minimum": 0.0,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "executing_block_at_height"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently retrying the execution of the block at the given height, due to an unexpected mismatch in the previous execution result (due to a mismatch in the deploys' approvals).",
-                "properties": {
-                  "retrying_block_execution": {
-                    "properties": {
-                      "attempt": {
-                        "description": "The retry attempt number.",
-                        "format": "uint",
-                        "minimum": 0.0,
-                        "type": "integer"
-                      },
-                      "block_height": {
-                        "description": "The height of the block being executed.",
-                        "format": "uint64",
-                        "minimum": 0.0,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "attempt",
-                      "block_height"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "retrying_block_execution"
-                ],
-                "type": "object"
-              }
-            ],
-            "description": "The progress of the fast-sync task, performed by all nodes while in joining mode.\n\nThe fast-sync task generally progresses from each variant to the next linearly.  An exception is that it will cycle repeatedly from `FetchingBlockAndDeploysToExecute` to `ExecutingBlock` (and possibly to `RetryingBlockExecution`) as it iterates forwards one block at a time, fetching then executing."
-          },
-          "FetchingTriesReason": {
-            "description": "The reason for syncing the trie store under a given state root hash.",
-            "enum": [
-              "for fast sync",
-              "preparing for emergency upgrade",
-              "preparing for upgrade"
-            ],
-            "type": "string"
-          },
           "GlobalStateIdentifier": {
             "anyOf": [
               {
@@ -2106,56 +2008,6 @@
             ],
             "type": "object"
           },
-          "NodeState": {
-            "anyOf": [
-              {
-                "enum": [
-                  "participating"
-                ],
-                "type": "string"
-              },
-              {
-                "additionalProperties": false,
-                "description": "The node is currently in joining mode.",
-                "properties": {
-                  "joining": {
-                    "$ref": "#/components/schemas/Progress"
-                  }
-                },
-                "required": [
-                  "joining"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "The node is currently in participating mode, but also syncing to genesis in the background.",
-                "properties": {
-                  "participating_and_syncing_to_genesis": {
-                    "properties": {
-                      "sync_progress": {
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/Progress"
-                          }
-                        ],
-                        "description": "The progress of the chain sync-to-genesis task."
-                      }
-                    },
-                    "required": [
-                      "sync_progress"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "participating_and_syncing_to_genesis"
-                ],
-                "type": "object"
-              }
-            ],
-            "description": "The various possible states of operation for the node."
-          },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
             "enum": [
@@ -2231,27 +2083,6 @@
             },
             "type": "array"
           },
-          "Progress": {
-            "anyOf": [
-              {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/FastSync"
-                  }
-                ],
-                "description": "The chain-synchronizer is performing the fast-sync task."
-              },
-              {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/SyncToGenesis"
-                  }
-                ],
-                "description": "The chain-synchronizer is performing the sync-to-genesis task."
-              }
-            ],
-            "description": "The progress of the chain-synchronizer task."
-          },
           "ProtocolVersion": {
             "description": "Casper Platform protocol version",
             "type": "string"
@@ -2303,6 +2134,17 @@
               }
             ],
             "description": "Identifier of a purse."
+          },
+          "ReactorState": {
+            "enum": [
+              "Initialize",
+              "CatchUp",
+              "Upgrading",
+              "KeepUp",
+              "Validate",
+              "ShutdownForUpgrade"
+            ],
+            "type": "string"
           },
           "Reward": {
             "additionalProperties": false,
@@ -2572,128 +2414,6 @@
               }
             ],
             "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info)."
-          },
-          "SyncBlock": {
-            "description": "Container pairing the given [`SyncBlockFetching`] progress indicator with the height of the relative block.",
-            "properties": {
-              "block_height": {
-                "description": "The height of the block being synced.",
-                "format": "uint64",
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              "fetching": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/SyncBlockFetching"
-                  }
-                ],
-                "description": "The progress of the sync-block task."
-              }
-            },
-            "required": [
-              "block_height",
-              "fetching"
-            ],
-            "type": "object"
-          },
-          "SyncBlockFetching": {
-            "anyOf": [
-              {
-                "enum": [
-                  "block and deploys",
-                  "block signatures"
-                ],
-                "type": "string"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently syncing the trie-store under the state root hash held in the block.",
-                "properties": {
-                  "global_state_under_given_block": {
-                    "properties": {
-                      "number_of_remaining_tries_to_fetch": {
-                        "description": "The number of remaining tries to fetch (this value can rise and fall as the task proceeds).",
-                        "format": "uint",
-                        "minimum": 0.0,
-                        "type": "integer"
-                      },
-                      "state_root_hash": {
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/Digest"
-                          }
-                        ],
-                        "description": "The global state root hash."
-                      }
-                    },
-                    "required": [
-                      "number_of_remaining_tries_to_fetch",
-                      "state_root_hash"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "global_state_under_given_block"
-                ],
-                "type": "object"
-              }
-            ],
-            "description": "The progress of a single sync-block task, many of which are performed in parallel during sync-to-genesis.\n\nThe task progresses from each variant to the next linearly."
-          },
-          "SyncToGenesis": {
-            "anyOf": [
-              {
-                "enum": [
-                  "not yet started",
-                  "starting",
-                  "finished"
-                ],
-                "type": "string"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently fetching block headers in batches back towards the genesis block.",
-                "properties": {
-                  "fetching_headers_back_to_genesis": {
-                    "properties": {
-                      "lowest_block_height": {
-                        "description": "The current lowest block header retrieved by this fetch-headers-to-genesis task.",
-                        "format": "uint64",
-                        "minimum": 0.0,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "lowest_block_height"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "fetching_headers_back_to_genesis"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Currently syncing all blocks from genesis towards the tip of the chain.\n\nThis is done via many parallel sync-block tasks, with each such ongoing task being represented by an entry in the wrapped `Vec`.  The set is sorted ascending by block height.",
-                "properties": {
-                  "syncing_forward_from_genesis": {
-                    "items": {
-                      "$ref": "#/components/schemas/SyncBlock"
-                    },
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "syncing_forward_from_genesis"
-                ],
-                "type": "object"
-              }
-            ],
-            "description": "The progress of the sync-to-genesis task, only performed by nodes configured to do this, and performed by them while in participating mode.\n\nThe sync-to-genesis task progresses from each variant to the next linearly."
           },
           "TimeDiff": {
             "description": "Human-readable duration.",
@@ -3970,6 +3690,11 @@
                 "name": "info_get_status_example_result",
                 "value": {
                   "api_version": "1.4.8",
+                  "available_block_range": {
+                    "high": 0,
+                    "low": 0
+                  },
+                  "block_sync": [],
                   "build_version": "1.0.0-xxxxxxxxx@DEBUG",
                   "chainspec_name": "casper-example",
                   "last_added_block_info": {
@@ -3980,11 +3705,11 @@
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
                     "timestamp": "2020-11-17T00:39:24.072Z"
                   },
+                  "last_progress": "1970-01-01T00:00:00.000Z",
                   "next_upgrade": {
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
-                  "node_state": "participating",
                   "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                   "peers": [
                     {
@@ -3992,8 +3717,9 @@
                       "node_id": "tls:0101..0101"
                     }
                   ],
+                  "reactor_state": "Initialize",
                   "round_length": "1m 5s 536ms",
-                  "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "starting_state_root_hash": null,
                   "uptime": "13s"
                 }
               }
@@ -4010,6 +3736,17 @@
                 "api_version": {
                   "description": "The RPC API version.",
                   "type": "string"
+                },
+                "available_block_range": {
+                  "$ref": "#/components/schemas/AvailableBlockRange",
+                  "description": "The available block range in storage."
+                },
+                "block_sync": {
+                  "description": "The status of the block synchronizer builders.",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockSyncStatus"
+                  },
+                  "type": "array"
                 },
                 "build_version": {
                   "description": "The compiled node version.",
@@ -4030,6 +3767,10 @@
                   ],
                   "description": "The minimal info of the last block from the linear chain."
                 },
+                "last_progress": {
+                  "$ref": "#/components/schemas/Timestamp",
+                  "description": "Timestamp of the last recorded progress in the reactor."
+                },
                 "next_upgrade": {
                   "anyOf": [
                     {
@@ -4040,10 +3781,6 @@
                     }
                   ],
                   "description": "Information about the next scheduled upgrade."
-                },
-                "node_state": {
-                  "$ref": "#/components/schemas/NodeState",
-                  "description": "The current state of node."
                 },
                 "our_public_signing_key": {
                   "anyOf": [
@@ -4060,6 +3797,10 @@
                   "$ref": "#/components/schemas/PeersMap",
                   "description": "The node ID and network address of each connected peer."
                 },
+                "reactor_state": {
+                  "$ref": "#/components/schemas/ReactorState",
+                  "description": "The current state of node reactor."
+                },
                 "round_length": {
                   "anyOf": [
                     {
@@ -4072,9 +3813,15 @@
                   "description": "The next round length if this node is a validator."
                 },
                 "starting_state_root_hash": {
-                  "$ref": "#/components/schemas/Digest",
-                  "deprecated": true,
-                  "description": "The state root hash used at the start of the current session."
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Digest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The state root hash of the lowest block in the available block range."
                 },
                 "uptime": {
                   "$ref": "#/components/schemas/TimeDiff",
@@ -4083,11 +3830,13 @@
               },
               "required": [
                 "api_version",
+                "available_block_range",
+                "block_sync",
                 "build_version",
                 "chainspec_name",
-                "node_state",
+                "last_progress",
                 "peers",
-                "starting_state_root_hash",
+                "reactor_state",
                 "uptime"
               ],
               "type": "object"

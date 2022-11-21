@@ -30,8 +30,8 @@ use crate::{
             BlockCompleteConfirmationRequest, BlockSynchronizerRequest, BlockValidationRequest,
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
-            TrieAccumulatorRequest, UpgradeWatcherRequest,
+            NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest, StorageRequest,
+            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -215,6 +215,8 @@ pub(crate) enum MainEvent {
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
     AppStateRequest(AppStateRequest),
+    #[from]
+    MainReactorRequest(#[serde(skip_serializing)] ReactorStatusRequest),
 }
 
 impl ReactorEvent for MainEvent {
@@ -321,6 +323,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            MainEvent::MainReactorRequest(_) => "MainReactorRequest",
         }
     }
 }
@@ -490,6 +493,7 @@ impl Display for MainEvent {
             MainEvent::BlockGossiperAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
+            MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
         }
     }
 }

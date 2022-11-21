@@ -388,6 +388,9 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::MainReactorRequest(req) => {
+                req.0.respond((self.state, self.last_progress)).ignore()
+            }
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => reactor::wrap_effects(
