@@ -334,7 +334,7 @@ impl Display for MessageKind {
     Copy, Clone, Debug, Display, Eq, EnumCount, EnumIter, FromRepr, PartialEq, Ord, PartialOrd,
 )]
 #[repr(u8)]
-pub(crate) enum Channel {
+pub enum Channel {
     /// Networking layer messages, e.g. address gossip.
     Network = 1,
     /// Data solely used for syncing being requested.

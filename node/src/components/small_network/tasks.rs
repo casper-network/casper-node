@@ -545,7 +545,7 @@ pub(super) async fn new_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     carrier: IncomingCarrier,
     limiter: Box<dyn LimiterHandle>,
-    mut close_incoming_receiver: watch::Receiver<()>,
+    close_incoming: StickyFlag,
     peer_id: NodeId,
     span: Span,
 ) -> Result<(), MessageReaderError>
@@ -556,6 +556,7 @@ where
     // Sets up all channels on top of the carrier.
     let carrier = Arc::new(Mutex::new(carrier));
 
+    // TODO: Replace with select_all!
     async fn read_next(
         mut incoming: IncomingChannel,
         channel: Channel,
@@ -581,8 +582,48 @@ where
         readers.push(read_next(incoming, channel));
     }
 
-    while let Some((incoming, channel, rv)) = readers.next().await {
-        match rv {
+    // TODO: Move to utils and use elsewhere.
+    trait Discard {
+        type Remains;
+        fn discard(self) -> Self::Remains;
+    }
+
+    impl<A, B, F, G> Discard for Either<(A, G), (B, F)> {
+        type Remains = Either<A, B>;
+
+        fn discard(self) -> Self::Remains {
+            match self {
+                Either::Left((v, _)) => Either::Left(v),
+                Either::Right((v, _)) => Either::Right(v),
+            }
+        }
+    }
+
+    loop {
+        let next_reader = readers.next();
+        let wait_for_close_incoming = close_incoming.wait();
+        pin_mut!(next_reader);
+        pin_mut!(wait_for_close_incoming);
+
+        let (incoming, channel, outcome) =
+            match future::select(next_reader, wait_for_close_incoming)
+                .await
+                .discard()
+            {
+                Either::Left(Some(item)) => item,
+                Either::Left(None) => {
+                    // We ran out of channels. Should not happen with at least one channel defined.
+                    error!("did not expect to run out of channels to read");
+
+                    return Ok(());
+                }
+                Either::Right(_) => {
+                    debug!("message reader shutdown requested");
+                    return Ok(());
+                }
+            };
+
+        match outcome {
             None => {
                 // All good. One incoming channel closed, so we just exit, dropping all the others.
                 return Ok(());
@@ -638,10 +679,6 @@ where
         }
     }
 
-    // We ran out of channels to read. Should not happen if there's at least one channel defined.
-    error!("did not expect to run out of channels to read");
-
-    Ok(())
 }
 
 /// Multi-channel encoded message sender.
