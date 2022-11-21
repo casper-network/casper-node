@@ -146,7 +146,7 @@ impl DeployBuffer {
     where
         REv: From<Event> + From<StorageRequest> + Send,
     {
-        debug!(%deploy_id, "DeployBuffer: registering gossied deploy");
+        debug!(%deploy_id, "DeployBuffer: registering gossiped deploy");
         effect_builder
             .get_stored_deploy(deploy_id)
             .event(move |result| Event::StoredDeploy(deploy_id, Box::new(result)))
@@ -193,7 +193,7 @@ impl DeployBuffer {
     fn register_block_proposed(&mut self, proposed_block: ProposedBlock<ClContext>) {
         let timestamp = &proposed_block.context().timestamp();
         if let Some(hold_set) = self.hold.get_mut(timestamp) {
-            debug!(%timestamp, "DeployBuffer: existing hold timestamp upserted");
+            debug!(%timestamp, "DeployBuffer: existing hold timestamp extended");
             hold_set.extend(proposed_block.value().deploy_and_transfer_hashes())
         } else {
             debug!(%timestamp, "DeployBuffer: new hold timestamp inserted");

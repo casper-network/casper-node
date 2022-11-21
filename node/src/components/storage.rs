@@ -1223,7 +1223,7 @@ impl Storage {
         if outcome {
             debug!(%deploy_hash, "Storage: new deploy stored");
         } else {
-            warn!(%deploy_hash, "Storage: attempt to store existing deploy");
+            debug!(%deploy_hash, "Storage: attempt to store existing deploy");
         }
         txn.commit()?;
         Ok(outcome)
@@ -2069,7 +2069,7 @@ impl Storage {
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
-                info!(
+                debug!(
                     ?block_header,
                     "get_single_block: retrieved block header but block body is missing from database"
                 );

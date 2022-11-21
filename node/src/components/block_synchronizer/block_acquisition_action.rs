@@ -256,7 +256,7 @@ impl BlockAcquisitionAction {
     ) -> Self {
         match needs_deploy {
             Some(DeployIdentifier::ById(deploy_id)) => {
-                info!("BlockAcquisition: requesting missing deploys by ID");
+                info!("BlockAcquisition: requesting missing deploy by ID");
                 BlockAcquisitionAction::deploy_by_id(
                     block_header.block_hash(),
                     deploy_id,
@@ -265,7 +265,7 @@ impl BlockAcquisitionAction {
                 )
             }
             Some(DeployIdentifier::ByHash(deploy_hash)) => {
-                info!("BlockAcquisition: requesting missing deploys by hash");
+                info!("BlockAcquisition: requesting missing deploy by hash");
                 BlockAcquisitionAction::deploy_by_hash(
                     block_header.block_hash(),
                     deploy_hash,
