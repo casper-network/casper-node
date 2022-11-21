@@ -216,7 +216,6 @@ impl<C: Context + 'static> Zug<C> {
         prev_cp: Option<&dyn ConsensusProtocol<C>>,
         era_start_time: Timestamp,
         seed: u64,
-        _now: Timestamp,
     ) -> Zug<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
@@ -311,7 +310,6 @@ impl<C: Context + 'static> Zug<C> {
             prev_cp,
             era_start_time,
             seed,
-            now,
         );
 
         let outcomes = sc.open_wal(wal_file, now);
@@ -358,7 +356,7 @@ impl<C: Context + 'static> Zug<C> {
     /// Returns whether the switch block has already been finalized.
     fn finalized_switch_block(&self) -> bool {
         if let Some(round_id) = self.first_non_finalized_round_id.checked_sub(1) {
-            self.accepted_switch_block(round_id)
+            self.accepted_switch_block(round_id) || self.accepted_dummy_proposal(round_id)
         } else {
             false
         }
@@ -369,8 +367,9 @@ impl<C: Context + 'static> Zug<C> {
         match self.round(round_id).and_then(Round::accepted_proposal) {
             None => false,
             Some((height, proposal)) => {
-                height.saturating_add(1) >= self.params.end_height()
-                    && proposal.timestamp() >= self.params.end_timestamp()
+                proposal.maybe_block().is_some() // not a dummy proposal
+                    && height.saturating_add(1) >= self.params.end_height() // reached era height
+                    && proposal.timestamp() >= self.params.end_timestamp() // minimum era duration
             }
         }
     }
@@ -624,7 +623,7 @@ impl<C: Context + 'static> Zug<C> {
         // We only add and send the new message if we are able to record it. If that fails we
         // wouldn't know about our own message after a restart and risk double-signing.
         if self.record_entry(&Entry::SignedMessage(signed_msg.clone()))
-            && self.add_content_no_wal(signed_msg.clone())
+            && self.add_content(signed_msg.clone())
         {
             let message = Message::Signed(signed_msg);
             vec![ProtocolOutcome::CreatedGossipMessage(message.into())]
@@ -987,12 +986,19 @@ impl<C: Context + 'static> Zug<C> {
             let mut outcomes =
                 self.handle_fault(signed_msg, validator_id, content2, signature2, now);
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(evidence_msg.into()));
-            outcomes
-        } else if self.add_content(signed_msg) {
-            self.update(now)
-        } else {
-            vec![]
+            return outcomes;
         }
+
+        if self.faults.contains_key(&signed_msg.validator_idx) {
+            debug!(?signed_msg, "dropping message from faulty validator");
+        } else {
+            self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
+            if self.add_content(signed_msg) {
+                return self.update(now);
+            }
+        }
+
+        vec![]
     }
 
     /// Verifies an evidence message that is supposed to contain two conflicting sigantures by the
@@ -1238,7 +1244,7 @@ impl<C: Context + 'static> Zug<C> {
             match read_wal.read_next_entry() {
                 Ok(Some(next_entry)) => match next_entry {
                     Entry::SignedMessage(next_message) => {
-                        if !self.add_content_no_wal(next_message) {
+                        if !self.add_content(next_message) {
                             error!("Could not add content from WAL.");
                             return outcomes;
                         }
@@ -1321,19 +1327,9 @@ impl<C: Context + 'static> Zug<C> {
         outcomes
     }
 
-    /// Adds a signed message content to the state, but does not call `update` and does not detect
-    /// faults. Will not add the content of the message if the WAL is failing to write or if the
-    /// message is sent from a known faulty validator.
+    /// Adds a signed message content to the state.
+    /// Does not call `update` and does not detect faults.
     fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
-        if self.faults.contains_key(&signed_msg.validator_idx) {
-            debug!(?signed_msg, "dropping message from faulty validator");
-            return false;
-        }
-        self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
-        self.add_content_no_wal(signed_msg)
-    }
-
-    fn add_content_no_wal(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.active[signed_msg.validator_idx].is_none() {
             self.active[signed_msg.validator_idx] = Some(signed_msg.clone());
             // We considered this validator inactive until now, and didn't accept proposals that
@@ -1846,7 +1842,7 @@ impl<C: Context + 'static> Zug<C> {
     }
 
     /// Returns the accepted value from the given round and all its ancestors, or `None` if there is
-    /// no accepted value in that round yet.
+    /// no accepted value in any of those rounds.
     fn ancestor_values(&self, mut round_id: RoundId) -> Option<Vec<C::ConsensusValue>> {
         let mut ancestor_values = vec![];
         loop {

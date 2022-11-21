@@ -66,7 +66,6 @@ where
         None,
         start_timestamp,
         seed,
-        start_timestamp,
     )
 }
 
