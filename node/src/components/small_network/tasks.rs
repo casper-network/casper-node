@@ -29,7 +29,7 @@ use serde::de::DeserializeOwned;
 use strum::{EnumCount, IntoEnumIterator};
 use tokio::{
     net::TcpStream,
-    sync::{mpsc::UnboundedReceiver, watch},
+    sync::{mpsc::UnboundedReceiver},
 };
 use tokio_openssl::SslStream;
 use tracing::{
@@ -349,7 +349,7 @@ pub(super) async fn server_setup_tls<REv>(
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
     listener: tokio::net::TcpListener,
-    mut shutdown_receiver: watch::Receiver<()>,
+    shutdown_receiver: ObservableFuse,
 ) where
     REv: From<Event<P>> + Send,
     P: Payload,
@@ -405,11 +405,13 @@ pub(super) async fn server<P, REv>(
         }
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    let shutdown_messages = shutdown_receiver.wait();
+    pin_mut!(shutdown_messages);
+    pin_mut!(accept_connections);
 
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
+    match future::select(shutdown_messages, accept_connections).await {
         Either::Left(_) => info!(
             %context.our_id,
             "shutting down socket, no longer accepting incoming connections"

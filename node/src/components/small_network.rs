@@ -74,7 +74,6 @@ use tokio::{
     net::TcpStream,
     sync::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
-        watch,
     },
     task::JoinHandle,
 };
@@ -173,11 +172,8 @@ where
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
-    /// Channel signaling a shutdown of the small network.
-    // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
-    // they should cease operation.
-    #[data_size(skip)]
-    shutdown_sender: Option<watch::Sender<()>>,
+    /// Fuse signaling a shutdown of the small network.
+    shutdown_fuse: DropSwitch<ObservableFuse>,
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -373,14 +369,14 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
-        let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
+        let shutdown_fuse = DropSwitch::new(ObservableFuse::new());
         let close_incoming = DropSwitch::new(ObservableFuse::new());
 
         let server_join_handle = tokio::spawn(
             tasks::server(
                 context.clone(),
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-                server_shutdown_receiver,
+                shutdown_fuse.inner().clone(),
             )
             .in_current_span(),
         );
@@ -390,7 +386,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            shutdown_sender: Some(server_shutdown_sender),
+            shutdown_fuse,
             close_incoming,
             server_join_handle: Some(server_join_handle),
             net_metrics,
@@ -942,9 +938,7 @@ where
 {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
-            // Close the shutdown socket, causing the server to exit.
-            drop(self.shutdown_sender.take());
-
+            self.shutdown_fuse.inner().set();
             self.close_incoming.inner().set();
 
             // Wait for the server to exit cleanly.
