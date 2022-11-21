@@ -35,7 +35,7 @@ use crate::{
         requests::NetworkInfoRequest,
         EffectBuilder,
     },
-    utils::display_error,
+    utils::{display_error, Peel},
 };
 
 /// Success or failure response.
@@ -421,12 +421,15 @@ where
     while keep_going {
         let shutdown_messages = async { while shutdown_receiver.changed().await.is_ok() {} };
 
-        match future::select(Box::pin(shutdown_messages), Box::pin(lines.next_line())).await {
+        match future::select(Box::pin(shutdown_messages), Box::pin(lines.next_line()))
+            .await
+            .peel()
+        {
             Either::Left(_) => {
                 info!("shutting down diagnostics port connection to client");
                 return Ok(());
             }
-            Either::Right((line_result, _)) => {
+            Either::Right(line_result) => {
                 if let Some(line) = line_result? {
                     keep_going = session
                         .process_line(effect_builder, &mut writer, line.as_str())

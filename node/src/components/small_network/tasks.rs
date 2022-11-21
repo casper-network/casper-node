@@ -734,15 +734,12 @@ where
         let stop_wait = stop.wait();
         pin_mut!(stop_wait);
 
-        match future::select(recv, stop_wait).await {
-            Either::Left((
-                Some(EncodedMessage {
-                    payload: data,
-                    send_finished,
-                    send_token,
-                }),
-                _,
-            )) => {
+        match future::select(recv, stop_wait).await.peel() {
+            Either::Left(Some(EncodedMessage {
+                payload: data,
+                send_finished,
+                send_token,
+            })) => {
                 limiter.request_allowance(data.len() as u32).await;
                 if let Some(responder) = send_finished {
                     dest.send(data).await?;
@@ -756,11 +753,11 @@ where
                 // We only drop the token once the message is sent or at least buffered.
                 drop(send_token);
             }
-            Either::Left((None, _)) => {
+            Either::Left(None) => {
                 trace!("sink closed");
                 return Ok(());
             }
-            Either::Right((_, _)) => {
+            Either::Right(_) => {
                 trace!("received stop signal");
                 return Ok(());
             }
