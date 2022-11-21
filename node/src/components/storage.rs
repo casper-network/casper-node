@@ -2467,19 +2467,19 @@ impl Storage {
         // 3. For every txns in the block's body, we load its deploy metadata.
         // 4. We extract txn's execution results from the `deploy_metadata` for the block
         // we're interested in.
+        let block_hash = request.block_hash();
         let mut txn = self.env.begin_rw_txn()?;
-        let block_header: BlockHeader =
-            match self.get_single_block_header(&mut txn, request.block_hash())? {
-                Some(block_header) => block_header,
-                None => return Ok(None),
-            };
+        let block_header: BlockHeader = match self.get_single_block_header(&mut txn, block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
         let maybe_block_body =
             get_body_for_block_header(&mut txn, &block_header, self.block_body_db);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
                 info!(
-                    ?block_header,
+                    %block_hash,
                     "read_block_execution_results_or_chunk: retrieved block header but block body is missing from database"
                 );
                 return Ok(None);
@@ -2507,7 +2507,7 @@ impl Storage {
                             // single deploy map to multiple blocks, it shouldn't happen in
                             // practice.
                             error!(
-                                block_hash=?request.block_hash(),
+                                %block_hash,
                                 ?deploy_hash,
                                 "missing execution results for a deploy in particular block"
                             );

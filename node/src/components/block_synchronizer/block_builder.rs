@@ -155,6 +155,10 @@ impl BlockBuilder {
         None
     }
 
+    pub(super) fn should_fetch_execution_state(&self) -> bool {
+        self.should_fetch_execution_state
+    }
+
     pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
     }

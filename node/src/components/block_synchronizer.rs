@@ -34,8 +34,8 @@ use crate::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
-            ContractRuntimeRequest, FetcherRequest, StorageRequest, SyncGlobalStateRequest,
-            TrieAccumulatorRequest,
+            ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest,
+            SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -65,6 +65,7 @@ pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAc
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
+    + From<NetworkInfoRequest>
     + From<FetcherRequest<Block>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
@@ -86,6 +87,7 @@ pub(crate) trait ReactorEvent:
 
 impl<REv> ReactorEvent for REv where
     REv: From<FetcherRequest<ApprovalsHashes>>
+        + From<NetworkInfoRequest>
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
@@ -385,14 +387,6 @@ impl BlockSynchronizer {
                             .event(move |result| Event::GlobalStateSynced { block_hash, result }),
                     );
                 }
-                NeedNext::ApprovalsHashes(block_hash, block) => {
-                    builder.set_in_flight_latch();
-                    results.extend(peers.into_iter().flat_map(|node_id| {
-                        effect_builder
-                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
-                            .event(Event::ApprovalsHashesFetched)
-                    }))
-                }
                 NeedNext::ExecutionResultsChecksum(block_hash, global_state_root_hash) => {
                     builder.set_in_flight_latch();
                     results.extend(
@@ -403,6 +397,25 @@ impl BlockSynchronizer {
                                 result,
                             }),
                     );
+                }
+                NeedNext::ExecutionResults(block_hash, id, checksum) => {
+                    builder.set_in_flight_latch();
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, checksum)
+                            .event(move |result| Event::ExecutionResultsFetched {
+                                block_hash,
+                                result,
+                            })
+                    }))
+                }
+                NeedNext::ApprovalsHashes(block_hash, block) => {
+                    builder.set_in_flight_latch();
+                    results.extend(peers.into_iter().flat_map(|node_id| {
+                        effect_builder
+                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
+                            .event(Event::ApprovalsHashesFetched)
+                    }))
                 }
                 NeedNext::DeployByHash(block_hash, deploy_hash) => {
                     builder.set_in_flight_latch();
@@ -426,17 +439,6 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::ExecutionResults(block_hash, id, checksum) => {
-                    builder.set_in_flight_latch();
-                    results.extend(peers.into_iter().flat_map(|node_id| {
-                        effect_builder
-                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, checksum)
-                            .event(move |result| Event::ExecutionResultsFetched {
-                                block_hash,
-                                result,
-                            })
-                    }))
-                }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
                     builder.set_in_flight_latch();
                     results.extend(
@@ -447,6 +449,17 @@ impl BlockSynchronizer {
                 }
                 NeedNext::Peers(block_hash) => {
                     builder.set_in_flight_latch();
+                    if builder.should_fetch_execution_state() {
+                        // the accumulator may or may not have peers for an older block,
+                        // so we're going to also get a random sampling from networking
+                        // todo!("move historical_peers_from_network to config")
+                        let historical_peers_from_network = 5;
+                        results.extend(
+                            effect_builder
+                                .get_fully_connected_peers(historical_peers_from_network)
+                                .event(move |peers| Event::NetworkPeers(block_hash, peers)),
+                        )
+                    }
                     results.extend(
                         effect_builder
                             .get_block_accumulated_peers(block_hash)
@@ -1054,12 +1067,22 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         self.need_next(effect_builder, rng)
                     }
                     // fresh peers to apply
+                    Event::NetworkPeers(block_hash, peers) => {
+                        debug!(%block_hash, "BlockSynchronizer: got {} peers from network", peers.len());
+                        self.register_peers(block_hash, peers);
+                        self.need_next(effect_builder, rng)
+                    }
+                    // fresh peers to apply
                     Event::AccumulatedPeers(block_hash, Some(peers)) => {
+                        debug!(%block_hash, "BlockSynchronizer: got {} peers from accumulator", peers.len());
                         self.register_peers(block_hash, peers);
                         self.need_next(effect_builder, rng)
                     }
                     // no more peers available, what do we need next?
-                    Event::AccumulatedPeers(_, None) => self.need_next(effect_builder, rng),
+                    Event::AccumulatedPeers(block_hash, None) => {
+                        debug!(%block_hash, "BlockSynchronizer: got 0 peers from accumulator");
+                        self.need_next(effect_builder, rng)
+                    }
 
                     // do not hook need next; we're finished sync'ing this block
                     Event::MarkBlockCompleted(block_hash) => {

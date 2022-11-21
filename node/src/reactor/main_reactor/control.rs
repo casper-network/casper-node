@@ -746,7 +746,7 @@ impl MainReactor {
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
-                    info!("Historical: register_block_by_hash: {:?}", parent_hash);
+                    info!("Historical: register_block_by_hash: {}", parent_hash);
                     let peers_to_ask = self.net.fully_connected_peers_random(
                         rng,
                         self.chainspec.core_config.simultaneous_peer_requests as usize,
