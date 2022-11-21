@@ -1,5 +1,6 @@
 use futures::FutureExt;
 use smallvec::smallvec;
+use tracing::info;
 
 use crate::{
     components::InitializedComponent,
@@ -14,6 +15,7 @@ pub(super) fn initialize_component(
     initiating_event: MainEvent,
 ) -> Option<Effects<MainEvent>> {
     if component.is_uninitialized() {
+        info!("initialized {}", component.name());
         return Some(smallvec![async { smallvec![initiating_event] }.boxed()]);
     }
     if component.is_fatal() {

@@ -29,7 +29,7 @@ use casper_types::{
 use super::*;
 use crate::{
     components::{
-        small_network::Identity as NetworkIdentity,
+        network::Identity as NetworkIdentity,
         storage::{self, Storage},
     },
     effect::{

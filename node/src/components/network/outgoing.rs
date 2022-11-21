@@ -620,7 +620,7 @@ where
     /// Removes an address from the block list.
     ///
     /// Does nothing if the address was not blocked.
-    // This function is currently not in use by `small_network` itself.
+    // This function is currently not in use by `network` itself.
     #[allow(dead_code)]
     pub(crate) fn redeem_addr(&mut self, addr: SocketAddr, now: Instant) -> Option<DialRequest<H>> {
         let span = make_span(addr, self.outgoing.get(&addr));
@@ -907,7 +907,7 @@ mod tests {
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
     use crate::{
-        components::small_network::blocklist::BlocklistJustification,
+        components::network::blocklist::BlocklistJustification,
         testing::{init_logging, test_clock::TestClock},
     };
 

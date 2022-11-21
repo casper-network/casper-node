@@ -17,13 +17,15 @@ use crate::{
         Component, ComponentStatus, InitializedComponent,
     },
     effect::{
-        announcements::DeployBufferAnnouncement, requests::DeployBufferRequest, EffectBuilder,
-        EffectExt, Effects,
+        announcements::DeployBufferAnnouncement,
+        requests::{DeployBufferRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Approval, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, FinalizedBlock,
+        Approval, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId,
+        FinalizedBlock,
     },
     NodeRng,
 };
@@ -130,7 +132,27 @@ impl DeployBuffer {
         effects
     }
 
-    fn register_deploy(&mut self, deploy: Deploy) {
+    fn register_deploy_gossiped<REv>(
+        &mut self,
+        deploy_id: DeployId,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event> + From<StorageRequest> + Send,
+    {
+        effect_builder
+            .get_stored_deploy(deploy_id)
+            .event(move |result| Event::GotDeployFromStorage(Box::new(result)))
+    }
+
+    fn register_deploy(&mut self, maybe_deploy: Option<Deploy>) {
+        let deploy = match maybe_deploy {
+            None => {
+                error!("received gossip finished notification for deploy which is not available in storage");
+                return;
+            }
+            Some(deploy) => deploy,
+        };
         let deploy_hash = deploy.hash();
         if deploy.is_valid().is_err() {
             error!(?deploy_hash, "invalid deploy must not be buffered");
@@ -243,7 +265,7 @@ impl DeployBuffer {
 
 impl<REv> InitializedComponent<REv> for DeployBuffer
 where
-    REv: From<Event> + From<DeployBufferAnnouncement> + Send + 'static,
+    REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
     fn status(&self) -> ComponentStatus {
         self.status.clone()
@@ -256,7 +278,7 @@ where
 
 impl<REv> Component<REv> for DeployBuffer
 where
-    REv: From<Event> + From<DeployBufferAnnouncement> + Send + 'static,
+    REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
     type Event = Event;
 
@@ -311,8 +333,11 @@ where
                 self.register_block_proposed(*proposed);
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::ReceiveDeploy(deploy)) => {
-                self.register_deploy(*deploy);
+            (ComponentStatus::Initialized, Event::ReceiveDeployGossiped(deploy_id)) => {
+                self.register_deploy_gossiped(deploy_id, effect_builder)
+            }
+            (ComponentStatus::Initialized, Event::GotDeployFromStorage(maybe_deploy)) => {
+                self.register_deploy(*maybe_deploy);
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Expire) => self.expire(effect_builder),

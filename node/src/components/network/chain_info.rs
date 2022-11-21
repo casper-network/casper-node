@@ -16,7 +16,7 @@ use super::{
 };
 use crate::types::Chainspec;
 
-/// Data retained from the chainspec by the small networking component.
+/// Data retained from the chainspec by the networking component.
 ///
 /// Typically this information is used for creating handshakes.
 #[derive(DataSize, Debug)]

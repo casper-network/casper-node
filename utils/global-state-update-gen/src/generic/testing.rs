@@ -16,6 +16,7 @@ use super::{
     config::{AccountConfig, Config, Transfer},
     get_update,
     state_reader::StateReader,
+    Update,
 };
 
 const TOTAL_SUPPLY_KEY: URef = URef::new([1; 32], AccessRights::READ_ADD_WRITE);
@@ -136,12 +137,22 @@ impl StateReader for MockStateReader {
 fn should_transfer_funds() {
     let mut rng = TestRng::new();
 
-    let account1: AccountHash = rng.gen();
-    let account2: AccountHash = rng.gen();
+    let public_key1 = PublicKey::random(&mut rng);
+    let public_key2 = PublicKey::random(&mut rng);
+    let account1 = public_key1.to_account_hash();
+    let account2 = public_key2.to_account_hash();
 
-    let mut reader = MockStateReader::new()
-        .with_account(account1, U512::from(1_000_000_000), &mut rng)
-        .with_account(account2, U512::zero(), &mut rng);
+    let mut reader = MockStateReader::new().with_validators(
+        vec![
+            (
+                public_key1.clone(),
+                U512::from(1),
+                U512::from(1_000_000_000),
+            ),
+            (public_key2.clone(), U512::zero(), U512::zero()),
+        ],
+        &mut rng,
+    );
 
     let config = Config {
         transfers: vec![Transfer {
@@ -152,14 +163,21 @@ fn should_transfer_funds() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
+
+    assert_eq!(validators.len(), 2);
+    assert!(validators.contains(&public_key1));
+    assert!(validators.contains(&public_key2));
 
     let account1 = reader.get_account(account1).unwrap();
     let account2 = reader.get_account(account2).unwrap();
 
     // should write decreased balance to the first purse
     assert_eq!(
-        result.get(&Key::Balance(account1.main_purse().addr())),
+        entries.get(&Key::Balance(account1.main_purse().addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(700_000_000)).expect("should convert U512 to CLValue")
         )),
@@ -167,7 +185,7 @@ fn should_transfer_funds() {
 
     // should write increased balance to the second purse
     assert_eq!(
-        result.get(&Key::Balance(account2.main_purse().addr())),
+        entries.get(&Key::Balance(account2.main_purse().addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(300_000_000)).expect("should convert U512 to CLValue")
         )),
@@ -176,25 +194,33 @@ fn should_transfer_funds() {
     // total supply is written on every purse balance change, so we'll have a write to this key
     // even though the changes cancel each other out
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
+        entries.get(&reader.get_total_supply_key()),
         Some(&StoredValue::from(
-            CLValue::from_t(U512::from(1_000_000_000)).expect("should convert U512 to CLValue")
+            CLValue::from_t(U512::from(1_000_000_001)).expect("should convert U512 to CLValue")
         ))
     );
 
     // 3 keys tested above should be all that would be written
-    assert_eq!(result.len(), 3);
+    assert_eq!(entries.len(), 3);
 }
 
 #[test]
 fn should_create_account_when_transferring_funds() {
     let mut rng = TestRng::new();
 
-    let account1: AccountHash = rng.gen();
-    let account2: AccountHash = rng.gen();
+    let public_key1 = PublicKey::random(&mut rng);
+    let public_key2 = PublicKey::random(&mut rng);
+    let account1 = public_key1.to_account_hash();
+    let account2 = public_key2.to_account_hash();
 
-    let mut reader =
-        MockStateReader::new().with_account(account1, U512::from(1_000_000_000), &mut rng);
+    let mut reader = MockStateReader::new().with_validators(
+        vec![(
+            public_key1.clone(),
+            U512::from(1),
+            U512::from(1_000_000_000),
+        )],
+        &mut rng,
+    );
 
     let config = Config {
         transfers: vec![Transfer {
@@ -205,21 +231,26 @@ fn should_create_account_when_transferring_funds() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
+
+    assert_eq!(validators, vec![public_key1]);
 
     let account1 = reader.get_account(account1).unwrap();
     assert!(reader.get_account(account2).is_none());
 
     // should write decreased balance to the first purse
     assert_eq!(
-        result.get(&Key::Balance(account1.main_purse().addr())),
+        entries.get(&Key::Balance(account1.main_purse().addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(700_000_000)).expect("should convert U512 to CLValue")
         )),
     );
 
     // the new account should be created
-    let account_write = result
+    let account_write = entries
         .get(&Key::Account(account2))
         .expect("should create account")
         .as_account()
@@ -229,13 +260,13 @@ fn should_create_account_when_transferring_funds() {
 
     // check that the main purse for the new account has been created with the correct amount
     assert_eq!(
-        result.get(&Key::URef(new_purse)),
+        entries.get(&Key::URef(new_purse)),
         Some(&StoredValue::from(
             CLValue::from_t(()).expect("should convert unit to CLValue")
         ))
     );
     assert_eq!(
-        result.get(&Key::Balance(new_purse.addr())),
+        entries.get(&Key::Balance(new_purse.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(300_000_000)).expect("should convert U512 to CLValue")
         ))
@@ -244,14 +275,14 @@ fn should_create_account_when_transferring_funds() {
     // total supply is written on every purse balance change, so we'll have a write to this key
     // even though the changes cancel each other out
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
+        entries.get(&reader.get_total_supply_key()),
         Some(&StoredValue::from(
-            CLValue::from_t(U512::from(1_000_000_000)).expect("should convert U512 to CLValue")
+            CLValue::from_t(U512::from(1_000_000_001)).expect("should convert U512 to CLValue")
         ))
     );
 
     // 5 keys tested above should be all that would be written
-    assert_eq!(result.len(), 5);
+    assert_eq!(entries.len(), 5);
 }
 
 #[test]
@@ -264,8 +295,8 @@ fn should_change_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
+            (validator1.clone(), U512::from(101), U512::from(101)),
+            (validator2.clone(), U512::from(102), U512::from(102)),
             (validator3.clone(), U512::from(103), U512::from(103)),
         ],
         &mut rng,
@@ -281,11 +312,19 @@ fn should_change_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    assert_eq!(validators.len(), 3);
+    assert!(validators.contains(&validator1));
+    assert!(validators.contains(&validator2));
+    assert!(validators.contains(&validator3));
+
+    assert!(entries.contains_key(&reader.get_seigniorage_recipients_key()));
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
+        entries.get(&reader.get_total_supply_key()),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(610)).expect("should convert U512 to CLValue")
         ))
@@ -304,13 +343,13 @@ fn should_change_one_validator() {
         .main_purse();
 
     assert_eq!(
-        result.get(&Key::Balance(bid_purse.addr())),
+        entries.get(&Key::Balance(bid_purse.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(104)).expect("should convert U512 to CLValue")
         ))
     );
     assert_eq!(
-        result.get(&Key::Balance(main_purse.addr())),
+        entries.get(&Key::Balance(main_purse.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
         ))
@@ -319,12 +358,12 @@ fn should_change_one_validator() {
     // check bid overwrite
     let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
     assert_eq!(
-        result.get(&Key::Bid(account3)),
+        entries.get(&Key::Bid(account3)),
         Some(&StoredValue::from(expected_bid))
     );
 
     // 5 keys above should be all that was overwritten
-    assert_eq!(result.len(), 5);
+    assert_eq!(entries.len(), 5);
 }
 
 #[test]
@@ -337,8 +376,8 @@ fn should_change_only_stake_of_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
+            (validator1.clone(), U512::from(101), U512::from(101)),
+            (validator2.clone(), U512::from(102), U512::from(102)),
             (validator3.clone(), U512::from(103), U512::from(103)),
         ],
         &mut rng,
@@ -354,11 +393,19 @@ fn should_change_only_stake_of_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    assert_eq!(validators.len(), 3);
+    assert!(validators.contains(&validator1));
+    assert!(validators.contains(&validator2));
+    assert!(validators.contains(&validator3));
+
+    assert!(entries.contains_key(&reader.get_seigniorage_recipients_key()));
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
+        entries.get(&reader.get_total_supply_key()),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(613)).expect("should convert U512 to CLValue")
         ))
@@ -373,7 +420,7 @@ fn should_change_only_stake_of_one_validator() {
         .bonding_purse();
 
     assert_eq!(
-        result.get(&Key::Balance(bid_purse.addr())),
+        entries.get(&Key::Balance(bid_purse.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(104)).expect("should convert U512 to CLValue")
         ))
@@ -382,12 +429,12 @@ fn should_change_only_stake_of_one_validator() {
     // check bid overwrite
     let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
     assert_eq!(
-        result.get(&Key::Bid(account3)),
+        entries.get(&Key::Bid(account3)),
         Some(&StoredValue::from(expected_bid))
     );
 
     // 4 keys above should be all that was overwritten
-    assert_eq!(result.len(), 4);
+    assert_eq!(entries.len(), 4);
 }
 
 #[test]
@@ -400,8 +447,8 @@ fn should_change_only_balance_of_one_validator() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![
-            (validator1, U512::from(101), U512::from(101)),
-            (validator2, U512::from(102), U512::from(102)),
+            (validator1.clone(), U512::from(101), U512::from(101)),
+            (validator2.clone(), U512::from(102), U512::from(102)),
             (validator3.clone(), U512::from(103), U512::from(103)),
         ],
         &mut rng,
@@ -417,10 +464,18 @@ fn should_change_only_balance_of_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
+
+    assert_eq!(validators.len(), 3);
+    assert!(validators.contains(&validator1));
+    assert!(validators.contains(&validator2));
+    assert!(validators.contains(&validator3));
 
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
+        entries.get(&reader.get_total_supply_key()),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(609)).expect("should convert U512 to CLValue")
         ))
@@ -434,14 +489,14 @@ fn should_change_only_balance_of_one_validator() {
         .main_purse();
 
     assert_eq!(
-        result.get(&Key::Balance(main_purse.addr())),
+        entries.get(&Key::Balance(main_purse.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
         ))
     );
 
     // 2 keys above should be all that was overwritten
-    assert_eq!(result.len(), 2);
+    assert_eq!(entries.len(), 2);
 }
 
 #[test]
@@ -467,11 +522,16 @@ fn should_replace_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    assert_eq!(validators, vec![validator2.clone()]);
+
+    assert!(entries.contains_key(&reader.get_seigniorage_recipients_key()));
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
+        entries.get(&reader.get_total_supply_key()),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(305)).expect("should convert U512 to CLValue")
         ))
@@ -485,7 +545,7 @@ fn should_replace_one_validator() {
         .bonding_purse();
 
     assert_eq!(
-        result.get(&Key::Balance(bid_purse.addr())),
+        entries.get(&Key::Balance(bid_purse.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::zero()).expect("should convert U512 to CLValue")
         ))
@@ -496,7 +556,7 @@ fn should_replace_one_validator() {
     let mut expected_bid_1 = Bid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
     expected_bid_1.deactivate();
     assert_eq!(
-        result.get(&Key::Bid(account1)),
+        entries.get(&Key::Bid(account1)),
         Some(&StoredValue::from(expected_bid_1))
     );
 
@@ -504,7 +564,7 @@ fn should_replace_one_validator() {
     let account2 = validator2.to_account_hash();
 
     // the new account should be created
-    let account_write = result
+    let account_write = entries
         .get(&Key::Account(account2))
         .expect("should create account")
         .as_account()
@@ -514,19 +574,19 @@ fn should_replace_one_validator() {
 
     // check that the main purse for the new account has been created with the correct amount
     assert_eq!(
-        result.get(&Key::URef(main_purse_2)),
+        entries.get(&Key::URef(main_purse_2)),
         Some(&StoredValue::from(
             CLValue::from_t(()).expect("should convert unit to CLValue")
         ))
     );
     assert_eq!(
-        result.get(&Key::Balance(main_purse_2.addr())),
+        entries.get(&Key::Balance(main_purse_2.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(102)).expect("should convert U512 to CLValue")
         ))
     );
 
-    let bid_write = result
+    let bid_write = entries
         .get(&Key::Bid(account2))
         .expect("should create bid")
         .as_bid()
@@ -545,18 +605,127 @@ fn should_replace_one_validator() {
 
     // check that the bid purse for the new validator has been created with the correct amount
     assert_eq!(
-        result.get(&Key::URef(bid_purse_2)),
+        entries.get(&Key::URef(bid_purse_2)),
         Some(&StoredValue::from(
             CLValue::from_t(()).expect("should convert unit to CLValue")
         ))
     );
     assert_eq!(
-        result.get(&Key::Balance(bid_purse_2.addr())),
+        entries.get(&Key::Balance(bid_purse_2.addr())),
         Some(&StoredValue::from(
             CLValue::from_t(U512::from(102)).expect("should convert U512 to CLValue")
         ))
     );
 
     // 10 keys above should be all that was overwritten
-    assert_eq!(result.len(), 10);
+    assert_eq!(entries.len(), 10);
+}
+
+#[test]
+fn should_add_one_validator() {
+    let mut rng = TestRng::new();
+
+    let validator1 = PublicKey::random(&mut rng);
+    let validator2 = PublicKey::random(&mut rng);
+    let validator3 = PublicKey::random(&mut rng);
+    let validator4 = PublicKey::random(&mut rng);
+
+    let mut reader = MockStateReader::new().with_validators(
+        vec![
+            (validator1.clone(), U512::from(101), U512::from(101)),
+            (validator2.clone(), U512::from(102), U512::from(102)),
+            (validator3.clone(), U512::from(103), U512::from(103)),
+        ],
+        &mut rng,
+    );
+
+    // we'll be adding validator 4
+    let config = Config {
+        accounts: vec![AccountConfig {
+            public_key: validator4.clone(),
+            balance: Some(U512::from(100)),
+            stake: Some(U512::from(104)),
+        }],
+        only_listed_validators: false,
+        ..Default::default()
+    };
+
+    let Update {
+        validators,
+        entries,
+    } = get_update(&mut reader, config);
+
+    assert_eq!(validators.len(), 4);
+    assert!(validators.contains(&validator1));
+    assert!(validators.contains(&validator2));
+    assert!(validators.contains(&validator3));
+    assert!(validators.contains(&validator4));
+
+    assert!(entries.contains_key(&reader.get_seigniorage_recipients_key()));
+    assert_eq!(
+        entries.get(&reader.get_total_supply_key()),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(816)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    // check writes for validator4
+    let account4 = validator4.to_account_hash();
+
+    // the new account should be created
+    let account_write = entries
+        .get(&Key::Account(account4))
+        .expect("should create account")
+        .as_account()
+        .expect("should be account")
+        .clone();
+    let main_purse_4 = account_write.main_purse();
+
+    // check that the main purse for the new account has been created with the correct amount
+    assert_eq!(
+        entries.get(&Key::URef(main_purse_4)),
+        Some(&StoredValue::from(
+            CLValue::from_t(()).expect("should convert unit to CLValue")
+        ))
+    );
+    assert_eq!(
+        entries.get(&Key::Balance(main_purse_4.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    let bid_write = entries
+        .get(&Key::Bid(account4))
+        .expect("should create bid")
+        .as_bid()
+        .expect("should be bid")
+        .clone();
+    assert_eq!(bid_write.validator_public_key(), &validator4);
+    assert_eq!(
+        bid_write
+            .total_staked_amount()
+            .expect("should read total staked amount"),
+        U512::from(104)
+    );
+    assert!(!bid_write.inactive());
+
+    let bid_purse_4 = *bid_write.bonding_purse();
+
+    // check that the bid purse for the new validator has been created with the correct amount
+    assert_eq!(
+        entries.get(&Key::URef(bid_purse_4)),
+        Some(&StoredValue::from(
+            CLValue::from_t(()).expect("should convert unit to CLValue")
+        ))
+    );
+    assert_eq!(
+        entries.get(&Key::Balance(bid_purse_4.addr())),
+        Some(&StoredValue::from(
+            CLValue::from_t(U512::from(104)).expect("should convert U512 to CLValue")
+        ))
+    );
+
+    // 8 keys above should be all that was written
+    assert_eq!(entries.len(), 8);
 }

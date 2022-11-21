@@ -35,16 +35,17 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
+        block_synchronizer::{BlockSyncStatus, GlobalStateSynchronizerError, TrieAccumulatorError},
         consensus::{BlockContext, ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         fetcher::FetchResult,
-        small_network::NetworkInsights,
+        network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
+    reactor::main_reactor::ReactorState,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -1348,6 +1349,15 @@ impl Display for UpgradeWatcherRequest {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct ReactorStatusRequest(pub(crate) Responder<(ReactorState, Timestamp)>);
+
+impl Display for ReactorStatusRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "get reactor status")
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) enum BlockAccumulatorRequest {
     GetPeersForBlock {
         block_hash: BlockHash,
@@ -1369,6 +1379,9 @@ pub(crate) enum BlockSynchronizerRequest {
         block_hash: BlockHash,
         height: u64,
         state_root_hash: Digest,
+    },
+    Status {
+        responder: Responder<Vec<BlockSyncStatus>>,
     },
 }
 
@@ -1392,6 +1405,9 @@ impl Display for BlockSynchronizerRequest {
                     {}",
                     block_hash, height, state_root_hash
                 )
+            }
+            BlockSynchronizerRequest::Status { .. } => {
+                write!(f, "block synchronizer request: status")
             }
         }
     }

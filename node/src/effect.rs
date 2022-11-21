@@ -134,17 +134,17 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
+        block_synchronizer::{BlockSyncStatus, GlobalStateSynchronizerError, TrieAccumulatorError},
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
     effect::requests::BlockAccumulatorRequest,
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockAndDeploys, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
@@ -164,9 +164,10 @@ use announcements::{
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
-    FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
+    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, StorageRequest,
     SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
@@ -1446,6 +1447,25 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
+    where
+        REv: From<ReactorStatusRequest>,
+    {
+        self.make_request(ReactorStatusRequest, QueueKind::Regular)
+            .await
+    }
+
+    pub(crate) async fn get_block_synchronizer_status(self) -> Vec<BlockSyncStatus>
+    where
+        REv: From<BlockSynchronizerRequest>,
+    {
+        self.make_request(
+            |responder| BlockSynchronizerRequest::Status { responder },
+            QueueKind::Regular,
         )
         .await
     }

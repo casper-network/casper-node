@@ -12,12 +12,14 @@ mod trie_accumulator;
 
 use datasize::DataSize;
 use either::Either;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -54,7 +56,7 @@ pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
 
-use super::small_network::blocklist::BlocklistJustification;
+use super::network::blocklist::BlocklistJustification;
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
@@ -102,7 +104,7 @@ impl<REv> ReactorEvent for REv where
 pub(crate) enum BlockSynchronizerProgress {
     Idle,
     Syncing(BlockHash, Option<u64>, Timestamp),
-    Synced(BlockHash, u64),
+    Synced(BlockHash, u64, EraId),
 }
 
 impl Display for BlockSynchronizerProgress {
@@ -116,15 +118,23 @@ impl Display for BlockSynchronizerProgress {
                     block_height, timestamp, block_hash
                 )
             }
-            BlockSynchronizerProgress::Synced(block_hash, block_height) => {
+            BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 write!(
                     f,
-                    "block_height: {} block_hash: {}",
-                    block_height, block_hash
+                    "block_height: {} block_hash: {} era_id: {}",
+                    block_height, block_hash, era_id
                 )
             }
         }
     }
+}
+
+#[derive(Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BlockSyncStatus {
+    block_hash: BlockHash,
+    block_height: Option<u64>,
+    acquisition_state: String, // BlockAcquisitionState.to_string()
 }
 
 #[derive(DataSize, Debug)]
@@ -209,7 +219,7 @@ impl BlockSynchronizer {
             &self.historical,
             &self.forward,
         ) {
-            if builder.block_hash() == block_hash && !builder.is_fatal() {
+            if builder.block_hash() == block_hash && !builder.is_failed() {
                 return false;
             }
         }
@@ -840,10 +850,14 @@ impl BlockSynchronizer {
 
     fn progress(&self, builder: &BlockBuilder) -> BlockSynchronizerProgress {
         if builder.is_finished() {
-            match builder.block_height() {
-                None => error!("finished builder should have block height"),
-                Some(block_height) => {
-                    return BlockSynchronizerProgress::Synced(builder.block_hash(), block_height)
+            match builder.block_height_and_era() {
+                None => error!("finished builder should have block height and era"),
+                Some((block_height, era_id)) => {
+                    return BlockSynchronizerProgress::Synced(
+                        builder.block_hash(),
+                        block_height,
+                        era_id,
+                    )
                 }
             }
         }
@@ -856,6 +870,18 @@ impl BlockSynchronizer {
                     .unwrap_or_else(Timestamp::zero),
             ),
         )
+    }
+
+    pub fn status(&self) -> Vec<BlockSyncStatus> {
+        self.historical
+            .iter()
+            .chain(self.forward.iter())
+            .map(|builder| BlockSyncStatus {
+                block_hash: builder.block_hash(),
+                block_height: builder.block_height(),
+                acquisition_state: builder.block_acquisition_state().to_string(),
+            })
+            .collect()
     }
 }
 
@@ -949,6 +975,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                                 }),
                         );
                         effects
+                    }
+                    Event::Request(BlockSynchronizerRequest::Status { responder }) => {
+                        responder.respond(self.status()).ignore()
                     }
 
                     // tunnel event to global state synchronizer

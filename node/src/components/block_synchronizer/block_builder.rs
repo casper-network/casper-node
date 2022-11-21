@@ -132,12 +132,25 @@ impl BlockBuilder {
         self.touch();
     }
 
+    pub(crate) fn block_acquisition_state(&self) -> &BlockAcquisitionState {
+        &self.acquisition_state
+    }
+
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
 
     pub(super) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
+    }
+
+    pub(super) fn block_height_and_era(&self) -> Option<(u64, EraId)> {
+        if let Some(block_height) = self.acquisition_state.block_height() {
+            if let Some(evw) = &self.validator_weights {
+                return Some((block_height, evw.era_id()));
+            }
+        }
+        None
     }
 
     pub(super) fn last_progress_time(&self) -> Timestamp {
@@ -159,7 +172,7 @@ impl BlockBuilder {
         self.in_flight_latch = Some(Timestamp::now());
     }
 
-    pub(super) fn is_fatal(&self) -> bool {
+    pub(super) fn is_failed(&self) -> bool {
         matches!(self.acquisition_state, BlockAcquisitionState::Failed(_, _))
     }
 
@@ -386,7 +399,7 @@ impl BlockBuilder {
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
         peers.into_iter().for_each(|peer| {
-            if !(self.is_finished() || self.is_fatal()) {
+            if !(self.is_finished() || self.is_failed()) {
                 self.peer_list.register_peer(peer)
             }
         });

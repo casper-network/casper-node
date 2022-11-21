@@ -8,9 +8,9 @@ use crate::{
         block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
-        diagnostics_port, event_stream_server, fetcher, gossiper, rest_server, rpc_server,
-        small_network::{self, GossipedAddress},
-        storage, sync_leaper, upgrade_watcher,
+        diagnostics_port, event_stream_server, fetcher, gossiper,
+        network::{self, GossipedAddress},
+        rest_server, rpc_server, storage, sync_leaper, upgrade_watcher,
     },
     effect::{
         announcements::{
@@ -30,8 +30,8 @@ use crate::{
             BlockCompleteConfirmationRequest, BlockSynchronizerRequest, BlockValidationRequest,
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
             DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
-            TrieAccumulatorRequest, UpgradeWatcherRequest,
+            NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest, StorageRequest,
+            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -79,7 +79,7 @@ pub(crate) enum MainEvent {
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
     #[from]
-    Network(small_network::Event<Message>),
+    Network(network::Event<Message>),
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
     #[from]
@@ -215,6 +215,8 @@ pub(crate) enum MainEvent {
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
     AppStateRequest(AppStateRequest),
+    #[from]
+    MainReactorRequest(#[serde(skip_serializing)] ReactorStatusRequest),
 }
 
 impl ReactorEvent for MainEvent {
@@ -238,7 +240,7 @@ impl ReactorEvent for MainEvent {
     fn description(&self) -> &'static str {
         match self {
             MainEvent::ReactorCrank => "ReactorCrank",
-            MainEvent::Network(_) => "SmallNetwork",
+            MainEvent::Network(_) => "Network",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::DeployBuffer(_) => "DeployBuffer",
             MainEvent::Storage(_) => "Storage",
@@ -321,6 +323,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            MainEvent::MainReactorRequest(_) => "MainReactorRequest",
         }
     }
 }
@@ -330,7 +333,7 @@ impl Display for MainEvent {
         match self {
             MainEvent::ReactorCrank => write!(f, "reactor crank"),
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
-            MainEvent::Network(event) => write!(f, "small network: {}", event),
+            MainEvent::Network(event) => write!(f, "network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
             MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
@@ -490,6 +493,7 @@ impl Display for MainEvent {
             MainEvent::BlockGossiperAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
+            MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
         }
     }
 }

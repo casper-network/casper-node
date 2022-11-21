@@ -1,6 +1,6 @@
 //! Fully connected overlay network
 //!
-//! The *small network* is an overlay network where each node participating is attempting to
+//! The *network component* is an overlay network where each node participating is attempting to
 //! maintain a connection to every other node identified on the same network. The component does not
 //! guarantee message delivery, so in between reconnections, messages may be lost.
 //!
@@ -137,7 +137,7 @@ impl<P> Display for OutgoingHandle<P> {
 }
 
 #[derive(DataSize)]
-pub(crate) struct SmallNetwork<REv, P>
+pub(crate) struct Network<REv, P>
 where
     REv: 'static,
     P: Payload,
@@ -171,7 +171,7 @@ where
     #[data_size(skip)]
     incoming_limiter: Limiter,
 
-    /// The era that is considered the active era by the small network component.
+    /// The era that is considered the active era by the network component.
     active_era: EraId,
 
     /// The status of this component.
@@ -180,8 +180,8 @@ where
 
 #[derive(DataSize)]
 struct ChannelManagement {
-    /// Channel signaling a shutdown of the small network.
-    // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
+    /// Channel signaling a shutdown of the network.
+    // Note: This channel is closed when `Network` is dropped, signalling the receivers that
     // they should cease operation.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
@@ -190,7 +190,7 @@ struct ChannelManagement {
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Channel signaling a shutdown of the incoming connections.
-    // Note: This channel is closed when we finished syncing, so the `SmallNetwork` can close all
+    // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
     #[data_size(skip)]
@@ -201,7 +201,7 @@ struct ChannelManagement {
     close_incoming_receiver: watch::Receiver<()>,
 }
 
-impl<REv, P> SmallNetwork<REv, P>
+impl<REv, P> Network<REv, P>
 where
     P: Payload + 'static,
     REv: ReactorEvent
@@ -211,7 +211,7 @@ where
         + From<NetworkRequest<P>>
         + From<PeerBehaviorAnnouncement>,
 {
-    /// Creates a new small network component instance.
+    /// Creates a new network component instance.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
         cfg: Config,
@@ -220,7 +220,7 @@ where
         registry: &Registry,
         chain_info_source: C,
         validator_matrix: ValidatorMatrix,
-    ) -> Result<SmallNetwork<REv, P>> {
+    ) -> Result<Network<REv, P>> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_limiter = Limiter::new(
@@ -253,7 +253,7 @@ where
             &net_metrics,
         ));
 
-        let component = SmallNetwork {
+        let component = Network {
             cfg,
             context,
             outgoing_manager,
@@ -900,7 +900,7 @@ where
     }
 }
 
-impl<REv, P> Finalize for SmallNetwork<REv, P>
+impl<REv, P> Finalize for Network<REv, P>
 where
     REv: Send + 'static,
     P: Payload,
@@ -939,7 +939,7 @@ where
     }
 }
 
-impl<REv, P> Component<REv> for SmallNetwork<REv, P>
+impl<REv, P> Component<REv> for Network<REv, P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -1150,7 +1150,7 @@ where
     }
 }
 
-impl<REv, P> InitializedComponent<REv> for SmallNetwork<REv, P>
+impl<REv, P> InitializedComponent<REv> for Network<REv, P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -1166,7 +1166,7 @@ where
     }
 
     fn name(&self) -> &str {
-        "small_network"
+        "network"
     }
 }
 
@@ -1212,14 +1212,14 @@ fn framed_transport(transport: Transport, maximum_net_message_size: u32) -> Fram
     )
 }
 
-impl<R, P> Debug for SmallNetwork<R, P>
+impl<R, P> Debug for Network<R, P>
 where
     P: Payload,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // We output only the most important fields of the component, as it gets unwieldy quite fast
         // otherwise.
-        f.debug_struct("SmallNetwork")
+        f.debug_struct("Network")
             .field("our_id", &self.context.our_id())
             .field("status", &self.status)
             .field("public_addr", &self.context.public_addr())

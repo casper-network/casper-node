@@ -13,6 +13,7 @@ mod keep_up_instruction;
 mod reactor_state;
 #[cfg(test)]
 mod tests;
+mod upgrade_shutdown_instruction;
 mod upgrading_instruction;
 mod validate_instruction;
 
@@ -38,9 +39,9 @@ use crate::{
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, Gossiper},
         metrics::Metrics,
+        network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
-        small_network::{self, GossipedAddress, Identity as NetworkIdentity, SmallNetwork},
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
@@ -88,7 +89,7 @@ pub(crate) struct MainReactor {
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
-    small_network: SmallNetwork<MainEvent, Message>,
+    net: Network<MainEvent, Message>,
     consensus: EraSupervisor,
 
     // block handling
@@ -198,7 +199,7 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let small_network = SmallNetwork::new(
+        let network = Network::new(
             config.network.clone(),
             network_identity,
             Some((our_secret_key.clone(), our_public_key.clone())),
@@ -294,7 +295,7 @@ impl reactor::Reactor for MainReactor {
             storage,
             contract_runtime,
             upgrade_watcher,
-            small_network,
+            net: network,
             address_gossiper,
 
             rpc_server,
@@ -387,6 +388,9 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::MainReactorRequest(req) => {
+                req.0.respond((self.state, self.last_progress)).ignore()
+            }
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => reactor::wrap_effects(
@@ -441,14 +445,14 @@ impl reactor::Reactor for MainReactor {
             // NETWORK CONNECTION AND ORIENTATION
             MainEvent::Network(event) => reactor::wrap_effects(
                 MainEvent::Network,
-                self.small_network.handle_event(effect_builder, rng, event),
+                self.net.handle_event(effect_builder, rng, event),
             ),
             MainEvent::NetworkRequest(req) => {
-                let event = MainEvent::Network(small_network::Event::from(req));
+                let event = MainEvent::Network(network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             MainEvent::NetworkInfoRequest(req) => {
-                let event = MainEvent::Network(small_network::Event::from(req));
+                let event = MainEvent::Network(network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
             }
             MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
@@ -502,9 +506,8 @@ impl reactor::Reactor for MainReactor {
                 | GossiperAnnouncement::NewItemBody { .. }
                 | GossiperAnnouncement::FinishedGossiping(_) => Effects::new(),
                 GossiperAnnouncement::NewCompleteItem(gossiped_address) => {
-                    let reactor_event = MainEvent::Network(
-                        small_network::Event::PeerAddressReceived(gossiped_address),
-                    );
+                    let reactor_event =
+                        MainEvent::Network(network::Event::PeerAddressReceived(gossiped_address));
                     self.dispatch_event(effect_builder, rng, reactor_event)
                 }
             },
@@ -839,17 +842,11 @@ impl reactor::Reactor for MainReactor {
                 let mut effects = self.dispatch_event(
                     effect_builder,
                     rng,
-                    MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
-                );
-
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
                     MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
                         item_id: deploy.id(),
                         source: source.clone(),
                     }),
-                ));
+                );
 
                 effects.extend(self.dispatch_event(
                     effect_builder,
@@ -911,14 +908,12 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_deploy_id,
+                gossiped_deploy_id,
             )) => {
-                // [TODO][Fraser]: notify DeployBuffer the deploy can be proposed
-                // let reactor_event =
-                //     MainEvent::DeployBuffer(deploy_buffer::Event::
-                // BufferDeploy(gossiped_deploy_id));
-                // self.dispatch_event(effect_builder, rng, reactor_event)
-                Effects::new()
+                let reactor_event = MainEvent::DeployBuffer(
+                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
@@ -1150,6 +1145,6 @@ impl MainReactor {
 #[cfg(test)]
 impl NetworkedReactor for MainReactor {
     fn node_id(&self) -> NodeId {
-        self.small_network.node_id()
+        self.net.node_id()
     }
 }

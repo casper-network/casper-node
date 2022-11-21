@@ -10,7 +10,7 @@ use crate::unregister_metric;
 pub(super) struct MemoryMetrics {
     mem_total: IntGauge,
     mem_metrics: IntGauge,
-    mem_small_network: IntGauge,
+    mem_net: IntGauge,
     mem_address_gossiper: IntGauge,
     mem_storage: IntGauge,
     mem_contract_runtime: IntGauge,
@@ -40,8 +40,7 @@ impl MemoryMetrics {
     pub(super) fn new(registry: Registry) -> Result<Self, prometheus::Error> {
         let mem_total = IntGauge::new("mem_total", "total memory usage in bytes")?;
         let mem_metrics = IntGauge::new("mem_metrics", "metrics memory usage in bytes")?;
-        let mem_small_network =
-            IntGauge::new("mem_small_network", "small network memory usage in bytes")?;
+        let mem_net = IntGauge::new("mem_net", "network memory usage in bytes")?;
         let mem_address_gossiper = IntGauge::new(
             "mem_address_gossiper",
             "address_gossiper memory usage in bytes",
@@ -109,7 +108,7 @@ impl MemoryMetrics {
 
         registry.register(Box::new(mem_total.clone()))?;
         registry.register(Box::new(mem_metrics.clone()))?;
-        registry.register(Box::new(mem_small_network.clone()))?;
+        registry.register(Box::new(mem_net.clone()))?;
         registry.register(Box::new(mem_address_gossiper.clone()))?;
         registry.register(Box::new(mem_storage.clone()))?;
         registry.register(Box::new(mem_contract_runtime.clone()))?;
@@ -134,7 +133,7 @@ impl MemoryMetrics {
         Ok(MemoryMetrics {
             mem_total,
             mem_metrics,
-            mem_small_network,
+            mem_net,
             mem_address_gossiper,
             mem_storage,
             mem_contract_runtime,
@@ -164,7 +163,7 @@ impl MemoryMetrics {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;
-        let small_network = reactor.small_network.estimate_heap_size() as i64;
+        let network = reactor.net.estimate_heap_size() as i64;
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
@@ -187,7 +186,7 @@ impl MemoryMetrics {
         let upgrade_watcher = reactor.upgrade_watcher.estimate_heap_size() as i64;
 
         let total = metrics
-            + small_network
+            + network
             + address_gossiper
             + storage
             + contract_runtime
@@ -208,7 +207,7 @@ impl MemoryMetrics {
             + diagnostics_port
             + upgrade_watcher;
 
-        self.mem_small_network.set(small_network);
+        self.mem_net.set(network);
         self.mem_address_gossiper.set(address_gossiper);
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
@@ -239,7 +238,7 @@ impl MemoryMetrics {
         debug!(%total,
                %duration_s,
                %metrics,
-               %small_network,
+               %network,
                %address_gossiper,
                %storage,
                %contract_runtime,
@@ -269,7 +268,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_metrics);
         unregister_metric!(self.registry, self.mem_estimator_runtime_s);
 
-        unregister_metric!(self.registry, self.mem_small_network);
+        unregister_metric!(self.registry, self.mem_net);
         unregister_metric!(self.registry, self.mem_address_gossiper);
         unregister_metric!(self.registry, self.mem_storage);
         unregister_metric!(self.registry, self.mem_contract_runtime);

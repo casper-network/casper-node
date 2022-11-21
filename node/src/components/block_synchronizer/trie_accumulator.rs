@@ -258,7 +258,7 @@ where
                             Effects::new()
                         }
                         Some(mut partial_chunks) => {
-                            warn!(%error, %id, "error fetching trie chunk");
+                            debug!(%error, %id, "error fetching trie chunk");
                             // try with the next peer, if possible
                             match partial_chunks.next_peer().cloned() {
                                 Some(next_peer) => self.try_download_chunk(
@@ -268,7 +268,7 @@ where
                                     partial_chunks,
                                 ),
                                 None => {
-                                    debug!(%id, "couldn't fetch chunk");
+                                    warn!(%id, "couldn't fetch chunk");
                                     partial_chunks.respond(Err(error.into()))
                                 }
                             }

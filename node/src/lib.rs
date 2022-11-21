@@ -60,9 +60,9 @@ pub(crate) use components::{
     event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig,
+    network::Config as NetworkConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
-    small_network::Config as SmallNetworkConfig,
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub(crate) use types::NodeRng;

@@ -17,13 +17,18 @@ use casper_types::{
 
 use clap::ArgMatches;
 
-use crate::utils::{hash_from_str, print_entry, validators_diff, ValidatorsDiff};
+use crate::utils::{hash_from_str, print_entry, print_validators, validators_diff, ValidatorsDiff};
 
 use self::{
     config::{AccountConfig, Config, Transfer},
     state_reader::StateReader,
     state_tracker::StateTracker,
 };
+
+struct Update {
+    validators: Vec<PublicKey>,
+    entries: BTreeMap<Key, StoredValue>,
+}
 
 pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     let data_dir = matches.value_of("data_dir").unwrap_or(".");
@@ -38,25 +43,30 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     update_from_config(builder, config);
 }
 
-pub(crate) fn get_update<T: StateReader>(reader: T, config: Config) -> BTreeMap<Key, StoredValue> {
+fn get_update<T: StateReader>(reader: T, config: Config) -> Update {
     let mut state_tracker = StateTracker::new(reader);
 
     process_transfers(&mut state_tracker, &config.transfers);
 
     update_account_balances(&mut state_tracker, &config.accounts);
 
-    update_auction_state(
+    let validators = update_auction_state(
         &mut state_tracker,
         &config.accounts,
         config.only_listed_validators,
     );
 
-    state_tracker.get_entries()
+    let entries = state_tracker.get_entries();
+    Update {
+        validators,
+        entries,
+    }
 }
 
 pub(crate) fn update_from_config<T: StateReader>(reader: T, config: Config) {
     let update = get_update(reader, config);
-    for (key, value) in update {
+    print_validators(&update.validators);
+    for (key, value) in update.entries {
         print_entry(&key, &value);
     }
 }
@@ -86,11 +96,12 @@ fn update_account_balances<T: StateReader>(
     }
 }
 
+/// Returns the complete set of validators immediately after the upgrade.
 fn update_auction_state<T: StateReader>(
     state: &mut StateTracker<T>,
     accounts: &[AccountConfig],
     only_listed_validators: bool,
-) {
+) -> Vec<PublicKey> {
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = state.read_snapshot();
 
@@ -105,6 +116,7 @@ fn update_auction_state<T: StateReader>(
         gen_snapshot_from_old(old_snapshot.clone(), accounts)
     };
 
+    // take first value of new snapshot to get list of validators
     if new_snapshot != old_snapshot {
         // Save the write to the snapshot key.
         state.write_entry(
@@ -123,6 +135,15 @@ fn update_auction_state<T: StateReader>(
 
         state.remove_withdraws(&validators_diff.removed);
     }
+
+    // All entries in the new snapshot contain the same set of validators, just use the first entry.
+    new_snapshot
+        .values()
+        .next()
+        .expect("snapshot should have at least one entry")
+        .keys()
+        .cloned()
+        .collect()
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
@@ -154,7 +175,7 @@ fn gen_snapshot_only_listed(
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` by modifying the stakes listed in the old
-/// snaphot according to the supplied list of configured accounts.
+/// snapshot according to the supplied list of configured accounts.
 fn gen_snapshot_from_old(
     mut snapshot: SeigniorageRecipientsSnapshot,
     accounts: &[AccountConfig],
@@ -174,6 +195,20 @@ fn gen_snapshot_from_old(
             }
             None => true,
         });
+
+        // add the validators that weren't present in the old snapshot
+        for (public_key, stake) in &stakes_map {
+            if recipients.contains_key(public_key) {
+                continue;
+            }
+
+            if *stake != U512::zero() {
+                recipients.insert(
+                    public_key.clone(),
+                    SeigniorageRecipient::new(*stake, Default::default(), Default::default()),
+                );
+            }
+        }
     }
 
     snapshot

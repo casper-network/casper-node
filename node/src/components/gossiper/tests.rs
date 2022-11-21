@@ -37,7 +37,7 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        small_network::{GossipedAddress, Identity as NetworkIdentity},
+        network::{GossipedAddress, Identity as NetworkIdentity},
         storage::{self, Storage},
     },
     effect::{
@@ -57,7 +57,7 @@ use crate::{
     reactor::{self, EventQueueHandle, Runner},
     testing::{
         self,
-        network::{Network, NetworkedReactor},
+        network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
@@ -482,7 +482,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
+    let mut network = TestingNetwork::<Reactor>::new();
 
     // Add `network_size` nodes.
     let node_ids = network.add_nodes(rng, network_size).await;
@@ -539,7 +539,7 @@ async fn should_get_from_alternate_source() {
     const TIMEOUT: Duration = Duration::from_secs(2);
 
     NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
+    let mut network = TestingNetwork::<Reactor>::new();
     let mut rng = crate::new_rng();
 
     // Add `NETWORK_SIZE` nodes.
@@ -613,7 +613,7 @@ async fn should_timeout_gossip_response() {
     const TIMEOUT: Duration = Duration::from_secs(2);
 
     NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
+    let mut network = TestingNetwork::<Reactor>::new();
     let mut rng = crate::new_rng();
 
     // The target number of peers to infect with a given piece of data.
