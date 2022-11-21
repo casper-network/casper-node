@@ -16,7 +16,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::{net::UnixListener, sync::watch};
+use tokio::net::UnixListener;
 use tracing::{debug, warn};
 
 use super::Component;
@@ -27,7 +27,7 @@ use crate::{
     },
     reactor::EventQueueHandle,
     types::NodeRng,
-    utils::umask,
+    utils::{umask, DropSwitch, ObservableFuse},
     WithDir,
 };
 pub use tasks::FileSerializer;
@@ -37,9 +37,8 @@ use util::ShowUnixAddr;
 #[derive(Debug, DataSize)]
 pub(crate) struct DiagnosticsPort {
     /// Sender, when dropped, will cause server and client connections to exit.
-    #[data_size(skip)]
-    #[allow(dead_code)] // only used for its `Drop` impl.
-    shutdown_sender: watch::Sender<()>,
+    #[allow(dead_code)]
+    shutdown_fuse: DropSwitch<ObservableFuse>,
 }
 
 /// Diagnostics port configuration.
@@ -76,14 +75,14 @@ impl DiagnosticsPort {
             + Send,
     {
         let config = cfg.value();
-        let (shutdown_sender, shutdown_receiver) = watch::channel(());
+        let shutdown_fuse = DropSwitch::new(ObservableFuse::new());
 
         if !config.enabled {
             // If not enabled, do not launch a background task, simply exit immediately.
             //
             // Having a shutdown sender around still is harmless.
             debug!("diagnostics port disabled");
-            return Ok((DiagnosticsPort { shutdown_sender }, Effects::new()));
+            return Ok((DiagnosticsPort { shutdown_fuse }, Effects::new()));
         }
 
         let socket_path = cfg.with_dir(config.socket_path.clone());
@@ -97,10 +96,10 @@ impl DiagnosticsPort {
             EffectBuilder::new(event_queue),
             socket_path,
             listener,
-            shutdown_receiver,
+            shutdown_fuse.inner().clone(),
         );
 
-        Ok((DiagnosticsPort { shutdown_sender }, server.ignore()))
+        Ok((DiagnosticsPort { shutdown_fuse }, server.ignore()))
     }
 }
 
