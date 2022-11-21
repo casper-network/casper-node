@@ -661,7 +661,6 @@ where
             }
         }
     }
-
 }
 
 /// Multi-channel encoded message sender.
