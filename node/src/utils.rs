@@ -5,7 +5,7 @@ mod display_error;
 pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
-pub(crate) mod fuse;
+mod fuse;
 pub(crate) mod opt_display;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
@@ -39,7 +39,7 @@ pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
-pub(crate) use fuse::{ObservableFuse, ObservableFuseDropSwitch, SharedFuse};
+pub(crate) use fuse::{Fuse, ObservableFuse, ObservableFuseDropSwitch, SharedFuse};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 use crate::types::NodeId;
@@ -469,7 +469,6 @@ impl TimeAnchor {
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use futures::FutureExt;
     use prometheus::IntGauge;
 
     use super::{wait_for_arc_drop, xor, TokenizedCount};

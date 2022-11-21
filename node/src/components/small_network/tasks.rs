@@ -59,7 +59,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{display_error, LockedLineWriter, ObservableFuse, TokenizedCount},
+    utils::{display_error, Fuse, LockedLineWriter, ObservableFuse, TokenizedCount},
 };
 
 /// An encoded network message, ready to be sent out.
