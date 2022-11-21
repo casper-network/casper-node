@@ -24,7 +24,6 @@ use crate::{
 /// Given a root hash, find any trie keys that are descendant from it that are referenced but not
 /// present in the database.
 // TODO: We only need to check one trie key at a time
-// this is only
 fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
