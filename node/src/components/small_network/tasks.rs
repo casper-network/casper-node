@@ -59,7 +59,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{display_error, LockedLineWriter, StickyFlag, TokenizedCount},
+    utils::{display_error, LockedLineWriter, ObservableFuse, TokenizedCount},
 };
 
 /// An encoded network message, ready to be sent out.
@@ -545,7 +545,7 @@ pub(super) async fn new_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     carrier: IncomingCarrier,
     limiter: Box<dyn LimiterHandle>,
-    close_incoming: StickyFlag,
+    close_incoming: ObservableFuse,
     peer_id: NodeId,
     span: Span,
 ) -> Result<(), MessageReaderError>
@@ -698,7 +698,7 @@ pub(super) async fn encoded_message_sender(
 ) -> Result<(), OutgoingCarrierError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
     let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
-    let local_stop: StickyFlag = StickyFlag::new();
+    let local_stop: ObservableFuse = ObservableFuse::new();
 
     let mut boiler_room = FuturesUnordered::new();
 
@@ -739,7 +739,7 @@ pub(super) async fn encoded_message_sender(
 async fn shovel_data<S>(
     mut source: UnboundedReceiver<EncodedMessage>,
     mut dest: S,
-    stop: StickyFlag,
+    stop: ObservableFuse,
     limiter: Arc<dyn LimiterHandle>,
 ) -> Result<(), <S as Sink<Bytes>>::Error>
 where

@@ -5,6 +5,7 @@ mod display_error;
 pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
+pub(crate) mod fuse;
 pub(crate) mod opt_display;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
@@ -20,22 +21,17 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime},
 };
 
 use datasize::DataSize;
 use fs2::FileExt;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
-#[cfg(test)]
-use once_cell::sync::Lazy;
+
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
 use thiserror::Error;
-use tokio::sync::Notify;
 use tracing::{error, warn};
 
 pub(crate) use display_error::display_error;
@@ -43,6 +39,7 @@ pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
+pub(crate) use fuse::{ObservableFuse, ObservableFuseDropSwitch, SharedFuse};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 use crate::types::NodeId;
@@ -155,98 +152,6 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 #[inline]
 pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
-}
-
-/// A flag shared across multiple subsystems.
-#[derive(Copy, Clone, DataSize, Debug)]
-pub(crate) struct SharedFlag(&'static AtomicBool);
-
-impl SharedFlag {
-    /// Creates a new shared flag.
-    ///
-    /// The flag is initially not set.
-    pub(crate) fn new() -> Self {
-        SharedFlag(leak(AtomicBool::new(false)))
-    }
-
-    /// Checks whether the flag is set.
-    pub(crate) fn is_set(self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-
-    /// Set the flag.
-    pub(crate) fn set(self) {
-        self.0.store(true, Ordering::SeqCst)
-    }
-
-    /// Returns a shared instance of the flag for testing.
-    ///
-    /// The returned flag should **never** have `set` be called upon it.
-    #[cfg(test)]
-    pub(crate) fn global_shared() -> Self {
-        static SHARED_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
-
-        *SHARED_FLAG
-    }
-}
-
-impl Default for SharedFlag {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// A flag that can be set once and shared across multiple threads, while allowing waits for change.
-#[derive(Clone, Debug)]
-pub(crate) struct StickyFlag(Arc<StickyFlagInner>);
-
-impl StickyFlag {
-    /// Creates a new sticky flag.
-    ///
-    /// The flag will start out as not set.
-    pub(crate) fn new() -> Self {
-        StickyFlag(Arc::new(StickyFlagInner {
-            flag: AtomicBool::new(false),
-            notify: Notify::new(),
-        }))
-    }
-}
-
-/// Inner implementation of the `StickyFlag`.
-#[derive(Debug)]
-struct StickyFlagInner {
-    /// The flag to be cleared.
-    flag: AtomicBool,
-    /// Notification that the flag has been changed.
-    notify: Notify,
-}
-
-impl StickyFlag {
-    /// Sets the flag.
-    ///
-    /// Will always send a notification, regardless of whether the flag was actually changed.
-    pub(crate) fn set(&self) {
-        self.0.flag.store(true, Ordering::SeqCst);
-        self.0.notify.notify_waiters();
-    }
-
-    /// Waits for the flag to be set.
-    ///
-    /// If the flag is already set, returns immediately, otherwise waits for the notification.
-    ///
-    /// The future returned by this function is safe to cancel.
-    pub(crate) async fn wait(&self) {
-        // Note: We will catch all notifications from the point on where `notified()` is called, so
-        //       we first construct the future, then check the flag. Any notification sent while we
-        //       were loading will be caught in the `notified.await`.
-        let notified = self.0.notify.notified();
-
-        if self.0.flag.load(Ordering::SeqCst) {
-            return;
-        }
-
-        notified.await;
-    }
 }
 
 /// An "unlimited semaphore".
@@ -567,9 +472,7 @@ mod tests {
     use futures::FutureExt;
     use prometheus::IntGauge;
 
-    use crate::utils::{SharedFlag, TokenizedCount};
-
-    use super::{wait_for_arc_drop, xor, StickyFlag};
+    use super::{wait_for_arc_drop, xor, TokenizedCount};
 
     #[test]
     fn xor_works() {
@@ -627,35 +530,6 @@ mod tests {
     }
 
     #[test]
-    fn shared_flag_sanity_check() {
-        let flag = SharedFlag::new();
-        let copied = flag;
-
-        assert!(!flag.is_set());
-        assert!(!copied.is_set());
-        assert!(!flag.is_set());
-        assert!(!copied.is_set());
-
-        flag.set();
-
-        assert!(flag.is_set());
-        assert!(copied.is_set());
-        assert!(flag.is_set());
-        assert!(copied.is_set());
-    }
-
-    #[test]
-    fn sticky_flag_sanity_check() {
-        let flag = StickyFlag::new();
-        assert!(flag.wait().now_or_never().is_none());
-
-        flag.set();
-
-        // Should finish immediately due to the flag being set.
-        assert!(flag.wait().now_or_never().is_some());
-    }
-
-    #[test]
     fn tokenized_count_sanity_check() {
         let gauge = IntGauge::new("sanity_gauge", "tokenized count test gauge")
             .expect("failed to construct IntGauge in test");
@@ -672,15 +546,5 @@ mod tests {
         assert_eq!(gauge.get(), 3);
         drop(ticket1);
         assert_eq!(gauge.get(), 2);
-    }
-
-    #[test]
-    fn sticky_flag_race_condition_check() {
-        let flag = StickyFlag::new();
-        assert!(flag.wait().now_or_never().is_none());
-
-        let waiting = flag.wait();
-        flag.set();
-        assert!(waiting.now_or_never().is_some());
     }
 }

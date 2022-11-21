@@ -79,7 +79,7 @@ use crate::{
     utils::{
         self,
         rlimit::{Limit, OpenFiles, ResourceLimit},
-        SharedFlag, Source, WeightedRoundRobin,
+        SharedFuse, Source, WeightedRoundRobin,
     },
     NodeRng, TERMINATION_REQUESTED,
 };
@@ -183,7 +183,7 @@ where
     /// A reference to the scheduler of the event queue.
     scheduler: &'static Scheduler<REv>,
     /// Flag indicating whether or not the reactor processing this event queue is shutting down.
-    is_shutting_down: SharedFlag,
+    is_shutting_down: SharedFuse,
 }
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
@@ -199,7 +199,7 @@ impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
     /// Creates a new event queue handle.
-    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFlag) -> Self {
+    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFuse) -> Self {
         EventQueueHandle {
             scheduler,
             is_shutting_down,
@@ -211,7 +211,7 @@ impl<REv> EventQueueHandle<REv> {
     /// This method is used in tests, where we are never disabling shutdown warnings anyway.
     #[cfg(test)]
     pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
-        EventQueueHandle::new(scheduler, SharedFlag::global_shared())
+        EventQueueHandle::new(scheduler, SharedFuse::global_shared())
     }
 
     /// Schedule an event on a specific queue.
@@ -244,7 +244,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns whether the associated reactor is currently shutting down.
-    pub(crate) fn shutdown_flag(&self) -> SharedFlag {
+    pub(crate) fn shutdown_flag(&self) -> SharedFuse {
         self.is_shutting_down
     }
 }
@@ -377,7 +377,7 @@ where
     clock: Clock,
 
     /// Flag indicating the reactor is being shut down.
-    is_shutting_down: SharedFlag,
+    is_shutting_down: SharedFuse,
 }
 
 /// Metric data for the Runner
@@ -495,7 +495,7 @@ where
         }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-        let is_shutting_down = SharedFlag::new();
+        let is_shutting_down = SharedFuse::new();
 
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
@@ -837,7 +837,7 @@ impl Runner<InitializerReactor> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
-        let is_shutting_down = SharedFlag::new();
+        let is_shutting_down = SharedFuse::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = InitializerReactor::new_with_chainspec(
             cfg,

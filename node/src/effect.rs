@@ -151,7 +151,7 @@ use crate::{
         DeployHash, DeployHeader, DeployMetadataExt, DeployWithFinalizedApprovals,
         FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, NodeId, NodeState,
     },
-    utils::{fmt_limit::FmtLimit, SharedFlag, Source},
+    utils::{fmt_limit::FmtLimit, SharedFuse, Source},
 };
 use announcements::{
     BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
@@ -191,7 +191,7 @@ pub(crate) struct Responder<T> {
     /// Sender through which the response ultimately should be sent.
     sender: Option<oneshot::Sender<T>>,
     /// Reactor flag indicating shutdown.
-    is_shutting_down: SharedFlag,
+    is_shutting_down: SharedFuse,
 }
 
 /// A responder that will automatically send a `None` on drop.
@@ -251,7 +251,7 @@ impl<T> Drop for AutoClosingResponder<T> {
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
-    fn new(sender: oneshot::Sender<T>, is_shutting_down: SharedFlag) -> Self {
+    fn new(sender: oneshot::Sender<T>, is_shutting_down: SharedFuse) -> Self {
         Responder {
             sender: Some(sender),
             is_shutting_down,
@@ -265,7 +265,7 @@ impl<T: 'static + Send> Responder<T> {
     #[cfg(test)]
     #[inline]
     pub(crate) fn without_shutdown(sender: oneshot::Sender<T>) -> Self {
-        Responder::new(sender, SharedFlag::global_shared())
+        Responder::new(sender, SharedFuse::global_shared())
     }
 }
 
