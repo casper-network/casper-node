@@ -674,10 +674,10 @@ impl EraSupervisor {
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         sender: NodeId,
-        demand: ConsensusRequestMessage,
+        request: ConsensusRequestMessage,
         auto_closing_responder: AutoClosingResponder<protocol::Message>,
     ) -> Effects<Event> {
-        let ConsensusRequestMessage { era_id, payload } = demand;
+        let ConsensusRequestMessage { era_id, payload } = request;
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
             None => {

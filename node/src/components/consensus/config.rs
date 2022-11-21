@@ -26,8 +26,10 @@ pub(crate) struct Config {
     /// If it is more than that, consensus will pause, and resume once the executor has caught up.
     pub max_execution_delay: u64,
     /// Highway-specific node configuration.
+    #[serde(default)]
     pub(crate) highway: HighwayConfig,
     /// Zug-specific node configuration.
+    #[serde(default)]
     pub(crate) zug: ZugConfig,
 }
 

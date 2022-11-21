@@ -136,6 +136,7 @@ fn round_participation<'a, C: Context>(
             .find(|&(_, unit)| unit.round_id() <= r_id),
     };
     maybe_unit.map_or(RoundParticipation::No, |(vh, unit)| {
+        // Round length is not 0: It is computed as 2^round_exp from a valid WireUnit.
         #[allow(clippy::integer_arithmetic)]
         if r_id.millis() % unit.round_len.millis() != 0 {
             // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
