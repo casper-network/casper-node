@@ -641,7 +641,7 @@ impl BlockHash {
 
 impl Display for BlockHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "{}", self.0)
+        write!(formatter, "block hash {}", self.0)
     }
 }
 
@@ -1676,7 +1676,7 @@ impl FetcherItem for BlockExecutionResultsOrChunk {
         if let ValueOrChunk::ChunkWithProof(chunk_with_proof) = &self.value {
             chunk_with_proof.verify()?;
         }
-        if let ExecutionResultsChecksum::ApprovalsCheckable(expected) = *metadata {
+        if let ExecutionResultsChecksum::Checkable(expected) = *metadata {
             if !self
                 .validate(&expected)
                 .map_err(ChunkWithProofVerificationError::Bytesrepr)?

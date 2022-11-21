@@ -324,16 +324,16 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (&self.status, event) {
-            (ComponentStatus::Fatal(msg), _) => {
+        match &self.status {
+            ComponentStatus::Fatal(msg) => {
                 warn!(
                     msg,
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, evt) => {
-                if let Event::Initialize(blocks) = evt {
+            ComponentStatus::Uninitialized => {
+                if let Event::Initialize(blocks) = event {
                     for block in blocks {
                         self.register_block_finalized(&block.into());
                     }
@@ -343,11 +343,14 @@ where
                         .set_timeout(self.cfg.expiry_check_interval().into())
                         .event(move |_| Event::Expire)
                 } else {
-                    warn!("should not handle this event when component is uninitialized");
+                    warn!(
+                        ?event,
+                        "should not handle this event when component is uninitialized"
+                    );
                     Effects::new()
                 }
             }
-            (ComponentStatus::Initialized, evt) => match evt {
+            ComponentStatus::Initialized => match event {
                 Event::Initialize(_) => {
                     warn!("deploy buffer already initialized");
                     Effects::new()

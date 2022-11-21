@@ -863,13 +863,7 @@ async fn run_deploy_acceptor_without_timeout(
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                        source: Source::Peer(_),
-                        ..
-                    })
-                ) || matches!(
-                    event,
-                    Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                        source: Source::PeerGossiped(_),
+                        source: Source::Peer(_) | Source::PeerGossiped(_),
                         ..
                     })
                 )

@@ -470,7 +470,7 @@ impl BlockSynchronizer {
                 }
                 NeedNext::EraValidators(era_id) => {
                     warn!(
-                        "BlockSynchronizer: block_synchronizer does not have era_validators for era_id: {}",
+                        "BlockSynchronizer: does not have era_validators for era_id: {}",
                         era_id
                     );
                     results.extend(
@@ -716,19 +716,19 @@ impl BlockSynchronizer {
                     "BlockSynchronizer: got execution_results_checksum for {}",
                     block_hash
                 );
-                ExecutionResultsChecksum::ApprovalsCheckable(digest)
+                ExecutionResultsChecksum::Checkable(digest)
             }
             Err(engine_state::Error::MissingChecksumRegistry) => {
                 // The registry will not exist for legacy blocks.
-                ExecutionResultsChecksum::ApprovalsUncheckable
+                ExecutionResultsChecksum::Uncheckable
             }
             Ok(None) => {
                 warn!("BlockSynchronizer: the checksum registry should contain the execution results checksum");
-                ExecutionResultsChecksum::ApprovalsUncheckable
+                ExecutionResultsChecksum::Uncheckable
             }
             Err(error) => {
                 error!(%error, "BlockSynchronizer: unexpected error getting checksum registry");
-                ExecutionResultsChecksum::ApprovalsUncheckable
+                ExecutionResultsChecksum::Uncheckable
             }
         };
 

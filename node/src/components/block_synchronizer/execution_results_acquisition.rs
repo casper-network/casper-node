@@ -22,16 +22,16 @@ use crate::types::{
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Serialize, Deserialize)]
 pub(crate) enum ExecutionResultsChecksum {
     // due to historical reasons, pre-1.5 chunks do not support Merkle proof checking
-    ApprovalsUncheckable,
+    Uncheckable,
     // can be Merkle proof checked
-    ApprovalsCheckable(Digest),
+    Checkable(Digest),
 }
 
 impl Display for ExecutionResultsChecksum {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ApprovalsUncheckable => write!(f, "uncheckable execution results"),
-            Self::ApprovalsCheckable(digest) => write!(f, "execution results checksum {}", digest),
+            Self::Uncheckable => write!(f, "uncheckable execution results"),
+            Self::Checkable(digest) => write!(f, "execution results checksum {}", digest),
         }
     }
 }
@@ -392,7 +392,7 @@ fn apply_chunk(
     }
 
     // ExecutionResultsChecksum::Legacy has no checksum, otherwise check it
-    if let ExecutionResultsChecksum::ApprovalsCheckable(expected) = checksum {
+    if let ExecutionResultsChecksum::Checkable(expected) = checksum {
         if expected != digest {
             return Err(Error::ChecksumMismatch {
                 block_hash,

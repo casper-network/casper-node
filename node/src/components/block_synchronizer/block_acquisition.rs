@@ -280,10 +280,10 @@ impl BlockAcquisitionState {
                 checksum,
             ) => match (should_fetch_execution_state, checksum) {
                 (false, _) => Err(BlockAcquisitionError::InvalidStateTransition),
-                (true, ExecutionResultsChecksum::ApprovalsCheckable(_)) => Ok(
+                (true, ExecutionResultsChecksum::Checkable(_)) => Ok(
                     BlockAcquisitionAction::approvals_hashes(block, peer_list, rng),
                 ),
-                (true, ExecutionResultsChecksum::ApprovalsUncheckable) => {
+                (true, ExecutionResultsChecksum::Uncheckable) => {
                     Ok(BlockAcquisitionAction::maybe_needs_deploy(
                         block.header(),
                         peer_list,
@@ -751,10 +751,8 @@ impl BlockAcquisitionState {
                 deploys,
                 checksum,
             ) if need_execution_state => match checksum {
-                ExecutionResultsChecksum::ApprovalsUncheckable => {
-                    (block.header(), signatures, deploys)
-                }
-                ExecutionResultsChecksum::ApprovalsCheckable(_) => {
+                ExecutionResultsChecksum::Uncheckable => (block.header(), signatures, deploys),
+                ExecutionResultsChecksum::Checkable(_) => {
                     return Err(BlockAcquisitionError::InvalidAttemptToApplyDeploy { deploy_id });
                 }
             },
