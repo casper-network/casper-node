@@ -39,7 +39,7 @@ pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
-pub(crate) use fuse::{Fuse, ObservableFuse, ObservableFuseDropSwitch, SharedFuse};
+pub(crate) use fuse::{DropSwitch, Fuse, ObservableFuse, SharedFuse};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 use crate::types::NodeId;

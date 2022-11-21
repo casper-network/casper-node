@@ -77,11 +77,6 @@ impl ObservableFuse {
             notify: Notify::new(),
         }))
     }
-
-    /// Creates a new sticky fuse drop switch.
-    pub(crate) fn drop_switch(&self) -> ObservableFuseDropSwitch {
-        ObservableFuseDropSwitch(self.clone())
-    }
 }
 
 /// Inner implementation of the `ObservableFuse`.
@@ -120,11 +115,26 @@ impl Fuse for ObservableFuse {
     }
 }
 
-/// A wrapper for an observable fuse that will cause it to be set when dropped.
+/// A wrapper for a fuse that will cause it to be set when dropped.
 #[derive(Debug, Clone)]
-pub(crate) struct ObservableFuseDropSwitch(ObservableFuse);
+pub(crate) struct DropSwitch<T>(T)
+where
+    T: Fuse;
 
-impl Drop for ObservableFuseDropSwitch {
+impl<T> DropSwitch<T>
+where
+    T: Fuse,
+{
+    /// Creates a new drop switch around a fuse.
+    fn new(fuse: T) -> Self {
+        DropSwitch(fuse)
+    }
+}
+
+impl<T> Drop for DropSwitch<T>
+where
+    T: Fuse,
+{
     fn drop(&mut self) {
         self.0.set()
     }
@@ -136,7 +146,7 @@ mod tests {
 
     use crate::utils::Fuse;
 
-    use super::{ObservableFuse, ObservableFuseDropSwitch, SharedFuse};
+    use super::{DropSwitch, ObservableFuse, SharedFuse};
 
     #[test]
     fn shared_fuse_sanity_check() {
@@ -172,7 +182,7 @@ mod tests {
         let fuse = ObservableFuse::new();
         assert!(fuse.wait().now_or_never().is_none());
 
-        let drop_switch = fuse.drop_switch();
+        let drop_switch = DropSwitch::new(fuse.clone());
         assert!(fuse.wait().now_or_never().is_none());
 
         drop(drop_switch);
