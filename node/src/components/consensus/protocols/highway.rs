@@ -745,7 +745,6 @@ where
                 let pvv = match self.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
-                        trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
                         let faulty_senders = self.synchronizer.invalid_vertices(vec![v_id]);
                         warn!(?err, ?sender, ?faulty_senders, "invalid incoming message");

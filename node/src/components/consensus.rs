@@ -169,7 +169,7 @@ pub(crate) enum Event {
     /// An incoming network message.
     #[from]
     Incoming(ConsensusMessageIncoming),
-    /// An incoming request message.
+    /// An incoming demand message.
     #[from]
     DemandIncoming(ConsensusDemand),
     /// A scheduled event to be handled by a specified era.
@@ -262,11 +262,7 @@ impl Display for Event {
                 write!(f, "message from {:?}: {}", sender, message)
             }
             Event::DemandIncoming(demand) => {
-                write!(
-                    f,
-                    "request from {:?}: {}",
-                    demand.sender, demand.request_msg
-                )
+                write!(f, "demand from {:?}: {}", demand.sender, demand.request_msg)
             }
             Event::Timer {
                 era_id,
