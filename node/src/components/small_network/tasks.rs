@@ -12,8 +12,9 @@ use bytes::Bytes;
 use futures::{
     future::{self, Either},
     pin_mut,
+    prelude::stream::SelectAll,
     stream::FuturesUnordered,
-    Sink, SinkExt, Stream, StreamExt,
+    Sink, SinkExt, StreamExt,
 };
 
 use muxink::{
@@ -27,10 +28,7 @@ use openssl::{
 };
 use serde::de::DeserializeOwned;
 use strum::{EnumCount, IntoEnumIterator};
-use tokio::{
-    net::TcpStream,
-    sync::{mpsc::UnboundedReceiver},
-};
+use tokio::{net::TcpStream, sync::mpsc::UnboundedReceiver};
 use tokio_openssl::SslStream;
 use tracing::{
     debug, error, error_span,
@@ -48,8 +46,8 @@ use super::{
     handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, IncomingCarrier, IncomingChannel, Message,
-    Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, IncomingCarrier, Message, Metrics,
+    OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -433,20 +431,8 @@ where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
 {
-    // TODO: Replace with select_all!
-    async fn read_next(
-        mut incoming: IncomingChannel,
-        channel: Channel,
-    ) -> (
-        IncomingChannel,
-        Channel,
-        Option<<IncomingChannel as Stream>::Item>,
-    ) {
-        let rv = incoming.next().await;
-        (incoming, channel, rv)
-    }
-
-    let mut readers = FuturesUnordered::new();
+    // We create a single select that returns items from all the streams.
+    let mut select = SelectAll::new();
     for channel in Channel::iter() {
         let demuxer =
             Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
@@ -455,88 +441,72 @@ where
             context.chain_info.maximum_net_message_size as usize,
             demuxer,
         );
-
-        readers.push(read_next(incoming, channel));
+        select.push(incoming.map(move |frame| (channel, frame)));
     }
 
+    // Core receival loop.
     loop {
-        let next_reader = readers.next();
+        let next_item = select.next();
         let wait_for_close_incoming = close_incoming.wait();
-        pin_mut!(next_reader);
+        pin_mut!(next_item);
         pin_mut!(wait_for_close_incoming);
 
-        let (incoming, channel, outcome) =
-            match future::select(next_reader, wait_for_close_incoming)
-                .await
-                .peel()
-            {
-                Either::Left(Some(item)) => item,
-                Either::Left(None) => {
-                    // We ran out of channels. Should not happen with at least one channel defined.
-                    error!("did not expect to run out of channels to read");
+        let (channel, frame) = match future::select(next_item, wait_for_close_incoming)
+            .await
+            .peel()
+        {
+            Either::Left(Some((channel, result))) => {
+                (channel, result.map_err(MessageReaderError::ReceiveError)?)
+            }
+            Either::Left(None) => {
+                // We ran out of channels. Should not happen with at least one channel defined.
+                error!("did not expect to run out of channels to read");
 
-                    return Ok(());
-                }
-                Either::Right(_) => {
-                    debug!("message reader shutdown requested");
-                    return Ok(());
-                }
-            };
-
-        match outcome {
-            None => {
-                // All good. One incoming channel closed, so we just exit, dropping all the others.
                 return Ok(());
             }
-            Some(Err(err)) => {
-                // An incoming channel failed, so exit with the error.
-                return Err(MessageReaderError::ReceiveError(err));
+            Either::Right(_) => {
+                debug!("message reader shutdown requested");
+                return Ok(());
             }
-            Some(Ok(frame)) => {
-                let msg: Message<P> = deserialize_network_message(&frame)
-                    .map_err(MessageReaderError::DeserializationError)?;
-                trace!(%msg, "message received");
+        };
 
-                // TODO: Re-add support for demands when backpressure is added.
+        let msg: Message<P> = deserialize_network_message(&frame)
+            .map_err(MessageReaderError::DeserializationError)?;
+        trace!(%msg, "message received");
 
-                // The limiter stops _all_ channels, as they share a resource pool anyway.
-                limiter
-                    .request_allowance(
-                        msg.payload_incoming_resource_estimate(&context.payload_weights),
-                    )
-                    .await;
+        // TODO: Re-add support for demands when backpressure is added.
 
-                // Ensure the peer did not try to sneak in a message on a different channel.
-                let msg_channel = msg.get_channel();
-                if msg_channel != channel {
-                    return Err(MessageReaderError::WrongChannel {
-                        got: msg_channel,
-                        expected: channel,
-                    });
-                }
+        // The limiter stops _all_ channels, as they share a resource pool anyway.
+        limiter
+            .request_allowance(msg.payload_incoming_resource_estimate(&context.payload_weights))
+            .await;
 
-                let queue_kind = if msg.is_low_priority() {
-                    QueueKind::NetworkLowPriority
-                } else {
-                    QueueKind::NetworkIncoming
-                };
-
-                context
-                    .event_queue
-                    .schedule(
-                        Event::IncomingMessage {
-                            peer_id: Box::new(peer_id),
-                            msg: Box::new(msg),
-                            span: span.clone(),
-                        },
-                        queue_kind,
-                    )
-                    .await;
-
-                // Recreata a future receiving on this particular channel.
-                readers.push(read_next(incoming, channel));
-            }
+        // Ensure the peer did not try to sneak in a message on a different channel.
+        let msg_channel = msg.get_channel();
+        if msg_channel != channel {
+            return Err(MessageReaderError::WrongChannel {
+                got: msg_channel,
+                expected: channel,
+            });
         }
+
+        let queue_kind = if msg.is_low_priority() {
+            QueueKind::NetworkLowPriority
+        } else {
+            QueueKind::NetworkIncoming
+        };
+
+        context
+            .event_queue
+            .schedule(
+                Event::IncomingMessage {
+                    peer_id: Box::new(peer_id),
+                    msg: Box::new(msg),
+                    span: span.clone(),
+                },
+                queue_kind,
+            )
+            .await;
     }
 }
 
