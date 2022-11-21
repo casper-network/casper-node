@@ -313,9 +313,9 @@ impl<C: Context + 'static> Zug<C> {
             now,
         );
 
-        sc.open_wal(wal_file, now);
+        let outcomes = sc.open_wal(wal_file, now);
 
-        (Box::new(sc), vec![])
+        (Box::new(sc), outcomes)
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
@@ -1247,15 +1247,17 @@ impl<C: Context + 'static> Zug<C> {
     /// sets up the log for appending future messages. If it fails it prints an error log and
     /// the WAL remains `None`: That way we can still observe the protocol but not participate as
     /// a validator.
-    pub(crate) fn open_wal(&mut self, wal_file: PathBuf, now: Timestamp) {
+    pub(crate) fn open_wal(&mut self, wal_file: PathBuf, now: Timestamp) -> ProtocolOutcomes<C> {
         // Open the file for reading.
         let mut read_wal = match ReadWal::<C>::new(&wal_file) {
             Ok(read_wal) => read_wal,
             Err(err) => {
                 error!(%err, "could not create a ReadWal using this file");
-                return;
+                return vec![];
             }
         };
+
+        let mut outcomes = vec![];
 
         // Read all messages recorded in the file.
         loop {
@@ -1264,7 +1266,7 @@ impl<C: Context + 'static> Zug<C> {
                     Entry::SignedMessage(next_message) => {
                         if !self.add_content_no_wal(next_message) {
                             error!("Could not add content from WAL.");
-                            return;
+                            return outcomes;
                         }
                     }
                     Entry::Proposal(next_proposal, corresponding_round_id) => {
@@ -1294,16 +1296,33 @@ impl<C: Context + 'static> Zug<C> {
                                 continue;
                             }
                         };
-                        // TODO we drop an FttExceeded message here, gotta make sure it is sent
-                        // later if we drop it, otherwise we need to keep track of whether or not
-                        // we saw any message like that during this loop.
-                        let _ = self.handle_fault_no_wal(
+                        let new_outcomes = self.handle_fault_no_wal(
                             conflicting_message,
                             validator_id,
                             conflicting_message_content,
                             conflicting_signature,
                             now,
                         );
+                        // Ignore most outcomes: These have been processed before the restart.
+                        outcomes.extend(new_outcomes.into_iter().filter(|outcome| match outcome {
+                            ProtocolOutcome::FttExceeded
+                            | ProtocolOutcome::WeAreFaulty
+                            | ProtocolOutcome::FinalizedBlock(_)
+                            | ProtocolOutcome::ValidateConsensusValue { .. }
+                            | ProtocolOutcome::NewEvidence(_) => true,
+                            ProtocolOutcome::SendEvidence(_, _)
+                            | ProtocolOutcome::CreatedGossipMessage(_)
+                            | ProtocolOutcome::CreatedTargetedMessage(_, _)
+                            | ProtocolOutcome::CreatedMessageToRandomPeer(_)
+                            | ProtocolOutcome::CreatedTargetedRequest(_, _)
+                            | ProtocolOutcome::CreatedRequestToRandomPeer(_)
+                            | ProtocolOutcome::ScheduleTimer(_, _)
+                            | ProtocolOutcome::QueueAction(_)
+                            | ProtocolOutcome::CreateNewBlock(_)
+                            | ProtocolOutcome::DoppelgangerDetected
+                            | ProtocolOutcome::StandstillAlert
+                            | ProtocolOutcome::Disconnect(_) => false,
+                        }));
                     }
                 },
                 Ok(None) => {
@@ -1314,7 +1333,7 @@ impl<C: Context + 'static> Zug<C> {
                         ?err,
                         "couldn't read a message from the WAL: was this node recently shut down?"
                     );
-                    return; // Not setting WAL file; won't actively participate.
+                    return outcomes; // Not setting WAL file; won't actively participate.
                 }
             }
         }
@@ -1324,6 +1343,8 @@ impl<C: Context + 'static> Zug<C> {
             Ok(write_wal) => self.write_wal = Some(write_wal),
             Err(err) => error!(?err, ?wal_file, "could not create a WAL using this file"),
         }
+
+        outcomes
     }
 
     /// Adds a signed message content to the state, but does not call `update` and does not detect
@@ -2113,9 +2134,10 @@ where
         now: Timestamp,
         wal_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
+        let mut outcomes = vec![];
         if self.write_wal.is_none() {
             if let Some(wal_file) = wal_file {
-                self.open_wal(wal_file, now);
+                outcomes.extend(self.open_wal(wal_file, now));
             }
             if self.write_wal.is_none() {
                 error!(?our_id, "missing WAL file; not activating");
@@ -2125,18 +2147,18 @@ where
         if let Some(idx) = self.validators.get_index(&our_id) {
             if self.faults.contains_key(&idx) {
                 error!(our_idx = idx.0, "we are faulty; not activating");
-                return vec![];
+                return outcomes;
             }
             info!(our_idx = idx.0, "start voting");
             self.active_validator = Some(ActiveValidator { idx, secret });
-            self.schedule_update(self.params.start_timestamp().max(now))
+            outcomes.extend(self.schedule_update(self.params.start_timestamp().max(now)));
         } else {
             error!(
                 ?our_id,
                 "we are not a validator in this era; not activating"
             );
-            vec![]
         }
+        outcomes
     }
 
     fn deactivate_validator(&mut self) {
