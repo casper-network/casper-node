@@ -338,7 +338,8 @@ impl<C: Context + 'static> Synchronizer<C> {
             .filter(|dep| highway.has_dependency(dep))
             .cloned()
             .collect_vec();
-        // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
+        // Safe to unwrap: We know the keys exist.
+        // TODO: Replace with BTreeMap::drain_filter once stable.
         let pvs = satisfied_deps
             .into_iter()
             .flat_map(|dep| {

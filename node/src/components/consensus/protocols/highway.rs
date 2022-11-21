@@ -795,7 +795,6 @@ where
                     GetDepOutcome::Evidence(vid) => {
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
-                    // TODO: Should this be done via a gossip service?
                     GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
                         HighwayMessage::NewVertex(vv.into()).into(),
                         sender,
@@ -826,7 +825,6 @@ where
                     GetDepOutcome::Evidence(vid) => {
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
-                    // TODO: Should this be done via a gossip service?
                     GetDepOutcome::Vertex(vv) => {
                         vec![ProtocolOutcome::CreatedTargetedMessage(
                             HighwayMessage::NewVertex(vv.into()).into(),
