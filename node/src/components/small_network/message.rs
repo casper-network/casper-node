@@ -336,25 +336,25 @@ impl Display for MessageKind {
 #[repr(u8)]
 pub enum Channel {
     /// Networking layer messages, e.g. address gossip.
-    Network = 1,
+    Network = 0,
     /// Data solely used for syncing being requested.
     ///
     /// We separate sync data (e.g. trie nodes) requests from regular ("data") requests since the
     /// former are not required for a validating node to make progress on consensus, thus separating
     /// these can improve latency.
-    SyncDataRequests = 2,
+    SyncDataRequests = 1,
     /// Sync data requests being answered.
     ///
     /// Responses are separated from requests to ensure liveness (see [`Channel`] documentation).
-    SyncDataResponses = 3,
+    SyncDataResponses = 2,
     /// Requests for data used during regular validator operation.
-    DataRequests = 4,
+    DataRequests = 3,
     /// Responses for data used during regular validator operation.
-    DataResponses = 5,
+    DataResponses = 4,
     /// Consensus-level messages, like finality signature announcements and consensus messages.
-    Consensus = 6,
+    Consensus = 5,
     /// Regular gossip announcements and responses (e.g. for deploys and blocks).
-    BulkGossip = 7,
+    BulkGossip = 6,
 }
 
 /// Network message payload.
@@ -776,7 +776,9 @@ mod tests {
     #[test]
     fn channels_enum_does_not_have_holes() {
         for idx in 0..Channel::COUNT {
-            let _ = Channel::from_repr(idx as u8).expect("must not have holes in channel enum");
+            let result = Channel::from_repr(idx as u8);
+            eprintln!("idx: {} channel: {:?}", idx, result);
+            result.expect("must not have holes in channel enum");
         }
     }
 }
