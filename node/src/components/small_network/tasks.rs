@@ -1,82 +1,96 @@
 //! Tasks run by the component.
 
 use std::{
-    error::Error as StdError,
     fmt::Display,
-    io,
     net::SocketAddr,
+    num::NonZeroUsize,
     pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
-    time::Duration,
+    sync::{Arc, Mutex, Weak},
 };
 
-use bincode::Options;
+use bytes::Bytes;
 use futures::{
     future::{self, Either},
-    stream::{SplitSink, SplitStream},
-    Future, SinkExt, StreamExt,
+    pin_mut,
+    prelude::stream::SelectAll,
+    stream::FuturesUnordered,
+    Sink, SinkExt, StreamExt,
+};
+
+use muxink::{
+    demux::Demultiplexer,
+    fragmented::{Defragmentizer, Fragmentizer},
 };
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
     x509::X509,
 };
-use prometheus::IntGauge;
-use rand::Rng;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::{
-    net::TcpStream,
-    sync::{mpsc::UnboundedReceiver, watch, Semaphore},
-};
+use serde::de::DeserializeOwned;
+use strum::{EnumCount, IntoEnumIterator};
+use tokio::{net::TcpStream, sync::mpsc::UnboundedReceiver};
 use tokio_openssl::SslStream;
-use tokio_serde::{Deserializer, Serializer};
 use tracing::{
     debug, error, error_span,
     field::{self, Empty},
     info, trace, warn, Instrument, Span,
 };
 
-use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
+use casper_types::{ProtocolVersion, TimeDiff};
 
 use super::{
     chain_info::ChainInfo,
-    counting_format::{ConnectionId, Role},
-    error::{ConnectionError, IoError},
+    counting_format::ConnectionId,
+    error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
-    full_transport,
+    handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
     message::ConsensusKeyPair,
-    message_pack_format::MessagePackFormat,
-    EstimatorWeights, Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, IncomingCarrier, Message, Metrics,
+    OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    MESSAGE_FRAGMENT_SIZE,
 };
+
 use crate::{
-    components::small_network::{framed_transport, BincodeFormat, FromIncoming},
-    effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
+    components::small_network::deserialize_network_message,
+    effect::{requests::NetworkRequest, AutoClosingResponder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::display_error,
+    utils::{display_error, Fuse, LockedLineWriter, ObservableFuse, Peel, TokenizedCount},
 };
 
-/// An item on the internal outgoing message queue.
-///
-/// Contains a reference counted message and an optional responder to call once the message has been
-/// successfully handed over to the kernel for sending.
-pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<AutoClosingResponder<()>>);
+/// An encoded network message, ready to be sent out.
+#[derive(Debug)]
+pub(super) struct EncodedMessage {
+    /// The encoded payload of the outgoing message.
+    payload: Bytes,
+    /// The responder to send the notification once the message has been flushed or dropped.
+    ///
+    /// If `None`, the sender is not interested in knowing.
+    send_finished: Option<AutoClosingResponder<()>>,
+    /// We track the number of messages still buffered in memory, the token ensures accurate counts.
+    send_token: TokenizedCount,
+}
 
-/// The outcome of the handshake process.
-struct HandshakeOutcome {
-    /// A framed transport for peer.
-    framed_transport: FramedTransport,
-    /// Public address advertised by the peer.
-    public_addr: SocketAddr,
-    /// The public key the peer is validating with, if any.
-    peer_consensus_public_key: Option<PublicKey>,
-    /// Holds the information whether the remote node is syncing.
-    is_peer_syncing: bool,
+impl EncodedMessage {
+    /// Creates a new encoded message.
+    pub(super) fn new(
+        payload: Bytes,
+        send_finished: Option<AutoClosingResponder<()>>,
+        send_token: TokenizedCount,
+    ) -> Self {
+        Self {
+            payload,
+            send_finished,
+            send_token,
+        }
+    }
+
+    /// Get the encoded message's payload.
+    pub(super) fn payload(&self) -> &Bytes {
+        &self.payload
+    }
 }
 
 /// Low-level TLS connection function.
@@ -97,14 +111,18 @@ where
         .set_nodelay(true)
         .map_err(ConnectionError::TcpNoDelay)?;
 
-    let mut transport = tls::create_tls_connector(context.our_cert.as_x509(), &context.secret_key)
-        .and_then(|connector| connector.configure())
-        .and_then(|mut config| {
-            config.set_verify_hostname(false);
-            config.into_ssl("this-will-not-be-checked.example.com")
-        })
-        .and_then(|ssl| SslStream::new(ssl, stream))
-        .map_err(ConnectionError::TlsInitialization)?;
+    let mut transport = tls::create_tls_connector(
+        context.our_cert.as_x509(),
+        &context.secret_key,
+        context.keylog.clone(),
+    )
+    .and_then(|connector| connector.configure())
+    .and_then(|mut config| {
+        config.set_verify_hostname(false);
+        config.into_ssl("this-will-not-be-checked.example.com")
+    })
+    .and_then(|ssl| SslStream::new(ssl, stream))
+    .map_err(ConnectionError::TlsInitialization)?;
 
     SslStream::connect(Pin::new(&mut transport))
         .await
@@ -128,7 +146,7 @@ where
 pub(super) async fn connect_outgoing<P, REv>(
     context: Arc<NetworkContext<REv>>,
     peer_addr: SocketAddr,
-) -> OutgoingConnection<P>
+) -> OutgoingConnection
 where
     REv: 'static,
     P: Payload,
@@ -150,15 +168,13 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+    match negotiate_handshake::<P, _>(&context, transport, connection_id).await {
         Ok(HandshakeOutcome {
-            framed_transport,
+            transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_syncing: is_syncing,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -169,21 +185,11 @@ where
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
             }
 
-            // Setup full framed transport, then close down receiving end of the transport.
-            let full_transport = full_transport::<P>(
-                context.net_metrics.clone(),
-                connection_id,
-                framed_transport,
-                Role::Dialer,
-            );
-            let (sink, _stream) = full_transport.split();
-
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
                 peer_consensus_public_key,
-                sink,
-                is_syncing,
+                transport,
             }
         }
         Err(error) => OutgoingConnection::Failed {
@@ -209,6 +215,8 @@ where
     pub(super) network_ca: Option<Arc<X509>>,
     /// Secret key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
+    /// Logfile to log TLS keys to. If given, automatically enables logging.
+    pub(super) keylog: Option<LockedLineWriter>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     pub(super) net_metrics: Weak<Metrics>,
     /// Chain info extract from chainspec.
@@ -229,8 +237,6 @@ where
     pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     pub(super) max_in_flight_demands: usize,
-    /// Flag indicating whether this node is syncing.
-    pub(super) is_syncing: AtomicBool,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -249,12 +255,10 @@ async fn handle_incoming<P, REv>(
     context: Arc<NetworkContext<REv>>,
     stream: TcpStream,
     peer_addr: SocketAddr,
-) -> IncomingConnection<P>
+) -> IncomingConnection
 where
     REv: From<Event<P>> + 'static,
     P: Payload,
-    for<'de> P: Serialize + Deserialize<'de>,
-    for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
     let (peer_id, transport) = match server_setup_tls(&context, stream).await {
         Ok(value) => value,
@@ -275,36 +279,24 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let framed_transport = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, framed_transport, connection_id).await {
+    match negotiate_handshake::<P, _>(&context, transport, connection_id).await {
         Ok(HandshakeOutcome {
-            framed_transport,
+            transport,
             public_addr,
             peer_consensus_public_key,
-            is_peer_syncing: _,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
-
-            // Establish full transport and close the receiving end.
-            let full_transport = full_transport::<P>(
-                context.net_metrics.clone(),
-                connection_id,
-                framed_transport,
-                Role::Listener,
-            );
-
-            let (_sink, stream) = full_transport.split();
 
             IncomingConnection::Established {
                 peer_addr,
                 public_addr,
                 peer_id,
                 peer_consensus_public_key,
-                stream,
+                transport,
             }
         }
         Err(error) => IncomingConnection::Failed {
@@ -325,6 +317,7 @@ pub(super) async fn server_setup_tls<REv>(
     let mut tls_stream = tls::create_tls_acceptor(
         context.our_cert.as_x509().as_ref(),
         context.secret_key.as_ref(),
+        context.keylog.clone(),
     )
     .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
     .and_then(|ssl| SslStream::new(ssl, stream))
@@ -350,161 +343,11 @@ pub(super) async fn server_setup_tls<REv>(
     ))
 }
 
-/// Performs an IO-operation that can time out.
-async fn io_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
-where
-    F: Future<Output = Result<T, E>>,
-    E: StdError + 'static,
-{
-    tokio::time::timeout(duration, future)
-        .await
-        .map_err(|_elapsed| IoError::Timeout)?
-        .map_err(IoError::Error)
-}
-
-/// Performs an IO-operation that can time out or result in a closed connection.
-async fn io_opt_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
-where
-    F: Future<Output = Option<Result<T, E>>>,
-    E: StdError + 'static,
-{
-    let item = tokio::time::timeout(duration, future)
-        .await
-        .map_err(|_elapsed| IoError::Timeout)?;
-
-    match item {
-        Some(Ok(value)) => Ok(value),
-        Some(Err(err)) => Err(IoError::Error(err)),
-        None => Err(IoError::UnexpectedEof),
-    }
-}
-
-/// Negotiates a handshake between two peers.
-async fn negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
-    framed: FramedTransport,
-    connection_id: ConnectionId,
-) -> Result<HandshakeOutcome, ConnectionError>
-where
-    P: Payload,
-{
-    let mut encoder = MessagePackFormat;
-
-    // Manually encode a handshake.
-    let handshake_message = context.chain_info.create_handshake::<P>(
-        context.public_addr,
-        context.consensus_keys.as_ref(),
-        connection_id,
-        context.is_syncing.load(Ordering::SeqCst),
-    );
-
-    let serialized_handshake_message = Pin::new(&mut encoder)
-        .serialize(&Arc::new(handshake_message))
-        .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
-
-    // To ensure we are not dead-locking, we split the framed transport here and send the handshake
-    // in a background task before awaiting one ourselves. This ensures we can make progress
-    // regardless of the size of the outgoing handshake.
-    let (mut sink, mut stream) = framed.split();
-
-    let handshake_send = tokio::spawn(io_timeout(context.handshake_timeout.into(), async move {
-        sink.send(serialized_handshake_message).await?;
-        Ok(sink)
-    }));
-
-    // The remote's message should be a handshake, but can technically be any message. We receive,
-    // deserialize and check it.
-    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), stream.next())
-        .await
-        .map_err(ConnectionError::HandshakeRecv)?;
-
-    // Ensure the handshake was sent correctly.
-    let sink = handshake_send
-        .await
-        .map_err(ConnectionError::HandshakeSenderCrashed)?
-        .map_err(ConnectionError::HandshakeSend)?;
-
-    let remote_message: Message<P> = Pin::new(&mut encoder)
-        .deserialize(&remote_message_raw)
-        .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
-
-    if let Message::Handshake {
-        network_name,
-        public_addr,
-        protocol_version,
-        consensus_certificate,
-        is_syncing,
-        chainspec_hash,
-    } = remote_message
-    {
-        debug!(%protocol_version, "handshake received");
-
-        // The handshake was valid, we can check the network name.
-        if network_name != context.chain_info.network_name {
-            return Err(ConnectionError::WrongNetwork(network_name));
-        }
-
-        // If there is a version mismatch, we treat it as a connection error. We do not ban peers
-        // for this error, but instead rely on exponential backoff, as bans would result in issues
-        // during upgrades where nodes may have a legitimate reason for differing versions.
-        //
-        // Since we are not using SemVer for versioning, we cannot make any assumptions about
-        // compatibility, so we allow only exact version matches.
-        if protocol_version != context.chain_info.protocol_version {
-            if let Some(threshold) = context.tarpit_version_threshold {
-                if protocol_version <= threshold {
-                    let mut rng = crate::new_rng();
-
-                    if rng.gen_bool(context.tarpit_chance as f64) {
-                        // If tarpitting is enabled, we hold open the connection for a specific
-                        // amount of time, to reduce load on other nodes and keep them from
-                        // reconnecting.
-                        info!(duration=?context.tarpit_duration, "randomly tarpitting node");
-                        tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
-                    } else {
-                        debug!(p = context.tarpit_chance, "randomly not tarpitting node");
-                    }
-                }
-            }
-            return Err(ConnectionError::IncompatibleVersion(protocol_version));
-        }
-
-        // We check the chainspec hash to ensure peer is using the same chainspec as us.
-        // The remote message should always have a chainspec hash at this point since
-        // we checked the protocol version previously.
-        let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
-        if peer_chainspec_hash != context.chain_info.chainspec_hash {
-            return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
-        }
-
-        let peer_consensus_public_key = consensus_certificate
-            .map(|cert| {
-                cert.validate(connection_id)
-                    .map_err(ConnectionError::InvalidConsensusCertificate)
-            })
-            .transpose()?;
-
-        let framed_transport = sink
-            .reunite(stream)
-            .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
-
-        Ok(HandshakeOutcome {
-            framed_transport,
-            public_addr,
-            peer_consensus_public_key,
-            is_peer_syncing: is_syncing,
-        })
-    } else {
-        // Received a non-handshake, this is an error.
-        Err(ConnectionError::DidNotSendHandshake)
-    }
-}
-
 /// Runs the server core acceptor loop.
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
     listener: tokio::net::TcpListener,
-    mut shutdown_receiver: watch::Receiver<()>,
+    shutdown_receiver: ObservableFuse,
 ) where
     REv: From<Event<P>> + Send,
     P: Payload,
@@ -560,11 +403,13 @@ pub(super) async fn server<P, REv>(
         }
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    let shutdown_messages = shutdown_receiver.wait();
+    pin_mut!(shutdown_messages);
+    pin_mut!(accept_connections);
 
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
+    match future::select(shutdown_messages, accept_connections).await {
         Either::Left(_) => info!(
             %context.our_id,
             "shutting down socket, no longer accepting incoming connections"
@@ -573,192 +418,195 @@ pub(super) async fn server<P, REv>(
     }
 }
 
-/// Network message reader.
-///
-/// Schedules all received messages until the stream is closed or an error occurs.
-pub(super) async fn message_reader<REv, P>(
+/// Multi-channel message receiver.
+pub(super) async fn multi_channel_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: SplitStream<FullTransport<P>>,
+    carrier: Arc<Mutex<IncomingCarrier>>,
     limiter: Box<dyn LimiterHandle>,
-    mut close_incoming_receiver: watch::Receiver<()>,
+    close_incoming: ObservableFuse,
     peer_id: NodeId,
     span: Span,
-) -> io::Result<()>
+) -> Result<(), MessageReaderError>
 where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
 {
-    let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
-
-    let read_messages = async move {
-        while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Ok(msg) => {
-                    trace!(%msg, "message received");
-
-                    let effect_builder = EffectBuilder::new(context.event_queue);
-
-                    match msg.try_into_demand(effect_builder, peer_id) {
-                        Ok((event, wait_for_response)) => {
-                            // Note: For now, demands bypass the limiter, as we expect the
-                            //       backpressure to handle this instead.
-
-                            // Acquire a permit. If we are handling too many demands at this
-                            // time, this will block, halting the processing of new message,
-                            // thus letting the peer they have reached their maximum allowance.
-                            let in_flight = demands_in_flight
-                                .clone()
-                                .acquire_owned()
-                                .await
-                                // Note: Since the semaphore is reference counted, it must
-                                //       explicitly be closed for acquisition to fail, which we
-                                //       never do. If this happens, there is a bug in the code;
-                                //       we exit with an error and close the connection.
-                                .map_err(|_| {
-                                    io::Error::new(
-                                        io::ErrorKind::Other,
-                                        "demand limiter semaphore closed unexpectedly",
-                                    )
-                                })?;
-
-                            Metrics::record_trie_request_start(&context.net_metrics);
-
-                            let net_metrics = context.net_metrics.clone();
-                            // Spawn a future that will eventually send the returned message. It
-                            // will essentially buffer the response.
-                            tokio::spawn(async move {
-                                if let Some(payload) = wait_for_response.await {
-                                    // Send message and await its return. `send_message` should
-                                    // only return when the message has been buffered, if the
-                                    // peer is not accepting data, we will block here until the
-                                    // send buffer has sufficient room.
-                                    effect_builder.send_message(peer_id, payload).await;
-
-                                    // Note: We could short-circuit the event queue here and
-                                    //       directly insert into the outgoing message queue,
-                                    //       which may be potential performance improvement.
-                                }
-
-                                // Missing else: The handler of the demand did not deem it
-                                // worthy a response. Just drop it.
-
-                                // After we have either successfully buffered the message for
-                                // sending, failed to do so or did not have a message to send
-                                // out, we consider the request handled and free up the permit.
-                                Metrics::record_trie_request_end(&net_metrics);
-                                drop(in_flight);
-                            });
-
-                            // Schedule the created event.
-                            context
-                                .event_queue
-                                .schedule::<REv>(event, QueueKind::NetworkDemand)
-                                .await;
-                        }
-                        Err(msg) => {
-                            // We've received a non-demand message. Ensure we have the proper amount
-                            // of resources, then push it to the reactor.
-                            limiter
-                                .request_allowance(
-                                    msg.payload_incoming_resource_estimate(
-                                        &context.payload_weights,
-                                    ),
-                                )
-                                .await;
-
-                            let queue_kind = if msg.is_low_priority() {
-                                QueueKind::NetworkLowPriority
-                            } else {
-                                QueueKind::NetworkIncoming
-                            };
-
-                            context
-                                .event_queue
-                                .schedule(
-                                    Event::IncomingMessage {
-                                        peer_id: Box::new(peer_id),
-                                        msg: Box::new(msg),
-                                        span: span.clone(),
-                                    },
-                                    queue_kind,
-                                )
-                                .await;
-                        }
-                    }
-                }
-                Err(err) => {
-                    warn!(
-                        err = display_error(&err),
-                        "receiving message failed, closing connection"
-                    );
-                    return Err(err);
-                }
-            }
-        }
-        Ok(())
-    };
-
-    let shutdown_messages = async move { while close_incoming_receiver.changed().await.is_ok() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // while loop to terminate.
-    match future::select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
-        Either::Left(_) => info!("shutting down incoming connection message reader"),
-        Either::Right(_) => (),
+    // We create a single select that returns items from all the streams.
+    let mut select = SelectAll::new();
+    for channel in Channel::iter() {
+        let demuxer =
+            Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
+                .expect("mutex poisoned");
+        let incoming = Defragmentizer::new(
+            context.chain_info.maximum_net_message_size as usize,
+            demuxer,
+        );
+        select.push(incoming.map(move |frame| (channel, frame)));
     }
 
-    Ok(())
-}
+    // Core receival loop.
+    loop {
+        let next_item = select.next();
+        let wait_for_close_incoming = close_incoming.wait();
+        pin_mut!(next_item);
+        pin_mut!(wait_for_close_incoming);
 
-/// Network message sender.
-///
-/// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
-pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<MessageQueueItem<P>>,
-    mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
-    limiter: Box<dyn LimiterHandle>,
-    counter: IntGauge,
-) where
-    P: Payload,
-{
-    while let Some((message, opt_responder)) = queue.recv().await {
-        counter.dec();
+        let (channel, frame) = match future::select(next_item, wait_for_close_incoming)
+            .await
+            .peel()
+        {
+            Either::Left(Some((channel, result))) => {
+                (channel, result.map_err(MessageReaderError::ReceiveError)?)
+            }
+            Either::Left(None) => {
+                // We ran out of channels. Should not happen with at least one channel defined.
+                error!("did not expect to run out of channels to read");
 
-        let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
-            Ok(size) => size as u32,
-            Err(error) => {
-                error!(
-                    error = display_error(&error),
-                    "failed to get serialized size of outgoing message, closing outgoing connection"
-                );
-                break;
+                return Ok(());
+            }
+            Either::Right(_) => {
+                debug!("message reader shutdown requested");
+                return Ok(());
             }
         };
-        limiter.request_allowance(estimated_wire_size).await;
 
-        let mut outcome = sink.send(message).await;
+        let msg: Message<P> = deserialize_network_message(&frame)
+            .map_err(MessageReaderError::DeserializationError)?;
+        trace!(%msg, "message received");
 
-        // Notify via responder that the message has been buffered by the kernel.
-        if let Some(auto_closing_responder) = opt_responder {
-            // Since someone is interested in the message, flush the socket to ensure it was sent.
-            outcome = outcome.and(sink.flush().await);
-            auto_closing_responder.respond(()).await;
+        // TODO: Re-add support for demands when backpressure is added.
+
+        // The limiter stops _all_ channels, as they share a resource pool anyway.
+        limiter
+            .request_allowance(msg.payload_incoming_resource_estimate(&context.payload_weights))
+            .await;
+
+        // Ensure the peer did not try to sneak in a message on a different channel.
+        let msg_channel = msg.get_channel();
+        if msg_channel != channel {
+            return Err(MessageReaderError::WrongChannel {
+                got: msg_channel,
+                expected: channel,
+            });
         }
 
-        // We simply error-out if the sink fails, it means that our connection broke.
-        if let Err(ref err) = outcome {
-            info!(
-                err = display_error(err),
-                "message send failed, closing outgoing connection"
-            );
-
-            // To ensure, metrics are up to date, we close the queue and drain it.
-            queue.close();
-            while queue.recv().await.is_some() {
-                counter.dec();
-            }
-
-            break;
+        let queue_kind = if msg.is_low_priority() {
+            QueueKind::NetworkLowPriority
+        } else {
+            QueueKind::NetworkIncoming
         };
+
+        context
+            .event_queue
+            .schedule(
+                Event::IncomingMessage {
+                    peer_id: Box::new(peer_id),
+                    msg: Box::new(msg),
+                    span: span.clone(),
+                },
+                queue_kind,
+            )
+            .await;
+    }
+}
+
+/// Multi-channel encoded message sender.
+///
+/// This tasks starts multiple message senders, each handling a single outgoing channel on the given
+/// carrier.
+///
+/// A channel sender will shut down if its receiving channel is closed or an error occurs. Once at
+/// least one channel sender has shut down for any reason, the others will be signaled to shut down
+/// as well.
+///
+/// This function only returns when all senders have been shut down.
+pub(super) async fn encoded_message_sender(
+    queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
+    carrier: OutgoingCarrier,
+    limiter: Arc<dyn LimiterHandle>,
+) -> Result<(), OutgoingCarrierError> {
+    // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
+    let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
+    let local_stop: ObservableFuse = ObservableFuse::new();
+
+    let mut boiler_room = FuturesUnordered::new();
+
+    for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
+        let mux_handle = carrier.create_channel_handle(channel as u8);
+        let channel: OutgoingChannel = Fragmentizer::new(fragment_size, mux_handle);
+        boiler_room.push(shovel_data(
+            queue,
+            channel,
+            local_stop.clone(),
+            limiter.clone(),
+        ));
+    }
+
+    // We track only the first result we receive from a sender, as subsequent errors may just be
+    // caused by the first one shutting down and are not the root cause.
+    let mut first_result = None;
+
+    while let Some(sender_outcome) = boiler_room.next().await {
+        debug!(outcome=?sender_outcome, "sender stopped");
+
+        if first_result.is_none() {
+            first_result = Some(sender_outcome);
+        }
+
+        // Signal all other senders stop as well.
+        local_stop.set();
+    }
+
+    // There are no more running senders left, so we can finish.
+    debug!("all senders finished");
+    first_result.unwrap_or(Ok(()))
+}
+
+/// Receives network messages from an async channel, encodes and forwards it into a suitable sink.
+///
+/// Will loop forever, until either told to stop through the `stop` flag, or a send error occurs.
+async fn shovel_data<S>(
+    mut source: UnboundedReceiver<EncodedMessage>,
+    mut dest: S,
+    stop: ObservableFuse,
+    limiter: Arc<dyn LimiterHandle>,
+) -> Result<(), <S as Sink<Bytes>>::Error>
+where
+    S: Sink<Bytes> + Unpin,
+{
+    loop {
+        let recv = source.recv();
+        pin_mut!(recv);
+        let stop_wait = stop.wait();
+        pin_mut!(stop_wait);
+
+        match future::select(recv, stop_wait).await.peel() {
+            Either::Left(Some(EncodedMessage {
+                payload: data,
+                send_finished,
+                send_token,
+            })) => {
+                limiter.request_allowance(data.len() as u32).await;
+                if let Some(responder) = send_finished {
+                    dest.send(data).await?;
+                    responder.respond(()).await;
+                } else {
+                    // TODO: Using `feed` here may not be a good idea - can we rely on data being
+                    //       flushed eventually?
+                    dest.feed(data).await?;
+                }
+
+                // We only drop the token once the message is sent or at least buffered.
+                drop(send_token);
+            }
+            Either::Left(None) => {
+                trace!("sink closed");
+                return Ok(());
+            }
+            Either::Right(_) => {
+                trace!("received stop signal");
+                return Ok(());
+            }
+        }
     }
 }

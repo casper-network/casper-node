@@ -16,7 +16,9 @@ use crate::{
         consensus,
         fetcher::FetchedOrNotFound,
         gossiper,
-        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
+        small_network::{
+            Channel, EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload,
+        },
     },
     effect::{
         incoming::{
@@ -137,16 +139,47 @@ impl Payload for Message {
         }
     }
 
-    fn is_unsafe_for_syncing_peers(&self) -> bool {
+    #[inline]
+    fn get_channel(&self) -> Channel {
         match self {
-            Message::Consensus(_) => false,
-            Message::DeployGossiper(_) => false,
-            Message::AddressGossiper(_) => false,
-            // Trie requests can deadlock between syncing nodes.
-            Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
-            Message::GetRequest { .. } => false,
-            Message::GetResponse { .. } => false,
-            Message::FinalitySignature(_) => false,
+            Message::Consensus(_) => Channel::Consensus,
+            Message::DeployGossiper(_) => Channel::BulkGossip,
+            Message::AddressGossiper(_) => Channel::Network,
+            Message::GetRequest {
+                tag,
+                serialized_id: _,
+            } => match tag {
+                // TODO: Verify which requests are for sync data.
+                Tag::Deploy => Channel::DataRequests,
+                Tag::FinalizedApprovals => Channel::SyncDataRequests,
+                Tag::Block => Channel::SyncDataRequests,
+                Tag::GossipedAddress => Channel::Network,
+                Tag::BlockAndMetadataByHeight => Channel::SyncDataRequests,
+                Tag::BlockHeaderByHash => Channel::SyncDataRequests,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => Channel::SyncDataRequests,
+                Tag::TrieOrChunk => Channel::SyncDataRequests,
+                Tag::BlockAndDeploysByHash => Channel::SyncDataRequests,
+                Tag::BlockHeaderBatch => Channel::SyncDataRequests,
+                Tag::FinalitySignaturesByHash => Channel::SyncDataRequests,
+            },
+            Message::GetResponse {
+                tag,
+                serialized_item: _,
+            } => match tag {
+                // TODO: Verify which responses are for sync data.
+                Tag::Deploy => Channel::DataResponses,
+                Tag::FinalizedApprovals => Channel::SyncDataResponses,
+                Tag::Block => Channel::SyncDataResponses,
+                Tag::GossipedAddress => Channel::Network,
+                Tag::BlockAndMetadataByHeight => Channel::SyncDataResponses,
+                Tag::BlockHeaderByHash => Channel::SyncDataResponses,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => Channel::SyncDataResponses,
+                Tag::TrieOrChunk => Channel::SyncDataResponses,
+                Tag::BlockAndDeploysByHash => Channel::SyncDataResponses,
+                Tag::BlockHeaderBatch => Channel::SyncDataResponses,
+                Tag::FinalitySignaturesByHash => Channel::SyncDataResponses,
+            },
+            Message::FinalitySignature(_) => Channel::Consensus,
         }
     }
 }

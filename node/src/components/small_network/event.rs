@@ -1,23 +1,22 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
-    io, mem,
+    mem,
     net::SocketAddr,
-    sync::Arc,
 };
 
 use casper_types::PublicKey;
 use derive_more::From;
-use futures::stream::{SplitSink, SplitStream};
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
+use super::{
+    error::{ConnectionError, MessageReaderError},
+    GossipedAddress, Message, NodeId, Transport,
+};
 use crate::{
     effect::{
-        announcements::{
-            BlocklistAnnouncement, ChainSynchronizerAnnouncement, ContractRuntimeAnnouncement,
-        },
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
@@ -28,10 +27,14 @@ const_assert!(_SMALL_NETWORK_EVENT_SIZE < 90);
 
 /// A small network event.
 #[derive(Debug, From, Serialize)]
-pub(crate) enum Event<P> {
+pub(crate) enum Event<P>
+where
+    // Note: See notes on the `OutgoingConnection`'s `P: Serialize` trait bound for details.
+    P: Serialize,
+{
     /// The TLS handshake completed on the incoming connection.
     IncomingConnection {
-        incoming: Box<IncomingConnection<P>>,
+        incoming: Box<IncomingConnection>,
         #[serde(skip)]
         span: Span,
     },
@@ -47,7 +50,7 @@ pub(crate) enum Event<P> {
     /// Incoming connection closed.
     IncomingClosed {
         #[serde(skip_serializing)]
-        result: io::Result<()>,
+        result: Result<(), MessageReaderError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
         #[serde(skip_serializing)]
@@ -56,7 +59,7 @@ pub(crate) enum Event<P> {
 
     /// A new outgoing connection was successfully established.
     OutgoingConnection {
-        outgoing: Box<OutgoingConnection<P>>,
+        outgoing: Box<OutgoingConnection>,
         #[serde(skip_serializing)]
         span: Span,
     },
@@ -97,10 +100,6 @@ pub(crate) enum Event<P> {
     /// Contract runtime announcement.
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
-
-    /// Chain synchronizer announcement.
-    #[from]
-    ChainSynchronizerAnnouncement(ChainSynchronizerAnnouncement),
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -115,7 +114,10 @@ impl From<NetworkInfoRequest> for Event<ProtocolMessage> {
     }
 }
 
-impl<P: Display> Display for Event<P> {
+impl<P> Display for Event<P>
+where
+    P: Display + Serialize,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::IncomingConnection { incoming, span: _ } => {
@@ -150,16 +152,13 @@ impl<P: Display> Display for Event<P> {
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
             }
-            Event::ChainSynchronizerAnnouncement(ann) => {
-                write!(f, "handling chain synchronizer announcement: {}", ann)
-            }
         }
     }
 }
 
 /// Outcome of an incoming connection negotiation.
 #[derive(Debug, Serialize)]
-pub(crate) enum IncomingConnection<P> {
+pub(crate) enum IncomingConnection {
     /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Remote port the peer dialed us from.
@@ -190,11 +189,11 @@ pub(crate) enum IncomingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
-        stream: SplitStream<FullTransport<P>>,
+        transport: Transport,
     },
 }
 
-impl<P> Display for IncomingConnection<P> {
+impl Display for IncomingConnection {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             IncomingConnection::FailedEarly { peer_addr, error } => {
@@ -211,7 +210,7 @@ impl<P> Display for IncomingConnection<P> {
                 public_addr,
                 peer_id,
                 peer_consensus_public_key,
-                stream: _,
+                transport: _,
             } => {
                 write!(
                     f,
@@ -231,7 +230,7 @@ impl<P> Display for IncomingConnection<P> {
 
 /// Outcome of an outgoing connection attempt.
 #[derive(Debug, Serialize)]
-pub(crate) enum OutgoingConnection<P> {
+pub(crate) enum OutgoingConnection {
     /// The outgoing connection failed early on, before a peer's [`NodeId`] could be determined.
     FailedEarly {
         /// Address that was dialed.
@@ -259,14 +258,12 @@ pub(crate) enum OutgoingConnection<P> {
         /// The public key the peer is validating with, if any.
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
-        #[serde(skip_serializing)]
-        sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
-        /// Holds the information whether the remote node is syncing.
-        is_syncing: bool,
+        #[serde(skip)]
+        transport: Transport,
     },
 }
 
-impl<P> Display for OutgoingConnection<P> {
+impl Display for OutgoingConnection {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             OutgoingConnection::FailedEarly { peer_addr, error } => {
@@ -282,14 +279,9 @@ impl<P> Display for OutgoingConnection<P> {
                 peer_addr,
                 peer_id,
                 peer_consensus_public_key,
-                sink: _,
-                is_syncing,
+                transport: _,
             } => {
-                write!(
-                    f,
-                    "connection established to {}/{}, is_syncing: {}",
-                    peer_addr, peer_id, is_syncing
-                )?;
+                write!(f, "connection established to {}/{}", peer_addr, peer_id,)?;
 
                 if let Some(public_key) = peer_consensus_public_key {
                     write!(f, " [{}]", public_key)

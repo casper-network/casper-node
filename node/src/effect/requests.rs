@@ -201,11 +201,6 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<NodeId>>,
     },
-    /// Get only non-syncing peers in random order.
-    FullyConnectedNonSyncingPeers {
-        /// Responder to be called with all connected non-syncing peers in random order.
-        responder: Responder<Vec<NodeId>>,
-    },
     /// Get detailed insights into the nodes networking.
     Insight {
         responder: Responder<NetworkInsights>,
@@ -221,9 +216,7 @@ impl Display for NetworkInfoRequest {
             NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
                 formatter.write_str("get fully connected peers")
             }
-            NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
-                formatter.write_str("get fully connected non-syncing peers")
-            }
+
             NetworkInfoRequest::Insight { responder: _ } => {
                 formatter.write_str("get networking insights")
             }

@@ -14,6 +14,7 @@ use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use strum::{Display, EnumCount, EnumIter, FromRepr};
 
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
@@ -39,9 +40,6 @@ pub(crate) enum Message<P> {
         /// A self-signed certificate indicating validator status.
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
-        /// True if the node is syncing.
-        #[serde(default)]
-        is_syncing: bool,
         /// Hash of the chainspec the node is running.
         #[serde(default)]
         chainspec_hash: Option<Digest>,
@@ -77,15 +75,6 @@ impl<P: Payload> Message<P> {
         }
     }
 
-    /// Returns whether or not the payload is unsafe for syncing node consumption.
-    #[inline]
-    pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
-        match self {
-            Message::Handshake { .. } => false,
-            Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
-        }
-    }
-
     /// Attempts to create a demand-event from this message.
     ///
     /// Succeeds if the outer message contains a payload that can be converd into a demand.
@@ -104,6 +93,14 @@ impl<P: Payload> Message<P> {
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
                     .map_err(Message::Payload)
             }
+        }
+    }
+
+    /// Determine which channel this message should be sent on.
+    pub(super) fn get_channel(&self) -> Channel {
+        match self {
+            Message::Handshake { .. } => Channel::Network,
+            Message::Payload(payload) => payload.get_channel(),
         }
     }
 }
@@ -268,17 +265,16 @@ impl<P: Display> Display for Message<P> {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
                 chainspec_hash,
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, is_syncing: {}, chainspec_hash: {}",
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, chainspec_hash: {}",
                     network_name,
                     public_addr,
                     protocol_version,
                     OptDisplay::new(consensus_certificate.as_ref(), "none"),
-                    is_syncing,
+
                     OptDisplay::new(chainspec_hash.as_ref(), "none")
                 )
             }
@@ -326,12 +322,47 @@ impl Display for MessageKind {
     }
 }
 
+/// Multiplexed channel identifier used across a single connection.
+///
+/// Channels are separated mainly to avoid deadlocking issues where two nodes requests a large
+/// amount of items from each other simultaneously, with responses being queued behind requests,
+/// whilst the latter are buffered due to backpressure.
+///
+/// Further separation is done to improve quality of service of certain subsystems, e.g. to
+/// guarantee that consensus is not impaired by the transfer of large trie nodes.
+#[derive(
+    Copy, Clone, Debug, Display, Eq, EnumCount, EnumIter, FromRepr, PartialEq, Ord, PartialOrd,
+)]
+#[repr(u8)]
+pub enum Channel {
+    /// Networking layer messages, e.g. address gossip.
+    Network = 0,
+    /// Data solely used for syncing being requested.
+    ///
+    /// We separate sync data (e.g. trie nodes) requests from regular ("data") requests since the
+    /// former are not required for a validating node to make progress on consensus, thus separating
+    /// these can improve latency.
+    SyncDataRequests = 1,
+    /// Sync data requests being answered.
+    ///
+    /// Responses are separated from requests to ensure liveness (see [`Channel`] documentation).
+    SyncDataResponses = 2,
+    /// Requests for data used during regular validator operation.
+    DataRequests = 3,
+    /// Responses for data used during regular validator operation.
+    DataResponses = 4,
+    /// Consensus-level messages, like finality signature announcements and consensus messages.
+    Consensus = 5,
+    /// Regular gossip announcements and responses (e.g. for deploys and blocks).
+    BulkGossip = 6,
+}
+
 /// Network message payload.
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
 pub(crate) trait Payload:
-    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
+    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + Unpin + 'static
 {
     /// Classifies the payload based on its contents.
     fn classify(&self) -> MessageKind;
@@ -344,10 +375,8 @@ pub(crate) trait Payload:
         false
     }
 
-    /// Indicates a message is not safe to send to a syncing node.
-    ///
-    /// This functionality should be removed once multiplexed networking lands.
-    fn is_unsafe_for_syncing_peers(&self) -> bool;
+    /// Determine which channel a message is supposed to sent/received on.
+    fn get_channel(&self) -> Channel;
 }
 
 /// Network message conversion support.
@@ -408,14 +437,12 @@ pub struct EstimatorWeights {
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
-    use std::{net::SocketAddr, pin::Pin};
+    use std::net::SocketAddr;
 
-    use bytes::BytesMut;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
-    use tokio_serde::{Deserializer, Serializer};
 
-    use crate::{components::small_network::message_pack_format::MessagePackFormat, protocol};
+    use crate::{components::small_network::handshake, protocol};
 
     use super::*;
 
@@ -499,22 +526,12 @@ mod tests {
 
     /// Serialize a message using the standard serialization method for handshakes.
     fn serialize_message<M: Serialize>(msg: &M) -> Vec<u8> {
-        let mut serializer = MessagePackFormat;
-
-        Pin::new(&mut serializer)
-            .serialize(&msg)
-            .expect("handshake serialization failed")
-            .into_iter()
-            .collect()
+        handshake::serialize(msg).expect("handshake serialization failed")
     }
 
     /// Deserialize a message using the standard deserialization method for handshakes.
     fn deserialize_message<M: DeserializeOwned>(serialized: &[u8]) -> M {
-        let mut deserializer = MessagePackFormat;
-
-        Pin::new(&mut deserializer)
-            .deserialize(&BytesMut::from(serialized))
-            .expect("message deserialization failed")
+        handshake::deserialize(serialized).expect("message deserialization failed")
     }
 
     /// Given a message `from` of type `F`, serializes it, then deserializes it as `T`.
@@ -565,7 +582,6 @@ mod tests {
             public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
             consensus_certificate: Some(ConsensusCertificate::random(&mut rng)),
-            is_syncing: false,
             chainspec_hash: Some(Digest::hash("example-chainspec")),
         };
 
@@ -600,14 +616,14 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -626,15 +642,14 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
-                assert!(!is_syncing);
                 assert_eq!(network_name, "serialization-test");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
                 assert!(consensus_certificate.is_none());
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -653,13 +668,13 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
-                assert!(!is_syncing);
+
                 let ConsensusCertificate {
                     public_key,
                     signature,
@@ -680,7 +695,7 @@ mod tests {
                     )
                     .unwrap()
                 );
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -699,10 +714,9 @@ mod tests {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
+
                 chainspec_hash,
             } => {
-                assert!(!is_syncing);
                 assert_eq!(network_name, "example-handshake");
                 assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
                 assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
@@ -726,7 +740,7 @@ mod tests {
                     )
                     .unwrap()
                 );
-                assert!(!is_syncing);
+
                 assert!(chainspec_hash.is_none())
             }
             Message::Payload(_) => {
@@ -757,5 +771,14 @@ mod tests {
     #[test]
     fn bincode_roundtrip_certificate() {
         roundtrip_certificate(false)
+    }
+
+    #[test]
+    fn channels_enum_does_not_have_holes() {
+        for idx in 0..Channel::COUNT {
+            let result = Channel::from_repr(idx as u8);
+            eprintln!("idx: {} channel: {:?}", idx, result);
+            result.expect("must not have holes in channel enum");
+        }
     }
 }

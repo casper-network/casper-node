@@ -1,8 +1,9 @@
-use std::{error, io, net::SocketAddr, result, sync::Arc};
+use std::{io, net::SocketAddr, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, SecretKey};
 use datasize::DataSize;
+use muxink::{demux::DemultiplexerError, fragmented::DefragmentizerError};
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -12,7 +13,7 @@ use crate::{
     utils::{LoadError, Loadable, ResolveAddressError},
 };
 
-pub(super) type Result<T> = result::Result<T, Error>;
+use super::Channel;
 
 /// Error type returned by the `SmallNetwork` component.
 #[derive(Debug, Error, Serialize)]
@@ -63,6 +64,14 @@ pub enum Error {
         #[source]
         ResolveAddressError,
     ),
+    /// Could not open the specified keylog file for appending.
+    #[error("could not open keylog for appending")]
+    CannotAppendToKeylog(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+
     /// Instantiating metrics failed.
     #[error(transparent)]
     Metrics(
@@ -108,7 +117,7 @@ impl DataSize for ConnectionError {
     }
 }
 
-/// An error related to an incoming or outgoing connection.
+/// An error related to the establishment of an incoming or outgoing connection.
 #[derive(Debug, Error, Serialize)]
 pub enum ConnectionError {
     /// Failed to create TLS acceptor.
@@ -147,18 +156,10 @@ pub enum ConnectionError {
     PeerCertificateInvalid(#[source] ValidationError),
     /// Failed to send handshake.
     #[error("handshake send failed")]
-    HandshakeSend(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
+    HandshakeSend(#[source] RawFrameIoError),
     /// Failed to receive handshake.
     #[error("handshake receive failed")]
-    HandshakeRecv(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
+    HandshakeRecv(#[source] RawFrameIoError),
     /// Peer reported a network name that does not match ours.
     #[error("peer is on different network: {0}")]
     WrongNetwork(String),
@@ -180,7 +181,7 @@ pub enum ConnectionError {
     CouldNotEncodeOurHandshake(
         #[serde(skip_serializing)]
         #[source]
-        io::Error,
+        rmp_serde::encode::Error,
     ),
     /// A background sender for our handshake panicked or crashed.
     ///
@@ -196,7 +197,7 @@ pub enum ConnectionError {
     InvalidRemoteHandshakeMessage(
         #[serde(skip_serializing)]
         #[source]
-        io::Error,
+        rmp_serde::decode::Error,
     ),
     /// The peer sent a consensus certificate, but it was invalid.
     #[error("invalid consensus certificate")]
@@ -205,26 +206,45 @@ pub enum ConnectionError {
         #[source]
         crypto::Error,
     ),
-    /// Failed to reunite handshake sink/stream.
-    ///
-    /// This is usually a bug.
-    #[error("handshake sink/stream could not be reunited")]
-    FailedToReuniteHandshakeSinkAndStream,
 }
 
-/// IO operation that can time out or close.
+/// IO error sending a raw frame.
+///
+/// Raw frame IO is used only during the handshake, but comes with its own error conditions.
+#[derive(Debug, Error, Serialize)]
+pub enum RawFrameIoError {
+    /// Could not send or receive the raw frame.
+    #[error("io error")]
+    Io(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+
+    /// Length limit violation.
+    #[error("advertised length of {0} exceeds configured maximum raw frame size")]
+    MaximumLengthExceeded(usize),
+}
+
+/// An error produced by reading messages.
 #[derive(Debug, Error)]
-pub enum IoError<E>
-where
-    E: error::Error + 'static,
-{
-    /// IO operation timed out.
-    #[error("io timeout")]
-    Timeout,
-    /// Non-timeout IO error.
-    #[error(transparent)]
-    Error(#[from] E),
-    /// Unexpected close/end-of-file.
-    #[error("closed unexpectedly")]
-    UnexpectedEof,
+pub enum MessageReaderError {
+    /// The semaphore that limits trie demands was closed unexpectedly.
+    #[error("demand limiter semaphore closed unexpectedly")]
+    UnexpectedSemaphoreClose,
+    /// The message receival stack returned an error.
+    // These errors can get fairly and complicated and are boxed here for that reason.
+    #[error("message receive error")]
+    ReceiveError(DefragmentizerError<DemultiplexerError<io::Error>>),
+    /// Error deserializing message.
+    #[error("message deserialization error")]
+    DeserializationError(bincode::Error),
+    /// Wrong channel for received message.
+    #[error("received a {got} message on channel {expected}")]
+    WrongChannel {
+        /// The channel the message was actually received on.
+        got: Channel,
+        /// The channel on which the message should have been sent.
+        expected: Channel,
+    },
 }

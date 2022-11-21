@@ -9,7 +9,6 @@ use std::{
     collections::{BTreeSet, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    sync::atomic::Ordering,
     time::SystemTime,
 };
 
@@ -37,8 +36,6 @@ pub(crate) struct NetworkInsights {
     public_addr: SocketAddr,
     /// The fingerprint of a consensus key installed.
     consensus_pub_key: Option<PublicKey>,
-    /// Whether or not the node is syncing.
-    is_syncing: bool,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
     /// The list of node IDs that are being preferred due to being active validators.
@@ -96,9 +93,9 @@ fn time_delta(now: SystemTime, then: SystemTime) -> impl Display {
 
 impl OutgoingStateInsight {
     /// Constructs a new outgoing state insight from a given outgoing state.
-    fn from_outgoing_state<P>(
+    fn from_outgoing_state(
         anchor: &TimeAnchor,
-        state: &OutgoingState<OutgoingHandle<P>, ConnectionError>,
+        state: &OutgoingState<OutgoingHandle, ConnectionError>,
     ) -> Self {
         match state {
             OutgoingState::Connecting {
@@ -284,7 +281,6 @@ impl NetworkInsights {
                 .as_ref()
                 .map(ConsensusKeyPair::public_key)
                 .cloned(),
-            is_syncing: net.context.is_syncing.load(Ordering::Relaxed),
             net_active_era: net.active_era,
             priviledged_active_outgoing_nodes,
             priviledged_upcoming_outgoing_nodes,
@@ -301,16 +297,12 @@ impl Display for NetworkInsights {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let now = SystemTime::now();
 
-        if self.is_syncing {
+        if !self.network_ca {
             f.write_str("Public ")?;
         } else {
             f.write_str("Private ")?;
         }
-        writeln!(
-            f,
-            "node {} @ {} (syncing: {})",
-            self.our_id, self.public_addr, self.is_syncing
-        )?;
+        writeln!(f, "node {} @ {}", self.our_id, self.public_addr)?;
         writeln!(
             f,
             "active era: {}  consensus key: {} unspent_bandwidth_allowance_bytes: {}",

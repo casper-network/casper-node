@@ -14,6 +14,7 @@ default-run = "casper-node"
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1"
+array-init = "2.0.1"
 async-trait = "0.1.50"
 backtrace = "0.3.50"
 base16 = "0.2.1"
@@ -32,7 +33,7 @@ either = "1"
 enum-iterator = "0.6.0"
 erased-serde = "0.3.18"
 fs2 = "0.4.3"
-futures = "0.3.5"
+futures = { version = "0.3.21" }
 futures-io = "0.3.5"
 hex-buffer-serde = "0.3.0"
 hex_fmt = "0.3.0"
@@ -45,6 +46,7 @@ libc = "0.2.66"
 linked-hash-map = "0.5.3"
 lmdb = "0.8.0"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
+muxink = { path = "../muxink" }
 num = { version = "0.4.0", default-features = false }
 num-derive = "0.3.0"
 num-rational = { version = "0.4.0", features = ["serde"] }
@@ -73,6 +75,7 @@ smallvec = { version = "1", features = ["serde"] }
 static_assertions = "1"
 stats_alloc = "0.1.8"
 structopt = "0.3.14"
+strum = { version = "0.24.1", features = ["derive"] }
 sys-info = "0.8.0"
 tempfile = "3"
 thiserror = "1"
@@ -80,7 +83,7 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync",
 tokio-openssl = "0.6.1"
 tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
-tokio-util = { version = "0.6.4", features = ["codec"] }
+tokio-util = { version = "0.6.4", features = ["codec", "compat"] }
 toml = "0.5.6"
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"

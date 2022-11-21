@@ -13,7 +13,6 @@ mod node_config;
 mod node_id;
 /// Peers map.
 pub mod peers_map;
-mod shared_object;
 mod status_feed;
 
 use rand::{CryptoRng, RngCore};
