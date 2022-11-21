@@ -554,25 +554,6 @@ impl ContractRuntime {
                     });
                 responder.respond(result).ignore()
             }
-            ContractRuntimeRequest::FindMissingDescendantTrieKeys {
-                trie_key,
-                responder,
-            } => {
-                trace!(?trie_key, "find missing descendant trie keys");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
-                    metrics
-                        .missing_trie_keys
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "find missing descendant trie keys");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
                 deploy,

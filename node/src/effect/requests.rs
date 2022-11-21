@@ -1121,13 +1121,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result. Contains the hash of the stored trie.
         responder: Responder<Result<Digest, engine_state::Error>>,
     },
-    /// Find the missing descendants for a trie key
-    FindMissingDescendantTrieKeys {
-        /// The trie key to find the missing descendants for.
-        trie_key: Digest,
-        /// The responder to call with the result.
-        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
-    },
     /// Execute deploys without commiting results
     SpeculativeDeployExecution {
         /// Hash of a block on top of which to execute the deploy.
@@ -1210,9 +1203,6 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)
-            }
-            ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
-                write!(formatter, "Find missing descendant trie keys: {}", trie_key)
             }
             ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
