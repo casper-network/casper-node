@@ -72,9 +72,7 @@ use strum::EnumCount;
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
-    sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
-    },
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
@@ -177,9 +175,6 @@ where
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
-
-    /// Fuse that will cause all incoming connections to be closed..
-    close_incoming: DropSwitch<ObservableFuse>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -370,7 +365,6 @@ where
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
         let shutdown_fuse = DropSwitch::new(ObservableFuse::new());
-        let close_incoming = DropSwitch::new(ObservableFuse::new());
 
         let server_join_handle = tokio::spawn(
             tasks::server(
@@ -387,7 +381,6 @@ where
             outgoing_manager,
             connection_symmetries: HashMap::new(),
             shutdown_fuse,
-            close_incoming,
             server_join_handle: Some(server_join_handle),
             net_metrics,
             outgoing_limiter,
@@ -621,7 +614,7 @@ where
                         carrier,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
-                        self.close_incoming.inner().clone(),
+                        self.shutdown_fuse.inner().clone(),
                         peer_id,
                         span.clone(),
                     )
@@ -939,7 +932,6 @@ where
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
             self.shutdown_fuse.inner().set();
-            self.close_incoming.inner().set();
 
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
