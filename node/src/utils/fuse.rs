@@ -64,7 +64,7 @@ impl Default for SharedFuse {
 ///
 /// It is similar to a condition var, except it can only bet set once and will immediately return
 /// if it was previously set.
-#[derive(Clone, Debug)]
+#[derive(DataSize, Clone, Debug)]
 pub(crate) struct ObservableFuse(Arc<ObservableFuseInner>);
 
 impl ObservableFuse {
@@ -80,11 +80,13 @@ impl ObservableFuse {
 }
 
 /// Inner implementation of the `ObservableFuse`.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 struct ObservableFuseInner {
     /// The fuse to trigger.
+    #[data_size(skip)]
     fuse: AtomicBool,
     /// Notification that the fuse has been triggered.
+    #[data_size(skip)]
     notify: Notify,
 }
 
@@ -116,7 +118,7 @@ impl Fuse for ObservableFuse {
 }
 
 /// A wrapper for a fuse that will cause it to be set when dropped.
-#[derive(Debug, Clone)]
+#[derive(DataSize, Debug, Clone)]
 pub(crate) struct DropSwitch<T>(T)
 where
     T: Fuse;

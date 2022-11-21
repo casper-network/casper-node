@@ -183,7 +183,6 @@ where
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Fuse that will cause all incoming connections to be closed..
-    #[data_size(skip)]
     close_incoming: DropSwitch<ObservableFuse>,
 
     /// Networking metrics.
