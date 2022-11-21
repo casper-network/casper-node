@@ -25,7 +25,7 @@ use crate::{
 /// present in the database.
 // TODO: We only need to check one trie key at a time
 // this is only
-pub fn missing_trie_keys<K, V, T, S, E>(
+fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
