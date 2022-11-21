@@ -184,7 +184,7 @@ impl DeployBuffer {
                 warn!(%deploy_hash, ?prev, "DeployBuffer: deploy upserted");
             }
             None => {
-                debug!(%deploy_hash, "DeployBuffer: new deploy buffered"); // todo!("put this to trace! after testing")
+                debug!(%deploy_hash, "DeployBuffer: new deploy buffered");
             }
         }
     }

@@ -7,7 +7,7 @@ use casper_hashing::Digest;
 
 use super::deploy_acquisition;
 
-use crate::types::BlockHash;
+use crate::types::{BlockHash, DeployId};
 
 #[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum BlockAcquisitionError {
@@ -20,9 +20,12 @@ pub(crate) enum BlockAcquisitionError {
         expected: Digest,
         actual: Digest,
     },
+    InvalidAttemptToAcquireExecutionResults,
     #[from]
     InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
-    InvalidAttemptToAcquireExecutionResults,
+    InvalidAttemptToApplyDeploy {
+        deploy_id: DeployId,
+    },
     InvalidAttemptToMarkComplete,
     ExecutionResults(super::execution_results_acquisition::Error),
 }
@@ -60,6 +63,9 @@ impl Display for BlockAcquisitionError {
                 "invalid attempt to apply approvals hashes results: {}",
                 error
             ),
+            BlockAcquisitionError::InvalidAttemptToApplyDeploy { deploy_id } => {
+                write!(f, "invalid attempt to apply deploy: {}", deploy_id)
+            }
         }
     }
 }

@@ -27,7 +27,7 @@ impl Display for BlockAcquisitionAction {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "need_next: {} from {} peers",
+            "{} from {} peers",
             self.need_next,
             self.peers_to_ask.len()
         )

@@ -161,6 +161,12 @@ impl BlockBuilder {
 
     pub(super) fn in_flight_latch(&mut self) -> Option<Timestamp> {
         if let Some(timestamp) = self.in_flight_latch {
+            // we put a latch on ourselves the first time we signal we need something specific
+            // if asked again before we get what we need, and latch_reset_interval has not passed,
+            // we signal we need nothing to avoid spamming redundant asks
+            //
+            // if latch_reset_interval has passed, we reset the latch and ask again.
+
             // !todo move reset interval to config
             let latch_reset_interval = TimeDiff::from_seconds(5);
             if Timestamp::now().saturating_diff(timestamp) > latch_reset_interval {
@@ -257,7 +263,7 @@ impl BlockBuilder {
         ) {
             Ok(ret) => ret,
             Err(err) => {
-                error!(%err);
+                error!(%err, "BlockBuilder: attempt to determine next action resulted in error.");
                 self.abort();
                 BlockAcquisitionAction::need_nothing(self.block_hash)
             }
@@ -411,14 +417,14 @@ impl BlockBuilder {
     fn handle_acceptance(
         &mut self,
         maybe_peer: Option<NodeId>,
-        acceptance: Result<Acceptance, BlockAcquisitionError>,
+        acceptance: Result<Option<Acceptance>, BlockAcquisitionError>,
     ) -> Result<(), Error> {
         match acceptance {
-            Ok(Acceptance::NeededIt) => {
+            Ok(Some(Acceptance::NeededIt)) => {
                 self.touch();
                 self.promote_peer(maybe_peer);
             }
-            Ok(Acceptance::HadIt) => (),
+            Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
             Err(error) => {
                 self.disqualify_peer(maybe_peer);
                 return Err(Error::BlockAcquisition(error));

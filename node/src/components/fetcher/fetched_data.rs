@@ -41,6 +41,16 @@ impl<T> FetchedData<T> {
     }
 }
 
+impl<T: FetcherItem> FetchedData<T> {
+    pub(crate) fn id(&self) -> T::Id {
+        match self {
+            FetchedData::FromStorage { item } | FetchedData::FromPeer { peer: _, item } => {
+                item.id()
+            }
+        }
+    }
+}
+
 impl<T: FetcherItem> Display for FetchedData<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

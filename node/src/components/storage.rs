@@ -1218,7 +1218,13 @@ impl Storage {
     /// Put a single deploy into storage.
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let outcome = txn.put_value(self.deploy_db, deploy.hash(), deploy, false)?;
+        let deploy_hash = deploy.hash();
+        let outcome = txn.put_value(self.deploy_db, deploy_hash, deploy, false)?;
+        if outcome {
+            debug!(%deploy_hash, "Storage: new deploy stored");
+        } else {
+            warn!(%deploy_hash, "Storage: attempt to store existing deploy");
+        }
         txn.commit()?;
         Ok(outcome)
     }

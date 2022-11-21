@@ -641,7 +641,7 @@ impl BlockHash {
 
 impl Display for BlockHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "block hash {}", self.0)
+        write!(formatter, "{}", self.0)
     }
 }
 

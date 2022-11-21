@@ -43,7 +43,7 @@ impl DeployAcquisition {
         DeployAcquisition::ByHash(Acquisition::new(deploy_hashes, need_execution_result))
     }
 
-    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) -> Acceptance {
+    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) -> Option<Acceptance> {
         match self {
             DeployAcquisition::ByHash(acquisition) => {
                 acquisition.apply_deploy(*deploy_id.deploy_hash())
@@ -121,17 +121,19 @@ impl<T: Copy + Ord> Acquisition<T> {
         }
     }
 
-    fn apply_deploy(&mut self, deploy_identifier: T) -> Acceptance {
-        if self
-            .inner
-            .contains(&(deploy_identifier, DeployState::HaveDeployBody))
-        {
-            Acceptance::HadIt
-        } else {
-            self.inner
-                .push((deploy_identifier, DeployState::HaveDeployBody));
-            Acceptance::NeededIt
+    fn apply_deploy(&mut self, deploy_identifier: T) -> Option<Acceptance> {
+        for item in self.inner.iter_mut() {
+            if item.0 == deploy_identifier {
+                match item.1 {
+                    DeployState::Vacant => {
+                        item.1 = DeployState::HaveDeployBody;
+                        return Some(Acceptance::NeededIt);
+                    }
+                    DeployState::HaveDeployBody => return Some(Acceptance::HadIt),
+                }
+            }
         }
+        None
     }
 
     fn needs_deploy(&self) -> Option<T> {
