@@ -826,7 +826,12 @@ impl BlockSynchronizer {
         }
     }
 
-    fn register_executed_block_notification(&mut self, block_hash: BlockHash, height: u64) {
+    fn register_executed_block_notification(
+        &mut self,
+        block_hash: BlockHash,
+        height: u64,
+        state_root_hash: Digest,
+    ) {
         // if the block being synchronized for execution has already executed, drop it.
         let finished_with_forward = if let Some(builder) = self.forward.as_ref() {
             builder
@@ -838,13 +843,8 @@ impl BlockSynchronizer {
         };
 
         if finished_with_forward {
-            let builder = self
-                .forward
-                .take()
-                .expect("must be Some due to check above");
-            let forward_hash = builder.block_hash();
             self.global_sync
-                .cancel_request(forward_hash, global_state_synchronizer::Error::Cancelled);
+                .cancel_request(state_root_hash, global_state_synchronizer::Error::Cancelled);
         }
     }
 
@@ -944,8 +944,13 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     Event::Request(BlockSynchronizerRequest::BlockExecuted {
                         block_hash,
                         height,
+                        state_root_hash,
                     }) => {
-                        self.register_executed_block_notification(block_hash, height);
+                        self.register_executed_block_notification(
+                            block_hash,
+                            height,
+                            state_root_hash,
+                        );
                         Effects::new()
                     }
                     Event::Request(BlockSynchronizerRequest::DishonestPeers) => {

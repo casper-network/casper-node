@@ -596,6 +596,7 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
                         block_hash: *block.hash(),
                         height: block.height(),
+                        state_root_hash: *block.header().state_root_hash(),
                     });
                 effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
                 let deploy_buffer_event =

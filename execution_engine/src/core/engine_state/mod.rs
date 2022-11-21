@@ -1666,20 +1666,22 @@ where
         Ok(self.state.get_trie_full(correlation_id, &trie_key)?)
     }
 
-    /// Puts a trie and finds missing descendant trie keys.
-    pub fn put_trie_and_find_missing_descendant_trie_keys(
+    /// Puts a trie if no children are missing from the global state; otherwise reports the missing
+    /// children hashes via the `Error` enum.
+    pub fn put_trie_if_all_children_present(
         &self,
         correlation_id: CorrelationId,
         trie_bytes: &[u8],
-    ) -> Result<Vec<Digest>, Error>
+    ) -> Result<Digest, Error>
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
-        let missing_descendant_trie_keys = self
-            .state
-            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
-        Ok(missing_descendant_trie_keys)
+        let missing_children = self.state.missing_children(correlation_id, trie_bytes)?;
+        if missing_children.is_empty() {
+            Ok(self.state.put_trie(correlation_id, trie_bytes)?)
+        } else {
+            Err(Error::MissingTrieNodeChildren(missing_children))
+        }
     }
 
     /// Performs a lookup for a list of missing root hashes.
@@ -2209,7 +2211,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetStoredWithdraws
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
-            | Error::FailedToRetrieveEraId => false,
+            | Error::FailedToRetrieveEraId
+            | Error::MissingTrieNodeChildren(_) => false,
         },
         ExecutionResult::Success { .. } => false,
     }
