@@ -27,6 +27,7 @@ use std::{
 
 use datasize::DataSize;
 use fs2::FileExt;
+use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
@@ -461,6 +462,26 @@ impl TimeAnchor {
             self.wall_clock_now + then.duration_since(self.now)
         } else {
             self.wall_clock_now - self.now.duration_since(then)
+        }
+    }
+}
+
+/// Discard secondary data from a value.
+pub(crate) trait Peel {
+    /// What is left after discarding the wrapping.
+    type Inner;
+
+    /// Discard "uninteresting" data.
+    fn peel(self) -> Self::Inner;
+}
+
+impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
+    type Inner = Either<A, B>;
+
+    fn peel(self) -> Self::Inner {
+        match self {
+            Either::Left((v, _)) => Either::Left(v),
+            Either::Right((v, _)) => Either::Right(v),
         }
     }
 }

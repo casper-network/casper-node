@@ -59,7 +59,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{display_error, Fuse, LockedLineWriter, ObservableFuse, TokenizedCount},
+    utils::{display_error, Fuse, LockedLineWriter, ObservableFuse, Peel, TokenizedCount},
 };
 
 /// An encoded network message, ready to be sent out.
@@ -582,23 +582,6 @@ where
         readers.push(read_next(incoming, channel));
     }
 
-    // TODO: Move to utils and use elsewhere.
-    trait Discard {
-        type Remains;
-        fn discard(self) -> Self::Remains;
-    }
-
-    impl<A, B, F, G> Discard for Either<(A, G), (B, F)> {
-        type Remains = Either<A, B>;
-
-        fn discard(self) -> Self::Remains {
-            match self {
-                Either::Left((v, _)) => Either::Left(v),
-                Either::Right((v, _)) => Either::Right(v),
-            }
-        }
-    }
-
     loop {
         let next_reader = readers.next();
         let wait_for_close_incoming = close_incoming.wait();
@@ -608,7 +591,7 @@ where
         let (incoming, channel, outcome) =
             match future::select(next_reader, wait_for_close_incoming)
                 .await
-                .discard()
+                .peel()
             {
                 Either::Left(Some(item)) => item,
                 Either::Left(None) => {
