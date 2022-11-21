@@ -29,7 +29,7 @@ use serde::de::DeserializeOwned;
 use strum::{EnumCount, IntoEnumIterator};
 use tokio::{
     net::TcpStream,
-    sync::{mpsc::UnboundedReceiver, watch, Semaphore},
+    sync::{mpsc::UnboundedReceiver, watch},
 };
 use tokio_openssl::SslStream;
 use tracing::{
@@ -55,7 +55,7 @@ use super::{
 
 use crate::{
     components::small_network::deserialize_network_message,
-    effect::{requests::NetworkRequest, AutoClosingResponder, EffectBuilder},
+    effect::{requests::NetworkRequest, AutoClosingResponder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
@@ -418,132 +418,10 @@ pub(super) async fn server<P, REv>(
     }
 }
 
-/// Network message reader.
-///
-/// Schedules all received messages until the stream is closed or an error occurs.
-pub(super) async fn message_receiver<REv, P>(
-    context: Arc<NetworkContext<REv>>,
-    mut stream: IncomingChannel,
-    limiter: Box<dyn LimiterHandle>,
-    mut close_incoming_receiver: watch::Receiver<()>,
-    peer_id: NodeId,
-    span: Span,
-) -> Result<(), MessageReaderError>
-where
-    P: DeserializeOwned + Send + Display + Payload,
-    REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
-{
-    let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
-
-    let read_messages = async move {
-        while let Some(frame_result) = stream.next().await {
-            let frame = frame_result.map_err(MessageReaderError::ReceiveError)?;
-            let msg: Message<P> = deserialize_network_message(&frame)
-                .map_err(MessageReaderError::DeserializationError)?;
-
-            trace!(%msg, "message received");
-
-            let effect_builder = EffectBuilder::new(context.event_queue);
-
-            match msg.try_into_demand(effect_builder, peer_id) {
-                Ok((event, wait_for_response)) => {
-                    // Note: For now, demands bypass the limiter, as we expect the backpressure to
-                    //       handle this instead.
-
-                    // Acquire a permit. If we are handling too many demands at this time, this will
-                    // block, halting the processing of new message, thus letting the peer they have
-                    // reached their maximum allowance.
-                    let in_flight = demands_in_flight
-                        .clone()
-                        .acquire_owned()
-                        .await
-                        // Note: Since the semaphore is reference counted, it must explicitly be
-                        //       closed for acquisition to fail, which we never do. If this happens,
-                        //       there is a bug in the code; we exit with an error and close the
-                        //       connection.
-                        .map_err(|_| MessageReaderError::UnexpectedSemaphoreClose)?;
-
-                    Metrics::record_trie_request_start(&context.net_metrics);
-
-                    let net_metrics = context.net_metrics.clone();
-                    // Spawn a future that will eventually send the returned message. It will
-                    // essentially buffer the response.
-                    tokio::spawn(async move {
-                        if let Some(payload) = wait_for_response.await {
-                            // Send message and await its return. `send_message` should only return
-                            // when the message has been buffered, if the peer is not accepting
-                            // data, we will block here until the send buffer has sufficient room.
-                            effect_builder.send_message(peer_id, payload).await;
-
-                            // Note: We could short-circuit the event queue here and directly insert
-                            //       into the outgoing message queue, which may be potential
-                            //       performance improvement.
-                        }
-
-                        // Missing else: The handler of the demand did not deem it worthy a
-                        // response. Just drop it.
-
-                        // After we have either successfully buffered the message for sending,
-                        // failed to do so or did not have a message to send out, we consider the
-                        // request handled and free up the permit.
-                        Metrics::record_trie_request_end(&net_metrics);
-                        drop(in_flight);
-                    });
-
-                    // Schedule the created event.
-                    context
-                        .event_queue
-                        .schedule::<REv>(event, QueueKind::NetworkDemand)
-                        .await;
-                }
-                Err(msg) => {
-                    // We've received a non-demand message. Ensure we have the proper amount of
-                    // resources, then push it to the reactor.
-                    limiter
-                        .request_allowance(
-                            msg.payload_incoming_resource_estimate(&context.payload_weights),
-                        )
-                        .await;
-
-                    let queue_kind = if msg.is_low_priority() {
-                        QueueKind::NetworkLowPriority
-                    } else {
-                        QueueKind::NetworkIncoming
-                    };
-
-                    context
-                        .event_queue
-                        .schedule(
-                            Event::IncomingMessage {
-                                peer_id: Box::new(peer_id),
-                                msg: Box::new(msg),
-                                span: span.clone(),
-                            },
-                            queue_kind,
-                        )
-                        .await;
-                }
-            }
-        }
-        Ok::<_, MessageReaderError>(())
-    };
-
-    let shutdown_messages = async move { while close_incoming_receiver.changed().await.is_ok() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // while loop to terminate.
-    match future::select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
-        Either::Left(_) => info!("shutting down incoming connection message reader"),
-        Either::Right(_) => (),
-    }
-
-    Ok(())
-}
-
 /// Multi-channel message receiver.
-pub(super) async fn new_message_receiver<REv, P>(
+pub(super) async fn multi_channel_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    carrier: IncomingCarrier,
+    carrier: Arc<Mutex<IncomingCarrier>>,
     limiter: Box<dyn LimiterHandle>,
     close_incoming: ObservableFuse,
     peer_id: NodeId,
@@ -553,9 +431,6 @@ where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
 {
-    // Sets up all channels on top of the carrier.
-    let carrier = Arc::new(Mutex::new(carrier));
-
     // TODO: Replace with select_all!
     async fn read_next(
         mut incoming: IncomingChannel,

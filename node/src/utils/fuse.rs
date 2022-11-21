@@ -126,8 +126,13 @@ where
     T: Fuse,
 {
     /// Creates a new drop switch around a fuse.
-    fn new(fuse: T) -> Self {
+    pub(crate) fn new(fuse: T) -> Self {
         DropSwitch(fuse)
+    }
+
+    /// Access the wrapped fuse.
+    pub(crate) fn inner(&self) -> &T {
+        &self.0
     }
 }
 

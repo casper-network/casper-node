@@ -119,7 +119,10 @@ use crate::{
         ValidationError,
     },
     types::NodeId,
-    utils::{self, display_error, LockedLineWriter, Source, TokenizedCount, WithDir},
+    utils::{
+        self, display_error, DropSwitch, Fuse, LockedLineWriter, ObservableFuse, Source,
+        TokenizedCount, WithDir,
+    },
     NodeRng,
 };
 
@@ -179,16 +182,9 @@ where
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 
-    /// Channel signaling a shutdown of the incoming connections.
-    // Note: This channel is closed when we finished syncing, so the `SmallNetwork` can close all
-    // connections. When they are re-established, the proper value of the now updated `is_syncing`
-    // flag will be exchanged on handshake.
+    /// Fuse that will cause all incoming connections to be closed..
     #[data_size(skip)]
-    close_incoming_sender: Option<watch::Sender<()>>,
-    /// Handle used by the `message_reader` task to receive a notification that incoming
-    /// connections should be closed.
-    #[data_size(skip)]
-    close_incoming_receiver: watch::Receiver<()>,
+    close_incoming: DropSwitch<ObservableFuse>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -379,7 +375,7 @@ where
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        let close_incoming = DropSwitch::new(ObservableFuse::new());
 
         let server_join_handle = tokio::spawn(
             tasks::server(
@@ -396,8 +392,7 @@ where
             outgoing_manager,
             connection_symmetries: HashMap::new(),
             shutdown_sender: Some(server_shutdown_sender),
-            close_incoming_sender: Some(close_incoming_sender),
-            close_incoming_receiver,
+            close_incoming,
             server_join_handle: Some(server_join_handle),
             net_metrics,
             outgoing_limiter,
@@ -623,24 +618,15 @@ where
                     MESSAGE_FRAGMENT_SIZE,
                 ))));
 
-                // Setup one channel.
-                let demux_123 =
-                    Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), 123)
-                        .expect("mutex poisoned");
-                let channel_123: IncomingChannel = Defragmentizer::new(
-                    self.context.chain_info.maximum_net_message_size as usize,
-                    demux_123,
-                );
-
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
-                    tasks::message_receiver(
+                    tasks::multi_channel_message_receiver(
                         self.context.clone(),
-                        channel_123,
+                        carrier,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
-                        self.close_incoming_receiver.clone(),
+                        self.close_incoming.inner().clone(),
                         peer_id,
                         span.clone(),
                     )
@@ -959,7 +945,8 @@ where
         async move {
             // Close the shutdown socket, causing the server to exit.
             drop(self.shutdown_sender.take());
-            drop(self.close_incoming_sender.take());
+
+            self.close_incoming.inner().set();
 
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
