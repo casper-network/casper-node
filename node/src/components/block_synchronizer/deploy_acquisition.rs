@@ -4,7 +4,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use either::Either;
 use tracing::debug;
 
 use super::block_acquisition::Acceptance;
@@ -14,12 +13,6 @@ use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 pub(crate) enum Error {
     AcquisitionByIdNotPossible,
     EncounteredNonVacantDeployState,
-}
-
-#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
-pub(super) enum DeployAcquisition {
-    ByHash(Acquisition<DeployHash>),
-    ById(Acquisition<DeployId>),
 }
 
 impl Display for Error {
@@ -33,12 +26,24 @@ impl Display for Error {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+pub(super) enum DeployIdentifier {
+    ByHash(DeployHash),
+    ById(DeployId),
+}
+
+#[derive(Clone, PartialEq, Eq, DataSize, Debug)]
+pub(super) enum DeployAcquisition {
+    ByHash(Acquisition<DeployHash>),
+    ById(Acquisition<DeployId>),
+}
+
 impl DeployAcquisition {
     pub(super) fn new_by_hash(deploy_hashes: Vec<DeployHash>, need_execution_result: bool) -> Self {
         DeployAcquisition::ByHash(Acquisition::new(deploy_hashes, need_execution_result))
     }
 
-    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) -> Acceptance {
+    pub(super) fn apply_deploy(&mut self, deploy_id: DeployId) -> Option<Acceptance> {
         match self {
             DeployAcquisition::ByHash(acquisition) => {
                 acquisition.apply_deploy(*deploy_id.deploy_hash())
@@ -83,10 +88,10 @@ impl DeployAcquisition {
         Ok(())
     }
 
-    pub(super) fn needs_deploy(&self) -> Option<Either<DeployHash, DeployId>> {
+    pub(super) fn needs_deploy(&self) -> Option<DeployIdentifier> {
         match self {
-            DeployAcquisition::ByHash(acquisition) => acquisition.needs_deploy().map(Either::Left),
-            DeployAcquisition::ById(acquisition) => acquisition.needs_deploy().map(Either::Right),
+            DeployAcquisition::ByHash(acq) => acq.needs_deploy().map(DeployIdentifier::ByHash),
+            DeployAcquisition::ById(acq) => acq.needs_deploy().map(DeployIdentifier::ById),
         }
     }
 }
@@ -116,17 +121,19 @@ impl<T: Copy + Ord> Acquisition<T> {
         }
     }
 
-    fn apply_deploy(&mut self, deploy_identifier: T) -> Acceptance {
-        if self
-            .inner
-            .contains(&(deploy_identifier, DeployState::HaveDeployBody))
-        {
-            Acceptance::HadIt
-        } else {
-            self.inner
-                .push((deploy_identifier, DeployState::HaveDeployBody));
-            Acceptance::NeededIt
+    fn apply_deploy(&mut self, deploy_identifier: T) -> Option<Acceptance> {
+        for item in self.inner.iter_mut() {
+            if item.0 == deploy_identifier {
+                match item.1 {
+                    DeployState::Vacant => {
+                        item.1 = DeployState::HaveDeployBody;
+                        return Some(Acceptance::NeededIt);
+                    }
+                    DeployState::HaveDeployBody => return Some(Acceptance::HadIt),
+                }
+            }
         }
+        None
     }
 
     fn needs_deploy(&self) -> Option<T> {

@@ -463,7 +463,7 @@ impl MainReactor {
                     return CatchUpInstruction::Do(Duration::ZERO, effects);
                 }
                 return CatchUpInstruction::CheckLater(
-                    "CatchUp is syncing".to_string(),
+                    format!("syncing {:?}", catch_up_progress),
                     Duration::from_millis(500),
                 );
             }
@@ -481,9 +481,9 @@ impl MainReactor {
                 if self.should_shutdown_for_upgrade() {
                     return CatchUpInstruction::ShutdownForUpgrade;
                 }
-                self.block_synchronizer.historical_purge();
             }
         }
+        self.block_synchronizer.purge(false);
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstruction::CaughtUp
     }
@@ -581,7 +581,7 @@ impl MainReactor {
                 }
                 Ok(None) => {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
-                    self.block_synchronizer.forward_purge();
+                    self.block_synchronizer.purge(false);
                     return KeepUpInstruction::CatchUp;
                 }
                 Err(error) => {
@@ -605,7 +605,7 @@ impl MainReactor {
         debug!("KeepUp: sync_instruction {:?}", sync_instruction);
         match sync_instruction {
             SyncInstruction::Leap { .. } => {
-                self.block_synchronizer.forward_purge();
+                self.block_synchronizer.purge(false);
                 return KeepUpInstruction::CatchUp;
             }
             SyncInstruction::BlockSync { block_hash } => {
@@ -746,7 +746,7 @@ impl MainReactor {
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
-                    info!("Historical: register_block_by_hash: {:?}", parent_hash);
+                    info!("Historical: register_block_by_hash: {}", parent_hash);
                     let peers_to_ask = self.net.fully_connected_peers_random(
                         rng,
                         self.chainspec.core_config.simultaneous_peer_requests as usize,
@@ -762,7 +762,7 @@ impl MainReactor {
                         }),
                     );
                 } else {
-                    self.block_synchronizer.historical_purge();
+                    self.block_synchronizer.purge(true);
                     KeepUpInstruction::CheckLater(
                         "Historical: purged".to_string(),
                         self.control_logic_default_delay.into(),

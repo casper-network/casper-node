@@ -54,6 +54,7 @@ pub(crate) enum Event {
     },
     ExecutionResultsStored(BlockHash),
     AccumulatedPeers(BlockHash, Option<Vec<NodeId>>),
+    NetworkPeers(BlockHash, Vec<NodeId>),
     #[from]
     GlobalStateSynchronizer(GlobalStateSynchronizerEvent),
 }
@@ -134,6 +135,9 @@ impl Display for Event {
             Event::ExecutionResultsStored { .. } => write!(f, "stored execution results"),
             Event::GlobalStateSynchronizer(event) => {
                 write!(f, "{:?}", event)
+            }
+            Event::NetworkPeers(..) => {
+                write!(f, "network peers")
             }
             Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")

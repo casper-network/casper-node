@@ -863,7 +863,7 @@ async fn run_deploy_acceptor_without_timeout(
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                        source: Source::Peer(_),
+                        source: Source::Peer(_) | Source::PeerGossiped(_),
                         ..
                     })
                 )
@@ -880,6 +880,14 @@ async fn run_deploy_acceptor_without_timeout(
                     Event::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy {
                             source: Source::Peer(_),
+                            ..
+                        }
+                    )
+                ) || matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                            source: Source::PeerGossiped(_),
                             ..
                         }
                     )

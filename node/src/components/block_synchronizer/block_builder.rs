@@ -10,10 +10,12 @@ use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
 
 use super::{
-    block_acquisition::{self, Acceptance, BlockAcquisitionAction, BlockAcquisitionState},
+    block_acquisition::{Acceptance, BlockAcquisitionState},
+    block_acquisition_action::BlockAcquisitionAction,
     execution_results_acquisition::ExecutionResultsChecksum,
     peer_list::{PeerList, PeersStatus},
     signature_acquisition::SignatureAcquisition,
+    BlockAcquisitionError,
 };
 use crate::{
     types::{
@@ -26,7 +28,7 @@ use crate::{
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum Error {
-    BlockAcquisition(block_acquisition::Error),
+    BlockAcquisition(BlockAcquisitionError),
     MissingValidatorWeights(BlockHash),
 }
 
@@ -57,6 +59,18 @@ pub(super) struct BlockBuilder {
     acquisition_state: BlockAcquisitionState,
     era_id: Option<EraId>,
     validator_weights: Option<EraValidatorWeights>,
+}
+
+impl Display for BlockBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "is_historical: {:?}, has_validators: {:?}, block builder: {}",
+            self.should_fetch_execution_state,
+            self.validator_weights.is_some(),
+            self.acquisition_state
+        )
+    }
 }
 
 impl BlockBuilder {
@@ -153,12 +167,22 @@ impl BlockBuilder {
         None
     }
 
+    pub(super) fn should_fetch_execution_state(&self) -> bool {
+        self.should_fetch_execution_state
+    }
+
     pub(super) fn last_progress_time(&self) -> Timestamp {
         self.last_progress
     }
 
     pub(super) fn in_flight_latch(&mut self) -> Option<Timestamp> {
         if let Some(timestamp) = self.in_flight_latch {
+            // we put a latch on ourselves the first time we signal we need something specific
+            // if asked again before we get what we need, and latch_reset_interval has not passed,
+            // we signal we need nothing to avoid spamming redundant asks
+            //
+            // if latch_reset_interval has passed, we reset the latch and ask again.
+
             // !todo move reset interval to config
             let latch_reset_interval = TimeDiff::from_seconds(5);
             if Timestamp::now().saturating_diff(timestamp) > latch_reset_interval {
@@ -255,7 +279,7 @@ impl BlockBuilder {
         ) {
             Ok(ret) => ret,
             Err(err) => {
-                error!(%err);
+                error!(%err, "BlockBuilder: attempt to determine next action resulted in error.");
                 self.abort();
                 BlockAcquisitionAction::need_nothing(self.block_hash)
             }
@@ -280,7 +304,7 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let era_id = block_header.era_id();
-        let acceptance = self.acquisition_state.register_header(block_header);
+        let acceptance = self.acquisition_state.register_block_header(block_header);
         self.handle_acceptance(maybe_peer, acceptance)?;
         self.era_id = Some(era_id);
         Ok(())
@@ -409,14 +433,14 @@ impl BlockBuilder {
     fn handle_acceptance(
         &mut self,
         maybe_peer: Option<NodeId>,
-        acceptance: Result<Acceptance, block_acquisition::Error>,
+        acceptance: Result<Option<Acceptance>, BlockAcquisitionError>,
     ) -> Result<(), Error> {
         match acceptance {
-            Ok(Acceptance::NeededIt) => {
+            Ok(Some(Acceptance::NeededIt)) => {
                 self.touch();
                 self.promote_peer(maybe_peer);
             }
-            Ok(Acceptance::HadIt) => (),
+            Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
             Err(error) => {
                 self.disqualify_peer(maybe_peer);
                 return Err(Error::BlockAcquisition(error));

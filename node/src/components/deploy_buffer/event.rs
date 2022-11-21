@@ -15,7 +15,7 @@ pub(crate) enum Event {
     #[from]
     Request(DeployBufferRequest),
     ReceiveDeployGossiped(DeployId),
-    GotDeployFromStorage(Box<Option<Deploy>>),
+    StoredDeploy(DeployId, Box<Option<Deploy>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     Block(Box<Block>),
     BlockFinalized(Box<FinalizedBlock>),
@@ -34,12 +34,14 @@ impl Display for Event {
             Event::ReceiveDeployGossiped(deploy_id) => {
                 write!(formatter, "receive deploy gossiped {}", deploy_id)
             }
-            Event::GotDeployFromStorage(maybe_deploy) => match maybe_deploy.as_ref() {
-                Some(deploy) => {
-                    write!(formatter, "got deploy from storage {}", deploy.hash())
-                }
-                None => write!(formatter, "could not find requested deploy in storage"),
-            },
+            Event::StoredDeploy(deploy_id, maybe_deploy) => {
+                write!(
+                    formatter,
+                    "{} stored: {:?}",
+                    deploy_id,
+                    maybe_deploy.is_some()
+                )
+            }
             Event::BlockProposed(_) => {
                 write!(formatter, "proposed block")
             }
