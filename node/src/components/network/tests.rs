@@ -12,9 +12,11 @@ use std::{
 
 use casper_types::{PublicKey, SecretKey};
 use derive_more::From;
+use futures::FutureExt;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
+use smallvec::smallvec;
 use tracing::{debug, info};
 
 use super::{
@@ -205,12 +207,14 @@ impl Reactor for TestReactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
 
+        let effects = smallvec![async { smallvec![Event::Net(NetworkEvent::Initialize)] }.boxed()];
+
         Ok((
             TestReactor {
                 net,
                 address_gossiper,
             },
-            Effects::new(),
+            effects,
         ))
     }
 

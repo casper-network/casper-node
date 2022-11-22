@@ -464,7 +464,12 @@ where
     R::Error: From<prometheus::Error>,
 {
     /// Creates a new runner from a given configuration, using existing metrics.
-    #[instrument("init", level = "debug", skip(cfg, rng, registry))]
+    #[instrument(
+        "init",
+        level = "debug",
+        skip_all,
+        fields(node_id = %NodeId::from(&network_identity))
+    )]
     pub(crate) async fn with_metrics(
         cfg: R::Config,
         chainspec: Arc<Chainspec>,
@@ -812,58 +817,6 @@ where
             debug!(?ancestor, %event, "drained event");
         }
         self.reactor
-    }
-}
-
-#[cfg(test)]
-impl Runner<main_reactor::MainReactor> {
-    pub(crate) async fn new_with_chainspec(
-        cfg: <main_reactor::MainReactor as Reactor>::Config,
-        chainspec: Arc<Chainspec>,
-        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-        network_identity: NetworkIdentity,
-        rng: &mut NodeRng,
-    ) -> Result<Self, <main_reactor::MainReactor as Reactor>::Error> {
-        let registry = Registry::new();
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-
-        let is_shutting_down = SharedFlag::new();
-        let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) = main_reactor::MainReactor::new(
-            cfg,
-            chainspec,
-            chainspec_raw_bytes,
-            network_identity,
-            &registry,
-            event_queue,
-            rng,
-        )?;
-
-        // Run all effects from component instantiation.
-        let span = debug_span!("process initial effects");
-        process_effects(None, scheduler, initial_effects, QueueKind::Regular)
-            .instrument(span)
-            .await;
-
-        info!("reactor main loop is ready");
-
-        let event_metrics_min_delay = Duration::from_secs(30);
-        let now = Instant::now();
-        Ok(Runner {
-            scheduler,
-            reactor,
-            // It is important to initial event count to 1, as we use an ancestor event of 0
-            // to mean "no ancestor".
-            current_event_id: 1,
-            metrics: RunnerMetrics::new(&registry)?,
-            // Calculate the `last_metrics` timestamp to be exactly one delay in the past. This will
-            // cause the runner to collect metrics at the first opportunity.
-            last_metrics: now.checked_sub(event_metrics_min_delay).unwrap_or(now),
-            event_metrics_min_delay,
-            event_metrics_threshold: 1000,
-            clock: Clock::new(),
-            is_shutting_down,
-        })
     }
 }
 

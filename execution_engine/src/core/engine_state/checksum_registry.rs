@@ -12,12 +12,13 @@ use casper_types::{
 };
 
 /// The checksum registry.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize)]
+#[derive(
+    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize, Default,
+)]
 pub struct ChecksumRegistry(BTreeMap<String, Digest>);
 
 impl ChecksumRegistry {
     /// Returns a new `ChecksumRegistry`.
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         ChecksumRegistry(BTreeMap::new())
     }

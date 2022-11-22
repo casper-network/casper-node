@@ -31,7 +31,7 @@ use crate::{
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
-        requests::{AppStateRequest, BlockCompleteConfirmationRequest},
+        requests::BlockCompleteConfirmationRequest,
         Responder,
     },
     fatal,
@@ -100,8 +100,6 @@ enum Event {
     NetworkRequestMessage(NetworkRequest<Message>),
     #[from]
     StorageRequest(StorageRequest),
-    #[from]
-    StateStoreRequest(AppStateRequest),
     #[from]
     FetcherRequestDeploy(FetcherRequest<Deploy>),
     #[from]
@@ -203,11 +201,6 @@ impl ReactorTrait for Reactor {
                     .handle_event(effect_builder, rng, request.into()),
             ),
             Event::StorageRequest(request) => reactor::wrap_effects(
-                Event::Storage,
-                self.storage
-                    .handle_event(effect_builder, rng, request.into()),
-            ),
-            Event::StateStoreRequest(request) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),

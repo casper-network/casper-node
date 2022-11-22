@@ -529,9 +529,8 @@ mod tests {
             Component,
         },
         effect::{
-            announcements::ControlAnnouncement,
-            requests::{DumpConsensusStateRequest, NetworkInfoRequest},
-            EffectBuilder, EffectExt, Effects,
+            announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
+            requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
         },
         reactor::{
             self, main_reactor::MainEvent, EventQueueHandle, QueueKind, Reactor as ReactorTrait,

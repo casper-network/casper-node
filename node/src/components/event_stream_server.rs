@@ -100,6 +100,66 @@ impl EventStreamServer {
         }
     }
 
+    fn listen(&mut self) -> Result<(), ListeningError> {
+        let required_address = utils::resolve_address(&self.config.address).map_err(|error| {
+            warn!(
+                %error,
+                address=%self.config.address,
+                "failed to start event stream server, cannot parse address"
+            );
+            ListeningError::ResolveAddress(error)
+        })?;
+
+        // Event stream channels and filter.
+        let broadcast_channel_size = self.config.event_stream_buffer_length
+            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
+            / 100;
+
+        let ChannelsAndFilter {
+            event_broadcaster,
+            new_subscriber_info_receiver,
+            sse_filter,
+        } = ChannelsAndFilter::new(
+            broadcast_channel_size as usize,
+            self.config.max_concurrent_subscribers,
+        );
+
+        let (server_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+
+        let (listening_address, server_with_shutdown) =
+            warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
+                .try_bind_with_graceful_shutdown(required_address, async {
+                    shutdown_receiver.await.ok();
+                })
+                .map_err(|error| ListeningError::Listen {
+                    address: required_address,
+                    error: Box::new(error),
+                })?;
+
+        info!(address=%listening_address, "started event stream server");
+
+        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
+
+        tokio::spawn(http_server::run(
+            self.config.clone(),
+            self.api_version,
+            server_with_shutdown,
+            server_shutdown_sender,
+            sse_data_receiver,
+            event_broadcaster,
+            new_subscriber_info_receiver,
+        ));
+
+        let event_indexer = EventIndexer::new(self.storage_path.clone());
+
+        self.sse_server = Some(InnerServer {
+            sse_data_sender,
+            event_indexer,
+            listening_address,
+        });
+        Ok(())
+    }
+
     /// Broadcasts the SSE data to all clients connected to the event stream.
     fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
         if let Some(server) = self.sse_server.as_mut() {
@@ -234,64 +294,7 @@ where
         &mut self,
         _effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
-        let cfg = self.config.clone();
-        let required_address = utils::resolve_address(&cfg.address).map_err(|error| {
-            warn!(
-                %error,
-                address=%cfg.address,
-                "failed to start event stream server, cannot parse address"
-            );
-            ListeningError::ResolveAddress(error)
-        })?;
-
-        // Event stream channels and filter.
-        let broadcast_channel_size = cfg.event_stream_buffer_length
-            * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
-            / 100;
-
-        let ChannelsAndFilter {
-            event_broadcaster,
-            new_subscriber_info_receiver,
-            sse_filter,
-        } = ChannelsAndFilter::new(
-            broadcast_channel_size as usize,
-            cfg.max_concurrent_subscribers,
-        );
-
-        let (server_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-
-        let (listening_address, server_with_shutdown) =
-            warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
-                .try_bind_with_graceful_shutdown(required_address, async {
-                    shutdown_receiver.await.ok();
-                })
-                .map_err(|error| ListeningError::Listen {
-                    address: required_address,
-                    error: Box::new(error),
-                })?;
-
-        info!(address=%listening_address, "started event stream server");
-
-        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-
-        tokio::spawn(http_server::run(
-            cfg,
-            self.api_version,
-            server_with_shutdown,
-            server_shutdown_sender,
-            sse_data_receiver,
-            event_broadcaster,
-            new_subscriber_info_receiver,
-        ));
-
-        let event_indexer = EventIndexer::new(self.storage_path.clone());
-
-        self.sse_server = Some(InnerServer {
-            sse_data_sender,
-            event_indexer,
-            listening_address,
-        });
-
+        self.listen()?;
         Ok(Effects::new())
     }
 }

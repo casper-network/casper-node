@@ -130,7 +130,7 @@ fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deplo
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: runtime_args! { ARG_AMOUNT => 1 },
+        args: runtime_args! { ARG_AMOUNT => U512::from(1) },
     };
     let session = ExecutableDeployItem::Transfer {
         args: RuntimeArgs::new(),

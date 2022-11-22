@@ -3,12 +3,11 @@
 #![cfg(test)]
 use std::{
     collections::{BTreeSet, HashMap},
-    fmt::{self, Debug, Display, Formatter},
     iter,
     sync::Arc,
 };
 
-use derive_more::From;
+use derive_more::{Display, From};
 use num_rational::Ratio;
 use prometheus::Registry;
 use rand::Rng;
@@ -19,22 +18,11 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
 use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff};
 
 use super::*;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         network::{GossipedAddress, Identity as NetworkIdentity},
@@ -42,17 +30,15 @@ use crate::{
     },
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            FatalAnnouncement, GossiperAnnouncement, RpcServerAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement,
+            GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
+            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming,
             NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
         },
-        requests::{BlockCompleteConfirmationRequest, ConsensusRequest, ContractRuntimeRequest},
         Responder,
     },
-    fatal,
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
     testing::{
@@ -65,18 +51,13 @@ use crate::{
     NodeRng,
 };
 
-const MAX_ASSOCIATED_KEYS: u32 = 100;
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 
 /// Top-level event for the reactor.
-#[derive(Debug, From, Serialize)]
+#[derive(Debug, From, Serialize, Display)]
 #[must_use]
 enum Event {
-    #[from]
-    ControlAnnouncement(ControlAnnouncement),
-    #[from]
-    FatalAnnouncement(FatalAnnouncement),
     #[from]
     Network(in_memory_network::Event<NodeMessage>),
     #[from]
@@ -90,60 +71,22 @@ enum Event {
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
-    #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    FinalitySignatureGossiperAnnouncement(
-        #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
-    ),
-    #[from]
-    ContractRuntime(contract_runtime::Event),
-    #[from]
-    ContractRuntimeRequest(ContractRuntimeRequest),
-    #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming),
-    #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
-    #[from]
-    BlockGossiperIncoming(GossiperIncoming<Block>),
-    #[from]
-    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
-    #[from]
-    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
-    #[from]
-    NetRequestIncoming(NetRequestIncoming),
-    #[from]
-    NetResponseIncoming(NetResponseIncoming),
-    #[from]
-    TrieRequestIncoming(TrieRequestIncoming),
-    #[from]
-    TrieDemand(TrieDemand),
-    #[from]
-    TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for Event {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+        None
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+        None
     }
 }
 
@@ -153,68 +96,26 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
     }
 }
 
-impl From<ConsensusRequest> for Event {
-    fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
+trait Unhandled {}
+
+impl<T: Unhandled> From<T> for Event {
+    fn from(_: T) -> Self {
+        unimplemented!("not handled in gossiper tests")
     }
 }
 
-impl From<ContractRuntimeAnnouncement> for Event {
-    fn from(_request: ContractRuntimeAnnouncement) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl Display for Event {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::Network(event) => write!(formatter, "event: {}", event),
-            Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
-            Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
-            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
-            Event::MarkBlockCompletedRequest(req) => {
-                write!(formatter, "mark block completed: {}", req)
-            }
-            Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
-            Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
-            Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
-            Event::FatalAnnouncement(fatal_ann) => write!(formatter, "fatal: {}", fatal_ann),
-            Event::RpcServerAnnouncement(ann) => {
-                write!(formatter, "api server announcement: {}", ann)
-            }
-            Event::DeployAcceptorAnnouncement(ann) => {
-                write!(formatter, "deploy-acceptor announcement: {}", ann)
-            }
-            Event::DeployGossiperAnnouncement(ann) => {
-                write!(formatter, "deploy-gossiper announcement: {}", ann)
-            }
-            Event::FinalitySignatureGossiperAnnouncement(ann) => {
-                write!(
-                    formatter,
-                    "finality-signature-gossiper announcement: {}",
-                    ann
-                )
-            }
-            Event::ContractRuntime(event) => {
-                write!(formatter, "contract-runtime event: {:?}", event)
-            }
-            Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::FinalitySignatureGossiperIncoming(inner) => {
-                write!(formatter, "incoming: {}", inner)
-            }
-            Event::AddressGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
-            Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::BlockGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-        }
-    }
-}
+impl Unhandled for ControlAnnouncement {}
+impl Unhandled for FatalAnnouncement {}
+impl Unhandled for ConsensusMessageIncoming {}
+impl Unhandled for GossiperIncoming<Block> {}
+impl Unhandled for GossiperIncoming<FinalitySignature> {}
+impl Unhandled for GossiperIncoming<GossipedAddress> {}
+impl Unhandled for NetRequestIncoming {}
+impl Unhandled for NetResponseIncoming {}
+impl Unhandled for TrieRequestIncoming {}
+impl Unhandled for TrieDemand {}
+impl Unhandled for TrieResponseIncoming {}
+impl Unhandled for FinalitySignatureIncoming {}
 
 /// Error type returned by the test reactor.
 #[derive(Debug, Error)]
@@ -228,7 +129,6 @@ struct Reactor {
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
-    contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
 
@@ -267,22 +167,6 @@ impl reactor::Reactor for Reactor {
         )
         .unwrap();
 
-        let contract_runtime_config = contract_runtime::Config::default();
-        let contract_runtime = ContractRuntime::new(
-            ProtocolVersion::from_parts(1, 0, 0),
-            storage.root_path(),
-            &contract_runtime_config,
-            WasmConfig::default(),
-            SystemConfig::default(),
-            MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            registry,
-        )
-        .unwrap();
-
         let fake_deploy_acceptor = FakeDeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -296,13 +180,10 @@ impl reactor::Reactor for Reactor {
             storage,
             fake_deploy_acceptor,
             deploy_gossiper,
-            contract_runtime,
             _storage_tempdir: storage_tempdir,
         };
 
-        let effects = Effects::new();
-
-        Ok((reactor, effects))
+        Ok((reactor, Effects::new()))
     }
 
     fn dispatch_event(
@@ -336,15 +217,6 @@ impl reactor::Reactor for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::MarkBlockCompletedRequest(_) => {
-                panic!("gossiper tests should never mark blocks completed")
-            }
-            Event::ControlAnnouncement(ctrl_ann) => {
-                unreachable!("unhandled control announcement: {}", ctrl_ann)
-            }
-            Event::FatalAnnouncement(fatal_ann) => {
-                unreachable!("unhandled fatal announcement: {}", fatal_ann)
-            }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,
@@ -370,92 +242,31 @@ impl reactor::Reactor for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+                item,
+                sender,
+            }) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.fake_deploy_acceptor.handle_event(
+                    effect_builder,
+                    rng,
+                    deploy_acceptor::Event::Accept {
+                        deploy: item,
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    },
+                ),
+            ),
             Event::DeployGossiperAnnouncement(_ann) => Effects::new(),
-            Event::FinalitySignatureGossiperAnnouncement(_ann) => Effects::new(),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
-            ),
-            Event::ContractRuntimeRequest(req) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            Event::NetRequestIncoming(incoming) => reactor::wrap_effects(
-                Event::Storage,
-                self.storage
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
-                NetResponse::Deploy(ref serialized_item) => {
-                    let deploy = match bincode::deserialize::<Message<Deploy>>(serialized_item) {
-                        Ok(Message::Item(deploy)) => deploy,
-                        Ok(Message::GetItem(deploy_id))
-                        | Ok(Message::Gossip(deploy_id))
-                        | Ok(Message::GossipResponse {
-                            item_id: deploy_id, ..
-                        }) => {
-                            return fatal!(
-                                effect_builder,
-                                "peer did not provide deploy with hash {}: {}",
-                                deploy_id,
-                                sender,
-                            )
-                            .ignore();
-                        }
-                        Err(error) => {
-                            return fatal!(
-                                effect_builder,
-                                "failed to decode deploy from {}: {}",
-                                sender,
-                                error
-                            )
-                            .ignore();
-                        }
-                    };
-                    reactor::wrap_effects(
-                        Event::DeployAcceptor,
-                        self.fake_deploy_acceptor.handle_event(
-                            effect_builder,
-                            rng,
-                            deploy_acceptor::Event::Accept {
-                                deploy,
-                                source: Source::Peer(sender),
-                                maybe_responder: None,
-                            },
-                        ),
-                    )
-                }
-                other @ (NetResponse::LegacyDeploy(_)
-                | NetResponse::Block(_)
-                | NetResponse::ApprovalsHashes(_)
-                | NetResponse::FinalitySignature(_)
-                | NetResponse::BlockHeader(_)
-                | NetResponse::SyncLeap(_)
-                | NetResponse::BlockExecutionResults(_)) => {
-                    fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
-                }
-            },
-            other @ (Event::ConsensusMessageIncoming(_)
-            | Event::FinalitySignatureIncoming(_)
-            | Event::FinalitySignatureGossiperIncoming(_)
-            | Event::AddressGossiperIncoming(_)
-            | Event::TrieRequestIncoming(_)
-            | Event::TrieDemand(_)
-            | Event::TrieResponseIncoming(_)
-            | Event::BlockGossiperIncoming(_)) => {
-                fatal!(effect_builder, "should not receive {:?}", other).ignore()
-            }
         }
     }
 }

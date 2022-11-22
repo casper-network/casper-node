@@ -22,7 +22,7 @@ use crate::{
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ApprovalsHashes {
-    // Hash of the block that contains deploys that are relevant to the approvals.
+    /// Hash of the block that contains deploys that are relevant to the approvals.
     block_hash: BlockHash,
     /// The set of all deploys' finalized approvals' hashes.
     approvals_hashes: Vec<ApprovalsHash>,

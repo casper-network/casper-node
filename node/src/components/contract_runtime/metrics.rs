@@ -32,19 +32,12 @@ const COMMIT_STEP_HELP: &str = "time in seconds to commit the step at era end";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
 const GET_BALANCE_HELP: &str = "time in seconds to get the balance of a purse from global state";
 
-const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
-const GET_VALIDATOR_WEIGHTS_HELP: &str =
-    "time in seconds to get validator weights from global state";
-
 const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str =
     "time in seconds to get validators for a given era from global state";
 
 const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
 const GET_BIDS_HELP: &str = "time in seconds to get bids from global state";
-
-const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
-const MISSING_TRIE_KEYS_HELP: &str = "time in seconds to get missing trie keys";
 
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
@@ -70,10 +63,8 @@ pub struct Metrics {
     pub(super) run_query: Histogram,
     pub(super) commit_step: Histogram,
     pub(super) get_balance: Histogram,
-    pub(super) get_validator_weights: Histogram,
     pub(super) get_era_validators: Histogram,
     pub(super) get_bids: Histogram,
-    pub(super) missing_trie_keys: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
     pub(super) chain_height: IntGauge,
@@ -140,12 +131,6 @@ impl Metrics {
                 GET_BALANCE_HELP,
                 common_buckets.clone(),
             )?,
-            get_validator_weights: utils::register_histogram_metric(
-                registry,
-                GET_VALIDATOR_WEIGHTS_NAME,
-                GET_VALIDATOR_WEIGHTS_HELP,
-                common_buckets.clone(),
-            )?,
             get_era_validators: utils::register_histogram_metric(
                 registry,
                 GET_ERA_VALIDATORS_NAME,
@@ -168,12 +153,6 @@ impl Metrics {
                 registry,
                 PUT_TRIE_NAME,
                 PUT_TRIE_HELP,
-                tiny_buckets.clone(),
-            )?,
-            missing_trie_keys: utils::register_histogram_metric(
-                registry,
-                MISSING_TRIE_KEYS_NAME,
-                MISSING_TRIE_KEYS_HELP,
                 tiny_buckets,
             )?,
             chain_height,
@@ -197,10 +176,8 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.run_query);
         unregister_metric!(self.registry, self.commit_step);
         unregister_metric!(self.registry, self.get_balance);
-        unregister_metric!(self.registry, self.get_validator_weights);
         unregister_metric!(self.registry, self.get_era_validators);
         unregister_metric!(self.registry, self.get_bids);
-        unregister_metric!(self.registry, self.missing_trie_keys);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.chain_height);

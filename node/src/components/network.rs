@@ -55,7 +55,7 @@ use std::{
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use prometheus::Registry;
-use rand::{prelude::SliceRandom, seq::IteratorRandom};
+use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -1068,20 +1068,6 @@ where
                 NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
                     .respond(self.fully_connected_peers_random(rng, count))
                     .ignore(),
-                NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder } => {
-                    let mut symmetric_validator_peers: Vec<NodeId> = self
-                        .connection_symmetries
-                        .iter()
-                        .filter_map(|(node_id, sym)| {
-                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
-                        })
-                        .filter(|node_id| !self.syncing_nodes.contains(node_id))
-                        .collect();
-
-                    symmetric_validator_peers.shuffle(rng);
-
-                    responder.respond(symmetric_validator_peers).ignore()
-                }
                 NetworkInfoRequest::Insight { responder } => responder
                     .respond(NetworkInsights::collect_from_component(self))
                     .ignore(),

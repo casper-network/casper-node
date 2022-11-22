@@ -268,6 +268,7 @@ impl TestFixture {
             self.storage_dir.path().to_path_buf(),
             self.protocol_version,
         );
+        server.listen().unwrap();
         assert!(server.sse_server.is_some());
 
         self.first_event_id = server
@@ -1188,9 +1189,6 @@ async fn should_limit_concurrent_subscribers() {
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
 fn schema_test() {
-    // To generate the contents to replace the input JSON files, run the test
-    // and print the `actual_schema`  by uncommenting the `println!`
-    // towards the end of the test.
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")

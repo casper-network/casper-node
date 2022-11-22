@@ -8,7 +8,10 @@ use std::{
 };
 
 use derive_more::From;
-use futures::channel::oneshot;
+use futures::{
+    channel::oneshot::{self, Sender},
+    FutureExt,
+};
 use num_rational::Ratio;
 use prometheus::Registry;
 use reactor::ReactorEvent;
@@ -34,7 +37,7 @@ use crate::{
     },
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
         Responder,
     },
     logging,
@@ -70,6 +73,12 @@ enum Event {
     StorageRequest(StorageRequest),
     #[from]
     NetworkRequest(NetworkRequest<Message>),
+}
+
+impl From<BlockCompleteConfirmationRequest> for Event {
+    fn from(request: BlockCompleteConfirmationRequest) -> Self {
+        Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
+    }
 }
 
 impl ReactorEvent for Event {
@@ -617,38 +626,35 @@ impl reactor::Reactor for Reactor {
     }
 }
 
-fn put_block_to_storage(
+fn put_block_to_storage_and_mark_complete(
     block: Box<Block>,
-    responder: Responder<bool>,
+    result_sender: Sender<bool>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
-        effect_builder
-            .into_inner()
-            .schedule(
-                storage::Event::StorageRequest(Box::new(StorageRequest::PutBlock {
-                    block,
-                    responder,
-                })),
-                QueueKind::ToStorage,
-            )
-            .ignore()
+        async move {
+            let block_height = block.height();
+            let result = effect_builder.put_block_to_storage(block).await;
+            effect_builder.mark_block_completed(block_height).await;
+            result_sender
+                .send(result)
+                .expect("receiver should not be dropped yet");
+        }
+        .ignore()
     }
 }
 
 fn put_deploy_to_storage(
     deploy: Box<Deploy>,
-    responder: Responder<bool>,
+    result_sender: Sender<bool>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .into_inner()
-            .schedule(
-                storage::Event::StorageRequest(Box::new(StorageRequest::PutDeploy {
-                    deploy,
-                    responder,
-                })),
-                QueueKind::ToStorage,
-            )
+            .put_deploy_to_storage(deploy)
+            .map(|result| {
+                result_sender
+                    .send(result)
+                    .expect("receiver should not be dropped yet")
+            })
             .ignore()
     }
 }
@@ -715,20 +721,21 @@ async fn run_deploy_acceptor_without_timeout(
     .unwrap();
 
     let block = Box::new(Block::random(&mut rng));
-    // Create a responder to assert that the block was successfully injected into storage.
-    let (block_sender, block_receiver) = oneshot::channel();
-    let block_responder = Responder::without_shutdown(block_sender);
+    // Create a channel to assert that the block was successfully injected into storage.
+    let (result_sender, result_receiver) = oneshot::channel();
 
     runner
-        .process_injected_effects(put_block_to_storage(block, block_responder))
+        .process_injected_effects(put_block_to_storage_and_mark_complete(block, result_sender))
         .await;
 
-    // There's only one scheduled event, so we only need to try cranking until the first time it
+    // There are two scheduled events, so we only need to try cranking until the second time it
     // returns `Some`.
-    while runner.try_crank(&mut rng).await.is_none() {
-        time::sleep(POLL_INTERVAL).await;
+    for _ in 0..2 {
+        while runner.try_crank(&mut rng).await.is_none() {
+            time::sleep(POLL_INTERVAL).await;
+        }
     }
-    assert!(block_receiver.await.unwrap());
+    assert!(result_receiver.await.unwrap());
 
     // Create a responder to assert the validity of the deploy
     let (deploy_sender, deploy_receiver) = oneshot::channel();
@@ -743,19 +750,15 @@ async fn run_deploy_acceptor_without_timeout(
         // Inject the deploy artificially into storage to simulate a previously seen deploy.
         if test_scenario.is_repeated_deploy_case() {
             let injected_deploy = Box::new(deploy.clone());
-            let (injected_sender, injected_receiver) = oneshot::channel();
-            let injected_responder = Responder::without_shutdown(injected_sender);
+            let (result_sender, result_receiver) = oneshot::channel();
             runner
-                .process_injected_effects(put_deploy_to_storage(
-                    injected_deploy,
-                    injected_responder,
-                ))
+                .process_injected_effects(put_deploy_to_storage(injected_deploy, result_sender))
                 .await;
             while runner.try_crank(&mut rng).await.is_none() {
                 time::sleep(POLL_INTERVAL).await;
             }
             // Check that the "previously seen" deploy is present in storage.
-            assert!(injected_receiver.await.unwrap());
+            assert!(result_receiver.await.unwrap());
         }
 
         if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {

@@ -119,9 +119,29 @@ where
     ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let (chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        self.add_node_with_config_and_chainspec(
+            cfg,
+            Arc::new(chainspec),
+            Arc::new(chainspec_raw_bytes),
+            rng,
+        )
+        .await
+    }
 
+    /// Creates a new networking node on the network.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a duplicate node ID is being inserted.
+    pub(crate) async fn add_node_with_config_and_chainspec<'a, 'b: 'a>(
+        &'a mut self,
+        cfg: R::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        rng: &'b mut NodeRng,
+    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let runner: Runner<ConditionCheckReactor<R>> =
-            Runner::new(cfg, Arc::new(chainspec), Arc::new(chainspec_raw_bytes), rng).await?;
+            Runner::new(cfg, chainspec, chainspec_raw_bytes, rng).await?;
 
         let node_id = runner.reactor().node_id();
 

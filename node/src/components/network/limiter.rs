@@ -71,7 +71,7 @@ impl Limiter {
             data: self.data.clone(),
             validator_matrix: self.validator_matrix.clone(),
             consumer_id: ConsumerId {
-                peer_id,
+                _peer_id: peer_id,
                 consensus_key,
             },
         }
@@ -290,8 +290,7 @@ impl LimiterHandle {
 #[derive(Debug)]
 struct ConsumerId {
     /// The peer's ID.
-    #[allow(dead_code)]
-    peer_id: NodeId,
+    _peer_id: NodeId,
     /// The remote node's public consensus key.
     consensus_key: Option<PublicKey>,
 }
