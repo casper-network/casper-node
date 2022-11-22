@@ -13,7 +13,7 @@ use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{
@@ -87,6 +87,8 @@ impl TestChain {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
+        let validator_count = stakes.len() as u32;
+
         // Override accounts with those generated from the keys.
         let accounts = stakes
             .into_iter()
@@ -104,7 +106,7 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
-        let genesis_time = Timestamp::now() + 60000.into();
+        let genesis_time = Timestamp::now() + TimeDiff::from_seconds(60);
         info!(
             "creating test chain configuration, genesis: {}",
             genesis_time
@@ -116,6 +118,8 @@ impl TestChain {
         chainspec.core_config.era_duration = 10.into();
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
+        chainspec.core_config.validator_slots =
+            chainspec.core_config.validator_slots.max(validator_count);
 
         TestChain {
             keys,
@@ -304,14 +308,14 @@ async fn run_participating_network() {
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(1)),
-        Duration::from_secs(500),
+        Duration::from_secs(1000),
     )
     .await;
 
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(2)),
-        Duration::from_secs(500),
+        Duration::from_secs(1000),
     )
     .await;
 }
