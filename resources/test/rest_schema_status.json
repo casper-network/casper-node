@@ -5,16 +5,30 @@
   "type": "object",
   "required": [
     "api_version",
+    "available_block_range",
+    "block_sync",
     "build_version",
     "chainspec_name",
-    "node_state",
+    "last_progress",
     "peers",
-    "starting_state_root_hash",
+    "reactor_state",
     "uptime"
   ],
   "properties": {
+    "peers": {
+      "description": "The node ID and network address of each connected peer.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/PeersMap"
+        }
+      ]
+    },
     "api_version": {
       "description": "The RPC API version.",
+      "type": "string"
+    },
+    "build_version": {
+      "description": "The compiled node version.",
       "type": "string"
     },
     "chainspec_name": {
@@ -22,19 +36,13 @@
       "type": "string"
     },
     "starting_state_root_hash": {
-      "description": "The state root hash used at the start of the current session.",
-      "deprecated": true,
-      "allOf": [
+      "description": "The state root hash of the lowest block in the available block range.",
+      "anyOf": [
         {
           "$ref": "#/definitions/Digest"
-        }
-      ]
-    },
-    "peers": {
-      "description": "The node ID and network address of each connected peer.",
-      "allOf": [
+        },
         {
-          "$ref": "#/definitions/PeersMap"
+          "type": "null"
         }
       ]
     },
@@ -82,10 +90,6 @@
         }
       ]
     },
-    "build_version": {
-      "description": "The compiled node version.",
-      "type": "string"
-    },
     "uptime": {
       "description": "Time that passed since the node has started.",
       "allOf": [
@@ -94,21 +98,40 @@
         }
       ]
     },
-    "node_state": {
-      "description": "The current state of node.",
+    "reactor_state": {
+      "description": "The current state of node reactor.",
       "allOf": [
         {
-          "$ref": "#/definitions/NodeState"
+          "$ref": "#/definitions/ReactorState"
         }
       ]
+    },
+    "last_progress": {
+      "description": "Timestamp of the last recorded progress in the reactor.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Timestamp"
+        }
+      ]
+    },
+    "available_block_range": {
+      "description": "The available block range in storage.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AvailableBlockRange"
+        }
+      ]
+    },
+    "block_sync": {
+      "description": "The status of the block synchronizer builders.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/BlockSyncStatus"
+      }
     }
   },
   "additionalProperties": false,
   "definitions": {
-    "Digest": {
-      "description": "Hex-encoded hash digest.",
-      "type": "string"
-    },
     "PeersMap": {
       "description": "Map of peer IDs to network addresses.",
       "type": "array",
@@ -134,6 +157,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
+      "type": "string"
     },
     "MinimalBlockInfo": {
       "description": "Minimal info of a `Block`.",
@@ -227,12 +254,63 @@
         }
       ]
     },
-    "NodeState": {
-      "description": "The various possible states of operation for the node.",
+    "ReactorState": {
       "type": "string",
       "enum": [
-        "participating"
+        "Initialize",
+        "CatchUp",
+        "Upgrading",
+        "KeepUp",
+        "Validate",
+        "ShutdownForUpgrade"
       ]
+    },
+    "AvailableBlockRange": {
+      "description": "An unbroken, inclusive range of blocks.",
+      "type": "object",
+      "required": [
+        "high",
+        "low"
+      ],
+      "properties": {
+        "low": {
+          "description": "The inclusive lower bound of the range.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "high": {
+          "description": "The inclusive upper bound of the range.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "BlockSyncStatus": {
+      "type": "object",
+      "required": [
+        "acquisition_state",
+        "block_hash"
+      ],
+      "properties": {
+        "block_hash": {
+          "$ref": "#/definitions/BlockHash"
+        },
+        "block_height": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "acquisition_state": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

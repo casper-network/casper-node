@@ -114,7 +114,9 @@ where
                 ),
             },
             Event::GotRemotely { item, source } => match source {
-                Source::Peer(peer) => self.got_from_peer(effect_builder, peer, item),
+                Source::PeerGossiped(peer) | Source::Peer(peer) => {
+                    self.got_from_peer(effect_builder, peer, item)
+                }
                 Source::Client | Source::Ourself => Effects::new(),
             },
             Event::GotInvalidRemotely { .. } => Effects::new(),

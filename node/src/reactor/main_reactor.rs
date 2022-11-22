@@ -388,6 +388,9 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::MainReactorRequest(req) => {
+                req.0.respond((self.state, self.last_progress)).ignore()
+            }
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => reactor::wrap_effects(
@@ -593,6 +596,7 @@ impl reactor::Reactor for MainReactor {
                     MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
                         block_hash: *block.hash(),
                         height: block.height(),
+                        state_root_hash: *block.header().state_root_hash(),
                     });
                 effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
                 let deploy_buffer_event =
@@ -835,36 +839,40 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                let mut effects = self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::DeployBuffer(deploy_buffer::Event::ReceiveDeploy(deploy.clone())),
-                );
+                let mut effects = Effects::new();
 
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                        item_id: deploy.id(),
-                        source: source.clone(),
-                    }),
-                ));
-
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::EventStreamServer(event_stream_server::Event::DeployAccepted(
-                        deploy.clone(),
-                    )),
-                ));
-
-                effects.extend(self.fetchers.dispatch_fetcher_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::DeployAcceptorAnnouncement(
-                        DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-                    ),
-                ));
+                match source {
+                    Source::Ourself => (), // internal activity does not require further action
+                    Source::Peer(_) => {
+                        // this is a response to a deploy fetch request, dispatch to fetcher
+                        effects.extend(self.fetchers.dispatch_fetcher_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::DeployAcceptorAnnouncement(
+                                DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+                            ),
+                        ));
+                    }
+                    Source::Client | Source::PeerGossiped(_) => {
+                        // we must attempt to gossip onwards
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
+                                item_id: deploy.id(),
+                                source,
+                            }),
+                        ));
+                        // notify event stream
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::EventStreamServer(
+                                event_stream_server::Event::DeployAccepted(deploy),
+                            ),
+                        ));
+                    }
+                }
 
                 effects
             }
@@ -904,20 +912,18 @@ impl reactor::Reactor for MainReactor {
                     rng,
                     deploy_acceptor::Event::Accept {
                         deploy: item,
-                        source: Source::Peer(sender),
+                        source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
                 ),
             ),
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_deploy_id,
+                gossiped_deploy_id,
             )) => {
-                // [TODO][Fraser]: notify DeployBuffer the deploy can be proposed
-                // let reactor_event =
-                //     MainEvent::DeployBuffer(deploy_buffer::Event::
-                // BufferDeploy(gossiped_deploy_id));
-                // self.dispatch_event(effect_builder, rng, reactor_event)
-                Effects::new()
+                let reactor_event = MainEvent::DeployBuffer(
+                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,

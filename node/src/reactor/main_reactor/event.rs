@@ -31,6 +31,12 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
             StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            AppStateRequest, BeginGossipRequest, BlockAccumulatorRequest,
+            BlockCompleteConfirmationRequest, BlockSynchronizerRequest, BlockValidationRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
+            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+            NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest, StorageRequest,
+            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -317,6 +323,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            MainEvent::MainReactorRequest(_) => "MainReactorRequest",
         }
     }
 }
@@ -485,6 +492,7 @@ impl Display for MainEvent {
             MainEvent::BlockGossiperAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
+            MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
         }
     }
 }

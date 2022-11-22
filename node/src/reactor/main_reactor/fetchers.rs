@@ -10,6 +10,7 @@ use crate::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
         FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
+    utils::Source,
     FetcherConfig, NodeRng,
 };
 
@@ -159,31 +160,17 @@ impl Fetchers {
             // MISC DISPATCHING
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
-            ) => {
-                let mut effects = reactor::wrap_effects(
-                    MainEvent::LegacyDeployFetcher,
-                    self.legacy_deploy_fetcher.handle_event(
-                        effect_builder,
-                        rng,
-                        fetcher::Event::GotRemotely {
-                            item: Box::new(LegacyDeploy::from((*deploy).clone())),
-                            source: source.clone(),
-                        },
-                    ),
-                );
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::DeployFetcher,
-                    self.deploy_fetcher.handle_event(
-                        effect_builder,
-                        rng,
-                        fetcher::Event::GotRemotely {
-                            item: deploy,
-                            source,
-                        },
-                    ),
-                ));
-                effects
-            }
+            ) if matches!(source, Source::Peer(..)) => reactor::wrap_effects(
+                MainEvent::DeployFetcher,
+                self.deploy_fetcher.handle_event(
+                    effect_builder,
+                    rng,
+                    fetcher::Event::GotRemotely {
+                        item: deploy,
+                        source,
+                    },
+                ),
+            ),
             // allow non-fetcher events to fall thru
             _ => Effects::new(),
         }

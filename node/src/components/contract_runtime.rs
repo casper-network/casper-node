@@ -407,10 +407,8 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.put_trie_and_find_missing_descendant_trie_keys(
-                        correlation_id,
-                        trie_bytes.inner(),
-                    );
+                    let result = engine_state
+                        .put_trie_if_all_children_present(correlation_id, trie_bytes.inner());
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
                         fatal!(

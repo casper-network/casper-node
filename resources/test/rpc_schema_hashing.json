@@ -152,6 +152,29 @@
             ],
             "type": "object"
           },
+          "AvailableBlockRange": {
+            "additionalProperties": false,
+            "description": "An unbroken, inclusive range of blocks.",
+            "properties": {
+              "high": {
+                "description": "The inclusive upper bound of the range.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "low": {
+                "description": "The inclusive lower bound of the range.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "high",
+              "low"
+            ],
+            "type": "object"
+          },
           "Bid": {
             "additionalProperties": false,
             "description": "An entry in the validator map.",
@@ -259,6 +282,30 @@
               }
             ],
             "description": "Identifier for possible ways to retrieve a block."
+          },
+          "BlockSyncStatus": {
+            "additionalProperties": false,
+            "properties": {
+              "acquisition_state": {
+                "type": "string"
+              },
+              "block_hash": {
+                "$ref": "#/components/schemas/BlockHash"
+              },
+              "block_height": {
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "acquisition_state",
+              "block_hash"
+            ],
+            "type": "object"
           },
           "CLType": {
             "anyOf": [
@@ -1961,13 +2008,6 @@
             ],
             "type": "object"
           },
-          "NodeState": {
-            "description": "The various possible states of operation for the node.",
-            "enum": [
-              "participating"
-            ],
-            "type": "string"
-          },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
             "enum": [
@@ -2094,6 +2134,17 @@
               }
             ],
             "description": "Identifier of a purse."
+          },
+          "ReactorState": {
+            "enum": [
+              "Initialize",
+              "CatchUp",
+              "Upgrading",
+              "KeepUp",
+              "Validate",
+              "ShutdownForUpgrade"
+            ],
+            "type": "string"
           },
           "Reward": {
             "additionalProperties": false,
@@ -3639,6 +3690,11 @@
                 "name": "info_get_status_example_result",
                 "value": {
                   "api_version": "1.4.8",
+                  "available_block_range": {
+                    "high": 0,
+                    "low": 0
+                  },
+                  "block_sync": [],
                   "build_version": "1.0.0-xxxxxxxxx@DEBUG",
                   "chainspec_name": "casper-example",
                   "last_added_block_info": {
@@ -3649,11 +3705,11 @@
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
                     "timestamp": "2020-11-17T00:39:24.072Z"
                   },
+                  "last_progress": "1970-01-01T00:00:00.000Z",
                   "next_upgrade": {
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
-                  "node_state": "participating",
                   "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                   "peers": [
                     {
@@ -3661,8 +3717,9 @@
                       "node_id": "tls:0101..0101"
                     }
                   ],
+                  "reactor_state": "Initialize",
                   "round_length": "1m 5s 536ms",
-                  "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "starting_state_root_hash": null,
                   "uptime": "13s"
                 }
               }
@@ -3679,6 +3736,17 @@
                 "api_version": {
                   "description": "The RPC API version.",
                   "type": "string"
+                },
+                "available_block_range": {
+                  "$ref": "#/components/schemas/AvailableBlockRange",
+                  "description": "The available block range in storage."
+                },
+                "block_sync": {
+                  "description": "The status of the block synchronizer builders.",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockSyncStatus"
+                  },
+                  "type": "array"
                 },
                 "build_version": {
                   "description": "The compiled node version.",
@@ -3699,6 +3767,10 @@
                   ],
                   "description": "The minimal info of the last block from the linear chain."
                 },
+                "last_progress": {
+                  "$ref": "#/components/schemas/Timestamp",
+                  "description": "Timestamp of the last recorded progress in the reactor."
+                },
                 "next_upgrade": {
                   "anyOf": [
                     {
@@ -3709,10 +3781,6 @@
                     }
                   ],
                   "description": "Information about the next scheduled upgrade."
-                },
-                "node_state": {
-                  "$ref": "#/components/schemas/NodeState",
-                  "description": "The current state of node."
                 },
                 "our_public_signing_key": {
                   "anyOf": [
@@ -3729,6 +3797,10 @@
                   "$ref": "#/components/schemas/PeersMap",
                   "description": "The node ID and network address of each connected peer."
                 },
+                "reactor_state": {
+                  "$ref": "#/components/schemas/ReactorState",
+                  "description": "The current state of node reactor."
+                },
                 "round_length": {
                   "anyOf": [
                     {
@@ -3741,9 +3813,15 @@
                   "description": "The next round length if this node is a validator."
                 },
                 "starting_state_root_hash": {
-                  "$ref": "#/components/schemas/Digest",
-                  "deprecated": true,
-                  "description": "The state root hash used at the start of the current session."
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Digest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The state root hash of the lowest block in the available block range."
                 },
                 "uptime": {
                   "$ref": "#/components/schemas/TimeDiff",
@@ -3752,11 +3830,13 @@
               },
               "required": [
                 "api_version",
+                "available_block_range",
+                "block_sync",
                 "build_version",
                 "chainspec_name",
-                "node_state",
+                "last_progress",
                 "peers",
-                "starting_state_root_hash",
+                "reactor_state",
                 "uptime"
               ],
               "type": "object"

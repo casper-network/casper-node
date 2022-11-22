@@ -131,7 +131,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_synchronizer::{GlobalStateSynchronizerError, TrieAccumulatorError},
+        block_synchronizer::{BlockSyncStatus, GlobalStateSynchronizerError, TrieAccumulatorError},
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
@@ -141,7 +141,7 @@ use crate::{
     },
     contract_runtime::SpeculativeExecutionState,
     effect::requests::BlockAccumulatorRequest,
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
@@ -163,6 +163,10 @@ use requests::{
     BeginGossipRequest, BlockCompleteConfirmationRequest, BlockValidationRequest,
     ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
     FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
+    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, StorageRequest,
     SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
@@ -1383,6 +1387,25 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
+    where
+        REv: From<ReactorStatusRequest>,
+    {
+        self.make_request(ReactorStatusRequest, QueueKind::Regular)
+            .await
+    }
+
+    pub(crate) async fn get_block_synchronizer_status(self) -> Vec<BlockSyncStatus>
+    where
+        REv: From<BlockSynchronizerRequest>,
+    {
+        self.make_request(
+            |responder| BlockSynchronizerRequest::Status { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Get a trie by its hash key.
     pub(crate) async fn get_trie_full(
         self,
@@ -1401,11 +1424,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
-    pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
+    /// Puts a trie into the trie store; succeeds only if all the children of the trie are already
+    /// present in the store.
+    /// Returns the digest under which the trie was stored if successful.
+    pub(crate) async fn put_trie_if_all_children_present(
         self,
         trie_bytes: TrieRaw,
-    ) -> Result<Vec<Digest>, engine_state::Error>
+    ) -> Result<Digest, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
