@@ -101,18 +101,17 @@ impl EventStreamServer {
     }
 
     fn listen(&mut self) -> Result<(), ListeningError> {
-        let cfg = self.config.clone();
-        let required_address = utils::resolve_address(&cfg.address).map_err(|error| {
+        let required_address = utils::resolve_address(&self.config.address).map_err(|error| {
             warn!(
                 %error,
-                address=%cfg.address,
+                address=%self.config.address,
                 "failed to start event stream server, cannot parse address"
             );
             ListeningError::ResolveAddress(error)
         })?;
 
         // Event stream channels and filter.
-        let broadcast_channel_size = cfg.event_stream_buffer_length
+        let broadcast_channel_size = self.config.event_stream_buffer_length
             * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
             / 100;
 
@@ -122,7 +121,7 @@ impl EventStreamServer {
             sse_filter,
         } = ChannelsAndFilter::new(
             broadcast_channel_size as usize,
-            cfg.max_concurrent_subscribers,
+            self.config.max_concurrent_subscribers,
         );
 
         let (server_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
@@ -142,7 +141,7 @@ impl EventStreamServer {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
         tokio::spawn(http_server::run(
-            cfg,
+            self.config.clone(),
             self.api_version,
             server_with_shutdown,
             server_shutdown_sender,
