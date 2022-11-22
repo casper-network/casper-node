@@ -31,6 +31,8 @@ pub(crate) enum Error {
     TrieAccumulator(TrieAccumulatorError),
     #[error("ContractRuntime failed to put a trie into global state: {0}")]
     PutTrie(engine_state::Error),
+    #[error("no peers available to ask for a trie: {0}")]
+    NoPeersAvailable(Digest),
     #[error("request to fetch cancelled")]
     Cancelled,
 }
@@ -41,7 +43,6 @@ pub(crate) enum Event {
     Request(SyncGlobalStateRequest),
     FetchedTrie {
         trie_hash: Digest,
-        request_root_hashes: HashSet<Digest>,
         trie_accumulator_result: Result<Box<TrieRaw>, TrieAccumulatorError>,
     },
     PutTrieResult {
@@ -177,7 +178,9 @@ pub(super) struct GlobalStateSynchronizer {
     request_states: BTreeMap<Digest, RequestState>,
     tries_awaiting_children: BTreeMap<Digest, TrieAwaitingChildren>,
     fetch_queue: FetchQueue,
-    in_flight: HashSet<Digest>,
+    /// A map with trie hashes as the keys, and the values being sets of state root hashes that
+    /// were requested for syncing and have those tries as descendants.
+    in_flight: BTreeMap<Digest, HashSet<Digest>>,
     last_progress: Option<Timestamp>,
 }
 
@@ -243,19 +246,33 @@ impl GlobalStateSynchronizer {
         let to_fetch = self.fetch_queue.take(num_fetches_to_start);
 
         for (trie_hash, request_root_hashes) in to_fetch {
-            let peers = request_root_hashes
+            let peers: Vec<_> = request_root_hashes
                 .iter()
                 .filter_map(|request_root_hash| self.request_states.get(request_root_hash))
                 .flat_map(|request_state| request_state.peers.iter().copied())
                 .collect();
-            effects.extend(effect_builder.fetch_trie(trie_hash, peers).event(
-                move |trie_accumulator_result| Event::FetchedTrie {
-                    trie_hash,
-                    request_root_hashes,
-                    trie_accumulator_result,
-                },
-            ));
-            self.in_flight.insert(trie_hash);
+            if peers.is_empty() {
+                // if we have no peers, fail - trie accumulator would return an error, anyway
+                debug!(%trie_hash, "no peers available for requesting trie");
+                return self.cancel_request(trie_hash, Error::NoPeersAvailable(trie_hash));
+            } else {
+                match self.in_flight.entry(trie_hash) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(request_root_hashes);
+                        effects.extend(effect_builder.fetch_trie(trie_hash, peers).event(
+                            move |trie_accumulator_result| Event::FetchedTrie {
+                                trie_hash,
+                                trie_accumulator_result,
+                            },
+                        ));
+                    }
+                    Entry::Occupied(entry) => {
+                        // we have already started fetching the trie - don't reattempt, only store
+                        // the hashes of relevant state roots
+                        entry.into_mut().extend(request_root_hashes);
+                    }
+                }
+            }
         }
 
         effects
@@ -264,13 +281,22 @@ impl GlobalStateSynchronizer {
     fn handle_fetched_trie<REv>(
         &mut self,
         trie_hash: Digest,
-        request_root_hashes: HashSet<Digest>,
         trie_accumulator_result: Result<Box<TrieRaw>, TrieAccumulatorError>,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
     where
         REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
+        let request_root_hashes = if let Some(hashes) = self.in_flight.remove(&trie_hash) {
+            hashes
+        } else {
+            error!(
+                %trie_hash,
+                "received FetchedTrie, but no in_flight entry is present - this is a bug"
+            );
+            HashSet::new()
+        };
+
         let trie_raw = match trie_accumulator_result {
             Ok(trie_raw) => trie_raw,
             Err(error) => {
@@ -286,7 +312,6 @@ impl GlobalStateSynchronizer {
 
         self.touch();
 
-        self.in_flight.remove(&trie_hash);
         effect_builder
             .put_trie_if_all_children_present((*trie_raw).clone())
             .event(move |put_trie_result| Event::PutTrieResult {
@@ -454,14 +479,8 @@ where
             Event::Request(request) => self.handle_request(request, effect_builder),
             Event::FetchedTrie {
                 trie_hash,
-                request_root_hashes,
                 trie_accumulator_result,
-            } => self.handle_fetched_trie(
-                trie_hash,
-                request_root_hashes,
-                trie_accumulator_result,
-                effect_builder,
-            ),
+            } => self.handle_fetched_trie(trie_hash, trie_accumulator_result, effect_builder),
             Event::PutTrieResult {
                 trie_hash,
                 trie_raw,

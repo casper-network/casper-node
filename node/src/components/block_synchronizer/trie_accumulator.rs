@@ -36,6 +36,8 @@ pub(crate) enum Error {
     Bytesrepr(bytesrepr::Error),
     #[error("trie accumulator couldn't fetch trie chunk ({0}, {1})")]
     Absent(Digest, u64),
+    #[error("request contained no peers; trie = {0}")]
+    NoPeers(Digest),
 }
 
 #[derive(DataSize, Debug)]
@@ -237,7 +239,7 @@ where
                     Some(peer) => *peer,
                     None => {
                         error!(%hash, "tried to fetch trie with no peers available");
-                        return Effects::new();
+                        return responder.respond(Err(Error::NoPeers(hash))).ignore();
                     }
                 };
                 let partial_chunks = PartialChunks {
