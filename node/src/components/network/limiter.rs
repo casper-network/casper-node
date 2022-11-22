@@ -11,7 +11,7 @@ use std::{
 };
 
 use prometheus::Counter;
-use tokio::{runtime::Handle, sync::Mutex};
+use tokio::sync::Mutex;
 use tracing::{error, trace};
 
 use casper_types::{EraId, PublicKey};
@@ -114,19 +114,9 @@ impl Limiter {
 
     pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
         let resources = Arc::clone(&self.data.resources);
-
-        thread::spawn(|| {
-            tokio::runtime::Runtime::new().map_or(None, |runtime| {
-                runtime.block_on(async {
-                    Handle::current()
-                        .spawn(async move { resources.lock().await.available })
-                        .await
-                        .ok()
-                })
-            })
-        })
-        .join()
-        .unwrap_or(None)
+        thread::spawn(move || Some(resources.blocking_lock().available))
+            .join()
+            .unwrap_or(None)
     }
 
     pub(super) fn debug_inspect_validators(
