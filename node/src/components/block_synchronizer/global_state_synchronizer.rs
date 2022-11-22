@@ -243,19 +243,26 @@ impl GlobalStateSynchronizer {
         let to_fetch = self.fetch_queue.take(num_fetches_to_start);
 
         for (trie_hash, request_root_hashes) in to_fetch {
-            let peers = request_root_hashes
+            let peers: Vec<_> = request_root_hashes
                 .iter()
                 .filter_map(|request_root_hash| self.request_states.get(request_root_hash))
                 .flat_map(|request_state| request_state.peers.iter().copied())
                 .collect();
-            effects.extend(effect_builder.fetch_trie(trie_hash, peers).event(
-                move |trie_accumulator_result| Event::FetchedTrie {
-                    trie_hash,
-                    request_root_hashes,
-                    trie_accumulator_result,
-                },
-            ));
-            self.in_flight.insert(trie_hash);
+            if peers.is_empty() {
+                // if we have no peers, requeue the trie - trie accumulator would return an error,
+                // anyway
+                debug!(%trie_hash, "no peers available for requesting trie; requeuing");
+                self.enqueue_trie_for_fetching(trie_hash, request_root_hashes);
+            } else {
+                effects.extend(effect_builder.fetch_trie(trie_hash, peers).event(
+                    move |trie_accumulator_result| Event::FetchedTrie {
+                        trie_hash,
+                        request_root_hashes,
+                        trie_accumulator_result,
+                    },
+                ));
+                self.in_flight.insert(trie_hash);
+            }
         }
 
         effects
