@@ -29,14 +29,9 @@ use crate::{
             BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, RpcRequest,
-            StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
-            AppStateRequest, BeginGossipRequest, BlockAccumulatorRequest,
-            BlockCompleteConfirmationRequest, BlockSynchronizerRequest, BlockValidationRequest,
-            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-            NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest, StorageRequest,
-            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest,
+            RpcRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -218,6 +213,8 @@ pub(crate) enum MainEvent {
     Storage(storage::Event),
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    #[from]
+    MainReactorRequest(#[serde(skip_serializing)] ReactorStatusRequest),
 }
 
 impl ReactorEvent for MainEvent {

@@ -160,15 +160,13 @@ use announcements::{
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockCompleteConfirmationRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
-    FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
-    AppStateRequest, BeginGossipRequest, BlockCompleteConfirmationRequest,
-    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    BeginGossipRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
+    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, FetcherRequest,
     NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, StorageRequest,
     SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
+
+use self::requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));

@@ -23,59 +23,6 @@ use crate::{
     NodeRng,
 };
 
-#[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
-pub(crate) enum Error {
-    InvalidStateTransition,
-    BlockHashMismatch {
-        expected: BlockHash,
-        actual: BlockHash,
-    },
-    RootHashMismatch {
-        expected: Digest,
-        actual: Digest,
-    },
-    #[from]
-    InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
-    InvalidAttemptToAcquireExecutionResults,
-    InvalidAttemptToMarkComplete,
-    ExecutionResults(super::execution_results_acquisition::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::InvalidStateTransition => write!(f, "invalid state transition"),
-            Error::InvalidAttemptToMarkComplete => {
-                write!(f, "invalid attempt to mark complete")
-            }
-            Error::InvalidAttemptToAcquireExecutionResults => {
-                write!(
-                    f,
-                    "invalid attempt to acquire execution results while in a terminal state"
-                )
-            }
-            Error::BlockHashMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "block hash mismatch: expected {} actual: {}",
-                    expected, actual
-                )
-            }
-            Error::RootHashMismatch { expected, actual } => write!(
-                f,
-                "root hash mismatch: expected {} actual: {}",
-                expected, actual
-            ),
-            Error::ExecutionResults(error) => write!(f, "execution results error: {}", error),
-            Error::InvalidAttemptToApplyApprovalsHashes(error) => write!(
-                f,
-                "invalid attempt to apply approvals hashes results: {}",
-                error
-            ),
-        }
-    }
-}
-
 // BlockAcquisitionState is a milestone oriented state machine; it is always in a resting state
 // indicating the last completed step, while attempting to acquire the necessary data to transition
 // to the next resting state milestone. the start and end of the workflow is linear, but the
