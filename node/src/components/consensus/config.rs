@@ -7,9 +7,9 @@ use casper_types::{PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{
+        era_supervisor::PAST_EVIDENCE_ERAS,
         protocols::{highway::config::Config as HighwayConfig, zug::config::Config as ZugConfig},
         EraId,
-        era_supervisor::PAST_EVIDENCE_ERAS
     },
     types::Chainspec,
     utils::{External, LoadError, Loadable},

@@ -1289,6 +1289,7 @@ impl<C: Context + 'static> Zug<C> {
                             | ProtocolOutcome::WeAreFaulty
                             | ProtocolOutcome::FinalizedBlock(_)
                             | ProtocolOutcome::ValidateConsensusValue { .. }
+                            | ProtocolOutcome::HandledProposedBlock(..)
                             | ProtocolOutcome::NewEvidence(_) => true,
                             ProtocolOutcome::SendEvidence(_, _)
                             | ProtocolOutcome::CreatedGossipMessage(_)
@@ -1300,7 +1301,6 @@ impl<C: Context + 'static> Zug<C> {
                             | ProtocolOutcome::QueueAction(_)
                             | ProtocolOutcome::CreateNewBlock(_)
                             | ProtocolOutcome::DoppelgangerDetected
-                            | ProtocolOutcome::StandstillAlert
                             | ProtocolOutcome::Disconnect(_) => false,
                         }));
                     }
