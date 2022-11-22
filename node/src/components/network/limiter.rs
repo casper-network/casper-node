@@ -116,24 +116,17 @@ impl Limiter {
         let resources = Arc::clone(&self.data.resources);
 
         thread::spawn(|| {
-            if let Ok(runtime) = tokio::runtime::Runtime::new() {
-                Some(runtime.block_on(async {
-                    if let Ok(unspent_allowance) = Handle::current()
+            tokio::runtime::Runtime::new().map_or(None, |runtime| {
+                runtime.block_on(async {
+                    Handle::current()
                         .spawn(async move { resources.lock().await.available })
                         .await
-                    {
-                        Some(unspent_allowance)
-                    } else {
-                        None
-                    }
-                }))
-            } else {
-                None
-            }
+                        .ok()
+                })
+            })
         })
         .join()
         .unwrap_or(None)
-        .flatten()
     }
 
     pub(super) fn debug_inspect_validators(
