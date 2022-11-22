@@ -31,6 +31,8 @@ pub(crate) enum Error {
     TrieAccumulator(TrieAccumulatorError),
     #[error("ContractRuntime failed to put a trie into global state: {0}")]
     PutTrie(engine_state::Error),
+    #[error("no peers available to ask for a trie: {0}")]
+    NoPeersAvailable(Digest),
     #[error("request to fetch cancelled")]
     Cancelled,
 }
@@ -176,6 +178,8 @@ pub(super) struct GlobalStateSynchronizer {
     request_states: BTreeMap<Digest, RequestState>,
     tries_awaiting_children: BTreeMap<Digest, TrieAwaitingChildren>,
     fetch_queue: FetchQueue,
+    /// A map with trie hashes as the keys, and the values being sets of state root hashes that were
+    /// requested for syncing and have those tries as descendants.
     in_flight: BTreeMap<Digest, HashSet<Digest>>,
     last_progress: Option<Timestamp>,
 }
@@ -248,10 +252,9 @@ impl GlobalStateSynchronizer {
                 .flat_map(|request_state| request_state.peers.iter().copied())
                 .collect();
             if peers.is_empty() {
-                // if we have no peers, requeue the trie - trie accumulator would return an error,
-                // anyway
-                debug!(%trie_hash, "no peers available for requesting trie; requeuing");
-                self.enqueue_trie_for_fetching(trie_hash, request_root_hashes);
+                // if we have no peers, fail - trie accumulator would return an error, anyway
+                debug!(%trie_hash, "no peers available for requesting trie");
+                return self.cancel_request(trie_hash, Error::NoPeersAvailable(trie_hash));
             } else {
                 match self.in_flight.entry(trie_hash) {
                     Entry::Vacant(entry) => {
@@ -287,9 +290,9 @@ impl GlobalStateSynchronizer {
         let request_root_hashes = if let Some(hashes) = self.in_flight.remove(&trie_hash) {
             hashes
         } else {
-            warn!(
+            error!(
                 %trie_hash,
-                "received FetchedTrie, but no in_flight entry is present - this is probably a bug"
+                "received FetchedTrie, but no in_flight entry is present - this is a bug"
             );
             HashSet::new()
         };
