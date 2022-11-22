@@ -178,8 +178,8 @@ pub(super) struct GlobalStateSynchronizer {
     request_states: BTreeMap<Digest, RequestState>,
     tries_awaiting_children: BTreeMap<Digest, TrieAwaitingChildren>,
     fetch_queue: FetchQueue,
-    /// A map with trie hashes as the keys, and the values being sets of state root hashes that were
-    /// requested for syncing and have those tries as descendants.
+    /// A map with trie hashes as the keys, and the values being sets of state root hashes that
+    /// were requested for syncing and have those tries as descendants.
     in_flight: BTreeMap<Digest, HashSet<Digest>>,
     last_progress: Option<Timestamp>,
 }
