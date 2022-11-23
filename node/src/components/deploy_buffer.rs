@@ -1,13 +1,16 @@
 mod config;
 mod event;
+mod metrics;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    convert::TryInto,
     iter::FromIterator,
     mem,
 };
 
 use datasize::DataSize;
+use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::Timestamp;
@@ -32,6 +35,8 @@ use crate::{
 };
 pub(crate) use config::Config;
 pub(crate) use event::Event;
+
+use metrics::Metrics;
 
 type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
 
@@ -63,12 +68,19 @@ pub(crate) struct DeployBuffer {
     // if we have no block_height gaps but our earliest block_time is less than now - ttl,
     // we do NOT have full TTL awareness.
     chain_index: BTreeMap<u64, Timestamp>,
+    // deploy buffer metrics
+    #[data_size(skip)]
+    metrics: Metrics,
 }
 
 impl DeployBuffer {
     /// Create a deploy buffer for fun and profit.
-    pub(crate) fn new(deploy_config: DeployConfig, cfg: Config) -> Self {
-        DeployBuffer {
+    pub(crate) fn new(
+        deploy_config: DeployConfig,
+        cfg: Config,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(DeployBuffer {
             status: ComponentStatus::Uninitialized,
             cfg,
             deploy_config,
@@ -76,7 +88,8 @@ impl DeployBuffer {
             hold: BTreeMap::new(),
             dead: HashSet::new(),
             chain_index: BTreeMap::new(),
-        }
+            metrics: Metrics::new(registry)?,
+        })
     }
 
     /// True if we have full TTL worth of deploy awareness, else false.
@@ -120,15 +133,30 @@ impl DeployBuffer {
         if freed_count > 0 {
             info!("DeployBuffer: expiring {} deploys", freed_count);
         }
+
         // clear expired deploy from all holds, then clear any entries that have no items remaining
+        let held_metrics = &mut self.metrics.held_deploys;
         self.hold.iter_mut().for_each(|(_, held_deploys)| {
-            held_deploys.retain(|deploy_hash| !freed.contains_key(deploy_hash))
+            held_deploys.retain(|deploy_hash| {
+                if freed.contains_key(deploy_hash) {
+                    held_metrics.dec();
+                    false
+                } else {
+                    true
+                }
+            });
         });
         self.hold.retain(|_, remaining| !remaining.is_empty());
 
         self.dead
             .retain(|deploy_hash| !freed.contains_key(deploy_hash));
+        self.metrics
+            .dead_deploys
+            .set(self.dead.len().try_into().unwrap_or(i64::MIN));
         self.buffer = buffer;
+        self.metrics
+            .total_deploys
+            .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
 
         let mut effects = effect_builder
             .announce_expired_deploys(freed.keys().cloned().collect())
@@ -188,6 +216,7 @@ impl DeployBuffer {
             }
             None => {
                 debug!(%deploy_hash, "DeployBuffer: new deploy buffered");
+                self.metrics.total_deploys.inc();
             }
         }
     }
@@ -197,13 +226,30 @@ impl DeployBuffer {
         let timestamp = &proposed_block.context().timestamp();
         if let Some(hold_set) = self.hold.get_mut(timestamp) {
             debug!(%timestamp, "DeployBuffer: existing hold timestamp extended");
-            hold_set.extend(proposed_block.value().deploy_and_transfer_hashes())
+            let set_prev_len = hold_set.len();
+            hold_set.extend(proposed_block.value().deploy_and_transfer_hashes());
+            if set_prev_len > hold_set.len() {
+                self.metrics.held_deploys.sub(
+                    (set_prev_len - hold_set.len())
+                        .try_into()
+                        .unwrap_or(i64::MAX),
+                );
+            } else {
+                self.metrics.held_deploys.add(
+                    (hold_set.len() - set_prev_len)
+                        .try_into()
+                        .unwrap_or(i64::MAX),
+                );
+            }
         } else {
             debug!(%timestamp, "DeployBuffer: new hold timestamp inserted");
-            self.hold.insert(
-                *timestamp,
-                HashSet::from_iter(proposed_block.value().deploy_and_transfer_hashes().copied()),
-            );
+            let deploy_hashes =
+                HashSet::from_iter(proposed_block.value().deploy_and_transfer_hashes().copied());
+            let deploy_hashes_len = deploy_hashes.len();
+            self.hold.insert(*timestamp, deploy_hashes);
+            self.metrics
+                .held_deploys
+                .add(deploy_hashes_len.try_into().unwrap_or(i64::MAX));
         }
     }
 
@@ -214,15 +260,31 @@ impl DeployBuffer {
         let expiry_timestamp = timestamp.saturating_add(self.deploy_config.max_ttl);
         // all deploys in the finalized block must not be included in future proposals
         for hash in finalized_block.deploy_and_transfer_hashes() {
-            if !self.buffer.contains_key(hash) {
-                self.buffer.insert(*hash, (expiry_timestamp, None));
+            if !self.buffer.contains_key(hash)
+                && self
+                    .buffer
+                    .insert(*hash, (expiry_timestamp, None))
+                    .is_none()
+            {
+                self.metrics.total_deploys.inc();
             }
-            self.dead.insert(*hash);
+            if self.dead.insert(*hash) {
+                self.metrics.dead_deploys.inc();
+            }
         }
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
-            .partition(|(ts, _)| *ts > timestamp);
+            .partition(|(ts, deploys)| {
+                if *ts > timestamp {
+                    true
+                } else {
+                    self.metrics
+                        .held_deploys
+                        .sub(deploys.len().try_into().unwrap_or(i64::MAX));
+                    false
+                }
+            });
         debug!(%timestamp, "DeployBuffer: timestamp finalized");
         self.hold = hold;
     }
@@ -265,7 +327,9 @@ impl DeployBuffer {
                                 ?deploy_hash,
                                 "DeployBuffer: duplicated deploy in deploy buffer"
                             );
-                            self.dead.insert(deploy_hash);
+                            if self.dead.insert(deploy_hash) {
+                                self.metrics.dead_deploys.inc();
+                            }
                             continue;
                         }
                         AddError::InvalidDeploy => {
@@ -275,7 +339,9 @@ impl DeployBuffer {
                                 ?deploy_hash,
                                 "DeployBuffer: invalid deploy in deploy buffer"
                             );
-                            self.dead.insert(deploy_hash);
+                            if self.dead.insert(deploy_hash) {
+                                self.metrics.dead_deploys.inc();
+                            }
                             continue;
                         }
                         AddError::TransferCount
@@ -296,8 +362,29 @@ impl DeployBuffer {
             }
         }
 
-        // put a hold on all proposed deploys / transfers
-        self.hold.insert(timestamp, holds.iter().copied().collect());
+        // put a hold on all proposed deploys / transfers and update metrics
+        match self.hold.insert(timestamp, holds.iter().copied().collect()) {
+            None => self
+                .metrics
+                .held_deploys
+                .add(holds.len().try_into().unwrap_or(i64::MAX)),
+            Some(old_deploys) => {
+                if old_deploys.len() > holds.len() {
+                    self.metrics.held_deploys.sub(
+                        (old_deploys.len() - holds.len())
+                            .try_into()
+                            .unwrap_or(i64::MAX),
+                    );
+                } else {
+                    self.metrics.held_deploys.add(
+                        (holds.len() - old_deploys.len())
+                            .try_into()
+                            .unwrap_or(i64::MAX),
+                    );
+                }
+            }
+        };
+
         ret
     }
 }
