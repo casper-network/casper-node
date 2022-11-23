@@ -299,6 +299,12 @@ mod tests {
 
     use super::*;
 
+    fn new_sequence(a: u64, b: u64) -> Sequence {
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        assert!(low <= high);
+        Sequence { low, high }
+    }
+
     fn assert_matches(actual: &DisjointSequences, expected: &BTreeSet<u64>) {
         let mut actual_set = BTreeSet::new();
         for sequence in &actual.sequences {
@@ -307,22 +313,6 @@ mod tests {
             }
         }
         assert_eq!(&actual_set, expected)
-    }
-
-    #[test]
-    fn new_should_order_elements() {
-        let one = Sequence::new(1, 1);
-        let two = Sequence::new(1, 2);
-        let three = Sequence::new(2, 1);
-
-        assert_eq!(one.low, 1);
-        assert_eq!(one.high, 1);
-
-        assert_eq!(two.low, 1);
-        assert_eq!(two.high, 2);
-
-        assert_eq!(three.low, 1);
-        assert_eq!(three.high, 2);
     }
 
     #[test]
@@ -466,7 +456,7 @@ mod tests {
         disjoint_sequences.truncate(max_value);
         assert_eq!(
             disjoint_sequences.sequences,
-            vec![Sequence::new(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
+            vec![new_sequence(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
         );
 
         disjoint_sequences = initial_sequences.clone();
@@ -474,7 +464,7 @@ mod tests {
         disjoint_sequences.truncate(max_value);
         assert_eq!(
             disjoint_sequences.sequences,
-            vec![Sequence::new(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
+            vec![new_sequence(max_value, SEQ_HIGH.low), SEQ_MID, SEQ_LOW]
         );
 
         disjoint_sequences = initial_sequences.clone();
@@ -487,7 +477,7 @@ mod tests {
         disjoint_sequences.truncate(max_value);
         assert_eq!(
             disjoint_sequences.sequences,
-            vec![Sequence::new(max_value, SEQ_LOW.low)]
+            vec![new_sequence(max_value, SEQ_LOW.low)]
         );
 
         disjoint_sequences = initial_sequences;
@@ -495,7 +485,7 @@ mod tests {
         disjoint_sequences.truncate(max_value);
         assert_eq!(
             disjoint_sequences.sequences,
-            vec![Sequence::new(max_value, SEQ_LOW.low)]
+            vec![new_sequence(max_value, SEQ_LOW.low)]
         );
 
         // Truncate on an empty set of sequences should have no effect.
