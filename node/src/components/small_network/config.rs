@@ -1,5 +1,6 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 
 use casper_types::{ProtocolVersion, TimeDiff};
 use datasize::DataSize;
@@ -49,8 +50,22 @@ impl Default for Config {
             tarpit_chance: 0.2,
             max_in_flight_demands: 50,
             blocklist_retain_duration: TimeDiff::from_seconds(600),
+            identity: None,
         }
     }
+}
+
+/// Small network identity configuration.
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
+pub struct IdentityConfig {
+    /// Path to a signed certificate
+    pub tls_certificate: PathBuf,
+    /// Path to a secret key.
+    pub secret_key: PathBuf,
+    /// Path to a certificate authority certificate
+    pub ca_certificate: PathBuf,
 }
 
 /// Small network configuration.
@@ -92,6 +107,11 @@ pub struct Config {
     pub max_in_flight_demands: u32,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
+    /// Small network identity configuration option.
+    ///
+    /// An identity will be automatically generated when starting up a node if this option is
+    /// unspecified.
+    pub identity: Option<IdentityConfig>,
 }
 
 #[cfg(test)]

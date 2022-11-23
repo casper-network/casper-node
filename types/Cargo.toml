@@ -64,7 +64,7 @@ untrusted = "0.7.1"
 
 [features]
 json-schema = ["once_cell", "schemars"]
-std = ["derp", "getrandom", "humantime", "once_cell", "pem", "thiserror", "untrusted"]
+std = ["derp", "getrandom/std", "humantime", "once_cell", "pem", "thiserror", "untrusted"]
 testing = ["proptest", "rand_pcg"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]

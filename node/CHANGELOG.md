@@ -41,6 +41,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add `enable_server`, `address`, `qps_limit` and `max_body_bytes` to new `speculative_exec_server` section to `config.toml` to configure speculative execution JSON-RPC server (disabled by default).
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
 * The network handshake now contains the hash of the chainspec used and will be successful only if they match.
+* Add an `identity` option to load existing network identity certificates signed by a CA.
+* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
@@ -81,6 +83,20 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
+
+
+
+## 1.4.8
+
+### Changed
+* Update `casper-execution-engine`.
+
+
+
+## 1.4.7
+
+### Changed
+* Update `casper-execution-engine` and three `openssl` crates to latest versions.
 
 
 
