@@ -241,7 +241,8 @@ impl<T: StateReader> StateTracker<T> {
             }
             //
             for (delegator_pub_key, delegator) in old_bid.delegators() {
-                // skip zeroing purses of delegators that will be handled later
+                // skip zeroing purses of delegators whose purses don't change - that will be
+                // handled later
                 if bid
                     .delegators()
                     .get(delegator_pub_key)
@@ -272,9 +273,9 @@ impl<T: StateReader> StateTracker<T> {
             }
         }
 
-        if slash || new_amount >= old_amount {
+        if slash || new_amount > old_amount {
             self.set_purse_balance(*bid.bonding_purse(), new_amount);
-        } else {
+        } else if new_amount < old_amount {
             self.create_unbonding_purse(
                 *bid.bonding_purse(),
                 &public_key,
@@ -286,9 +287,9 @@ impl<T: StateReader> StateTracker<T> {
         for (delegator_public_key, delegator) in bid.delegators() {
             let old_amount = self.get_purse_balance(*delegator.bonding_purse());
             let new_amount = *delegator.staked_amount();
-            if slash || new_amount >= old_amount {
+            if slash || new_amount > old_amount {
                 self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
-            } else {
+            } else if new_amount < old_amount {
                 self.create_unbonding_purse(
                     *delegator.bonding_purse(),
                     &public_key,
