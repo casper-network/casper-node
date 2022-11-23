@@ -285,7 +285,8 @@ impl reactor::Reactor for MainReactor {
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
-        let deploy_buffer = DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer);
+        let deploy_buffer =
+            DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
         let era_count = chainspec.number_of_past_switch_blocks_needed();
         let recent_switch_block_headers = storage.read_highest_switch_block_headers(era_count)?;
 
