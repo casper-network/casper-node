@@ -684,9 +684,9 @@ impl Storage {
             } => responder
                 .respond(self.read_approvals_hashes(&block_hash)?)
                 .ignore(),
-            StorageRequest::GetHighestBlock { responder } => {
-                responder.respond(self.read_highest_block()?).ignore()
-            }
+            StorageRequest::GetHighestCompleteBlock { responder } => responder
+                .respond(self.read_highest_complete_block()?)
+                .ignore(),
             StorageRequest::GetHighestCompleteBlockHeader { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder

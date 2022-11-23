@@ -310,8 +310,8 @@ pub(crate) enum StorageRequest {
         /// in local storage.
         responder: Responder<Option<ApprovalsHashes>>,
     },
-    /// Retrieve highest block.
-    GetHighestBlock {
+    /// Retrieve highest complete block.
+    GetHighestCompleteBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
@@ -511,7 +511,9 @@ impl Display for StorageRequest {
             StorageRequest::GetApprovalsHashes { block_hash, .. } => {
                 write!(formatter, "get approvals hashes {}", block_hash)
             }
-            StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetHighestCompleteBlock { .. } => {
+                write!(formatter, "get highest complete block")
+            }
             StorageRequest::GetHighestCompleteBlockHeader { .. } => {
                 write!(formatter, "get highest complete block header")
             }

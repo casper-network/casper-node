@@ -1321,13 +1321,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the highest block.
-    pub(crate) async fn get_highest_block_from_storage(self) -> Option<Block>
+    /// Requests the highest complete block.
+    pub(crate) async fn get_highest_complete_block_from_storage(self) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetHighestBlock { responder },
+            |responder| StorageRequest::GetHighestCompleteBlock { responder },
             QueueKind::FromStorage,
         )
         .await
