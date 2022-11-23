@@ -270,6 +270,15 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
+    /// Store given block and mark it complete.
+    PutCompleteBlock {
+        /// Block to be stored.
+        block: Box<Block>,
+        /// Responder to call with the result.  Returns true if the block was stored and it
+        /// was inserted into the completed blocks index on this attempt or false if it was
+        /// previously stored.
+        responder: Responder<bool>,
+    },
     /// Store the approvals hashes.
     PutApprovalsHashes {
         /// Approvals hashes to store.
@@ -488,6 +497,9 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutCompleteBlock { block, .. } => {
+                write!(formatter, "put complete {}", block)
+            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes, ..
             } => {

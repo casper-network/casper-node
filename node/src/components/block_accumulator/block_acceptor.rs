@@ -23,6 +23,7 @@ pub(super) struct BlockAcceptor {
     peers: BTreeSet<NodeId>,
     has_sufficient_finality: bool,
     last_progress: Timestamp,
+    executed: bool,
 }
 
 #[derive(Debug)]
@@ -31,6 +32,7 @@ pub(super) enum ShouldStore {
     SufficientlySignedBlock {
         block: Block,
         signatures: Vec<FinalitySignature>,
+        executed: bool,
     },
     SingleSignature(FinalitySignature),
     Nothing,
@@ -48,6 +50,7 @@ impl BlockAcceptor {
             peers: peers.into_iter().collect(),
             has_sufficient_finality: false,
             last_progress: Timestamp::now(),
+            executed: false,
         }
     }
 
@@ -63,6 +66,7 @@ impl BlockAcceptor {
         &mut self,
         block: Block,
         peer: Option<NodeId>,
+        executed: bool,
     ) -> Result<(), AcceptorError> {
         if self.block_hash() != *block.hash() {
             return Err(AcceptorError::BlockHashMismatch {
@@ -95,6 +99,8 @@ impl BlockAcceptor {
         if self.block.is_none() {
             self.block = Some(block);
         }
+
+        self.executed |= executed;
 
         Ok(())
     }
@@ -219,6 +225,7 @@ impl BlockAcceptor {
                             .values()
                             .map(|(sig, _)| sig.clone())
                             .collect_vec(),
+                        executed: self.executed,
                     },
                     faulty_senders,
                 );

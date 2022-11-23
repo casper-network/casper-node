@@ -657,6 +657,13 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&*block)?).ignore()
             }
+            StorageRequest::PutCompleteBlock { block, responder } => {
+                let wrote = self.write_block(&*block)?;
+                if wrote {
+                    self.mark_block_complete(block.height())?;
+                }
+                responder.respond(wrote).ignore()
+            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
@@ -1042,6 +1049,13 @@ impl Storage {
             responder,
         }: BlockCompleteConfirmationRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
+        self.mark_block_complete(block_height)?;
+        Ok(responder.respond(()).ignore())
+    }
+
+    /// Marks the block at height `block_height` as complete by inserting it
+    /// into the `completed_blocks` index and storing it to disk.
+    fn mark_block_complete(&mut self, block_height: u64) -> Result<(), FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;
         info!(
@@ -1049,7 +1063,7 @@ impl Storage {
             block_height,
             self.get_available_block_range()
         );
-        Ok(responder.respond(()).ignore())
+        Ok(())
     }
 
     /// Persists the completed blocks disjoint sequences state to the database.
@@ -1196,6 +1210,26 @@ impl Storage {
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
+            txn.commit()?;
+        }
+        Ok(wrote)
+    }
+
+    /// Writes a block to storage and marks it as complete, updating indices as necessary.
+    ///
+    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
+    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
+    /// This function guarantees that either both the block storing and the `completed_blocks` index
+    /// update were successful or that the entire operation was reverted.
+    pub fn write_complete_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
+        // Validate the block prior to inserting it into the database
+        block.verify()?;
+        let env = Rc::clone(&self.env);
+        let mut txn = env.begin_rw_txn()?;
+        let wrote = self.write_validated_block(&mut txn, block)?;
+        if wrote {
+            // Update the `completed_blocks` index only if the block was actually stored.
+            self.mark_block_complete(block.height())?;
             txn.commit()?;
         }
         Ok(wrote)

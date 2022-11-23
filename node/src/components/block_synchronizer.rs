@@ -446,11 +446,16 @@ impl BlockSynchronizer {
                 }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
                     builder.set_in_flight_latch();
-                    results.extend(
-                        effect_builder
-                            .mark_block_completed(block_height)
-                            .event(move |_| Event::MarkBlockCompleted(block_hash)),
-                    )
+                    // Only mark the block complete if we're syncing historical
+                    // because we have global state and execution effects (if
+                    // any).
+                    if builder.should_fetch_execution_state() {
+                        results.extend(
+                            effect_builder
+                                .mark_block_completed(block_height)
+                                .event(move |_| Event::MarkBlockCompleted(block_hash)),
+                        )
+                    }
                 }
                 NeedNext::Peers(block_hash) => {
                     builder.set_in_flight_latch();
