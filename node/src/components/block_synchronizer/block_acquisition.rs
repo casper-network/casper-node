@@ -653,8 +653,7 @@ impl BlockAcquisitionState {
                     ) {
                     Ok(new_effects) => match new_effects {
                         ExecutionResultsAcquisition::Needed { .. }
-                        | ExecutionResultsAcquisition::Pending { .. }
-                        | ExecutionResultsAcquisition::Acquiring { .. } => return Ok(None),
+                        | ExecutionResultsAcquisition::Pending { .. } => return Ok(None),
                         ExecutionResultsAcquisition::Complete { ref results, .. } => (
                             BlockAcquisitionState::HaveGlobalState(
                                 block.clone(),
@@ -663,6 +662,15 @@ impl BlockAcquisitionState {
                                 new_effects.clone(),
                             ),
                             Some(results.clone()),
+                        ),
+                        ExecutionResultsAcquisition::Acquiring { .. } => (
+                            BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_effects,
+                            ),
+                            None,
                         ),
                     },
                     Err(error) => {
