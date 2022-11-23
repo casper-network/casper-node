@@ -12,6 +12,8 @@ pub struct Config {
     pub accounts: Vec<AccountConfig>,
     #[serde(default)]
     pub only_listed_validators: bool,
+    #[serde(default)]
+    pub slash_instead_of_unbonding: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

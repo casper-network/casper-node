@@ -55,6 +55,7 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
         accounts,
         transfers: vec![],
         only_listed_validators: true,
+        slash_instead_of_unbonding: true, // for consistency with the old behavior
     };
 
     let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);

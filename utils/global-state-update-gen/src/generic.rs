@@ -49,6 +49,7 @@ pub(crate) fn get_update<T: StateReader>(reader: T, config: Config) -> BTreeMap<
         &mut state_tracker,
         &config.accounts,
         config.only_listed_validators,
+        config.slash_instead_of_unbonding,
     );
 
     state_tracker.get_entries()
@@ -90,6 +91,7 @@ fn update_auction_state<T: StateReader>(
     state: &mut StateTracker<T>,
     accounts: &[AccountConfig],
     only_listed_validators: bool,
+    slash: bool,
 ) {
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = state.read_snapshot();
@@ -119,6 +121,7 @@ fn update_auction_state<T: StateReader>(
             &validators_diff,
             &new_snapshot,
             only_listed_validators,
+            slash,
         );
 
         state.remove_withdraws(&validators_diff.removed);
@@ -239,6 +242,7 @@ pub fn add_and_remove_bids<T: StateReader>(
     validators_diff: &ValidatorsDiff,
     new_snapshot: &SeigniorageRecipientsSnapshot,
     only_listed_validators: bool,
+    slash: bool,
 ) {
     let to_unbid = if only_listed_validators {
         let large_bids = find_large_bids(state, new_snapshot);
@@ -252,7 +256,7 @@ pub fn add_and_remove_bids<T: StateReader>(
     };
 
     for (pub_key, seigniorage_recipient) in new_snapshot.values().next().unwrap() {
-        create_or_update_bid(state, pub_key, seigniorage_recipient);
+        create_or_update_bid(state, pub_key, seigniorage_recipient, slash);
     }
 
     // Refresh the bids - we modified them above.
@@ -260,14 +264,8 @@ pub fn add_and_remove_bids<T: StateReader>(
 
     for pub_key in to_unbid {
         if let Some(bid) = bids.get(&pub_key) {
-            for delegator in bid.delegators().values() {
-                // Burn the delegated funds of all the delegators.
-                // TBD: is that what should be happening when a validator is removed?
-                state.set_purse_balance(*delegator.bonding_purse(), U512::zero());
-            }
-
             let new_bid = Bid::empty(pub_key.clone(), *bid.bonding_purse());
-            state.set_bid(pub_key.clone(), new_bid);
+            state.set_bid(pub_key.clone(), new_bid, slash);
         }
     }
 }
@@ -305,6 +303,7 @@ fn create_or_update_bid<T: StateReader>(
     state: &mut StateTracker<T>,
     pub_key: &PublicKey,
     recipient: &SeigniorageRecipient,
+    slash: bool,
 ) {
     // Checks whether the data in the bid is the same as in the recipient info from a snapshot.
     let check_bid = |bid: &Bid| {
@@ -340,7 +339,6 @@ fn create_or_update_bid<T: StateReader>(
 
         for (delegator_pub_key, delegator_stake) in recipient.delegator_stake() {
             let delegator = if let Some(delegator) = old_bid.delegators().get(delegator_pub_key) {
-                state.set_purse_balance(*delegator.bonding_purse(), *delegator_stake);
                 Delegator::unlocked(
                     delegator_pub_key.clone(),
                     *delegator_stake,
@@ -359,20 +357,6 @@ fn create_or_update_bid<T: StateReader>(
 
             bid.delegators_mut()
                 .insert(delegator_pub_key.clone(), delegator);
-        }
-
-        for (old_delegator_pub_key, old_delegator) in old_bid.delegators() {
-            if recipient
-                .delegator_stake()
-                .contains_key(old_delegator_pub_key)
-            {
-                continue;
-            }
-
-            let delegator_bonding_purse = *old_delegator.bonding_purse();
-
-            // TBD: should delegators that are forcibly undelegated lose their bonded balance?
-            state.set_purse_balance(delegator_bonding_purse, U512::zero());
         }
 
         bid
@@ -406,5 +390,6 @@ fn create_or_update_bid<T: StateReader>(
         bid
     };
 
-    state.set_bid(pub_key.clone(), new_bid);
+    // This will take care of updating the bonding purse balances and unbonding purses entries.
+    state.set_bid(pub_key.clone(), new_bid, slash);
 }

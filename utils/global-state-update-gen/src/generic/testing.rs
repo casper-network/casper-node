@@ -571,6 +571,7 @@ fn should_replace_one_validator() {
             }),
         }],
         only_listed_validators: true,
+        slash_instead_of_unbonding: true,
         ..Default::default()
     };
 
@@ -962,6 +963,7 @@ fn should_replace_a_delegator() {
             }),
         }],
         only_listed_validators: false,
+        slash_instead_of_unbonding: true,
         ..Default::default()
     };
 
@@ -1149,6 +1151,7 @@ fn should_remove_the_delegator() {
             }),
         }],
         only_listed_validators: false,
+        slash_instead_of_unbonding: true,
         ..Default::default()
     };
 
