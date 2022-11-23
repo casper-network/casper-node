@@ -162,6 +162,7 @@ fn gen_snapshot_from_old(
     mut snapshot: SeigniorageRecipientsSnapshot,
     accounts: &[AccountConfig],
 ) -> SeigniorageRecipientsSnapshot {
+    // Read the modifications to be applied to the validators set from the config.
     let validators_map: BTreeMap<_, _> = accounts
         .iter()
         .filter_map(|acc| {
@@ -171,27 +172,38 @@ fn gen_snapshot_from_old(
         })
         .collect();
 
+    // We will be modifying the entries in the old snapshot passed in as `snapshot` according to
+    // the config.
     for recipients in snapshot.values_mut() {
+        // We use `retain` to drop some entries and modify some of the ones that will be retained.
         recipients.retain(
             |public_key, recipient| match validators_map.get(public_key) {
+                // If the validator's stake is configured to be zero, we drop them from the
+                // snapshot.
                 Some(validator) if validator.bonded_amount == U512::zero() => false,
+                // Otherwise, we keep them, but modify the properties.
                 Some(validator) => {
                     *recipient = SeigniorageRecipient::new(
                         validator.bonded_amount,
                         validator
                             .delegation_rate
+                            // If the delegation rate wasn't specified in the config, keep the one
+                            // from the old snapshot.
                             .unwrap_or(*recipient.delegation_rate()),
                         validator
                             .delegators_map()
+                            // If the delegators weren't specified in the config, keep the ones
+                            // from the old snapshot.
                             .unwrap_or_else(|| recipient.delegator_stake().clone()),
                     );
                     true
                 }
+                // Validators not present in the config will be kept unmodified.
                 None => true,
             },
         );
 
-        // add the validators that weren't present in the old snapshot
+        // Add the validators that weren't present in the old snapshot.
         for (public_key, validator) in &validators_map {
             if recipients.contains_key(public_key) {
                 continue;
@@ -202,7 +214,9 @@ fn gen_snapshot_from_old(
                     public_key.clone(),
                     SeigniorageRecipient::new(
                         validator.bonded_amount,
+                        // Unspecified delegation rate will be treated as 0.
                         validator.delegation_rate.unwrap_or_default(),
+                        // Unspecified delegators will be treated as an empty list.
                         validator.delegators_map().unwrap_or_default(),
                     ),
                 );
@@ -210,6 +224,7 @@ fn gen_snapshot_from_old(
         }
     }
 
+    // Return the modified snapshot.
     snapshot
 }
 
@@ -291,6 +306,7 @@ fn create_or_update_bid<T: StateReader>(
     pub_key: &PublicKey,
     recipient: &SeigniorageRecipient,
 ) {
+    // Checks whether the data in the bid is the same as in the recipient info from a snapshot.
     let check_bid = |bid: &Bid| {
         let bid_delegators: BTreeMap<_, _> = bid
             .delegators()
@@ -299,13 +315,17 @@ fn create_or_update_bid<T: StateReader>(
             .collect();
         &bid_delegators == recipient.delegator_stake() && *bid.staked_amount() == *recipient.stake()
     };
+
+    // Check whether we need to do anything with the bid - if it exists and matches the snapshot,
+    // nothing needs to be done. Otherwise we need to either create it, or change it so that it
+    // matches the snapshot.
     if state
         .get_bids()
         .get(pub_key)
         .map(check_bid)
         .unwrap_or(false)
     {
-        // the stake and delegators match, nothing to do
+        // The stake and delegators match the snapshot, nothing to do.
         return;
     }
 
