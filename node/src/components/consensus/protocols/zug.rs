@@ -88,12 +88,9 @@ use crate::{
             BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
             ProtocolOutcomes, TerminalBlockData,
         },
-        highway_core::{
-            validators::{ValidatorIndex, ValidatorMap, Validators},
-            Weight,
-        },
         protocols,
         traits::{ConsensusValueT, Context},
+        utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, EraMessage, EraRequest, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},

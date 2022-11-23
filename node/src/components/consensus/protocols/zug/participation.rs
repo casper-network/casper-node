@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crate::components::consensus::{
-    highway_core::validators::ValidatorIndex,
+    utils::ValidatorIndex,
     protocols::zug::{Fault, RoundId, Zug},
     traits::Context,
 };

@@ -7,9 +7,9 @@ use either::Either;
 
 use crate::{
     components::consensus::{
-        highway_core::validators::ValidatorIndex,
         protocols::zug::{Proposal, RoundId},
         traits::{Context, ValidatorSecret},
+        utils::ValidatorIndex,
     },
     utils::ds,
 };

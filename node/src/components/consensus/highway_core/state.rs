@@ -4,7 +4,6 @@ mod panorama;
 mod params;
 mod tallies;
 mod unit;
-pub(crate) mod weight;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -12,7 +11,6 @@ pub(crate) mod tests;
 pub(crate) use params::Params;
 use quanta::Clock;
 use serde::{Deserialize, Serialize};
-pub(crate) use weight::Weight;
 
 pub(crate) use index_panorama::{IndexObservation, IndexPanorama};
 pub(crate) use panorama::{Observation, Panorama};
@@ -37,10 +35,10 @@ use crate::{
             endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
             highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
-            validators::{ValidatorIndex, ValidatorMap},
             ENABLE_ENDORSEMENTS,
         },
         traits::Context,
+        utils::{ValidatorIndex, ValidatorMap, Weight},
         LeaderSequence,
     },
     utils::ds,

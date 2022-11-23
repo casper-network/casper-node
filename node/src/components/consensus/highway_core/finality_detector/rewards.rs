@@ -4,11 +4,9 @@ use casper_types::Timestamp;
 
 use super::Horizon;
 use crate::components::consensus::{
-    highway_core::{
-        state::{Observation, Panorama, State, Weight},
-        validators::ValidatorMap,
-    },
+    highway_core::state::{Observation, Panorama, State},
     traits::Context,
+    utils::{ValidatorMap, Weight},
 };
 
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
@@ -161,7 +159,6 @@ mod tests {
     use crate::components::consensus::highway_core::{
         highway_testing::{TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT},
         state::{tests::*, Params},
-        validators::ValidatorMap,
     };
 
     #[test]

@@ -15,6 +15,7 @@ mod protocols;
 #[cfg(test)]
 pub(crate) mod tests;
 mod traits;
+pub(crate) mod utils;
 mod validator_change;
 
 use std::{

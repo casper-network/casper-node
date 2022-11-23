@@ -9,9 +9,9 @@ use crate::components::consensus::{
     highway_core::{
         highway::SignedWireUnit,
         state::{self, Panorama, State},
-        validators::ValidatorIndex,
     },
     traits::Context,
+    utils::ValidatorIndex,
 };
 
 /// A unit sent to or received from the network.

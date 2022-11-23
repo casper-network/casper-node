@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use casper_types::Timestamp;
 
 use crate::components::consensus::{
-    consensus_protocol::ProposedBlock, highway_core::validators::ValidatorIndex,
-    protocols::zug::RoundId, traits::Context,
+    consensus_protocol::ProposedBlock, protocols::zug::RoundId, traits::Context,
+    utils::ValidatorIndex,
 };
 
 /// A proposal in the consensus protocol.

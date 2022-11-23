@@ -4,10 +4,7 @@ use rand_chacha::ChaCha8Rng;
 use serde::Serialize;
 use tracing::error;
 
-use crate::components::consensus::highway_core::{
-    state::weight::Weight,
-    validators::{ValidatorIndex, ValidatorMap},
-};
+use crate::components::consensus::utils::{ValidatorIndex, ValidatorMap, Weight};
 
 /// A pseudorandom sequence of validator indices, distributed by weight.
 #[derive(Debug, Clone, DataSize, Serialize)]

@@ -5,13 +5,10 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::validators::ValidatorIndex;
 use crate::components::consensus::{
-    highway_core::{
-        endorsement::SignedEndorsement, highway::SignedWireUnit, state::Params,
-        validators::Validators,
-    },
+    highway_core::{endorsement::SignedEndorsement, highway::SignedWireUnit, state::Params},
     traits::Context,
+    utils::{ValidatorIndex, Validators},
 };
 
 /// An error due to invalid evidence.

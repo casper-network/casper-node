@@ -5,11 +5,8 @@ use std::collections::{BTreeMap, HashSet};
 use num_traits::AsPrimitive;
 
 use crate::components::consensus::{
-    highway_core::{
-        state::Weight,
-        validators::{ValidatorMap, Validators},
-    },
     traits::Context,
+    utils::{ValidatorMap, Validators, Weight},
 };
 use casper_types::U512;
 

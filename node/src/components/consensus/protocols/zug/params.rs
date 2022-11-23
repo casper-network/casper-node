@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use casper_types::{TimeDiff, Timestamp};
 
-use crate::components::consensus::{highway_core::Weight, traits::Context};
+use crate::components::consensus::{traits::Context, utils::Weight};
 
 /// Protocol parameters for `Zug`.
 #[derive(Debug, DataSize, Clone, Serialize)]

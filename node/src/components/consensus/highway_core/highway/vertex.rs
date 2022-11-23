@@ -11,9 +11,9 @@ use crate::components::consensus::{
         evidence::Evidence,
         highway::{PingError, VertexError},
         state::Panorama,
-        validators::{ValidatorIndex, Validators},
     },
     traits::{Context, ValidatorSecret},
+    utils::{ValidatorIndex, Validators},
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.

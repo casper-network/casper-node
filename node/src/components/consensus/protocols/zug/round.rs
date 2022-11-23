@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::consensus::{
-        highway_core::validators::{ValidatorIndex, ValidatorMap},
         protocols::zug::{Content, HashedProposal},
         traits::Context,
+        utils::{ValidatorIndex, ValidatorMap},
     },
     utils::ds,
 };
