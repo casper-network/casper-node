@@ -70,7 +70,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
 };
-use disjoint_sequences::{DisjointSequences, Sequence};
+use disjoint_sequences::DisjointSequences;
 use error::GetRequestError;
 use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
@@ -446,37 +446,18 @@ impl Storage {
             max_ttl,
         };
 
-        match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
-            Some(raw) => {
-                let (mut sequences, _) = DisjointSequences::from_vec(raw)
-                    .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
+        if let Some(raw) =
+            component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))?
+        {
+            let (mut sequences, _) = DisjointSequences::from_vec(raw)
+                .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
 
-                // Truncate the sequences in case we removed blocks via a hard reset.
-                if let Some(&highest_block_height) = component.block_height_index.keys().last() {
-                    sequences.truncate(highest_block_height);
-                }
+            // Truncate the sequences in case we removed blocks via a hard reset.
+            if let Some(&highest_block_height) = component.block_height_index.keys().last() {
+                sequences.truncate(highest_block_height);
+            }
 
-                component.completed_blocks = sequences;
-            }
-            None => {
-                // No state so far. We can make the following observations:
-                //
-                // 1. Any block already in storage from versions prior to 1.5 (no fast-sync) MUST
-                //    have the corresponding global state in contract runtime, due to the way sync
-                //    worked previously.
-                // 2. Any block acquired from that point onwards was subject to the insertion of the
-                //    appropriate announcements (`BlockCompletedAnnouncement`), which would have
-                //    caused the creation of the completed blocks index, thus would not have
-                //    resulted in a `None` value here.
-                //
-                // For this reason, it is safe to assume that, when handling the `None` case, all
-                // blocks in storage are complete blocks.
-                if let Some(&highest_block) = component.block_height_index.keys().last() {
-                    component.completed_blocks =
-                        DisjointSequences::new(Sequence::new(0, highest_block));
-                    component.persist_completed_blocks()?;
-                } // the `else` case here would mean genesis, so no change.
-            }
+            component.completed_blocks = sequences;
         }
 
         Ok(component)
