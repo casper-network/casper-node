@@ -16,14 +16,12 @@ use crate::{
         consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
         protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
         traits::Context,
+        utils::ValidatorMap,
     },
     types::NodeId,
 };
 
-use super::{
-    highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
-    validators::ValidatorMap,
-};
+use super::highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex};
 
 #[cfg(test)]
 mod tests;

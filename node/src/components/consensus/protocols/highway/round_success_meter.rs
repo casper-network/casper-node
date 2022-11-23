@@ -6,8 +6,9 @@ use tracing::{error, trace};
 use casper_types::{TimeDiff, Timestamp};
 
 use crate::components::consensus::{
-    highway_core::{finality_detector::FinalityDetector, state, State, Weight},
+    highway_core::{finality_detector::FinalityDetector, state, State},
     traits::Context,
+    utils::Weight,
 };
 
 pub(crate) mod config;

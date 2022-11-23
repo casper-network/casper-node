@@ -23,8 +23,6 @@ use super::{
         ValidVertex, Vertex, VertexError,
     },
     state::Fault,
-    validators::Validators,
-    Weight,
 };
 use crate::{
     components::consensus::{
@@ -37,6 +35,7 @@ use crate::{
             queue::QueueEntry,
         },
         traits::{ConsensusValueT, Context, ValidatorSecret},
+        utils::{Validators, Weight},
         BlockContext,
     },
     NodeRng,

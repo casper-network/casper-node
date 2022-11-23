@@ -4,11 +4,9 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::components::consensus::{
-    highway_core::{
-        state::{Observation, Panorama, State},
-        validators::ValidatorMap,
-    },
+    highway_core::state::{Observation, Panorama, State},
     traits::Context,
+    utils::ValidatorMap,
 };
 
 pub(crate) type IndexPanorama = ValidatorMap<IndexObservation>;

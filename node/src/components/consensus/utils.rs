@@ -1,5 +1,5 @@
-// TODO: move these types out of highway_core.
-pub(crate) use crate::components::consensus::highway_core::{
-    state::weight::Weight,
-    validators::{ValidatorIndex, ValidatorMap, Validators},
-};
+mod validators;
+mod weight;
+
+pub(crate) use validators::{Validator, ValidatorIndex, ValidatorMap, Validators};
+pub(crate) use weight::Weight;

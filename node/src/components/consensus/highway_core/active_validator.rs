@@ -15,8 +15,7 @@ use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
     highway::{Ping, ValidVertex, Vertex, WireUnit},
-    state::{self, Panorama, State, Unit, Weight},
-    validators::ValidatorIndex,
+    state::{self, Panorama, State, Unit},
     ENABLE_ENDORSEMENTS,
 };
 
@@ -24,6 +23,7 @@ use crate::components::consensus::{
     consensus_protocol::BlockContext,
     highway_core::{highway::SignedWireUnit, state::Fault},
     traits::{Context, ValidatorSecret},
+    utils::{ValidatorIndex, Weight},
 };
 
 /// An action taken by a validator.
@@ -658,14 +658,14 @@ mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
     use tempfile::tempdir;
 
-    use crate::components::consensus::highway_core::{
-        highway_testing::TEST_INSTANCE_ID, validators::ValidatorMap,
+    use crate::components::consensus::{
+        highway_core::highway_testing::TEST_INSTANCE_ID, utils::ValidatorMap, utils::Weight,
     };
 
     use super::{
         super::{
             finality_detector::FinalityDetector,
-            state::{tests::*, State, Weight},
+            state::{tests::*, State},
         },
         Vertex, *,
     };

@@ -17,18 +17,12 @@ use crate::components::consensus::{
     consensus_protocol::BlockContext,
     highway_core::{
         active_validator::{ActiveValidator, Effect},
-        evidence::EvidenceError,
-        state::{Fault, State, UnitError, Weight},
-        validators::{Validator, Validators},
+        endorsement::{Endorsement, EndorsementError},
+        evidence::{Evidence, EvidenceError},
+        state::{Fault, Observation, State, UnitError},
     },
     traits::Context,
-};
-
-use super::{
-    endorsement::{Endorsement, EndorsementError},
-    evidence::Evidence,
-    state::Observation,
-    validators::ValidatorIndex,
+    utils::{Validator, ValidatorIndex, Validators, Weight},
 };
 
 /// If a lot of rounds were skipped between two blocks, log at most this many.
@@ -781,9 +775,9 @@ pub(crate) mod tests {
             },
             highway_testing::TEST_INSTANCE_ID,
             state::{tests::*, Panorama, State},
-            validators::Validators,
         },
         traits::ValidatorSecret,
+        utils::Validators,
     };
 
     pub(crate) fn test_validators() -> Validators<u32> {

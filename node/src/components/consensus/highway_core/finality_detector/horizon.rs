@@ -1,11 +1,9 @@
 use std::collections::BTreeSet;
 
 use crate::components::consensus::{
-    highway_core::{
-        state::{State, Unit, Weight},
-        validators::{ValidatorIndex, ValidatorMap},
-    },
+    highway_core::state::{State, Unit},
     traits::Context,
+    utils::{ValidatorIndex, ValidatorMap, Weight},
 };
 
 type Committee = Vec<ValidatorIndex>;

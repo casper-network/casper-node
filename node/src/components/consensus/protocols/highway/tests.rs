@@ -11,7 +11,6 @@ use crate::{
             highway::{SignedWireUnit, Vertex, WireUnit},
             highway_testing,
             state::{self, tests::ALICE, Observation, Panorama},
-            validators::ValidatorIndex,
             State,
         },
         protocols::highway::{
@@ -22,6 +21,7 @@ use crate::{
             new_test_chainspec, ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY,
         },
         traits::Context,
+        utils::{ValidatorIndex, Weight},
     },
     types::BlockPayload,
 };
@@ -30,7 +30,7 @@ use crate::{
 pub(crate) fn new_test_state<I, T>(weights: I, seed: u64) -> State<ClContext>
 where
     I: IntoIterator<Item = T>,
-    T: Into<state::Weight>,
+    T: Into<Weight>,
 {
     #[allow(clippy::integer_arithmetic)] // Left shift with small enough constants.
     let params = state::Params::new(

@@ -2,9 +2,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::components::consensus::traits::Context;
-
-use super::validators::ValidatorIndex;
+use crate::components::consensus::{traits::Context, utils::ValidatorIndex};
 
 /// An error due to an invalid endorsement.
 #[derive(Debug, Error, Eq, PartialEq)]
