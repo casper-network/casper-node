@@ -1,4 +1,5 @@
 use casper_types::testing::TestRng;
+use prometheus::Registry;
 
 use crate::components::consensus::tests::utils::{
     ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID,
@@ -16,13 +17,16 @@ fn upsert_acceptor() {
     let local_tip = (0, era0);
     let recent_era_interval = 1;
     let block_time = config.purge_interval() / 2;
+    let metrics_registry = Registry::new();
     let mut accumulator = BlockAccumulator::new(
         config,
         validator_matrix,
         Some(local_tip),
         recent_era_interval,
         block_time,
-    );
+        &metrics_registry,
+    )
+    .unwrap();
 
     let max_block_count =
         PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval() / block_time) as usize);
