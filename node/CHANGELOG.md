@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 
 * Add `net-info` command to diagnostics port to gain insights into the nodes network connectivity state.
 * Add metrics `deploy_buffer_total_deploys`, `deploy_buffer_held_deploys` and `deploy_buffer_dead_deploys` to report status of the node deploy buffer.
+* Add metrics `block_accumulator_block_acceptors` and `block_accumulator_known_child_blocks` to track status of the block accumulator component.
 
 ### Changed
 
