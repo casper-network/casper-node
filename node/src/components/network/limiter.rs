@@ -113,6 +113,11 @@ impl Limiter {
     }
 
     pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
+        // Calling `blocking_lock()` from withing an async runtime will cause Tokio to panic with
+        // "Cannot start a runtime from within a runtime..." message. To avoid that we do the
+        // blocking call in a dedicated thread. It's a workaround that has a slight performance
+        // cost, but it's only invoked when using the `net-info` command of the Diagnostics Port,
+        // hence it's assumed to be rare.
         let resources = Arc::clone(&self.data.resources);
         thread::spawn(move || Some(resources.blocking_lock().available))
             .join()
