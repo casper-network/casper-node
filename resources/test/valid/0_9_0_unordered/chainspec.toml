@@ -128,6 +128,7 @@ withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
 activate_bid = 10_000
+redelegate = 10_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000

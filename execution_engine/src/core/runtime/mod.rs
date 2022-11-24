@@ -905,7 +905,7 @@ where
             })(),
 
             auction::METHOD_REDELEGATE => (|| {
-                runtime.charge_system_contract_call(auction_costs.undelegate)?;
+                runtime.charge_system_contract_call(auction_costs.redelegate)?;
 
                 let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
