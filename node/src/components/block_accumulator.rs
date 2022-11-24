@@ -322,6 +322,7 @@ impl BlockAccumulator {
         effect_builder: EffectBuilder<REv>,
         block: Block,
         sender: Option<NodeId>,
+        executed: bool,
     ) -> Effects<Event>
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
@@ -344,7 +345,7 @@ impl BlockAccumulator {
             Some(acceptor) => acceptor,
         };
 
-        match acceptor.register_block(block, sender) {
+        match acceptor.register_block(block, sender, executed) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
                 Some(evw) => {
                     let (should_store, faulty_senders) = acceptor.should_store_block(&evw);
@@ -505,7 +506,6 @@ impl BlockAccumulator {
     {
         let mut effects = Effects::new();
         if let Some(block) = block {
-            effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
             effects.extend(effect_builder.announce_block_accepted(block).ignore());
         };
         for finality_signature in finality_signatures {
@@ -618,7 +618,11 @@ impl BlockAccumulator {
         I: IntoIterator<Item = (NodeId, Error)>,
     {
         let mut effects = match should_store {
-            ShouldStore::SufficientlySignedBlock { block, signatures } => {
+            ShouldStore::SufficientlySignedBlock {
+                block,
+                signatures,
+                executed,
+            } => {
                 if let Some(parent_hash) = block.parent() {
                     self.block_children.insert(*parent_hash, *block.hash());
                 }
@@ -628,13 +632,38 @@ impl BlockAccumulator {
                     block_signatures
                         .insert_proof(signature.public_key.clone(), signature.signature);
                 });
-                effect_builder
-                    .put_block_to_storage(Box::new(block.clone()))
-                    .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
-                    .event(move |_| Event::Stored {
-                        block: Some(Box::new(block)),
-                        finality_signatures: signatures,
-                    })
+                // We do the if branching like this instead of doing
+                // `wrap_effects` or `effects.extend` in order to make sure we
+                // chain the futures one after the other.
+                // TODO: optimize `ShouldStore` and the adjacent flow so that
+                // we don't store the block multiple times. The acceptor should
+                // know whether the block was stored or not and in the case of
+                // subsequent calls to this function, we should just store new
+                // information (i.e. only mark the block complete if it's
+                // already in storage).
+                if executed {
+                    // If the block was executed, it means we have the global
+                    // state for it. As on this code path we also know it is
+                    // sufficiently signed, we mark it as complete.
+                    effect_builder
+                        .put_complete_block_to_storage(Box::new(block.clone()))
+                        .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
+                        .event(move |_| Event::Stored {
+                            block: Some(Box::new(block)),
+                            finality_signatures: signatures,
+                        })
+                } else {
+                    // If the block wasn't executed yet, we just put it to
+                    // storage. An `ExecutedBlock` event will then retrigger
+                    // this flow and eventually mark it complete.
+                    effect_builder
+                        .put_block_to_storage(Box::new(block.clone()))
+                        .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
+                        .event(move |_| Event::Stored {
+                            block: Some(Box::new(block)),
+                            finality_signatures: signatures,
+                        })
+                }
             }
             ShouldStore::SingleSignature(signature) => effect_builder
                 .put_finality_signature_to_storage(signature.clone())
@@ -702,7 +731,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                self.register_block(effect_builder, *block, Some(sender))
+                self.register_block(effect_builder, *block, Some(sender), false)
             }
             Event::CreatedFinalitySignature { finality_signature } => {
                 self.register_finality_signature(effect_builder, *finality_signature, None)
@@ -717,7 +746,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 let height = block.header().height();
                 let era_id = block.header().era_id();
                 self.register_local_tip(height, era_id);
-                self.register_block(effect_builder, *block, None)
+                self.register_block(effect_builder, *block, None, true)
             }
             Event::Stored {
                 block,

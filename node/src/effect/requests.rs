@@ -270,6 +270,15 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
+    /// Store given block and mark it complete.
+    PutCompleteBlock {
+        /// Block to be stored.
+        block: Box<Block>,
+        /// Responder to call with the result.  Returns true if the block was stored and it
+        /// was inserted into the completed blocks index on this attempt or false if it was
+        /// previously stored.
+        responder: Responder<bool>,
+    },
     /// Store the approvals hashes.
     PutApprovalsHashes {
         /// Approvals hashes to store.
@@ -301,8 +310,8 @@ pub(crate) enum StorageRequest {
         /// in local storage.
         responder: Responder<Option<ApprovalsHashes>>,
     },
-    /// Retrieve highest block.
-    GetHighestBlock {
+    /// Retrieve highest complete block.
+    GetHighestCompleteBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
@@ -488,6 +497,9 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutCompleteBlock { block, .. } => {
+                write!(formatter, "put complete {}", block)
+            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes, ..
             } => {
@@ -499,7 +511,9 @@ impl Display for StorageRequest {
             StorageRequest::GetApprovalsHashes { block_hash, .. } => {
                 write!(formatter, "get approvals hashes {}", block_hash)
             }
-            StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetHighestCompleteBlock { .. } => {
+                write!(formatter, "get highest complete block")
+            }
             StorageRequest::GetHighestCompleteBlockHeader { .. } => {
                 write!(formatter, "get highest complete block header")
             }

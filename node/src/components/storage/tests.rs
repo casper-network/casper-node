@@ -364,13 +364,13 @@ fn get_naive_deploy_and_metadata(
     })
 }
 
-/// Requests the highest block from a storage component.
-fn get_highest_block(
+/// Requests the highest complete block from a storage component.
+fn get_highest_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
 ) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetHighestBlock { responder }.into()
+        StorageRequest::GetHighestCompleteBlock { responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -507,7 +507,7 @@ fn can_retrieve_block_by_height() {
     // Both block at ID and highest block should return `None` initially.
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
-    assert!(get_highest_block(&mut harness, &mut storage).is_none());
+    assert!(get_highest_complete_block(&mut harness, &mut storage).is_none());
     assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
     assert!(get_block_header_at_height(&mut storage, 14).is_none());
@@ -521,7 +521,7 @@ fn can_retrieve_block_by_height() {
     assert!(was_new);
 
     assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
     assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
@@ -545,7 +545,7 @@ fn can_retrieve_block_by_height() {
     assert!(was_new);
 
     assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
     assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
@@ -577,7 +577,7 @@ fn can_retrieve_block_by_height() {
     assert!(was_new);
 
     assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
     assert_eq!(
@@ -1137,7 +1137,7 @@ fn should_hard_reset() {
     // Check the highest block is #7.
     assert_eq!(
         Some(blocks[blocks_count - 1].clone()),
-        get_highest_block(&mut harness, &mut storage)
+        get_highest_complete_block(&mut harness, &mut storage)
     );
 
     // The closure doing the actual checks.
@@ -1147,7 +1147,7 @@ fn should_hard_reset() {
         let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(reset_era as u64));
 
         // Check highest block is the last from the previous era, or `None` if resetting to era 0.
-        let highest_block = get_highest_block(&mut harness, &mut storage);
+        let highest_block = get_highest_complete_block(&mut harness, &mut storage);
         if reset_era > 0 {
             assert_eq!(
                 blocks[blocks_per_era * reset_era - 1],

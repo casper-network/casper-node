@@ -402,7 +402,7 @@ where
                         available_block_range,
                         block_sync,
                     ) = join!(
-                        effect_builder.get_highest_block_from_storage(),
+                        effect_builder.get_highest_complete_block_from_storage(),
                         effect_builder.network_peers(),
                         effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
