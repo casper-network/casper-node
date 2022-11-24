@@ -273,7 +273,7 @@ impl<T: StateReader> StateTracker<T> {
             }
         }
 
-        if slash || new_amount > old_amount {
+        if (slash && new_amount != old_amount) || new_amount > old_amount {
             self.set_purse_balance(*bid.bonding_purse(), new_amount);
         } else if new_amount < old_amount {
             self.create_unbonding_purse(
@@ -287,7 +287,7 @@ impl<T: StateReader> StateTracker<T> {
         for (delegator_public_key, delegator) in bid.delegators() {
             let old_amount = self.get_purse_balance(*delegator.bonding_purse());
             let new_amount = *delegator.staked_amount();
-            if slash || new_amount > old_amount {
+            if (slash && new_amount != old_amount) || new_amount > old_amount {
                 self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
             } else if new_amount < old_amount {
                 self.create_unbonding_purse(
