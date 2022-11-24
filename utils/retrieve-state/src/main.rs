@@ -21,7 +21,6 @@ use tracing::info;
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
 const CONVERT_BLOCK_FILES: &str = "convert-block-files";
-const DEFAULT_PEER_MAILBOX_SIZE: usize = 1;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
@@ -100,12 +99,6 @@ struct Opts {
         default_value = "25"
     )]
     max_workers: usize,
-
-    #[structopt(
-        long,
-        about = "Use channels-based download-tries method, defaults to false (work_queue)."
-    )]
-    use_download_trie_channels: bool,
 }
 
 #[derive(Debug)]
@@ -244,27 +237,15 @@ async fn main() -> Result<(), anyhow::Error> {
                 !opts.disable_manual_sync,
             )
             .expect("unable to create execution engine");
-            if !opts.use_download_trie_channels {
-                retrieve_state::download_trie_work_queue(
-                    &client,
-                    &peers_list,
-                    engine_state,
-                    highest_block.header.state_root_hash,
-                    opts.max_workers,
-                )
-                .await
-                .expect("should download trie");
-            } else {
-                retrieve_state::download_trie_channels(
-                    &client,
-                    &peers_list,
-                    engine_state,
-                    highest_block.header.state_root_hash,
-                    DEFAULT_PEER_MAILBOX_SIZE,
-                )
-                .await
-                .expect("should download trie");
-            }
+            retrieve_state::download_trie_work_queue(
+                &client,
+                &peers_list,
+                engine_state,
+                highest_block.header.state_root_hash,
+                opts.max_workers,
+            )
+            .await
+            .expect("should download trie");
             info!("Finished downloading global state.");
         }
     }

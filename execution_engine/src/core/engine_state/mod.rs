@@ -1684,20 +1684,6 @@ where
         }
     }
 
-    /// Performs a lookup for a list of missing root hashes.
-    pub fn missing_trie_keys(
-        &self,
-        correlation_id: CorrelationId,
-        trie_keys: Vec<Digest>,
-    ) -> Result<Vec<Digest>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        self.state
-            .missing_trie_keys(correlation_id, trie_keys)
-            .map_err(Error::from)
-    }
-
     /// Obtains validator weights for given era.
     ///
     /// This skips execution of auction's `get_era_validator` entry point logic to avoid creating an
