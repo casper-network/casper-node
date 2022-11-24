@@ -10,7 +10,7 @@ use std::{
 };
 
 use prometheus::Counter;
-use tokio::sync::Mutex;
+use tokio::{runtime::Handle, sync::Mutex, task};
 use tracing::{error, trace};
 
 use casper_types::{EraId, PublicKey};
@@ -112,15 +112,9 @@ impl Limiter {
     }
 
     pub(super) fn debug_inspect_unspent_allowance(&self) -> Option<i64> {
-        // Disabled temporarily, as it results in a panic:
-
-        // node panicked: Cannot start a runtime from within a runtime. This happens because a
-        // function (like `block_on`) attempted to block the current thread while the thread is
-        // being used to drive asynchronous tasks.
-
-        None
-
-        //Some(self.data.resources.blocking_lock().available)
+        Some(task::block_in_place(move || {
+            Handle::current().block_on(async move { self.data.resources.lock().await.available })
+        }))
     }
 
     pub(super) fn debug_inspect_validators(
@@ -150,7 +144,7 @@ struct LimiterData {
     /// connection.
     connected_validators: RwLock<HashMap<NodeId, PublicKey>>,
     /// Information about available resources.
-    resources: Mutex<ResourceData>,
+    resources: Arc<Mutex<ResourceData>>,
     /// Total time spent waiting.
     wait_time_sec: Counter,
 }
@@ -174,10 +168,10 @@ impl LimiterData {
         LimiterData {
             resources_per_second,
             connected_validators: Default::default(),
-            resources: Mutex::new(ResourceData {
+            resources: Arc::new(Mutex::new(ResourceData {
                 available: 0,
                 last_refill: Instant::now(),
-            }),
+            })),
             wait_time_sec,
         }
     }
