@@ -974,7 +974,7 @@ where
             })(),
 
             auction::METHOD_ACTIVATE_BID => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+                runtime.charge_system_contract_call(auction_costs.activate_bid)?;
 
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
