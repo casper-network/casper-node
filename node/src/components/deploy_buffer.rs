@@ -135,28 +135,14 @@ impl DeployBuffer {
         }
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
-        let held_metrics = &mut self.metrics.held_deploys;
         self.hold.iter_mut().for_each(|(_, held_deploys)| {
-            held_deploys.retain(|deploy_hash| {
-                if freed.contains_key(deploy_hash) {
-                    held_metrics.dec();
-                    false
-                } else {
-                    true
-                }
-            });
+            held_deploys.retain(|deploy_hash| !freed.contains_key(deploy_hash))
         });
         self.hold.retain(|_, remaining| !remaining.is_empty());
 
         self.dead
             .retain(|deploy_hash| !freed.contains_key(deploy_hash));
-        self.metrics
-            .dead_deploys
-            .set(self.dead.len().try_into().unwrap_or(i64::MIN));
         self.buffer = buffer;
-        self.metrics
-            .total_deploys
-            .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
 
         let mut effects = effect_builder
             .announce_expired_deploys(freed.keys().cloned().collect())
@@ -166,6 +152,7 @@ impl DeployBuffer {
                 .set_timeout(self.cfg.expiry_check_interval().into())
                 .event(move |_| Event::Expire),
         );
+        self.update_all_metrics();
         effects
     }
 
@@ -226,31 +213,22 @@ impl DeployBuffer {
         let timestamp = &proposed_block.context().timestamp();
         if let Some(hold_set) = self.hold.get_mut(timestamp) {
             debug!(%timestamp, "DeployBuffer: existing hold timestamp extended");
-            let set_prev_len = hold_set.len();
             hold_set.extend(proposed_block.value().deploy_and_transfer_hashes());
-            if set_prev_len > hold_set.len() {
-                self.metrics.held_deploys.sub(
-                    (set_prev_len - hold_set.len())
-                        .try_into()
-                        .unwrap_or(i64::MAX),
-                );
-            } else {
-                self.metrics.held_deploys.add(
-                    (hold_set.len() - set_prev_len)
-                        .try_into()
-                        .unwrap_or(i64::MAX),
-                );
-            }
         } else {
             debug!(%timestamp, "DeployBuffer: new hold timestamp inserted");
-            let deploy_hashes =
-                HashSet::from_iter(proposed_block.value().deploy_and_transfer_hashes().copied());
-            let deploy_hashes_len = deploy_hashes.len();
-            self.hold.insert(*timestamp, deploy_hashes);
-            self.metrics
-                .held_deploys
-                .add(deploy_hashes_len.try_into().unwrap_or(i64::MAX));
+            self.hold.insert(
+                *timestamp,
+                HashSet::from_iter(proposed_block.value().deploy_and_transfer_hashes().copied()),
+            );
         }
+        self.metrics.held_deploys.set(
+            self.hold
+                .values()
+                .map(|deploys| deploys.len())
+                .sum::<usize>()
+                .try_into()
+                .unwrap_or(i64::MIN),
+        );
     }
 
     /// Update buffer and holds considering new finalized block.
@@ -260,33 +238,18 @@ impl DeployBuffer {
         let expiry_timestamp = timestamp.saturating_add(self.deploy_config.max_ttl);
         // all deploys in the finalized block must not be included in future proposals
         for hash in finalized_block.deploy_and_transfer_hashes() {
-            if !self.buffer.contains_key(hash)
-                && self
-                    .buffer
-                    .insert(*hash, (expiry_timestamp, None))
-                    .is_none()
-            {
-                self.metrics.total_deploys.inc();
+            if !self.buffer.contains_key(hash) {
+                self.buffer.insert(*hash, (expiry_timestamp, None));
             }
-            if self.dead.insert(*hash) {
-                self.metrics.dead_deploys.inc();
-            }
+            self.dead.insert(*hash);
         }
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
-            .partition(|(ts, deploys)| {
-                if *ts > timestamp {
-                    true
-                } else {
-                    self.metrics
-                        .held_deploys
-                        .sub(deploys.len().try_into().unwrap_or(i64::MAX));
-                    false
-                }
-            });
+            .partition(|(ts, _)| *ts > timestamp);
         debug!(%timestamp, "DeployBuffer: timestamp finalized");
         self.hold = hold;
+        self.update_all_metrics();
     }
 
     /// Returns eligible deploys that are buffered and not held or dead.
@@ -327,9 +290,7 @@ impl DeployBuffer {
                                 ?deploy_hash,
                                 "DeployBuffer: duplicated deploy in deploy buffer"
                             );
-                            if self.dead.insert(deploy_hash) {
-                                self.metrics.dead_deploys.inc();
-                            }
+                            self.dead.insert(deploy_hash);
                             continue;
                         }
                         AddError::InvalidDeploy => {
@@ -339,9 +300,7 @@ impl DeployBuffer {
                                 ?deploy_hash,
                                 "DeployBuffer: invalid deploy in deploy buffer"
                             );
-                            if self.dead.insert(deploy_hash) {
-                                self.metrics.dead_deploys.inc();
-                            }
+                            self.dead.insert(deploy_hash);
                             continue;
                         }
                         AddError::TransferCount
@@ -363,29 +322,29 @@ impl DeployBuffer {
         }
 
         // put a hold on all proposed deploys / transfers and update metrics
-        match self.hold.insert(timestamp, holds.iter().copied().collect()) {
-            None => self
-                .metrics
-                .held_deploys
-                .add(holds.len().try_into().unwrap_or(i64::MAX)),
-            Some(old_deploys) => {
-                if old_deploys.len() > holds.len() {
-                    self.metrics.held_deploys.sub(
-                        (old_deploys.len() - holds.len())
-                            .try_into()
-                            .unwrap_or(i64::MAX),
-                    );
-                } else {
-                    self.metrics.held_deploys.add(
-                        (holds.len() - old_deploys.len())
-                            .try_into()
-                            .unwrap_or(i64::MAX),
-                    );
-                }
-            }
-        };
-
+        self.hold.insert(timestamp, holds.iter().copied().collect());
+        self.update_all_metrics();
         ret
+    }
+
+    /// Updates all deploy count metrics based on the size of the internal structs.
+    fn update_all_metrics(&mut self) {
+        // if number of elements is too high to fit, we overflow the metric
+        // intentionally in order to get some indication that something is wrong.
+        self.metrics.held_deploys.set(
+            self.hold
+                .values()
+                .map(|deploys| deploys.len())
+                .sum::<usize>()
+                .try_into()
+                .unwrap_or(i64::MIN),
+        );
+        self.metrics
+            .dead_deploys
+            .set(self.dead.len().try_into().unwrap_or(i64::MIN));
+        self.metrics
+            .total_deploys
+            .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
     }
 }
 
