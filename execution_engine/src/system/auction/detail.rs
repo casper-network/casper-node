@@ -293,6 +293,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
 /// Reinvests delegator reward by increasing its stake.
 pub fn reinvest_delegator_rewards<P>(
     provider: &mut P,
+    seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
 ) -> Result<Vec<(AccountHash, U512, URef)>, Error>
@@ -326,6 +327,13 @@ where
             *delegator.bonding_purse(),
         ));
 
+        let allocation = SeigniorageAllocation::delegator(
+            delegator_key,
+            validator_public_key.clone(),
+            delegator_reward_trunc,
+        );
+
+        seigniorage_allocations.push(allocation);
     }
 
     provider.write_bid(validator_account_hash, bid)?;
@@ -336,6 +344,7 @@ where
 /// Reinvests validator reward by increasing its stake and returns its bonding purse.
 pub fn reinvest_validator_reward<P>(
     provider: &mut P,
+    seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
 ) -> Result<URef, Error>
@@ -352,6 +361,10 @@ where
     };
 
     bid.increase_stake(amount)?;
+
+    let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
+
+    seigniorage_allocations.push(allocation);
 
     let bonding_purse = *bid.bonding_purse();
 

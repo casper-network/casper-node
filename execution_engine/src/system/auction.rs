@@ -541,6 +541,10 @@ pub trait Auction:
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
+        let era_id = detail::get_era_id(self)?;
+
+        let mut era_info = EraInfo::new();
+        let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         let recipient = seigniorage_recipients
             .get(&proposer)
@@ -586,6 +590,7 @@ pub trait Auction:
                 });
         let delegator_payouts = detail::reinvest_delegator_rewards(
             self,
+            seigniorage_allocations,
             proposer.clone(),
             delegator_rewards,
         )?;
@@ -598,6 +603,7 @@ pub trait Auction:
         let validator_reward = validators_part.to_integer();
         let validator_bonding_purse = detail::reinvest_validator_reward(
             self,
+            seigniorage_allocations,
             proposer.clone(),
             validator_reward,
         )?;
@@ -609,6 +615,8 @@ pub trait Auction:
             self.mint_into_existing_purse(delegator_payout, bonding_purse)
                 .map_err(Error::from)?;
         }
+
+        self.record_era_info(era_id, era_info)?;
 
         Ok(())
     }
