@@ -166,6 +166,32 @@ impl MainReactor {
                         // node is in validator set and consensus has what it needs to validate
                         info!("KeepUp: switch to Validate");
                         self.state = ReactorState::Validate;
+
+                        let latest_complete_block = self
+                            .storage
+                            .read_highest_complete_block()
+                            .expect("fatal storage error")
+                            .expect("should have blocks");
+
+                        let next_block_height = latest_complete_block.height() + 1;
+
+                        let parent_hash =
+                            latest_complete_block.parent().expect("should have parent");
+                        let parent_header = self
+                            .storage
+                            .read_block_header(parent_hash)
+                            .expect("fatal storage error")
+                            .expect("should have parent");
+
+                        let initial_pre_state = ExecutionPreState::new(
+                            next_block_height,
+                            Default::default(),
+                            *parent_hash,
+                            parent_header.accumulated_seed(),
+                        );
+
+                        let _ = self.contract_runtime.set_initial_state(initial_pre_state);
+
                         self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
