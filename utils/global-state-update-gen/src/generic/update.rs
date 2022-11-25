@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 
+#[cfg(test)]
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::Bid,
-    CLValue, Key, StoredValue, URef, U512,
+    CLValue, URef, U512,
 };
+use casper_types::{Key, StoredValue};
 
 #[cfg(test)]
 use super::state_reader::StateReader;
