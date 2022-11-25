@@ -177,38 +177,25 @@ fn should_transfer_funds() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
-
-    let account1 = reader.get_account(account1).unwrap();
-    let account2 = reader.get_account(account2).unwrap();
+    let update = get_update(&mut reader, config);
 
     // should write decreased balance to the first purse
-    assert_eq!(
-        result.get(&Key::Balance(account1.main_purse().addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(700_000_000)).expect("should convert U512 to CLValue")
-        )),
-    );
+    let account1 = reader.get_account(account1).expect("should have account");
+    update.assert_written_balance(account1.main_purse(), 700_000_000);
 
     // should write increased balance to the second purse
-    assert_eq!(
-        result.get(&Key::Balance(account2.main_purse().addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(300_000_000)).expect("should convert U512 to CLValue")
-        )),
-    );
+    let account2 = reader.get_account(account2).expect("should have account");
+    update.assert_written_balance(account2.main_purse(), 300_000_000);
 
     // total supply is written on every purse balance change, so we'll have a write to this key
     // even though the changes cancel each other out
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(1_000_000_000)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_total_supply(&mut reader, 1_000_000_000);
 
-    // 3 keys tested above should be all that would be written
-    assert_eq!(result.len(), 3);
+    // 3 keys should be written:
+    // - balance of account 1
+    // - balance of account 2
+    // - total supply
+    assert_eq!(update.len(), 3);
 }
 
 #[test]
@@ -230,53 +217,31 @@ fn should_create_account_when_transferring_funds() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    let account1 = reader.get_account(account1).unwrap();
+    let account1 = reader.get_account(account1).expect("should have account");
+    // account2 shouldn't exist in the reader itself, only the update should be creating it
     assert!(reader.get_account(account2).is_none());
+    let account2 = update.get_written_account(account2);
 
     // should write decreased balance to the first purse
-    assert_eq!(
-        result.get(&Key::Balance(account1.main_purse().addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(700_000_000)).expect("should convert U512 to CLValue")
-        )),
-    );
-
-    // the new account should be created
-    let account_write = result
-        .get(&Key::Account(account2))
-        .expect("should create account")
-        .as_account()
-        .expect("should be account")
-        .clone();
-    let new_purse = account_write.main_purse();
+    update.assert_written_balance(account1.main_purse(), 700_000_000);
 
     // check that the main purse for the new account has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(new_purse)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(new_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(300_000_000)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(account2.main_purse(), 300_000_000);
+    update.assert_written_purse_is_unit(account2.main_purse());
 
     // total supply is written on every purse balance change, so we'll have a write to this key
     // even though the changes cancel each other out
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(1_000_000_000)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_total_supply(&mut reader, 1_000_000_000);
 
-    // 5 keys tested above should be all that would be written
-    assert_eq!(result.len(), 5);
+    // 5 keys should be written:
+    // - balance of account 1
+    // - account 2
+    // - main purse of account 2
+    // - balance of account 2
+    // - total supply
+    assert_eq!(update.len(), 5);
 }
 
 #[test]
@@ -331,50 +296,36 @@ fn should_change_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(610)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 610);
 
-    // check purse writes
-    let account3 = validator3.to_account_hash();
-    let bid_purse = *reader
+    let account3_hash = validator3.to_account_hash();
+    let account3 = reader
+        .get_account(account3_hash)
+        .expect("should have account");
+    update.assert_written_balance(account3.main_purse(), 100);
+
+    let old_bid3 = reader
         .get_bids()
         .get(&validator3)
-        .expect("should have bid")
-        .bonding_purse();
-    let main_purse = reader
-        .get_account(account3)
-        .expect("should have account")
-        .main_purse();
-
-    assert_eq!(
-        result.get(&Key::Balance(bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(104)).expect("should convert U512 to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(main_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
-        ))
-    );
+        .cloned()
+        .expect("should have bid");
+    let bid_purse = *old_bid3.bonding_purse();
+    update.assert_written_balance(bid_purse, 104);
 
     // check bid overwrite
     let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
-    assert_eq!(
-        result.get(&Key::Bid(account3)),
-        Some(&StoredValue::from(expected_bid))
-    );
+    update.assert_written_bid(account3_hash, expected_bid);
 
-    // 5 keys above should be all that was overwritten
-    assert_eq!(result.len(), 5);
+    // 5 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - balance of bid purse of validator 3
+    // - balance of main purse of validator 3
+    // - bid of validator 3
+    assert_eq!(update.len(), 5);
 }
 
 #[test]
@@ -429,40 +380,32 @@ fn should_change_only_stake_of_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(613)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 613);
 
     // check purse writes
-    let account3 = validator3.to_account_hash();
-    let bid_purse = *reader
+    let account3_hash = validator3.to_account_hash();
+    let old_bid3 = reader
         .get_bids()
         .get(&validator3)
-        .expect("should have bid")
-        .bonding_purse();
+        .cloned()
+        .expect("should have bid");
+    let bid_purse = *old_bid3.bonding_purse();
 
-    assert_eq!(
-        result.get(&Key::Balance(bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(104)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(bid_purse, 104);
 
     // check bid overwrite
     let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
-    assert_eq!(
-        result.get(&Key::Bid(account3)),
-        Some(&StoredValue::from(expected_bid))
-    );
+    update.assert_written_bid(account3_hash, expected_bid);
 
-    // 4 keys above should be all that was overwritten
-    assert_eq!(result.len(), 4);
+    // 4 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid purse balance for validator 3
+    // - bid for validator 3
+    assert_eq!(update.len(), 4);
 }
 
 #[test]
@@ -513,31 +456,22 @@ fn should_change_only_balance_of_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(609)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_total_supply(&mut reader, 609);
 
     // check purse writes
-    let account3 = validator3.to_account_hash();
-    let main_purse = reader
-        .get_account(account3)
-        .expect("should have account")
-        .main_purse();
+    let account3_hash = validator3.to_account_hash();
+    let account3 = reader
+        .get_account(account3_hash)
+        .expect("should have account");
 
-    assert_eq!(
-        result.get(&Key::Balance(main_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(account3.main_purse(), 100);
 
-    // 2 keys above should be all that was overwritten
-    assert_eq!(result.len(), 2);
+    // 2 keys should be written:
+    // - total supply
+    // - balance for main purse of validator 3
+    assert_eq!(update.len(), 2);
 }
 
 #[test]
@@ -575,71 +509,38 @@ fn should_replace_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(305)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 305);
 
     // check purse write for validator1
-    let bid_purse = *reader
+    let old_bid1 = reader
         .get_bids()
         .get(&validator1)
-        .expect("should have bid")
-        .bonding_purse();
+        .cloned()
+        .expect("should have bid");
+    let bid_purse = *old_bid1.bonding_purse();
 
-    assert_eq!(
-        result.get(&Key::Balance(bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::zero()).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(bid_purse, 0);
 
     // check bid overwrite
-    let account1 = validator1.to_account_hash();
+    let account1_hash = validator1.to_account_hash();
     let mut expected_bid_1 = Bid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
     expected_bid_1.deactivate();
-    assert_eq!(
-        result.get(&Key::Bid(account1)),
-        Some(&StoredValue::from(expected_bid_1))
-    );
+    update.assert_written_bid(account1_hash, expected_bid_1);
 
     // check writes for validator2
-    let account2 = validator2.to_account_hash();
+    let account2_hash = validator2.to_account_hash();
 
     // the new account should be created
-    let account_write = result
-        .get(&Key::Account(account2))
-        .expect("should create account")
-        .as_account()
-        .expect("should be account")
-        .clone();
-    let main_purse_2 = account_write.main_purse();
+    let account2 = update.get_written_account(account2_hash);
 
     // check that the main purse for the new account has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(main_purse_2)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(main_purse_2.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(102)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(account2.main_purse());
+    update.assert_written_balance(account2.main_purse(), 102);
 
-    let bid_write = result
-        .get(&Key::Bid(account2))
-        .expect("should create bid")
-        .as_bid()
-        .expect("should be bid")
-        .clone();
+    let bid_write = update.get_written_bid(account2_hash);
     assert_eq!(bid_write.validator_public_key(), &validator2);
     assert_eq!(
         bid_write
@@ -649,24 +550,22 @@ fn should_replace_one_validator() {
     );
     assert!(!bid_write.inactive());
 
-    let bid_purse_2 = *bid_write.bonding_purse();
-
     // check that the bid purse for the new validator has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(bid_purse_2)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(bid_purse_2.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(102)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(*bid_write.bonding_purse());
+    update.assert_written_balance(*bid_write.bonding_purse(), 102);
 
-    // 10 keys above should be all that was overwritten
-    assert_eq!(result.len(), 10);
+    // 10 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid for validator 1
+    // - bonding purse balance for validator 1
+    // - account for validator 2
+    // - main purse for account for validator 2
+    // - main purse balance for account for validator 2
+    // - bid for validator 2
+    // - bonding purse for validator 2
+    // - bonding purse balance for validator 2
+    assert_eq!(update.len(), 10);
 }
 
 #[test]
@@ -723,75 +622,44 @@ fn should_add_one_validator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(816)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 816);
 
     // check writes for validator4
-    let account4 = validator4.to_account_hash();
+    let account4_hash = validator4.to_account_hash();
 
     // the new account should be created
-    let account_write = result
-        .get(&Key::Account(account4))
-        .expect("should create account")
-        .as_account()
-        .expect("should be account")
-        .clone();
-    let main_purse_4 = account_write.main_purse();
+    let account4 = update.get_written_account(account4_hash);
 
     // check that the main purse for the new account has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(main_purse_4)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(main_purse_4.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(account4.main_purse());
+    update.assert_written_balance(account4.main_purse(), 100);
 
-    let bid_write = result
-        .get(&Key::Bid(account4))
-        .expect("should create bid")
-        .as_bid()
-        .expect("should be bid")
-        .clone();
-    assert_eq!(bid_write.validator_public_key(), &validator4);
+    let bid4 = update.get_written_bid(account4_hash);
+    assert_eq!(bid4.validator_public_key(), &validator4);
     assert_eq!(
-        bid_write
-            .total_staked_amount()
+        bid4.total_staked_amount()
             .expect("should read total staked amount"),
         U512::from(104)
     );
-    assert!(!bid_write.inactive());
-
-    let bid_purse_4 = *bid_write.bonding_purse();
+    assert!(!bid4.inactive());
 
     // check that the bid purse for the new validator has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(bid_purse_4)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(bid_purse_4.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(104)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(*bid4.bonding_purse());
+    update.assert_written_balance(*bid4.bonding_purse(), 104);
 
-    // 8 keys above should be all that was written
-    assert_eq!(result.len(), 8);
+    // 8 keys should be written:
+    // - seigniorage recipients snapshot
+    // - total supply
+    // - account for validator 4
+    // - main purse for account for validator 4
+    // - main purse balance for account for validator 4
+    // - bid for validator 4
+    // - bonding purse for validator 4
+    // - bonding purse balance for validator 4
+    assert_eq!(update.len(), 8);
 }
 
 #[test]
@@ -832,96 +700,57 @@ fn should_add_one_validator_with_delegators() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
-    assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(417)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 417);
 
     // check writes for validator2
-    let account2 = validator2.to_account_hash();
+    let account2_hash = validator2.to_account_hash();
 
     // the new account should be created
-    let account_write = result
-        .get(&Key::Account(account2))
-        .expect("should create account")
-        .as_account()
-        .expect("should be account")
-        .clone();
-    let main_purse_2 = account_write.main_purse();
+    let account2 = update.get_written_account(account2_hash);
 
     // check that the main purse for the new account has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(main_purse_2)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(main_purse_2.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(100)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(account2.main_purse());
+    update.assert_written_balance(account2.main_purse(), 100);
 
-    let bid_write = result
-        .get(&Key::Bid(account2))
-        .expect("should create bid")
-        .as_bid()
-        .expect("should be bid")
-        .clone();
-    assert_eq!(bid_write.validator_public_key(), &validator2);
-    assert_eq!(*bid_write.staked_amount(), U512::from(102));
+    let bid2 = update.get_written_bid(account2_hash);
+    assert_eq!(bid2.validator_public_key(), &validator2);
+    assert_eq!(*bid2.staked_amount(), U512::from(102));
     assert_eq!(
-        bid_write
-            .total_staked_amount()
+        bid2.total_staked_amount()
             .expect("should read total staked amount"),
         U512::from(115)
     );
-    assert!(!bid_write.inactive());
-
-    let bid_purse_2 = *bid_write.bonding_purse();
+    assert!(!bid2.inactive());
 
     // check that the bid purse for the new validator has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(bid_purse_2)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(bid_purse_2.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(102)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(*bid2.bonding_purse());
+    update.assert_written_balance(*bid2.bonding_purse(), 102);
 
-    let bid_delegator_purse = *bid_write
+    let bid_delegator_purse = *bid2
         .delegators()
         .get(&delegator1)
         .expect("should have delegator")
         .bonding_purse();
 
     // check that the bid purse for the new delegator has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(bid_delegator_purse)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(bid_delegator_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(13)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(bid_delegator_purse);
+    update.assert_written_balance(bid_delegator_purse, 13);
 
-    // 10 keys above should be all that was written
-    assert_eq!(result.len(), 10);
+    // 10 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - account for validator 2
+    // - main purse for account for validator 2
+    // - main purse balance for account for validator 2
+    // - bid for validator 2
+    // - bonding purse for validator 2
+    // - bonding purse balance for validator2
+    // - bonding purse for delegator
+    // - bonding purse balance for delegator
+    assert_eq!(update.len(), 10);
 }
 
 #[test]
@@ -967,73 +796,55 @@ fn should_replace_a_delegator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 216);
+
+    let account1_hash = validator1.to_account_hash();
+
+    let bid1 = update.get_written_bid(account1_hash);
+    assert_eq!(bid1.validator_public_key(), &validator1);
+    assert_eq!(*bid1.staked_amount(), U512::from(101));
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(216)).expect("should convert U512 to CLValue")
-        ))
-    );
-
-    let account1 = validator1.to_account_hash();
-
-    let bid_write = result
-        .get(&Key::Bid(account1))
-        .expect("should create bid")
-        .as_bid()
-        .expect("should be bid")
-        .clone();
-    assert_eq!(bid_write.validator_public_key(), &validator1);
-    assert_eq!(*bid_write.staked_amount(), U512::from(101));
-    assert_eq!(
-        bid_write
-            .total_staked_amount()
+        bid1.total_staked_amount()
             .expect("should read total staked amount"),
         U512::from(115)
     );
-    assert!(!bid_write.inactive());
+    assert!(!bid1.inactive());
 
-    let delegator1_bid_purse = *reader
+    let old_bid1 = reader
         .get_bids()
         .get(&validator1)
-        .expect("should have old bid")
+        .cloned()
+        .expect("should have old bid");
+    let delegator1_bid_purse = *old_bid1
         .delegators()
         .get(&delegator1)
         .expect("should have old delegator")
         .bonding_purse();
 
-    let delegator2_bid_purse = *bid_write
+    let delegator2_bid_purse = *bid1
         .delegators()
         .get(&delegator2)
         .expect("should have new delegator")
         .bonding_purse();
 
     // check that the old delegator's bid purse got zeroed
-    assert_eq!(
-        result.get(&Key::Balance(delegator1_bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(0)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(delegator1_bid_purse, 0);
 
     // check that the bid purse for the new delegator has been created with the correct amount
-    assert_eq!(
-        result.get(&Key::URef(delegator2_bid_purse)),
-        Some(&StoredValue::from(
-            CLValue::from_t(()).expect("should convert unit to CLValue")
-        ))
-    );
-    assert_eq!(
-        result.get(&Key::Balance(delegator2_bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(14)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_purse_is_unit(delegator2_bid_purse);
+    update.assert_written_balance(delegator2_bid_purse, 14);
 
-    // 6 keys above should be all that was written
-    assert_eq!(result.len(), 6);
+    // 6 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid for validator 1
+    // - bonding purse balance for old delegator
+    // - bonding purse for new delegator
+    // - bonding purse balance for new delegator
+    assert_eq!(update.len(), 6);
 }
 
 #[test]
@@ -1074,46 +885,32 @@ fn should_not_change_the_delegator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 225);
+
+    let account1_hash = validator1.to_account_hash();
+
+    let bid1 = update.get_written_bid(account1_hash);
+    assert_eq!(bid1.validator_public_key(), &validator1);
+    assert_eq!(*bid1.staked_amount(), U512::from(111));
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(225)).expect("should convert U512 to CLValue")
-        ))
-    );
-
-    let account1 = validator1.to_account_hash();
-
-    let bid_write = result
-        .get(&Key::Bid(account1))
-        .expect("should create bid")
-        .as_bid()
-        .expect("should be bid")
-        .clone();
-    assert_eq!(bid_write.validator_public_key(), &validator1);
-    assert_eq!(*bid_write.staked_amount(), U512::from(111));
-    assert_eq!(
-        bid_write
-            .total_staked_amount()
+        bid1.total_staked_amount()
             .expect("should read total staked amount"),
         U512::from(124)
     );
-    assert!(!bid_write.inactive());
-
-    let validator_bid_purse = *bid_write.bonding_purse();
+    assert!(!bid1.inactive());
 
     // check that the validator's bid purse got updated
-    assert_eq!(
-        result.get(&Key::Balance(validator_bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(111)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(*bid1.bonding_purse(), 111);
 
-    // 4 keys above should be all that was written
-    assert_eq!(result.len(), 4);
+    // 4 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid for validator 1
+    // - bonding purse balance for validator 1
+    assert_eq!(update.len(), 4);
 }
 
 #[test]
@@ -1155,61 +952,45 @@ fn should_remove_the_delegator() {
         ..Default::default()
     };
 
-    let result = get_update(&mut reader, config);
+    let update = get_update(&mut reader, config);
 
-    assert!(result.contains_key(&reader.get_seigniorage_recipients_key()));
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 212);
+
+    let account1_hash = validator1.to_account_hash();
+
+    let bid1 = update.get_written_bid(account1_hash);
+    assert_eq!(bid1.validator_public_key(), &validator1);
+    assert_eq!(*bid1.staked_amount(), U512::from(111));
     assert_eq!(
-        result.get(&reader.get_total_supply_key()),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(212)).expect("should convert U512 to CLValue")
-        ))
-    );
-
-    let account1 = validator1.to_account_hash();
-
-    let bid_write = result
-        .get(&Key::Bid(account1))
-        .expect("should create bid")
-        .as_bid()
-        .expect("should be bid")
-        .clone();
-    assert_eq!(bid_write.validator_public_key(), &validator1);
-    assert_eq!(*bid_write.staked_amount(), U512::from(111));
-    assert_eq!(
-        bid_write
-            .total_staked_amount()
+        bid1.total_staked_amount()
             .expect("should read total staked amount"),
         U512::from(111)
     );
-    assert!(!bid_write.inactive());
-
-    let validator_bid_purse = *bid_write.bonding_purse();
+    assert!(!bid1.inactive());
 
     // check that the validator's bid purse got updated
-    assert_eq!(
-        result.get(&Key::Balance(validator_bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(111)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(*bid1.bonding_purse(), 111);
 
-    let delegator1_bid_purse = *reader
+    let old_bid1 = reader
         .get_bids()
         .get(&validator1)
-        .expect("should have old bid")
+        .cloned()
+        .expect("should have old bid");
+    let delegator1_bid_purse = *old_bid1
         .delegators()
         .get(&delegator1)
         .expect("should have old delegator")
         .bonding_purse();
 
     // check that the old delegator's bid purse got zeroed
-    assert_eq!(
-        result.get(&Key::Balance(delegator1_bid_purse.addr())),
-        Some(&StoredValue::from(
-            CLValue::from_t(U512::from(0)).expect("should convert U512 to CLValue")
-        ))
-    );
+    update.assert_written_balance(delegator1_bid_purse, 0);
 
-    // 5 keys above should be all that was written
-    assert_eq!(result.len(), 5);
+    // 5 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid for validator 1
+    // - bonding purse balance for validator 1
+    // - bonding purse balance for delegator
+    assert_eq!(update.len(), 5);
 }
