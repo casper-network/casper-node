@@ -912,6 +912,7 @@ impl EraSupervisor {
                 let report = terminal_block_data.map(|tbd| EraReport {
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
+                    rewards: BTreeMap::new(),
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block

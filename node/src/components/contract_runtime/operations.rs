@@ -373,6 +373,7 @@ where
     let EraReport {
         equivocators,
         inactive_validators,
+        ..
     } = era_report;
 
     // Both inactive validators and equivocators are evicted

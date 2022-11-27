@@ -60,8 +60,11 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
 
+    let rewards = BTreeMap::new();
+
     EraReport {
         equivocators,
+        rewards,
         inactive_validators,
     }
 });
@@ -361,8 +364,12 @@ pub type EraReport = consensus::EraReport<PublicKey>;
 impl Display for EraReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let slashings = DisplayIter::new(&self.equivocators);
-
-        write!(f, "era end: slash {}", slashings)
+        let rewards = DisplayIter::new(
+            self.rewards
+                .iter()
+                .map(|(public_key, amount)| format!("{}: {}", public_key, amount)),
+        );
+        write!(f, "era end: slash {}, reward {}", slashings, rewards)
     }
 }
 
@@ -370,12 +377,14 @@ impl ToBytes for EraReport {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.equivocators.to_bytes()?);
+        buffer.extend(self.rewards.to_bytes()?);
         buffer.extend(self.inactive_validators.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         self.equivocators.serialized_length()
+            + self.rewards.serialized_length()
             + self.inactive_validators.serialized_length()
     }
 }
@@ -383,10 +392,12 @@ impl ToBytes for EraReport {
 impl FromBytes for EraReport {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
+        let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
         let (inactive_validators, remainder) = Vec::<PublicKey>::from_bytes(remainder)?;
 
         let era_report = EraReport {
             equivocators,
+            rewards,
             inactive_validators,
         };
         Ok((era_report, remainder))
@@ -509,12 +520,22 @@ impl FinalizedBlock {
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
+            let rewards_count = rng.gen_range(0..5);
             let inactive_count = rng.gen_range(0..5);
             Some(EraReport {
                 equivocators: iter::repeat_with(|| {
                     PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
                 })
                 .take(equivocators_count)
+                .collect(),
+                rewards: iter::repeat_with(|| {
+                    let pub_key = PublicKey::from(
+                        &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+                    );
+                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
+                    (pub_key, reward)
+                })
+                .take(rewards_count)
                 .collect(),
                 inactive_validators: iter::repeat_with(|| {
                     PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
@@ -1783,6 +1804,7 @@ pub(crate) mod json_compatibility {
     #[serde(deny_unknown_fields)]
     struct JsonEraReport {
         equivocators: Vec<PublicKey>,
+        rewards: Vec<Reward>,
         inactive_validators: Vec<PublicKey>,
     }
 
@@ -1790,6 +1812,11 @@ pub(crate) mod json_compatibility {
         fn from(era_report: EraReport) -> Self {
             JsonEraReport {
                 equivocators: era_report.equivocators,
+                rewards: era_report
+                    .rewards
+                    .into_iter()
+                    .map(|(validator, amount)| Reward { validator, amount })
+                    .collect(),
                 inactive_validators: era_report.inactive_validators,
             }
         }
@@ -1798,9 +1825,15 @@ pub(crate) mod json_compatibility {
     impl From<JsonEraReport> for EraReport {
         fn from(era_report: JsonEraReport) -> Self {
             let equivocators = era_report.equivocators;
+            let rewards = era_report
+                .rewards
+                .into_iter()
+                .map(|reward| (reward.validator, reward.amount))
+                .collect();
             let inactive_validators = era_report.inactive_validators;
             EraReport {
                 equivocators,
+                rewards,
                 inactive_validators,
             }
         }
