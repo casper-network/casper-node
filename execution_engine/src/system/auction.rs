@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     system::auction::{
         Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
-        ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
+        ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, PublicKey, U512,
 };

@@ -2,7 +2,7 @@
 //!
 //! A step request executes auction code, slashes validators, evicts validators and distributes
 //! rewards.
-use std::{collections::BTreeMap, vec::Vec};
+use std::{vec::Vec};
 
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, PublicKey};

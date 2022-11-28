@@ -18,7 +18,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     system::auction::{
-        Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
+        Bids, DelegationRate, SeigniorageRecipientsSnapshot,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,

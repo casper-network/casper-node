@@ -10,7 +10,7 @@ use casper_contract::contract_api::{runtime, system};
 use casper_types::{
     runtime_args,
     system::auction::{
-        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_REWARD_FACTORS, ARG_VALIDATOR,
+        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_VALIDATOR,
         METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
     },
     ApiError, PublicKey, RuntimeArgs, U512,
@@ -82,9 +82,9 @@ fn run_auction() {
 
 fn distribute() {
     let auction = system::get_auction();
-    let reward_factors: BTreeMap<PublicKey, u64> = runtime::get_named_arg(ARG_REWARD_FACTORS);
+    let proposer: PublicKey = runtime::get_named_arg(ARG_VALIDATOR);
     let args = runtime_args! {
-        ARG_REWARD_FACTORS => reward_factors
+        ARG_VALIDATOR => proposer
     };
     runtime::call_contract::<()>(auction, METHOD_DISTRIBUTE, args);
 }

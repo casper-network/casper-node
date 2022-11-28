@@ -3193,7 +3193,7 @@ fn should_delegate_and_redelegate() {
         builder.exec(request).commit().expect_success();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
@@ -3371,7 +3371,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         builder.exec(request).commit().expect_success();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_main_purse = builder
         .get_account(*DELEGATOR_1_ADDR)

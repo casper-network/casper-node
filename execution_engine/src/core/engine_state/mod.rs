@@ -39,7 +39,7 @@ use casper_types::{
     system::{
         auction::{
             EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
             VALIDATOR_SLOTS_KEY,
         },
@@ -1821,7 +1821,7 @@ where
         };
 
         let mut runtime_args = RuntimeArgs::new();
-        runtime_args.insert("proposer", proposer)?;
+        runtime_args.insert(ARG_VALIDATOR, proposer)?;
 
         let executor = Executor::new(*self.config());
 

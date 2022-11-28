@@ -13,7 +13,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
+    system::auction::{self, DelegationRate, INITIAL_ERA_ID},
     Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 

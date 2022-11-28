@@ -12,7 +12,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_types::{
     runtime_args,
     system::{
-        auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
+        auction::{self, DelegationRate, INITIAL_ERA_ID},
         mint,
     },
     EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,

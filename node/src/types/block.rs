@@ -28,7 +28,7 @@ use casper_types::{
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
+use casper_types::{crypto::generate_ed25519_keypair};
 use tracing::{error, warn};
 
 use crate::{
@@ -532,7 +532,7 @@ impl FinalizedBlock {
                     let pub_key = PublicKey::from(
                         &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
                     );
-                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
+                    let reward = rng.gen_range(1..(1_000_000_000 + 1));
                     (pub_key, reward)
                 })
                 .take(rewards_count)
