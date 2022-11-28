@@ -2,6 +2,7 @@ mod block_acceptor;
 mod config;
 mod error;
 mod event;
+mod metrics;
 mod starting_with;
 mod sync_instruction;
 #[cfg(test)]
@@ -10,11 +11,13 @@ mod tests;
 use std::{
     cmp::Ordering,
     collections::{btree_map, BTreeMap, VecDeque},
+    convert::TryInto,
 };
 
 use datasize::DataSize;
 use futures::FutureExt;
 use itertools::Itertools;
+use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, TimeDiff, Timestamp};
@@ -40,6 +43,8 @@ pub use error::Error;
 pub(crate) use event::Event;
 pub(crate) use starting_with::StartingWith;
 pub(crate) use sync_instruction::SyncInstruction;
+
+use metrics::Metrics;
 
 /// If a peer "informs" us about more than the expected number of new blocks times this factor,
 /// they are probably spamming, and we refuse to create new block acceptors for them.
@@ -112,6 +117,8 @@ pub(crate) struct BlockAccumulator {
     peer_block_timestamps: BTreeMap<NodeId, VecDeque<(BlockHash, Timestamp)>>,
     /// The minimum time between a block and its child.
     min_block_time: TimeDiff,
+    #[data_size(skip)]
+    metrics: Metrics,
 }
 
 impl BlockAccumulator {
@@ -121,11 +128,12 @@ impl BlockAccumulator {
         local_tip_height_and_era_id: Option<(u64, EraId)>,
         recent_era_interval: u64,
         min_block_time: TimeDiff,
-    ) -> Self {
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         let local_tip = local_tip_height_and_era_id
             .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id));
         info!(?local_tip, "starting local tip");
-        Self {
+        Ok(Self {
             validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
             dead_air_interval: config.dead_air_interval(),
@@ -137,7 +145,8 @@ impl BlockAccumulator {
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
-        }
+            metrics: Metrics::new(registry)?,
+        })
     }
 
     pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
@@ -315,6 +324,7 @@ impl BlockAccumulator {
         }
 
         entry.insert(BlockAcceptor::new(block_hash, maybe_sender));
+        self.metrics.block_acceptors.inc();
     }
 
     fn register_block<REv>(
@@ -605,6 +615,13 @@ impl BlockAccumulator {
             }
             !block_timestamps.is_empty()
         });
+
+        self.metrics
+            .block_acceptors
+            .set(self.block_acceptors.len().try_into().unwrap_or(i64::MIN));
+        self.metrics
+            .known_child_blocks
+            .set(self.block_children.len().try_into().unwrap_or(i64::MIN));
     }
 
     fn store_block_and_finality_signatures<REv, I>(
@@ -624,7 +641,13 @@ impl BlockAccumulator {
                 executed,
             } => {
                 if let Some(parent_hash) = block.parent() {
-                    self.block_children.insert(*parent_hash, *block.hash());
+                    if self
+                        .block_children
+                        .insert(*parent_hash, *block.hash())
+                        .is_none()
+                    {
+                        self.metrics.known_child_blocks.inc();
+                    }
                 }
                 let mut block_signatures =
                     BlockSignatures::new(*block.hash(), block.header().era_id());
