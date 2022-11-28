@@ -315,7 +315,7 @@ async fn run_participating_network() {
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(2)),
-        Duration::from_secs(1000),
+        Duration::from_secs(1001),
     )
     .await;
 }
