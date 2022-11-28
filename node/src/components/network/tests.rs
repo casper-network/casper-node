@@ -10,7 +10,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::{PublicKey, SecretKey};
 use derive_more::From;
 use futures::FutureExt;
 use prometheus::Registry;
@@ -18,6 +17,8 @@ use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 use tracing::{debug, info};
+
+use casper_types::SecretKey;
 
 use super::{
     chain_info::ChainInfo, Config, Event as NetworkEvent, FromIncoming, GossipedAddress, Identity,
@@ -194,14 +195,13 @@ impl Reactor for TestReactor {
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let secret_key = SecretKey::random(rng);
-        let public_key = PublicKey::from(&secret_key);
         let net = Network::new(
             cfg,
             our_identity,
             None,
             registry,
             ChainInfo::create_for_testing(),
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), public_key),
+            ValidatorMatrix::new_with_validator(Arc::new(secret_key)),
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
         let address_gossiper =

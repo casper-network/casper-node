@@ -54,10 +54,8 @@ impl ValidatorMatrix {
 
     /// Creates a new validator matrix with just a single validator.
     #[cfg(test)]
-    pub(crate) fn new_with_validator(
-        secret_signing_key: Arc<SecretKey>,
-        public_signing_key: PublicKey,
-    ) -> Self {
+    pub(crate) fn new_with_validator(secret_signing_key: Arc<SecretKey>) -> Self {
+        let public_signing_key = PublicKey::from(&*secret_signing_key);
         let finality_threshold_fraction = Ratio::new(1, 3);
         let era_id = EraId::new(0);
         let weights = EraValidatorWeights::new(

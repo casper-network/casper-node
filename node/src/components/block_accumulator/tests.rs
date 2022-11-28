@@ -1,9 +1,7 @@
 use casper_types::testing::TestRng;
 use prometheus::Registry;
 
-use crate::components::consensus::tests::utils::{
-    ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID,
-};
+use crate::components::consensus::tests::utils::{ALICE_NODE_ID, ALICE_SECRET_KEY, BOB_NODE_ID};
 
 use super::*;
 
@@ -12,8 +10,7 @@ fn upsert_acceptor() {
     let mut rng = TestRng::new();
     let config = Config::default();
     let era0 = EraId::from(0);
-    let validator_matrix =
-        ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone(), ALICE_PUBLIC_KEY.clone());
+    let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let local_tip = (0, era0);
     let recent_era_interval = 1;
     let block_time = config.purge_interval() / 2;
