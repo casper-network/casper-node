@@ -285,6 +285,7 @@ impl SwitchBlocks {
     }
 }
 
+// DO NOT MERGE: No-op change to try CI.
 #[tokio::test]
 async fn run_participating_network() {
     testing::init_logging();
