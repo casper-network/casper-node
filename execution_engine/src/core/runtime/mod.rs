@@ -670,7 +670,7 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             mint::METHOD_MINT_INTO_EXISTING_PURSE => (|| {
-                mint_runtime.charge_system_contract_call(mint_costs.mint)?;
+                mint_runtime.charge_system_contract_call(mint_costs.mint_into_existing_purse)?;
 
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let existing_purse: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
@@ -905,7 +905,7 @@ where
             })(),
 
             auction::METHOD_REDELEGATE => (|| {
-                runtime.charge_system_contract_call(auction_costs.undelegate)?;
+                runtime.charge_system_contract_call(auction_costs.redelegate)?;
 
                 let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
@@ -974,7 +974,7 @@ where
             })(),
 
             auction::METHOD_ACTIVATE_BID => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+                runtime.charge_system_contract_call(auction_costs.activate_bid)?;
 
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;

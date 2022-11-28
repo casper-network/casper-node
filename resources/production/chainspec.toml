@@ -211,6 +211,7 @@ withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
 activate_bid = 10_000
+redelegate = 10_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000
@@ -219,6 +220,7 @@ create = 2_500_000_000
 balance = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000
+mint_into_existing_purse = 2_500_000_000
 
 [system_costs.handle_payment_costs]
 get_payment_purse = 10_000
