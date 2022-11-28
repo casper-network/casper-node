@@ -63,7 +63,7 @@ minimum_delegation_amount = 500_000_000_000
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 strict_argument_checking = false
 # The consensus protocol to use. Options are "Zug" and "Highway".
-consensus_protocol = 'Zug'
+consensus_protocol = 'Highway'
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
