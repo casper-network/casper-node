@@ -659,7 +659,8 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::components::consensus::{
-        highway_core::highway_testing::TEST_INSTANCE_ID, utils::ValidatorMap, utils::Weight,
+        highway_core::highway_testing::TEST_INSTANCE_ID,
+        utils::{ValidatorMap, Weight},
     };
 
     use super::{
