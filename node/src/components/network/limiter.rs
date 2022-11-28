@@ -144,7 +144,7 @@ struct LimiterData {
     /// connection.
     connected_validators: RwLock<HashMap<NodeId, PublicKey>>,
     /// Information about available resources.
-    resources: Arc<Mutex<ResourceData>>,
+    resources: Mutex<ResourceData>,
     /// Total time spent waiting.
     wait_time_sec: Counter,
 }
@@ -168,10 +168,10 @@ impl LimiterData {
         LimiterData {
             resources_per_second,
             connected_validators: Default::default(),
-            resources: Arc::new(Mutex::new(ResourceData {
+            resources: Mutex::new(ResourceData {
                 available: 0,
                 last_refill: Instant::now(),
-            })),
+            }),
             wait_time_sec,
         }
     }
