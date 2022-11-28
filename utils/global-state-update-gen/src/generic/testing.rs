@@ -49,7 +49,9 @@ impl MockStateReader {
         let main_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
         let account = Account::create(account_hash, Default::default(), main_purse);
         self.purses.insert(main_purse.addr(), balance);
-        self.accounts.insert(account_hash, account);
+        // If `insert` returns `Some()`, it means we used the same account hash twice, which is
+        // a programmer error and the function will panic.
+        assert!(self.accounts.insert(account_hash, account).is_none());
         self.total_supply += balance;
         self
     }

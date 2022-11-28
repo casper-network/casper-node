@@ -183,7 +183,7 @@ fn gen_snapshot_from_old(
             |public_key, recipient| match validators_map.get(public_key) {
                 // If the validator's stake is configured to be zero, we drop them from the
                 // snapshot.
-                Some(validator) if validator.bonded_amount == U512::zero() => false,
+                Some(validator) if validator.bonded_amount.is_zero() => false,
                 // Otherwise, we keep them, but modify the properties.
                 Some(validator) => {
                     *recipient = SeigniorageRecipient::new(
