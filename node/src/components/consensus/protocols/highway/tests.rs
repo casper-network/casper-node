@@ -85,13 +85,12 @@ where
         0,
         start_timestamp,
     );
-    // We expect four messages:
+    // We expect three messages:
     // * log participation timer,
     // * log synchronizer queue length timer,
-    // * purge synchronizer queue timer,
-    // * latest state request timer
+    // * purge synchronizer queue timer
     // If there are more, the tests might need to handle them.
-    assert_eq!(4, outcomes.len());
+    assert_eq!(3, outcomes.len());
     hw_proto
 }
 
@@ -211,7 +210,9 @@ fn send_a_valid_wire_unit() {
     let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
         match outcome {
-            ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
+            ProtocolOutcome::CreatedGossipMessage(_)
+            | ProtocolOutcome::FinalizedBlock(_)
+            | ProtocolOutcome::HandledProposedBlock(_) => (),
             ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
                 outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, now))
             }
