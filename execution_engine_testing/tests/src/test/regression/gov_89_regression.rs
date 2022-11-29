@@ -11,15 +11,12 @@ use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        genesis::GenesisValidator, GenesisAccount, SlashItem, StepSuccess,
-    },
+    core::engine_state::{genesis::GenesisValidator, GenesisAccount, SlashItem, StepSuccess},
     shared::transform::Transform,
 };
 use casper_types::{
     system::auction::{
-        Bids, DelegationRate, SeigniorageRecipientsSnapshot,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        Bids, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };

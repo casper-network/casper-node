@@ -149,8 +149,7 @@ pub fn run_blocks_with_transfers_and_step(
             if use_scratch {
                 step_and_run_auction(&mut builder, &validator_keys);
             } else {
-                builder.advance_era(
-                );
+                builder.advance_era();
                 builder.commit();
             }
             Some(builder.get_post_state_hash())

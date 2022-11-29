@@ -22,13 +22,13 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 #[cfg(any(feature = "testing", test))]
+use casper_types::crypto::generate_ed25519_keypair;
+#[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
-#[cfg(any(feature = "testing", test))]
-use casper_types::{crypto::generate_ed25519_keypair};
 use tracing::{error, warn};
 
 use crate::{

@@ -46,7 +46,6 @@ impl Params {
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
     ) -> Params {
-
         Params {
             seed,
             min_round_exp,

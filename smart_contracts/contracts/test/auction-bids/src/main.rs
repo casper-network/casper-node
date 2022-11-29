@@ -10,8 +10,8 @@ use casper_contract::contract_api::{runtime, system};
 use casper_types::{
     runtime_args,
     system::auction::{
-        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_VALIDATOR,
-        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
+        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_VALIDATOR, METHOD_DELEGATE,
+        METHOD_DISTRIBUTE, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
     },
     ApiError, PublicKey, RuntimeArgs, U512,
 };

@@ -528,7 +528,8 @@ pub trait Auction:
 
     /// Mint and distribute seigniorage rewards to validators and their delegators,
     /// according to `reward_factors` returned by the consensus component.
-    // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end totals of per-block rewards
+    // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
+    // totals of per-block rewards
     fn distribute(&mut self, proposer: PublicKey) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);

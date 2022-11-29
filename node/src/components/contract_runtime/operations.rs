@@ -6,8 +6,8 @@ use tracing::{debug, trace, warn};
 use casper_execution_engine::{
     core::engine_state::{
         self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, StepError,
-        StepRequest, StepSuccess,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, StepError, StepRequest,
+        StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,

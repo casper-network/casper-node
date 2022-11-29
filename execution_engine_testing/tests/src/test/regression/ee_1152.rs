@@ -150,7 +150,6 @@ fn should_run_ee_1152_regression_test() {
         .with_next_era_id(era_id)
         .with_era_end_timestamp_millis(timestamp_millis);
 
-
     builder.step(step_request.build()).unwrap();
 
     builder.run_auction(timestamp_millis, Vec::new());

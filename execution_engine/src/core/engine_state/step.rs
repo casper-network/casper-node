@@ -2,7 +2,7 @@
 //!
 //! A step request executes auction code, slashes validators, evicts validators and distributes
 //! rewards.
-use std::{vec::Vec};
+use std::vec::Vec;
 
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, PublicKey};
@@ -93,7 +93,6 @@ impl StepRequest {
             .map(|si| si.validator_id.clone())
             .collect()
     }
-
 }
 
 /// Representation of all possible failures of a step request.
@@ -156,7 +155,8 @@ impl From<RuntimeStackOverflow> for StepError {
 }
 
 /// Represents a successfully executed step request.
-// TODO: Rename to something more general, as it is used both for the step and reward distribution requests (see also StepError)
+// TODO: Rename to something more general, as it is used both for the step and reward distribution
+// requests (see also StepError)
 #[derive(Debug)]
 pub struct StepSuccess {
     /// New state root hash generated after effects were applied.

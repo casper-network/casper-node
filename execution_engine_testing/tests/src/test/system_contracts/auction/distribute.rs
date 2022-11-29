@@ -9,9 +9,7 @@ use casper_engine_test_support::{
     PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::{
-    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-};
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 use casper_types::{
     self,
     account::AccountHash,
@@ -19,8 +17,8 @@ use casper_types::{
     system::auction::{
         self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_VALIDATOR,
-        DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        ARG_PUBLIC_KEY, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -279,7 +277,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -553,7 +551,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -865,7 +863,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1291,7 +1289,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1519,7 +1517,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1718,7 +1716,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2027,7 +2025,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2040,7 +2038,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_VALIDATOR => VALIDATOR_2.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2053,7 +2051,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_VALIDATOR => VALIDATOR_3.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2351,7 +2349,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2364,7 +2362,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_VALIDATOR => VALIDATOR_2.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2377,12 +2375,11 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_VALIDATOR => VALIDATOR_3.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
     let validator_1_delegator_1_share = {
-
         let total_reward = &Ratio::from(expected_total_reward_integer);
 
         let validator_1_total_stake = VALIDATOR_1_STAKE + DELEGATOR_1_STAKE;
@@ -2791,7 +2788,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2804,7 +2801,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_VALIDATOR => VALIDATOR_2.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2817,7 +2814,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_VALIDATOR => VALIDATOR_3.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2987,7 +2984,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     let number_of_purses_before_distribute = builder.get_balance_keys().len();
 
@@ -3131,7 +3128,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -3209,8 +3206,8 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .with_protocol_version(new_protocol_version)
-        .build();
+    .with_protocol_version(new_protocol_version)
+    .build();
 
     let new_round_seigniorage_rate = {
         let (numer, denom) = new_round_seigniorage_rate.into();
