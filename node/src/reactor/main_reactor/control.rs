@@ -93,6 +93,7 @@ impl MainReactor {
                     Ok(effects) => {
                         info!("CatchUp: switch to Validate at genesis");
                         self.state = ReactorState::Validate;
+                        self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
                     Err(msg) => (
@@ -191,7 +192,6 @@ impl MainReactor {
                         );
 
                         let _ = self.contract_runtime.set_initial_state(initial_pre_state);
-
                         self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
