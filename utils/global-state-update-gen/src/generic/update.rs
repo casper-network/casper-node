@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 
 #[cfg(test)]
+use casper_types::PublicKey;
+#[cfg(test)]
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::Bid,
     CLValue, URef, U512,
 };
-use casper_types::{Key, PublicKey, StoredValue};
+use casper_types::{Key, StoredValue};
 
 #[cfg(test)]
 use super::state_reader::StateReader;
@@ -107,15 +109,12 @@ impl Update {
             .expect("should have unbonds for the account")
             .as_unbonding()
             .expect("should be unbonding purses");
-        assert!(unbonds
-            .iter()
-            .find(
-                |unbonding_purse| unbonding_purse.bonding_purse() == &bid_purse
-                    && unbonding_purse.validator_public_key() == validator_key
-                    && unbonding_purse.unbonder_public_key() == unbonder_key
-                    && unbonding_purse.amount() == &U512::from(amount)
-            )
-            .is_some())
+        assert!(unbonds.iter().any(
+            |unbonding_purse| unbonding_purse.bonding_purse() == &bid_purse
+                && unbonding_purse.validator_public_key() == validator_key
+                && unbonding_purse.unbonder_public_key() == unbonder_key
+                && unbonding_purse.amount() == &U512::from(amount)
+        ))
     }
 
     pub(crate) fn assert_key_absent(&self, key: &Key) {
