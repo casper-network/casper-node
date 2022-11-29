@@ -117,6 +117,7 @@ pub struct BlockSyncStatus {
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     status: ComponentStatus,
+    status_before_pause: ComponentStatus,
     validator_matrix: ValidatorMatrix,
     timeout: TimeDiff,
     peer_refresh_interval: TimeDiff,
@@ -135,6 +136,7 @@ impl BlockSynchronizer {
     pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
         BlockSynchronizer {
             status: ComponentStatus::Uninitialized,
+            status_before_pause: ComponentStatus::Uninitialized,
             validator_matrix,
             timeout: config.timeout(),
             peer_refresh_interval: config.peer_refresh_interval(),
@@ -178,12 +180,21 @@ impl BlockSynchronizer {
 
     /// Pauses block synchronization.
     pub(crate) fn pause(&mut self) {
+        if self.status == ComponentStatus::Paused {
+            return;
+        }
+        debug!(?self.status, "pausing component");
+        self.status_before_pause = self.status.clone();
         self.status = ComponentStatus::Paused;
     }
 
     /// Resumes block synchronization.
     pub(crate) fn resume(&mut self) {
-        self.status = ComponentStatus::Initialized;
+        if self.status != ComponentStatus::Paused {
+            return;
+        }
+        debug!(?self.status_before_pause, "resuming component");
+        self.status = self.status_before_pause.clone();
     }
 
     /// Registers a block for synchronization.
