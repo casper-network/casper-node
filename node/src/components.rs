@@ -80,6 +80,7 @@ pub(crate) enum ComponentStatus {
     #[default]
     Uninitialized,
     Initialized,
+    Paused,
     Fatal(String),
 }
 

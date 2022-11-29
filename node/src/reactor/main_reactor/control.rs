@@ -93,6 +93,7 @@ impl MainReactor {
                     Ok(effects) => {
                         info!("CatchUp: switch to Validate at genesis");
                         self.state = ReactorState::Validate;
+                        self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
                     Err(msg) => (

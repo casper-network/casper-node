@@ -374,6 +374,10 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
+            ComponentStatus::Paused => {
+                warn!("component paused - ignoring event");
+                Effects::new()
+            }
             ComponentStatus::Fatal(msg) => {
                 warn!(
                     msg,

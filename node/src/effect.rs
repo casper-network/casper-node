@@ -131,7 +131,9 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_synchronizer::{BlockSyncStatus, GlobalStateSynchronizerError, TrieAccumulatorError},
+        block_synchronizer::{
+            BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
+        },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
@@ -1405,7 +1407,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn get_block_synchronizer_status(self) -> Vec<BlockSyncStatus>
+    pub(crate) async fn get_block_synchronizer_status(self) -> BlockSynchronizerStatus
     where
         REv: From<BlockSynchronizerRequest>,
     {
