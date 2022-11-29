@@ -122,8 +122,6 @@ pub(crate) struct BlockSynchronizer {
     peer_refresh_interval: TimeDiff,
     need_next_interval: TimeDiff,
     disconnect_dishonest_peers_interval: TimeDiff,
-    // we pause block_syncing if a node is actively validating
-    paused: bool,
 
     // execute forward block (do not get global state or execution effects)
     forward: Option<BlockBuilder>,
@@ -142,7 +140,6 @@ impl BlockSynchronizer {
             peer_refresh_interval: config.peer_refresh_interval(),
             need_next_interval: config.need_next_interval(),
             disconnect_dishonest_peers_interval: config.disconnect_dishonest_peers_interval(),
-            paused: false,
             forward: None,
             historical: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
@@ -181,12 +178,12 @@ impl BlockSynchronizer {
 
     /// Pauses block synchronization.
     pub(crate) fn pause(&mut self) {
-        self.paused = true;
+        self.status = ComponentStatus::Paused;
     }
 
     /// Resumes block synchronization.
     pub(crate) fn resume(&mut self) {
-        self.paused = false;
+        self.status = ComponentStatus::Initialized;
     }
 
     /// Registers a block for synchronization.
@@ -926,13 +923,16 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        if self.paused {
-            warn!(%event, "BlockSynchronizer: not currently enabled - ignoring event");
-            return Effects::new();
-        }
-
         // MISSING EVENT: ANNOUNCEMENT OF BAD PEERS
         match (&self.status, event) {
+            (
+                ComponentStatus::Paused,
+                Event::Request(BlockSynchronizerRequest::Status { responder }),
+            ) => responder.respond(self.status()).ignore(),
+            (ComponentStatus::Paused, _) => {
+                warn!("component paused - ignoring event");
+                Effects::new()
+            }
             (ComponentStatus::Fatal(msg), _) => {
                 error!(
                     msg,
