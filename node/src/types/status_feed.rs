@@ -16,7 +16,7 @@ use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
-        block_synchronizer::BlockSyncStatus,
+        block_synchronizer::BlockSynchronizerStatus,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
         upgrade_watcher::NextUpgrade,
     },
@@ -53,7 +53,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         reactor_state: ReactorState::Initialize,
         last_progress: Timestamp::from(0),
         available_block_range: AvailableBlockRange::RANGE_0_0,
-        block_sync: vec![],
+        block_sync: BlockSynchronizerStatus::doc_example().clone(),
         starting_state_root_hash: None,
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
@@ -106,7 +106,7 @@ pub struct StatusFeed {
     /// The available block range in storage.
     pub available_block_range: AvailableBlockRange,
     /// The status of the block synchronizer builders.
-    pub block_sync: Vec<BlockSyncStatus>,
+    pub block_sync: BlockSynchronizerStatus,
     /// The state root hash of the lowest block in the available block range.
     pub starting_state_root_hash: Option<Digest>,
 }
@@ -122,7 +122,7 @@ impl StatusFeed {
         reactor_state: ReactorState,
         last_progress: Timestamp,
         available_block_range: AvailableBlockRange,
-        block_sync: Vec<BlockSyncStatus>,
+        block_sync: BlockSynchronizerStatus,
         starting_state_root_hash: Option<Digest>,
     ) -> Self {
         let (our_public_signing_key, round_length) = match consensus_status {
@@ -203,7 +203,7 @@ pub struct GetStatusResult {
     /// The available block range in storage.
     pub available_block_range: AvailableBlockRange,
     /// The status of the block synchronizer builders.
-    pub block_sync: Vec<BlockSyncStatus>,
+    pub block_sync: BlockSynchronizerStatus,
 }
 
 impl GetStatusResult {
