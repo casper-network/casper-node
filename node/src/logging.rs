@@ -335,6 +335,8 @@ fn format_into_debug_writer(
 /// this outside of the application or testing code, the installed logger is global.
 ///
 /// See the `README.md` for hints on how to configure logging at runtime.
+// The `io::stdout as fn()...` casts are necessary, as is the `FormatDebugFn` cast.
+#[allow(trivial_casts)]
 pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     let formatter = format::debug_fn(format_into_debug_writer as FormatDebugFn);
 
