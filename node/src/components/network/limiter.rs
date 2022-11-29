@@ -144,7 +144,7 @@ struct LimiterData {
     /// connection.
     connected_validators: RwLock<HashMap<NodeId, PublicKey>>,
     /// Information about available resources.
-    resources: Arc<Mutex<ResourceData>>,
+    resources: Mutex<ResourceData>,
     /// Total time spent waiting.
     wait_time_sec: Counter,
 }
@@ -168,10 +168,10 @@ impl LimiterData {
         LimiterData {
             resources_per_second,
             connected_validators: Default::default(),
-            resources: Arc::new(Mutex::new(ResourceData {
+            resources: Mutex::new(ResourceData {
                 available: 0,
                 last_refill: Instant::now(),
-            })),
+            }),
             wait_time_sec,
         }
     }
@@ -312,7 +312,27 @@ mod tests {
 
     #[tokio::test]
     async fn unlimited_limiter_is_unlimited() {
-        panic!("ensure behaviour of setting limit to 0 is maintained");
+        let mut rng = crate::new_rng();
+
+        // We insert one unrelated active validator to avoid triggering the automatic disabling of
+        // the limiter in case there are no active validators.
+        let validator_matrix =
+            ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(&mut rng)));
+        let limiter = Limiter::new(0, new_wait_time_sec(), validator_matrix);
+
+        // Try with non-validators or unknown nodes.
+        let handles = vec![
+            limiter.create_handle(NodeId::random(&mut rng), Some(PublicKey::random(&mut rng))),
+            limiter.create_handle(NodeId::random(&mut rng), None),
+        ];
+
+        for handle in handles {
+            let start = Instant::now();
+            handle.request_allowance(0).await;
+            handle.request_allowance(u32::MAX).await;
+            handle.request_allowance(1).await;
+            assert!(start.elapsed() < SHORT_TIME);
+        }
     }
 
     #[tokio::test]
@@ -321,10 +341,7 @@ mod tests {
 
         let secret_key = SecretKey::random(&mut rng);
         let consensus_key = PublicKey::from(&secret_key);
-        // We insert one unrelated active validator to avoid triggering the automatic disabling of
-        // the limiter in case there are no active validators.
-        let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
+        let validator_matrix = ValidatorMatrix::new_with_validator(Arc::new(secret_key));
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let handle = limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key));
@@ -333,26 +350,22 @@ mod tests {
         handle.request_allowance(0).await;
         handle.request_allowance(u32::MAX).await;
         handle.request_allowance(1).await;
-        let end = Instant::now();
-
-        assert!(end - start < SHORT_TIME);
+        assert!(start.elapsed() < SHORT_TIME);
     }
 
     #[tokio::test]
     async fn inactive_validator_limited() {
         let mut rng = crate::new_rng();
 
-        let secret_key = SecretKey::random(&mut rng);
-        let consensus_key = PublicKey::from(&secret_key);
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
+            ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(&mut rng)));
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key)),
+            limiter.create_handle(NodeId::random(&mut rng), Some(PublicKey::random(&mut rng))),
             limiter.create_handle(NodeId::random(&mut rng), None),
         ];
 
@@ -366,11 +379,10 @@ mod tests {
             handle.request_allowance(2000).await;
             handle.request_allowance(4000).await;
             handle.request_allowance(1).await;
-            let end = Instant::now();
+            let elapsed = start.elapsed();
 
-            let diff = end - start;
-            assert!(diff >= Duration::from_secs(9));
-            assert!(diff <= Duration::from_secs(10));
+            assert!(elapsed >= Duration::from_secs(9));
+            assert!(elapsed <= Duration::from_secs(10));
         }
     }
 
@@ -378,22 +390,22 @@ mod tests {
     async fn nonvalidators_parallel_limited() {
         let mut rng = crate::new_rng();
 
-        let secret_key = SecretKey::random(&mut rng);
-        let consensus_key = PublicKey::from(&secret_key);
         let wait_metric = new_wait_time_sec();
-
-        let start = Instant::now();
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
-        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
+            ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(&mut rng)));
+        let limiter = Limiter::new(1_000, wait_metric.clone(), validator_matrix);
+
+        let start = Instant::now();
 
         // Parallel test, 5 non-validators sharing 1000 bytes per second. Each sends 1001 bytes, so
         // total time is expected to be just over 5 seconds.
         let join_handles = (0..5)
-            .map(|_| limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key.clone())))
+            .map(|_| {
+                limiter.create_handle(NodeId::random(&mut rng), Some(PublicKey::random(&mut rng)))
+            })
             .map(|handle| {
                 tokio::spawn(async move {
                     handle.request_allowance(500).await;
@@ -407,10 +419,9 @@ mod tests {
             join_handle.await.expect("could not join task");
         }
 
-        let end = Instant::now();
-        let diff = end - start;
-        assert!(diff >= Duration::from_secs(5));
-        assert!(diff <= Duration::from_secs(6));
+        let elapsed = start.elapsed();
+        assert!(elapsed >= Duration::from_secs(5));
+        assert!(elapsed <= Duration::from_secs(6));
 
         // Ensure metrics recorded the correct number of seconds.
         assert!(
@@ -449,7 +460,7 @@ mod tests {
 
         // Try with non-validators or unknown nodes.
         let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(consensus_key)),
+            limiter.create_handle(NodeId::random(&mut rng), Some(PublicKey::random(&mut rng))),
             limiter.create_handle(NodeId::random(&mut rng), None),
         ];
 
@@ -463,10 +474,7 @@ mod tests {
             handle.request_allowance(2000).await;
             handle.request_allowance(4000).await;
             handle.request_allowance(1).await;
-            let end = Instant::now();
-
-            let diff = end - start;
-            assert!(diff <= SHORT_TIME);
+            assert!(start.elapsed() < SHORT_TIME);
         }
 
         // There should have been no time spent waiting.
@@ -486,8 +494,7 @@ mod tests {
 
         let secret_key = SecretKey::random(&mut rng);
         let consensus_key = PublicKey::from(&secret_key);
-        let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(secret_key), consensus_key.clone());
+        let validator_matrix = ValidatorMatrix::new_with_validator(Arc::new(secret_key));
         let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
 
         let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
