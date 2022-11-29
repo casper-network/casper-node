@@ -5,6 +5,7 @@ use std::{env, fmt, io};
 use ansi_term::{Color, Style};
 use anyhow::anyhow;
 use datasize::DataSize;
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use tracing::{
@@ -13,12 +14,14 @@ use tracing::{
 };
 use tracing_subscriber::{
     fmt::{
-        format::{self, Writer},
+        format::{self, FieldFn, Format, Json, JsonFields, Writer},
         time::{FormatTime, SystemTime},
-        FmtContext, FormatEvent, FormatFields, FormattedFields,
+        FmtContext, FormatEvent, FormatFields, FormattedFields, Layer,
     },
+    layer::Layered,
     registry::LookupSpan,
-    EnvFilter,
+    reload::{self, Handle},
+    EnvFilter, Registry,
 };
 
 const LOG_CONFIGURATION_ENVVAR: &str = "RUST_LOG";
@@ -28,6 +31,11 @@ const LOG_FIELD_TARGET: &str = "log.target";
 const LOG_FIELD_MODULE: &str = "log.module_path";
 const LOG_FIELD_FILE: &str = "log.file";
 const LOG_FIELD_LINE: &str = "log.line";
+
+/// Global reload handle.
+///
+/// We use a static variable for the reload handle since our logger instance is also global.
+static RELOAD_HANDLE: OnceCell<ReloadHandle> = OnceCell::new();
 
 /// Logging configuration.
 #[derive(DataSize, Debug, Default, Deserialize, Serialize)]
@@ -81,7 +89,7 @@ impl Default for LoggingFormat {
 
 /// This is used to implement tracing's `FormatEvent` so that we can customize the way tracing
 /// events are formatted.
-struct FmtEvent {
+pub struct FmtEvent {
     /// Whether to use ANSI color formatting or not.
     ansi_color: bool,
     /// Whether module segments should be shortened to first letter only.
@@ -260,18 +268,78 @@ pub fn init() -> anyhow::Result<()> {
     init_with_config(&Default::default())
 }
 
+/// A handle for reloading the logger.
+#[allow(clippy::type_complexity)] // Cannot be helped, unfortunately.
+pub enum ReloadHandle {
+    /// Text-logger reload handle.
+    Text(Handle<EnvFilter, Layered<Layer<Registry, FieldFn<FormatDebugFn>, FmtEvent>, Registry>>),
+    /// JSON-logger reload handle.
+    Json(Handle<EnvFilter, Layered<Layer<Registry, JsonFields, Format<Json>>, Registry>>),
+}
+
+impl ReloadHandle {
+    /// Swaps out the [`EnvFilter`] used to filter log events.
+    fn reload_env_filter(&self, new_filter: EnvFilter) -> Result<(), reload::Error> {
+        match self {
+            ReloadHandle::Text(handle) => handle.reload(new_filter),
+            ReloadHandle::Json(handle) => handle.reload(new_filter),
+        }
+    }
+
+    /// Returns a string representation of the current [`EnvFilter`], if set.
+    fn display_log_filter(&self) -> Result<String, reload::Error> {
+        match self {
+            ReloadHandle::Text(handle) => handle.with_current(|env_filter| env_filter.to_string()),
+            ReloadHandle::Json(handle) => handle.with_current(|env_filter| env_filter.to_string()),
+        }
+    }
+}
+
+/// Swaps out the global [`EnvFilter`].
+pub fn reload_global_env_filter(new_filter: EnvFilter) -> anyhow::Result<()> {
+    let handle = RELOAD_HANDLE
+        .get()
+        .ok_or_else(|| anyhow!("could not fetch reload handle - logger not initialized?"))?;
+    handle.reload_env_filter(new_filter)?;
+
+    Ok(())
+}
+
+/// Returns a string representation of the current global [`EnvFilter`], if set.
+pub fn display_global_env_filter() -> anyhow::Result<String> {
+    let handle = RELOAD_HANDLE
+        .get()
+        .ok_or_else(|| anyhow!("could not fetch reload handle - logger not initialized?"))?;
+    let formatted = handle.display_log_filter()?;
+
+    Ok(formatted)
+}
+
+/// Type alias for the formatting function used.
+pub type FormatDebugFn = fn(&mut Writer, &Field, &dyn std::fmt::Debug) -> fmt::Result;
+
+fn format_into_debug_writer(
+    writer: &mut Writer,
+    field: &Field,
+    value: &dyn std::fmt::Debug,
+) -> fmt::Result {
+    match field.name() {
+        LOG_FIELD_MESSAGE => write!(writer, "{:?}", value),
+        LOG_FIELD_TARGET | LOG_FIELD_MODULE | LOG_FIELD_FILE | LOG_FIELD_LINE => Ok(()),
+        _ => write!(writer, "; {}={:?}", field, value),
+    }
+}
+
 /// Initializes the logging system.
 ///
 /// This function should only be called once during the lifetime of the application. Do not call
 /// this outside of the application or testing code, the installed logger is global.
 ///
 /// See the `README.md` for hints on how to configure logging at runtime.
+// The `io::stdout as fn()...` casts are necessary, as is the `FormatDebugFn` cast.
+#[allow(trivial_casts)]
 pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
-    let formatter = format::debug_fn(|writer, field, value| match field.name() {
-        LOG_FIELD_MESSAGE => write!(writer, "{:?}", value),
-        LOG_FIELD_TARGET | LOG_FIELD_MODULE | LOG_FIELD_FILE | LOG_FIELD_LINE => Ok(()),
-        _ => write!(writer, "; {}={:?}", field, value),
-    });
+    let formatter = format::debug_fn(format_into_debug_writer as FormatDebugFn);
 
     let filter = EnvFilter::new(
         env::var(LOG_CONFIGURATION_ENVVAR)
@@ -281,18 +349,30 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
 
     match config.format {
         // Setup a new tracing-subscriber writing to `stdout` for logging.
-        LoggingFormat::Text => tracing_subscriber::fmt()
-            .with_writer(io::stdout)
-            .with_env_filter(filter)
-            .fmt_fields(formatter)
-            .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
-            .try_init(),
+        LoggingFormat::Text => {
+            let builder = tracing_subscriber::fmt()
+                .with_writer(io::stdout as fn() -> std::io::Stdout)
+                .with_env_filter(filter)
+                .fmt_fields(formatter)
+                .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
+                .with_filter_reloading();
+            let handle = ReloadHandle::Text(builder.reload_handle());
+            builder.try_init().map_err(|error| anyhow!(error))?;
+            drop(RELOAD_HANDLE.set(handle));
+            Ok(())
+        }
+
         // JSON logging writes to `stdout` as well but uses the JSON format.
-        LoggingFormat::Json => tracing_subscriber::fmt()
-            .with_writer(io::stdout)
-            .with_env_filter(filter)
-            .json()
-            .try_init(),
+        LoggingFormat::Json => {
+            let builder = tracing_subscriber::fmt()
+                .with_writer(io::stdout as fn() -> std::io::Stdout)
+                .with_env_filter(filter)
+                .json()
+                .with_filter_reloading();
+            let handle = ReloadHandle::Json(builder.reload_handle());
+            builder.try_init().map_err(|error| anyhow!(error))?;
+            drop(RELOAD_HANDLE.set(handle));
+            Ok(())
+        }
     }
-    .map_err(|error| anyhow!(error))
 }
