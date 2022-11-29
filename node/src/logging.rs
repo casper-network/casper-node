@@ -269,6 +269,7 @@ pub fn init() -> anyhow::Result<()> {
 }
 
 /// A handle for reloading the logger.
+#[allow(clippy::type_complexity)] // Cannot be helped, unfortunately.
 pub enum ReloadHandle {
     /// Text-logger reload handle.
     Text(Handle<EnvFilter, Layered<Layer<Registry, FieldFn<FormatDebugFn>, FmtEvent>, Registry>>),
