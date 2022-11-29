@@ -6,7 +6,7 @@ use casper_types::{
     system::auction::Bid,
     CLValue, URef, U512,
 };
-use casper_types::{Key, StoredValue};
+use casper_types::{Key, PublicKey, StoredValue};
 
 #[cfg(test)]
 use super::state_reader::StateReader;
@@ -91,5 +91,34 @@ impl Update {
             self.entries.get(&Key::Bid(account)),
             Some(&StoredValue::from(bid))
         );
+    }
+
+    pub(crate) fn assert_unbonding_purse(
+        &self,
+        bid_purse: URef,
+        validator_key: &PublicKey,
+        unbonder_key: &PublicKey,
+        amount: u64,
+    ) {
+        let account_hash = validator_key.to_account_hash();
+        let unbonds = self
+            .entries
+            .get(&Key::Unbond(account_hash))
+            .expect("should have unbonds for the account")
+            .as_unbonding()
+            .expect("should be unbonding purses");
+        assert!(unbonds
+            .iter()
+            .find(
+                |unbonding_purse| unbonding_purse.bonding_purse() == &bid_purse
+                    && unbonding_purse.validator_public_key() == validator_key
+                    && unbonding_purse.unbonder_public_key() == unbonder_key
+                    && unbonding_purse.amount() == &U512::from(amount)
+            )
+            .is_some())
+    }
+
+    pub(crate) fn assert_key_absent(&self, key: &Key) {
+        assert!(!self.entries.contains_key(key))
     }
 }
