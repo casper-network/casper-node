@@ -5,6 +5,7 @@ use std::{env, fmt, io};
 use ansi_term::{Color, Style};
 use anyhow::anyhow;
 use datasize::DataSize;
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use tracing::{
@@ -19,7 +20,7 @@ use tracing_subscriber::{
     },
     layer::Layered,
     registry::LookupSpan,
-    reload::Handle,
+    reload::{self, Handle},
     EnvFilter, Registry,
 };
 
@@ -30,6 +31,11 @@ const LOG_FIELD_TARGET: &str = "log.target";
 const LOG_FIELD_MODULE: &str = "log.module_path";
 const LOG_FIELD_FILE: &str = "log.file";
 const LOG_FIELD_LINE: &str = "log.line";
+
+/// Global reload handle.
+///
+/// We use a static variable for the reload handle since our logger instance is also global.
+static RELOAD_HANDLE: OnceCell<ReloadHandle> = OnceCell::new();
 
 /// Logging configuration.
 #[derive(DataSize, Debug, Default, Deserialize, Serialize)]
@@ -258,7 +264,7 @@ where
 ///
 /// See `init_params` for details.
 #[cfg(test)]
-pub fn init() -> anyhow::Result<ReloadHandle> {
+pub fn init() -> anyhow::Result<()> {
     init_with_config(&Default::default())
 }
 
@@ -268,6 +274,44 @@ pub enum ReloadHandle {
     Text(Handle<EnvFilter, Layered<Layer<Registry, FieldFn<FormatDebugFn>, FmtEvent>, Registry>>),
     /// JSON-logger reload handle.
     Json(Handle<EnvFilter, Layered<Layer<Registry, JsonFields, Format<Json>>, Registry>>),
+}
+
+impl ReloadHandle {
+    /// Swaps out the [`EnvFilter`] used to filter log events.
+    fn reload_env_filter(&self, new_filter: EnvFilter) -> Result<(), reload::Error> {
+        match self {
+            ReloadHandle::Text(handle) => handle.reload(new_filter),
+            ReloadHandle::Json(handle) => handle.reload(new_filter),
+        }
+    }
+
+    /// Returns a string representation of the current [`EnvFilter`], if set.
+    fn display_log_filter(&self) -> Result<String, reload::Error> {
+        match self {
+            ReloadHandle::Text(handle) => handle.with_current(|env_filter| env_filter.to_string()),
+            ReloadHandle::Json(handle) => handle.with_current(|env_filter| env_filter.to_string()),
+        }
+    }
+}
+
+/// Swaps out the global [`EnvFilter`].
+pub fn reload_global_env_filter(new_filter: EnvFilter) -> anyhow::Result<()> {
+    let handle = RELOAD_HANDLE
+        .get()
+        .ok_or_else(|| anyhow!("could not fetch reload handle - logger not initialized?"))?;
+    handle.reload_env_filter(new_filter)?;
+
+    Ok(())
+}
+
+/// Returns a string representation of the current global [`EnvFilter`], if set.
+pub fn display_global_env_filter() -> anyhow::Result<String> {
+    let handle = RELOAD_HANDLE
+        .get()
+        .ok_or_else(|| anyhow!("could not fetch reload handle - logger not initialized?"))?;
+    let formatted = handle.display_log_filter()?;
+
+    Ok(formatted)
 }
 
 /// Type alias for the formatting function used.
@@ -291,7 +335,7 @@ fn format_into_debug_writer(
 /// this outside of the application or testing code, the installed logger is global.
 ///
 /// See the `README.md` for hints on how to configure logging at runtime.
-pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<ReloadHandle> {
+pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     let formatter = format::debug_fn(format_into_debug_writer as FormatDebugFn);
 
     let filter = EnvFilter::new(
@@ -311,7 +355,8 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<ReloadHandle> 
                 .with_filter_reloading();
             let handle = ReloadHandle::Text(builder.reload_handle());
             builder.try_init().map_err(|error| anyhow!(error))?;
-            Ok(handle)
+            drop(RELOAD_HANDLE.set(handle));
+            Ok(())
         }
 
         // JSON logging writes to `stdout` as well but uses the JSON format.
@@ -323,7 +368,8 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<ReloadHandle> 
                 .with_filter_reloading();
             let handle = ReloadHandle::Json(builder.reload_handle());
             builder.try_init().map_err(|error| anyhow!(error))?;
-            Ok(handle)
+            drop(RELOAD_HANDLE.set(handle));
+            Ok(())
         }
     }
 }
