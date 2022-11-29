@@ -15,6 +15,7 @@ mod trie_accumulator;
 
 use datasize::DataSize;
 use either::Either;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
@@ -39,6 +40,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{self},
+    rpcs::docs::DocExample,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
@@ -61,6 +63,31 @@ pub(crate) use global_state_synchronizer::{
 pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
+
+static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
+    BlockSynchronizerStatus::new(
+        Some(BlockSyncStatus {
+            block_hash: BlockHash::new(
+                Digest::from_hex(
+                    "16ddf28e2b3d2e17f4cef36f8b58827eca917af225d139b0c77df3b4a67dc55e",
+                )
+                .unwrap(),
+            ),
+            block_height: Some(40),
+            acquisition_state: "have strict finality(40) for: block hash 16dd..c55e".to_string(),
+        }),
+        Some(BlockSyncStatus {
+            block_hash: BlockHash::new(
+                Digest::from_hex(
+                    "59907b1e32a9158169c4d89d9ce5ac9164fc31240bfcfb0969227ece06d74983",
+                )
+                .unwrap(),
+            ),
+            block_height: Some(6701),
+            acquisition_state: "have block body(6701) for: block hash 5990..4983".to_string(),
+        }),
+    )
+});
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
@@ -106,12 +133,37 @@ impl<REv> ReactorEvent for REv where
 {
 }
 
-#[derive(Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct BlockSyncStatus {
+pub(crate) struct BlockSyncStatus {
     block_hash: BlockHash,
     block_height: Option<u64>,
-    acquisition_state: String, // BlockAcquisitionState.to_string()
+    acquisition_state: String,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BlockSynchronizerStatus {
+    historical: Option<BlockSyncStatus>,
+    forward: Option<BlockSyncStatus>,
+}
+
+impl BlockSynchronizerStatus {
+    pub(crate) fn new(
+        historical: Option<BlockSyncStatus>,
+        forward: Option<BlockSyncStatus>,
+    ) -> Self {
+        Self {
+            historical,
+            forward,
+        }
+    }
+}
+
+impl DocExample for BlockSynchronizerStatus {
+    fn doc_example() -> &'static Self {
+        &*BLOCK_SYNCHRONIZER_STATUS
+    }
 }
 
 #[derive(DataSize, Debug)]
@@ -899,16 +951,19 @@ impl BlockSynchronizer {
         )
     }
 
-    pub fn status(&self) -> Vec<BlockSyncStatus> {
-        self.historical
-            .iter()
-            .chain(self.forward.iter())
-            .map(|builder| BlockSyncStatus {
+    pub fn status(&self) -> BlockSynchronizerStatus {
+        BlockSynchronizerStatus::new(
+            self.historical.as_ref().map(|builder| BlockSyncStatus {
                 block_hash: builder.block_hash(),
                 block_height: builder.block_height(),
                 acquisition_state: builder.block_acquisition_state().to_string(),
-            })
-            .collect()
+            }),
+            self.forward.as_ref().map(|builder| BlockSyncStatus {
+                block_hash: builder.block_hash(),
+                block_height: builder.block_height(),
+                acquisition_state: builder.block_acquisition_state().to_string(),
+            }),
+        )
     }
 }
 
