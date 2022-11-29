@@ -9,10 +9,6 @@ use casper_types::{serde_option_time_diff, TimeDiff};
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// If the initial era's protocol state has not progressed for this long, restart. 0 means
-    /// disabled.
-    #[serde(with = "serde_option_time_diff")]
-    pub standstill_timeout: Option<TimeDiff>,
     /// Request the latest protocol state from a random peer periodically, with this interval. 0
     /// means disabled.
     #[serde(with = "serde_option_time_diff")]
@@ -38,7 +34,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            standstill_timeout: None,
             sync_state_interval: Some("1sec".parse().unwrap()),
             log_participation_interval: Some("10sec".parse().unwrap()),
             proposal_timeout: "1sec".parse().unwrap(),

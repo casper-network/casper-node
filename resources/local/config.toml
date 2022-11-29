@@ -72,10 +72,6 @@ max_execution_delay = 3
 # ==========================================
 [consensus.zug]
 
-# If the current era's protocol state has not progressed for this long, shut down.
-# '0sec' means it is disabled and we never shutdown due to lack of progress.
-standstill_timeout = '0sec'
-
 # Request the latest protocol state from a random peer periodically, with this interval.
 # '0sec' means it is disabled and we never request the protocol state from a peer.
 sync_state_interval = '50ms'

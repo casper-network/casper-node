@@ -390,7 +390,7 @@ async fn run_equivocator_network() {
         .next_era_validators(2)
         .contains_key(&alice_public_key));
 
-    // In era 3 they are not a validator anymore and their bids remains deactivated.
+    // In era 3 she is not a validator anymore and her bid remains deactivated.
     assert_eq!(switch_blocks.equivocators(3), []);
     assert_eq!(switch_blocks.inactive_validators(3), []);
     assert!(bids[3][&alice_public_key].inactive());
