@@ -34,21 +34,21 @@ impl ParticipationStatus {
     /// Returns a `Status` for a validator unless they are honest and online.
     pub(super) fn for_index<C: Context + 'static>(
         idx: ValidatorIndex,
-        sc: &Zug<C>,
+        zug: &Zug<C>,
     ) -> Option<ParticipationStatus> {
-        if let Some(fault) = sc.faults.get(&idx) {
+        if let Some(fault) = zug.faults.get(&idx) {
             return Some(match fault {
                 Fault::Banned | Fault::Indirect => ParticipationStatus::EquivocatedInOtherEra,
                 Fault::Direct(..) => ParticipationStatus::Equivocated,
             });
         }
         // TODO: Avoid iterating over all old rounds every time we log this.
-        for r_id in sc.rounds.keys().rev() {
-            if sc.has_echoed(*r_id, idx)
-                || sc.has_voted(*r_id, idx)
-                || (sc.has_accepted_proposal(*r_id) && sc.leader(*r_id) == idx)
+        for r_id in zug.rounds.keys().rev() {
+            if zug.has_echoed(*r_id, idx)
+                || zug.has_voted(*r_id, idx)
+                || (zug.has_accepted_proposal(*r_id) && zug.leader(*r_id) == idx)
             {
-                if r_id.saturating_add(2) < sc.current_round {
+                if r_id.saturating_add(2) < zug.current_round {
                     return Some(ParticipationStatus::LastSeenInRound(*r_id));
                 } else {
                     return None; // Seen recently; considered currently active.

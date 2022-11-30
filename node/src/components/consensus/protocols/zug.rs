@@ -224,7 +224,7 @@ impl<C: Context + 'static> Zug<C> {
         // always got accepted exactly after one minimum timeout.
         let proposal_timeout_millis = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<Zug<C>>())
-            .map(|sc| sc.proposal_timeout_millis)
+            .map(|zug| zug.proposal_timeout_millis)
             .unwrap_or_else(|| {
                 config.zug.proposal_timeout.millis() as f64
                     * (config.zug.proposal_grace_period as f64 / 100.0 + 1.0)
@@ -297,7 +297,7 @@ impl<C: Context + 'static> Zug<C> {
         now: Timestamp,
         wal_file: PathBuf,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
-        let mut sc = Self::new(
+        let mut zug = Self::new(
             instance_id,
             validator_stakes,
             faulty,
@@ -309,9 +309,9 @@ impl<C: Context + 'static> Zug<C> {
             seed,
         );
 
-        let outcomes = sc.open_wal(wal_file, now);
+        let outcomes = zug.open_wal(wal_file, now);
 
-        (Box::new(sc), outcomes)
+        (Box::new(zug), outcomes)
     }
 
     /// Prints a log statement listing the inactive and faulty validators.

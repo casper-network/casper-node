@@ -525,12 +525,12 @@ fn zug_no_fault() {
 
     info!("restoring protocol now");
 
-    let mut sc = new_test_zug(weights, vec![], leader_seq);
-    sc.open_wal(dir.path().join("wal"), timestamp);
-    let outcomes = sc.handle_timer(timestamp, timestamp, TIMER_ID_UPDATE, &mut rng);
+    let mut zug = new_test_zug(weights, vec![], leader_seq);
+    zug.open_wal(dir.path().join("wal"), timestamp);
+    let outcomes = zug.handle_timer(timestamp, timestamp, TIMER_ID_UPDATE, &mut rng);
     let proposals123 = [(&proposal1, 0), (&proposal2, 1), (&proposal3, 2)];
     expect_finalized(&outcomes, &proposals123);
-    assert!(sc.finalized_switch_block());
+    assert!(zug.finalized_switch_block());
 }
 
 /// Tests that a faulty validator counts towards every quorum.
@@ -546,7 +546,7 @@ fn zug_faults() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leaders are Carol, Alice, Alice.
-    let mut sc = new_test_zug(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
+    let mut zug = new_test_zug(weights, vec![], &[carol_idx, alice_idx, alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -564,46 +564,46 @@ fn zug_faults() {
     let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
-        timestamp: timestamp + sc.params.min_block_time(),
+        timestamp: timestamp + zug.params.min_block_time(),
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
         inactive: Some(iter::once(carol_idx).collect()),
     };
     let hash2 = proposal2.hash();
 
-    timestamp += sc.params.min_block_time();
+    timestamp += zug.params.min_block_time();
 
     // Alice makes sproposals in rounds 1 and 2, echoes and votes for them.
     let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_proposal_message(1, &proposal1);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 1, vote(true), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_proposal_message(2, &proposal2);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, vote(true), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
 
     // Since Carol did not make a proposal Alice votes to make round 0 skippable.
     let msg = create_message(&validators, 0, vote(false), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
 
     // Carol is offline and Alice alone does not have a quorum.
     // But if Bob equivocates, he counts towards every quorum, so the blocks get finalized.
     let msg = create_message(&validators, 3, vote(true), &bob_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 3, vote(false), &bob_kp);
-    let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
+    let outcomes = zug.handle_message(&mut rng, sender, msg, timestamp);
     expect_finalized(&outcomes, &[(&proposal1, 0), (&proposal2, 1)]);
 
     // Now Carol starts two nodes by mistake, and equivocates. That crosses the FTT.
     let msg = create_message(&validators, 3, vote(true), &carol_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 3, vote(false), &carol_kp);
-    let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
+    let outcomes = zug.handle_message(&mut rng, sender, msg, timestamp);
     assert!(outcomes.contains(&ProtocolOutcome::FttExceeded));
 }
 
@@ -617,13 +617,13 @@ fn zug_sends_sync_request() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let mut sc = new_test_zug(weights, vec![], &[alice_idx]);
+    let mut zug = new_test_zug(weights, vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
     let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
 
-    let timeout = sc.config.sync_state_interval.expect("request state timer");
+    let timeout = zug.config.sync_state_interval.expect("request state timer");
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
 
@@ -635,13 +635,13 @@ fn zug_sends_sync_request() {
     };
     let hash0 = proposal0.hash();
 
-    let outcomes = sc.handle_is_current(timestamp);
+    let outcomes = zug.handle_is_current(timestamp);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
 
     timestamp += timeout;
 
     // The protocol state is empty and the SyncRequest should reflect that.
-    let mut outcomes = sc.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+    let mut outcomes = zug.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_requests_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
@@ -667,18 +667,18 @@ fn zug_sends_sync_request() {
 
     // Now we get a proposal and echo from Alice, one false vote from Bob, and Carol double-signs.
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_proposal_message(0, &proposal0);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(true), &carol_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &carol_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
 
     // The next SyncRequest message must include all the new information.
-    let mut outcomes = sc.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+    let mut outcomes = zug.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
     let mut msg_iter = remove_requests_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
@@ -698,18 +698,18 @@ fn zug_sends_sync_request() {
             None,
         ) => {
             assert_eq!(hash0, hash);
-            let mut faulty_iter = sc.iter_validator_bit_field(first_validator_idx, faulty);
+            let mut faulty_iter = zug.iter_validator_bit_field(first_validator_idx, faulty);
             assert_eq!(Some(carol_idx), faulty_iter.next());
             assert_eq!(None, faulty_iter.next());
-            let mut echoes_iter = sc.iter_validator_bit_field(first_validator_idx, echoes);
+            let mut echoes_iter = zug.iter_validator_bit_field(first_validator_idx, echoes);
             assert_eq!(Some(alice_idx), echoes_iter.next());
             assert_eq!(None, echoes_iter.next());
-            let mut false_iter = sc.iter_validator_bit_field(first_validator_idx, false_votes);
+            let mut false_iter = zug.iter_validator_bit_field(first_validator_idx, false_votes);
             assert_eq!(Some(bob_idx), false_iter.next());
             assert_eq!(None, false_iter.next());
             // When we marked Carol as faulty we removed her entry from the active list.
             let expected_active =
-                sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter());
+                zug.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter());
             assert_eq!(active, expected_active);
         }
         (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
@@ -726,7 +726,7 @@ fn zug_handles_sync_request() {
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
     // The first round leader is Alice.
-    let mut sc = new_test_zug(weights.clone(), vec![], &[alice_idx]);
+    let mut zug = new_test_zug(weights.clone(), vec![], &[alice_idx]);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
@@ -754,19 +754,19 @@ fn zug_handles_sync_request() {
     // We get a proposal, echo and true vote from Alice, one echo and false vote from Bob, and
     // Carol double-signs.
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_proposal_message(0, &proposal0);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(true), &alice_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(true), &carol_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &carol_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
+    zug.handle_message(&mut rng, sender, msg, timestamp);
 
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
 
@@ -776,19 +776,19 @@ fn zug_handles_sync_request() {
         proposal_hash: Some(hash0),
         has_proposal: false,
         first_validator_idx,
-        echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
-        true_votes: sc
+        echoes: zug.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        true_votes: zug
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
-        false_votes: sc
+        false_votes: zug
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
-        active: sc.validator_bit_field(
+        active: zug.validator_bit_field(
             first_validator_idx,
             vec![alice_idx, bob_idx, carol_idx].into_iter(),
         ),
-        faulty: sc.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
-        instance_id: *sc.instance_id(),
+        faulty: zug.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
+        instance_id: *zug.instance_id(),
     };
-    let (outcomes, response) = sc.handle_request_message(&mut rng, sender, msg.into(), timestamp);
+    let (outcomes, response) = zug.handle_request_message(&mut rng, sender, msg.into(), timestamp);
     assert_eq!(
         response
             .expect("response")
@@ -802,7 +802,7 @@ fn zug_handles_sync_request() {
             false_vote_sigs: BTreeMap::new(),
             signed_messages: Vec::new(),
             evidence: Vec::new(),
-            instance_id: *sc.instance_id(),
+            instance_id: *zug.instance_id(),
         })
     );
     expect_no_gossip_block_finalized(outcomes);
@@ -813,16 +813,16 @@ fn zug_handles_sync_request() {
         proposal_hash: Some(hash1), // Wrong proposal!
         has_proposal: true,
         first_validator_idx,
-        echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
-        true_votes: sc
+        echoes: zug.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
+        true_votes: zug
             .validator_bit_field(first_validator_idx, vec![bob_idx, alice_idx].into_iter()),
-        false_votes: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
-        active: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
-        faulty: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
-        instance_id: *sc.instance_id(),
+        false_votes: zug.validator_bit_field(first_validator_idx, vec![].into_iter()),
+        active: zug.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        faulty: zug.validator_bit_field(first_validator_idx, vec![].into_iter()),
+        instance_id: *zug.instance_id(),
     };
     let (mut outcomes, response) =
-        sc.handle_request_message(&mut rng, sender, msg.into(), timestamp);
+        zug.handle_request_message(&mut rng, sender, msg.into(), timestamp);
     assert_eq!(
         remove_targeted_messages(&validators, sender, &mut outcomes),
         vec![]
@@ -838,17 +838,17 @@ fn zug_handles_sync_request() {
     assert_eq!(sync_response.proposal_or_hash, Some(Either::Right(hash0)));
     assert_eq!(
         sync_response.echo_sigs,
-        sc.round(0).unwrap().echoes()[&hash0]
+        zug.round(0).unwrap().echoes()[&hash0]
     );
     assert_eq!(sync_response.true_vote_sigs, BTreeMap::new());
     assert_eq!(sync_response.false_vote_sigs.len(), 1);
     assert_eq!(
         Some(sync_response.false_vote_sigs[&bob_idx]),
-        sc.round(0).unwrap().votes(false)[bob_idx]
+        zug.round(0).unwrap().votes(false)[bob_idx]
     );
     assert_eq!(sync_response.signed_messages, vec![]);
     assert_eq!(sync_response.evidence.len(), 1);
-    match (&sync_response.evidence[0], &sc.faults[&carol_idx]) {
+    match (&sync_response.evidence[0], &zug.faults[&carol_idx]) {
         (
             (signed_msg, content2, sig2),
             Fault::Direct(expected_signed_msg, expected_content2, expected_sig2),
@@ -860,11 +860,11 @@ fn zug_handles_sync_request() {
         (evidence, fault) => panic!("unexpected evidence: {:?}, {:?}", evidence, fault),
     }
 
-    // Create a new instance that doesn't have any data yet, let it send two sync requests to sc,
+    // Create a new instance that doesn't have any data yet, let it send two sync requests to Zug,
     // and handle the responses.
-    let mut sc2 = new_test_zug(weights, vec![], &[alice_idx]);
+    let mut zug2 = new_test_zug(weights, vec![], &[alice_idx]);
     for _ in 0..2 {
-        let mut outcomes = sc2.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+        let mut outcomes = zug2.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
         let msg = loop {
             if let ProtocolOutcome::CreatedRequestToRandomPeer(payload) =
                 outcomes.pop().expect("expected request to random peer")
@@ -872,26 +872,26 @@ fn zug_handles_sync_request() {
                 break payload;
             }
         };
-        let (_outcomes, response) = sc.handle_request_message(&mut rng, sender, msg, timestamp);
+        let (_outcomes, response) = zug.handle_request_message(&mut rng, sender, msg, timestamp);
         if let Some(msg) = response {
-            let mut _outcomes = sc2.handle_message(&mut rng, sender, msg, timestamp);
+            let mut _outcomes = zug2.handle_message(&mut rng, sender, msg, timestamp);
         }
     }
 
     // They should be synced up now:
-    assert_eq!(sc.rounds, sc2.rounds);
-    assert_eq!(sc.faults, sc2.faults);
-    assert_eq!(sc.active, sc2.active);
+    assert_eq!(zug.rounds, zug2.rounds);
+    assert_eq!(zug.faults, zug2.faults);
+    assert_eq!(zug.active, zug2.active);
 }
 
 #[test]
 fn test_validator_bit_field() {
-    fn test_roundtrip(sc: &Zug<ClContext>, first: u32, indexes: Vec<u32>, expected: Vec<u32>) {
-        let field = sc.validator_bit_field(
+    fn test_roundtrip(zug: &Zug<ClContext>, first: u32, indexes: Vec<u32>, expected: Vec<u32>) {
+        let field = zug.validator_bit_field(
             ValidatorIndex(first),
             indexes.iter().map(|i| ValidatorIndex(*i)),
         );
-        let new_indexes: BTreeSet<u32> = sc
+        let new_indexes: BTreeSet<u32> = zug
             .iter_validator_bit_field(ValidatorIndex(first), field)
             .map(|ValidatorIndex(i)| i)
             .collect();
@@ -942,23 +942,23 @@ fn test_quorum() {
         let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
         let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
-        let mut sc = new_test_zug(weights, vec![], &[]);
+        let mut zug = new_test_zug(weights, vec![], &[]);
 
         // The threshold is the highest number that's below 2/3 of the weight.
-        assert_eq!(a, sc.quorum_threshold().0);
+        assert_eq!(a, zug.quorum_threshold().0);
 
         // Alice alone is not a quorum, but with Carol she is.
-        assert!(!sc.is_quorum(vec![].into_iter()));
-        assert!(!sc.is_quorum(vec![alice_idx].into_iter()));
-        assert!(sc.is_quorum(vec![alice_idx, carol_idx].into_iter()));
-        assert!(sc.is_quorum(vec![alice_idx, bob_idx, carol_idx].into_iter()));
+        assert!(!zug.is_quorum(vec![].into_iter()));
+        assert!(!zug.is_quorum(vec![alice_idx].into_iter()));
+        assert!(zug.is_quorum(vec![alice_idx, carol_idx].into_iter()));
+        assert!(zug.is_quorum(vec![alice_idx, bob_idx, carol_idx].into_iter()));
 
         // If Carol is known to be faulty, she counts towards every quorum.
-        sc.mark_faulty(&CAROL_PUBLIC_KEY);
+        zug.mark_faulty(&CAROL_PUBLIC_KEY);
 
         // So now Alice's vote alone is sufficient.
-        assert!(!sc.is_quorum(vec![].into_iter()));
-        assert!(sc.is_quorum(vec![alice_idx].into_iter()));
+        assert!(!zug.is_quorum(vec![].into_iter()));
+        assert!(zug.is_quorum(vec![alice_idx].into_iter()));
     }
 }
 
@@ -977,20 +977,20 @@ fn update_proposal_timeout() {
     let mut rng = crate::new_rng();
 
     let (weights, _validators) = abc_weights(1, 2, 3);
-    let mut sc = new_test_zug(weights, vec![], &[]);
-    let _outcomes = sc.handle_timer(
+    let mut zug = new_test_zug(weights, vec![], &[]);
+    let _outcomes = zug.handle_timer(
         Timestamp::from(100000),
         Timestamp::from(100000),
         TIMER_ID_UPDATE,
         &mut rng,
     );
 
-    let round_start = sc.current_round_start;
-    let grace_factor = sc.config.proposal_grace_period as f64 / 100.0 + 1.0;
-    let inertia = sc.config.proposal_timeout_inertia;
-    let initial_timeout = sc.config.proposal_timeout.millis() as f64 * grace_factor;
+    let round_start = zug.current_round_start;
+    let grace_factor = zug.config.proposal_grace_period as f64 / 100.0 + 1.0;
+    let inertia = zug.config.proposal_timeout_inertia;
+    let initial_timeout = zug.config.proposal_timeout.millis() as f64 * grace_factor;
 
-    let timeout = sc.proposal_timeout().millis() as f64;
+    let timeout = zug.proposal_timeout().millis() as f64;
 
     assert_approx!(initial_timeout, timeout);
 
@@ -1000,25 +1000,28 @@ fn update_proposal_timeout() {
     let fail_rounds = (inertia as f64 * 2.0 / 3.0).round() as u16;
     let success_rounds = 2 * inertia - fail_rounds;
     for _ in 0..fail_rounds {
-        sc.update_proposal_timeout(round_start + TimeDiff::from_seconds(10000));
+        zug.update_proposal_timeout(round_start + TimeDiff::from_seconds(10000));
     }
-    assert_approx!(2.0 * initial_timeout, sc.proposal_timeout().millis() as f64);
+    assert_approx!(
+        2.0 * initial_timeout,
+        zug.proposal_timeout().millis() as f64
+    );
     for _ in 0..success_rounds {
-        sc.update_proposal_timeout(round_start + TimeDiff::from(1));
+        zug.update_proposal_timeout(round_start + TimeDiff::from(1));
     }
-    assert_approx!(initial_timeout, sc.proposal_timeout().millis() as f64);
+    assert_approx!(initial_timeout, zug.proposal_timeout().millis() as f64);
 
     // If the proposal delay is consistently t, the timeout will settle on t * grace_factor
     // within 2 * inertia rounds.
-    let min_delay = (sc.proposal_timeout().millis() as f64 / grace_factor) as u64;
+    let min_delay = (zug.proposal_timeout().millis() as f64 / grace_factor) as u64;
     for _ in 0..10 {
         let delay = TimeDiff::from(rng.gen_range(min_delay..(min_delay * 2)));
         for _ in 0..(2 * inertia) {
-            sc.update_proposal_timeout(round_start + delay);
+            zug.update_proposal_timeout(round_start + delay);
         }
         assert_eq!(
             delay.millis() as f64 * grace_factor,
-            sc.proposal_timeout().millis() as f64
+            zug.proposal_timeout().millis() as f64
         );
     }
 }
