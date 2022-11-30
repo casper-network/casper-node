@@ -31,7 +31,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, NodeRng,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, NodeRng,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -248,13 +248,17 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
         let correlation_id = Default::default();
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
-        let request = GetBidsRequest::new(state_root_hash);
-        let runner = nodes.values().next().expect("missing node");
-        let engine_state = runner.main_reactor().contract_runtime().engine_state();
-        let bids_result = engine_state
-            .get_bids(correlation_id, request)
-            .expect("get_bids failed");
-        bids_result.into_success().expect("no bids returned")
+        for runner in nodes.values() {
+            let request = GetBidsRequest::new(state_root_hash);
+            let engine_state = runner.main_reactor().contract_runtime().engine_state();
+            let bids_result = engine_state
+                .get_bids(correlation_id, request)
+                .expect("get_bids failed");
+            if let Some(bids) = bids_result.into_success() {
+                return bids;
+            }
+        }
+        unreachable!("at least one node should have bids for era {}", era_number);
     }
 }
 
@@ -402,15 +406,8 @@ async fn dont_upgrade_without_switch_block() {
 
     let mut rng = crate::new_rng();
 
-    // Set up a network with only a single validator.
-    let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
-    let keys: Vec<Arc<SecretKey>> = vec![alice_secret_key];
-    let stakes: BTreeMap<PublicKey, U512> =
-        iter::once((alice_public_key, U512::from(100))).collect();
-
-    // Eras have exactly two blocks each, and there is one block per second.
-    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    const NETWORK_SIZE: usize = 2;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
@@ -458,18 +455,10 @@ async fn dont_upgrade_without_switch_block() {
         });
     }
 
-    // Run until the node shuts down for the upgrade.
+    // Run until the nodes shut down for the upgrade.
     let timeout = Duration::from_secs(120);
-    net.settle_on(
-        &mut rng,
-        |nodes| {
-            nodes
-                .values()
-                .all(|runner| runner.is_shutting_down.is_set())
-        },
-        timeout,
-    )
-    .await;
+    net.settle_on_exit(&mut rng, ExitCode::Success, timeout)
+        .await;
 
     // Verify that the switch block has been stored: Even though it was delayed the node didn't
     // restart before executing and storing it.

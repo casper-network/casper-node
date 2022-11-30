@@ -63,7 +63,7 @@ use smallvec::SmallVec;
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -1547,7 +1547,7 @@ impl Storage {
         txn: &mut Tx,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        debug!(switch_block_era_id_index = ?self.switch_block_era_id_index);
+        trace!(switch_block_era_id_index = ?self.switch_block_era_id_index);
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(txn, block_hash).transpose())

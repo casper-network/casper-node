@@ -741,6 +741,15 @@ where
 }
 
 #[cfg(test)]
+#[derive(Eq, PartialEq, Debug)]
+pub(crate) enum TryCrankOutcome {
+    NoEventsToProcess,
+    ProcessedAnEvent,
+    ShouldExit(ExitCode),
+    Exited,
+}
+
+#[cfg(test)]
 impl<R> Runner<R>
 where
     R: Reactor,
@@ -790,12 +799,20 @@ where
             .await;
     }
 
-    /// Processes a single event if there is one, returns `None` otherwise.
-    pub(crate) async fn try_crank(&mut self, rng: &mut NodeRng) -> Option<Option<ExitCode>> {
-        if self.scheduler.item_count() == 0 {
-            None
+    /// Processes a single event if there is one and we haven't previously handled an exit code.
+    pub(crate) async fn try_crank(&mut self, rng: &mut NodeRng) -> TryCrankOutcome {
+        if self.is_shutting_down.is_set() {
+            TryCrankOutcome::Exited
+        } else if self.scheduler.item_count() == 0 {
+            TryCrankOutcome::NoEventsToProcess
         } else {
-            Some(self.crank(rng).await)
+            match self.crank(rng).await {
+                Some(exit_code) => {
+                    self.is_shutting_down.set();
+                    TryCrankOutcome::ShouldExit(exit_code)
+                }
+                None => TryCrankOutcome::ProcessedAnEvent,
+            }
         }
     }
 
