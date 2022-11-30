@@ -65,7 +65,7 @@ strict_argument_checking = false
 # Number of simultaneous peer requests.
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
-consensus_protocol = 'Zug'
+consensus_protocol = 'Highway'
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

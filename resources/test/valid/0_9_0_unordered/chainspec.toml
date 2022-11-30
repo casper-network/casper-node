@@ -23,7 +23,7 @@ max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
 simultaneous_peer_requests = 5
-consensus_protocol = 'Zug'
+consensus_protocol = 'Highway'
 
 [highway]
 maximum_round_length = '525seconds'
