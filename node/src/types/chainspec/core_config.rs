@@ -105,10 +105,10 @@ impl CoreConfig {
         let minimum_block_time = TimeDiff::from(rng.gen_range(1_000..60_000));
         let validator_slots = rng.gen_range(1..10_000);
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
-        let auction_delay = rng.gen::<u32>() as u64;
+        let auction_delay = rng.gen_range(1..5) as u64;
         let locked_funds_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
         let vesting_schedule_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
-        let unbonding_delay = rng.gen_range(1..1_000_000_000);
+        let unbonding_delay = rng.gen_range((auction_delay + 1)..1_000_000_000);
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1..1_000_000_000),
             rng.gen_range(1..1_000_000_000),
