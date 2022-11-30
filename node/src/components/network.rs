@@ -959,6 +959,10 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match (self.status.clone(), event) {
+            (ComponentStatus::Paused, _) => {
+                warn!("component paused - ignoring event");
+                Effects::new()
+            }
             (ComponentStatus::Fatal(msg), _) => {
                 error!(
                     msg,
