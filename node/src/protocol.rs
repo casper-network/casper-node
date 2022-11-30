@@ -393,6 +393,16 @@ where
 
                 Ok((ev, fut.boxed()))
             }
+            Message::ConsensusRequest(request_msg) => {
+                let (ev, fut) =
+                    effect_builder.create_request_parts(move |responder| ConsensusDemand {
+                        sender,
+                        request_msg,
+                        auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                    });
+
+                Ok((ev, fut.boxed()))
+            }
             _ => Err(payload),
         }
     }
