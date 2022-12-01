@@ -173,6 +173,11 @@ being dispatched will be logged as well. Any event has an id (`ev`) and may have
 event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
 asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
 
+### Changing the logging filter at runtime
+
+If necessary, the filter of a running node can be changed using the diagnostics port, using the `set-log-filter`
+command. See the "Diagnostics port" section for details on how to access it.
+
 ## Debugging
 
 Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.

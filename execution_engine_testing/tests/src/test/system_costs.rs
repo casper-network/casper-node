@@ -65,6 +65,7 @@ const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
 const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
 const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
+const NEW_REDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 6;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
@@ -490,6 +491,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_auction_costs = AuctionCosts {
         delegate: NEW_DELEGATE_COST,
         undelegate: NEW_UNDELEGATE_COST,
+        redelegate: NEW_REDELEGATE_COST,
         ..Default::default()
     };
     let new_mint_costs = MintCosts::default();
@@ -605,6 +607,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     );
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 
+    // Redelegate bid
     let redelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -627,10 +630,10 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     builder.exec(redelegate_request).expect_success().commit();
 
-    let expected_call_cost = U512::from(NEW_UNDELEGATE_COST);
+    let expected_call_cost = U512::from(NEW_REDELEGATE_COST);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
-    // Withdraw bid
+    // Withdraw bid (undelegate)
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account

@@ -531,6 +531,9 @@
                 },
                 "type": "array"
               },
+              "lock_status": {
+                "$ref": "#/components/schemas/ContractPackageStatus"
+              },
               "versions": {
                 "items": {
                   "$ref": "#/components/schemas/ContractVersion"
@@ -542,12 +545,21 @@
               "access_key",
               "disabled_versions",
               "groups",
+              "lock_status",
               "versions"
             ],
             "type": "object"
           },
           "ContractPackageHash": {
             "description": "The hash address of the contract package",
+            "type": "string"
+          },
+          "ContractPackageStatus": {
+            "description": "A enum to determine the lock status of the contract package.",
+            "enum": [
+              "Locked",
+              "Unlocked"
+            ],
             "type": "string"
           },
           "ContractVersion": {

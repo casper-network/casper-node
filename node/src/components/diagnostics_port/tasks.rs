@@ -24,6 +24,7 @@ use tokio::{
 use tracing::{debug, info, info_span, warn, Instrument};
 
 use casper_types::EraId;
+use tracing_subscriber::{filter::ParseError, EnvFilter};
 
 use super::{
     command::{Action, Command, OutputFormat},
@@ -37,6 +38,7 @@ use crate::{
         requests::NetworkInfoRequest,
         EffectBuilder,
     },
+    logging,
     utils::{display_error, ObservableFuse, Peel},
 };
 
@@ -234,6 +236,39 @@ impl Session {
                                 .await?;
                         }
                     }
+                    Action::GetLogFilter => match logging::display_global_env_filter() {
+                        Ok(formatted) => {
+                            self.send_outcome(writer, &Outcome::success("found log filter"))
+                                .await?;
+                            self.send_to_client(writer, &formatted).await?;
+                        }
+                        Err(err) => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::failed(format!("failed to retrieve log filter: {}", err)),
+                            )
+                            .await?;
+                        }
+                    },
+                    Action::SetLogFilter { ref directive } => match set_log_filter(directive) {
+                        Ok(()) => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::success("new logging directive set"),
+                            )
+                            .await?;
+                        }
+                        Err(err) => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::failed(format!(
+                                    "failed to set new logging directive: {}",
+                                    err
+                                )),
+                            )
+                            .await?;
+                        }
+                    },
                     Action::DumpConsensus { era } => {
                         let output = effect_builder
                             .diagnostics_port_dump_consensus_state(
@@ -391,6 +426,24 @@ impl Session {
     ) -> io::Result<u64> {
         tokio::io::copy(src, writer).await
     }
+}
+
+/// Error while trying to set the global log filter.
+#[derive(Debug, Error)]
+enum SetLogFilterError {
+    /// Failed to parse the given directive (the `RUST_LOG=...directive` string).
+    #[error("could not parse filter directive")]
+    ParseError(ParseError),
+    /// Failure setting the correctly parsed filter.
+    #[error("failed to set global filter")]
+    SetFailed(anyhow::Error),
+}
+
+/// Sets the global log using the given new directive.
+fn set_log_filter(filter_str: &str) -> Result<(), SetLogFilterError> {
+    let new_filter = EnvFilter::try_new(filter_str).map_err(SetLogFilterError::ParseError)?;
+
+    logging::reload_global_env_filter(new_filter).map_err(SetLogFilterError::SetFailed)
 }
 
 /// Handler for client connection.

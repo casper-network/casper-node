@@ -76,6 +76,10 @@ pub(super) enum Action {
         #[structopt(short, long)]
         output: Option<OutputFormat>,
     },
+    /// Show the current log filter configuration.
+    GetLogFilter,
+    /// Change the current log filter configuration.
+    SetLogFilter { directive: String },
     /// Dump the state of the consensus component.
     ///
     /// It is recommended to set the output format to `bincode` if the data is to be visualized
