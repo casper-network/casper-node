@@ -69,25 +69,26 @@ fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMeta
 }
 
 fn create_sync_leap_test_chain(
-    non_signed_blocks: &[u64],
+    non_signed_blocks: &[u64], // indices of blocks to not be signed
     include_switch_block_at_tip: bool,
-    maybe_recent_era_count: Option<u64>,
-) -> (Storage, Vec<Block>) {
+    maybe_recent_era_count: Option<u64>, // if Some, override default `RECENT_ERA_COUNT`
+) -> (Storage, Chainspec, Vec<Block>) {
     // Test chain:
-    //      S0 B1 B2 S3 B4 B5 S6 B7 B8 S9 B10 B11
-    //  era 0 | era 1  | era 2  | era 3  | era 4 ...
+    //      S0      S1 B2 B3 S4 B5 B6 S7 B8 B9 S10 B11 B12
+    //  era 0 | era 1 | era 2  | era 3  | era 4   | era 5 ...
     //  where
     //   S - switch block
     //   B - non-switch block
 
-    // If `include_switch_block_at_tip`, the additional switch block of height 12 will be added at
+    // If `include_switch_block_at_tip`, the additional switch block of height 13 will be added at
     // the tip of the chain.
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture_from_parts(
         &harness,
         None,
         None,
-        None,
+        Some(chainspec.protocol_version()),
         None,
         None,
         maybe_recent_era_count,
@@ -99,50 +100,37 @@ fn create_sync_leap_test_chain(
     trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
 
     let mut blocks: Vec<Block> = vec![];
-    [0_u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        .iter()
-        .for_each(|height| {
-            let parent = if *height == 0 {
-                None
-            } else {
-                Some(blocks.get((height - 1) as usize).unwrap())
-            };
-            let block = Block::random_with_specifics_and_parent_and_validator_weights(
-                &mut harness.rng,
-                if *height == 0 {
-                    EraId::from(0)
-                } else {
-                    EraId::from((*height - 1) / 3 + 1)
-                },
-                *height,
-                ProtocolVersion::from_parts(1, 5, 0),
-                *height == 0 || *height == 3 || *height == 6 || *height == 9,
-                None,
-                parent.map(|block| *block.hash()),
-                if *height == 0 || *height == 3 || *height == 6 || *height == 9 {
-                    trusted_validator_weights.clone()
-                } else {
-                    BTreeMap::new()
-                },
-            );
-
-            blocks.push(block);
+    let block_count = 13 + include_switch_block_at_tip as u64;
+    (0_u64..block_count).for_each(|height| {
+        let is_switch = height == 0 || height % 3 == 1;
+        let era_id = EraId::from(match height {
+            0 => 0,
+            1 => 1,
+            _ => (height + 4) / 3,
         });
-    if include_switch_block_at_tip {
-        let height = 12;
-        let parent = Some(blocks.get((height - 1) as usize).unwrap());
+        let parent_hash = if height == 0 {
+            None
+        } else {
+            Some(*blocks.get((height - 1) as usize).unwrap().hash())
+        };
+
         let block = Block::random_with_specifics_and_parent_and_validator_weights(
             &mut harness.rng,
-            EraId::from((height - 1) / 3 + 1),
+            era_id,
             height,
-            ProtocolVersion::from_parts(1, 5, 0),
-            true,
+            chainspec.protocol_version(),
+            is_switch,
             None,
-            parent.map(|block| *block.hash()),
-            trusted_validator_weights.clone(),
+            parent_hash,
+            if is_switch {
+                trusted_validator_weights.clone()
+            } else {
+                BTreeMap::new()
+            },
         );
+
         blocks.push(block);
-    }
+    });
     blocks.iter().for_each(|block| {
         storage.write_block(block).unwrap();
 
@@ -171,7 +159,7 @@ fn create_sync_leap_test_chain(
             storage.completed_blocks.insert(block.height());
         }
     });
-    (storage, blocks)
+    (storage, chainspec, blocks)
 }
 
 /// Storage component test fixture.
@@ -1352,7 +1340,7 @@ fn can_put_and_get_block() {
 
 #[test]
 fn should_get_trusted_ancestor_headers() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1366,14 +1354,14 @@ fn should_get_trusted_ancestor_headers() {
             .collect()
     };
 
-    assert_eq!(get_results(6), &[5, 4, 3]);
-    assert_eq!(get_results(8), &[7, 6]);
-    assert_eq!(get_results(4), &[3]);
+    assert_eq!(get_results(7), &[6, 5, 4]);
+    assert_eq!(get_results(9), &[8, 7]);
+    assert_eq!(get_results(5), &[4]);
 }
 
 #[test]
 fn should_get_signed_block_headers() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1403,26 +1391,27 @@ fn should_get_signed_block_headers() {
     };
 
     assert!(
-        get_results(11, 9).is_empty(),
+        get_results(12, 10).is_empty(),
         "should return empty set if asked for a most recent signed block"
     );
-    assert_eq!(get_results(4, 3), &[6, 9, 11]);
-    assert_eq!(get_results(1, 0), &[3, 6, 9, 11]);
+    assert_eq!(get_results(5, 4), &[7, 10, 12]);
+    assert_eq!(get_results(2, 1), &[4, 7, 10, 12]);
+    assert_eq!(get_results(1, 0), &[4, 7, 10, 12]);
     assert_eq!(
-        get_results(9, 6),
-        &[11],
+        get_results(10, 7),
+        &[12],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(6, 3),
-        &[9, 11],
+        get_results(7, 4),
+        &[10, 12],
         "should not include switch block that was directly requested"
     );
 }
 
 #[test]
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
-    let (storage, blocks) = create_sync_leap_test_chain(&[11], false, None);
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[12], false, None);
 
     let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
@@ -1453,29 +1442,29 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
     };
 
     assert!(
-        get_results(10, 9).is_empty(),
-        "should return empty set if asked for a most recent signed block"
+        get_results(11, 10).is_empty(),
+        "should return empty set if asked for a most recent signed block",
     );
-    assert_eq!(get_results(4, 3), &[6, 9, 10]);
-    assert_eq!(get_results(1, 0), &[3, 6, 9, 10]);
+    assert_eq!(get_results(5, 4), &[7, 10, 11]);
+    assert_eq!(get_results(2, 1), &[4, 7, 10, 11]);
+    assert_eq!(get_results(1, 0), &[4, 7, 10, 11]);
     assert_eq!(
-        get_results(9, 6),
-        &[10],
+        get_results(10, 7),
+        &[11],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(6, 3),
-        &[9, 10],
+        get_results(7, 4),
+        &[10, 11],
         "should not include switch block that was directly requested"
     );
 }
 
 #[test]
 fn should_get_sync_leap() {
-    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
 
-    let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
+    let requested_block_hash = blocks.get(6).unwrap().header().block_hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
@@ -1484,47 +1473,22 @@ fn should_get_sync_leap() {
         _ => panic!("should have leap sync"),
     };
 
-    assert_eq!(sync_leap.trusted_block_header.height(), 5);
+    assert_eq!(sync_leap.trusted_block_header.height(), 6);
     assert_eq!(
         block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
-        vec![4, 3],
+        vec![5, 4],
     );
     assert_eq!(
         signed_block_headers_into_heights(&sync_leap.signed_block_headers),
-        vec![6, 9, 11]
+        vec![7, 10, 12]
     );
 
-    assert!(sync_leap.validate(&Arc::new(chainspec)).is_ok());
+    sync_leap.validate(&Arc::new(chainspec)).unwrap();
 }
 
 #[test]
 fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
-    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
-
-    let requested_block_hash = blocks.get(11).unwrap().header().block_hash();
-    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
-    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
-
-    let sync_leap = match sync_leap_result {
-        FetchResponse::Fetched(sync_leap) => sync_leap,
-        _ => panic!("should have leap sync"),
-    };
-
-    assert_eq!(sync_leap.trusted_block_header.height(), 11);
-    assert_eq!(
-        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
-        vec![10, 9],
-    );
-    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
-
-    assert!(sync_leap.validate(&Arc::new(chainspec)).is_ok());
-}
-
-#[test]
-fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
-    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let (storage, blocks) = create_sync_leap_test_chain(&[], true, None);
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
@@ -1538,19 +1502,42 @@ fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block()
     assert_eq!(sync_leap.trusted_block_header.height(), 12);
     assert_eq!(
         block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
-        vec![11, 10, 9],
+        vec![11, 10],
     );
     assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
 
-    assert!(sync_leap.validate(&Arc::new(chainspec)).is_ok());
+    sync_leap.validate(&Arc::new(chainspec)).unwrap();
+}
+
+#[test]
+fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], true, None);
+
+    let requested_block_hash = blocks.get(13).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(sync_leap.trusted_block_header.height(), 13);
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![12, 11, 10],
+    );
+    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
+
+    sync_leap.validate(&Arc::new(chainspec)).unwrap();
 }
 
 #[test]
 fn should_respect_allowed_era_diff_in_get_sync_leap() {
     let maybe_recent_era_count = Some(1);
-    let (storage, blocks) = create_sync_leap_test_chain(&[], false, maybe_recent_era_count);
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, maybe_recent_era_count);
 
-    let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
+    let requested_block_hash = blocks.get(6).unwrap().header().block_hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
