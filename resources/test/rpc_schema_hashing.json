@@ -307,6 +307,32 @@
             ],
             "type": "object"
           },
+          "BlockSynchronizerStatus": {
+            "additionalProperties": false,
+            "properties": {
+              "forward": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockSyncStatus"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "historical": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockSyncStatus"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
           "CLType": {
             "anyOf": [
               {
@@ -3694,7 +3720,18 @@
                     "high": 0,
                     "low": 0
                   },
-                  "block_sync": [],
+                  "block_sync": {
+                    "forward": {
+                      "acquisition_state": "have block body(6701) for: block hash 5990..4983",
+                      "block_hash": "59907b1e32a9158169c4d89d9ce5ac9164fc31240bfcfb0969227ece06d74983",
+                      "block_height": 6701
+                    },
+                    "historical": {
+                      "acquisition_state": "have strict finality(40) for: block hash 16dd..c55e",
+                      "block_hash": "16ddf28e2b3d2e17f4cef36f8b58827eca917af225d139b0c77df3b4a67dc55e",
+                      "block_height": 40
+                    }
+                  },
                   "build_version": "1.0.0-xxxxxxxxx@DEBUG",
                   "chainspec_name": "casper-example",
                   "last_added_block_info": {
@@ -3742,11 +3779,8 @@
                   "description": "The available block range in storage."
                 },
                 "block_sync": {
-                  "description": "The status of the block synchronizer builders.",
-                  "items": {
-                    "$ref": "#/components/schemas/BlockSyncStatus"
-                  },
-                  "type": "array"
+                  "$ref": "#/components/schemas/BlockSynchronizerStatus",
+                  "description": "The status of the block synchronizer builders."
                 },
                 "build_version": {
                   "description": "The compiled node version.",

@@ -124,10 +124,11 @@
     },
     "block_sync": {
       "description": "The status of the block synchronizer builders.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/BlockSyncStatus"
-      }
+      "allOf": [
+        {
+          "$ref": "#/definitions/BlockSynchronizerStatus"
+        }
+      ]
     }
   },
   "additionalProperties": false,
@@ -284,6 +285,32 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "BlockSynchronizerStatus": {
+      "type": "object",
+      "properties": {
+        "historical": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forward": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false
