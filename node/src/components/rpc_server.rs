@@ -496,9 +496,6 @@ mod tests {
             env!("CARGO_MANIFEST_DIR")
         );
 
-        //let actual_schema = serde_json::to_string_pretty(&schema_for_value!(OPEN_RPC_SCHEMA.clone())).unwrap();
-        //println!("{}", actual_schema);
-
         assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
     }
 }
