@@ -10,7 +10,7 @@ import * as CL from "./";
 
 /**
  * Creates new seed for a dictionary partition of the global state.
- * 
+ *
  * @category Storage
  * @returns Returns newly provisioned [[URef]]
  */
@@ -39,19 +39,19 @@ export function newDictionary(keyName: String): URef {
  * @category Storage
  * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function dictionaryGet(seed_uref: URef, key: String): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, key: String): StaticArray<u8> | null {
     let seedUrefBytes = seed_uref.toBytes();
     const keyBytes = encodeUTF8(key);
 
     let valueSize = new Uint8Array(1);
-    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
+    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, changetype<usize>(keyBytes), keyBytes.byteLength, valueSize.dataStart);
     if (ret == ErrorCode.ValueNotFound){
         return null;
     }
     const error = Error.fromResult(ret);
     if (error != null) {
         error.revert();
-        return <Uint8Array>unreachable();
+        return <StaticArray<u8>>unreachable();
     }
     return readHostBuffer(valueSize[0]);
 }
@@ -67,8 +67,8 @@ export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
     externals.dictionary_put(
         urefBytes.dataStart,
         urefBytes.length,
-        keyBytes.dataStart,
-        keyBytes.length,
+        changetype<usize>(keyBytes),
+        keyBytes.byteLength,
         valueBytes.dataStart,
         valueBytes.length
     );

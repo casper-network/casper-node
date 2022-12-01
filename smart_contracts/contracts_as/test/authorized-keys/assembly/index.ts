@@ -11,7 +11,7 @@ const ARG_DEPLOY_THRESHOLD = "deploy_threshold";
 export function call(): void {
   let publicKeyBytes = new Array<u8>(32);
   publicKeyBytes.fill(123);
-  let accountHash = new AccountHash(arrayToTyped(publicKeyBytes));
+  let accountHash = new AccountHash(publicKeyBytes);
 
   const addResult = addAssociatedKey(accountHash, 100);
   switch (addResult) {
@@ -42,5 +42,5 @@ export function call(): void {
       return;
     }
   }
-  
+
 }

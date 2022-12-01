@@ -30,7 +30,7 @@ for the name of the wasm file.
   "name": "your-contract-name",
   ...
   "scripts": {
-    "asbuild:optimized": "asc assembly/index.ts -b dist/your-contract-name.wasm --validate --optimize --use abort=",
+    "asbuild:optimized": "asc assembly/index.ts -b dist/your-contract-name.wasm --validate  --optimize  --optimizeLevel 3 --converge  --noAssert  --use abort=",
     "asbuild": "npm run asbuild:optimized",
     ...
   },

@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/transfer_purse_to_account_stored.wasm   --optimize --use abort=",
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/transfer_purse_to_account_stored.wasm    --optimize  --optimizeLevel 3 --converge  --noAssert  --use abort=",
     "asbuild": "npm run asbuild:optimized"
   },
   "devDependencies": {

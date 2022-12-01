@@ -38,15 +38,15 @@ export function delegate(): void {
     let maybeId: Ref<u64> | null = null;
     if (maybeOptionalId.isSome()) {
         const maybeIdBytes = maybeOptionalId.unwrap();
-        maybeId = new Ref(fromBytesU64(maybeIdBytes).unwrap());
+        maybeId = new Ref(fromBytesU64(StaticArray.fromArray(maybeIdBytes)).unwrap());
     }
-    
+
     if (amountResult.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidAmountArg).revert();
         return;
     }
     let amount = amountResult.value;
-    const result = transferFromPurseToAccount(<URef>mainPurse, <Uint8Array>destinationAccountAddrArg, amount, maybeId);
+    const result = transferFromPurseToAccount(<URef>mainPurse, destinationAccountAddrArg, amount, maybeId);
     let message = "";
     if (result.isOk) {
         const foo = result.ok;
@@ -59,7 +59,7 @@ export function delegate(): void {
                 break;
         }
     }
-    
+
     if (result.isErr) {
         message = "Err(ApiError::Mint(InsufficientFunds) [65024])";
     }

@@ -15,7 +15,7 @@ const DO_NOTHING_PACKAGE_HASH_KEY_NAME = "do_nothing_package_hash";
 const DO_NOTHING_ACCESS_KEY_NAME = "do_nothing_access";
 
 export function delegate(): void {
-  let key = new Uint8Array(32);
+  let key = new StaticArray<u8>(32);
   for (var i = 0; i < 32; i++) {
     key[i] = 1;
   }
@@ -49,7 +49,7 @@ export function call(): void {
   }
 
   const result = CL.addContractVersion(
-    <Uint8Array>doNothingPackageHash.hash,
+    <StaticArray<u8>>doNothingPackageHash.hash,
     entryPoints,
     new Array<Pair<String, Key>>(),
   );
