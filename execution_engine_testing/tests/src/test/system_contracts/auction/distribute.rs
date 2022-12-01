@@ -996,7 +996,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_VALIDATOR => VALIDATOR_1.clone()
         },
     )
-        .build();
+    .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2138,7 +2138,6 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_actual_payout
     ));
-
 }
 
 #[ignore]
@@ -2312,8 +2311,12 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
-    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE * (initial_supply + expected_total_reward.to_integer());
-    let expected_total_reward_3 = *GENESIS_ROUND_SEIGNIORAGE_RATE * (initial_supply + expected_total_reward.to_integer() + expected_total_reward_2.to_integer());
+    let expected_total_reward_2 =
+        *GENESIS_ROUND_SEIGNIORAGE_RATE * (initial_supply + expected_total_reward.to_integer());
+    let expected_total_reward_3 = *GENESIS_ROUND_SEIGNIORAGE_RATE
+        * (initial_supply
+            + expected_total_reward.to_integer()
+            + expected_total_reward_2.to_integer());
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 

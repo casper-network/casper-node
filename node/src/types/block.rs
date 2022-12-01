@@ -53,9 +53,6 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let public_key_1 = PublicKey::from(&secret_key_1);
     let equivocators = vec![public_key_1];
 
-    let secret_key_2 = SecretKey::ed25519_from_bytes([1; 32]).unwrap();
-    let public_key_2 = PublicKey::from(&secret_key_2);
-
     let secret_key_3 = SecretKey::ed25519_from_bytes([2; 32]).unwrap();
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];

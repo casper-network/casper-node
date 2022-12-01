@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String};
+use alloc::string::String;
 
 use casper_contract::contract_api::{runtime, system};
 

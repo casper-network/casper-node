@@ -134,7 +134,7 @@ fn should_run_ee_1152_regression_test() {
 
     assert!(!era_validators.is_empty());
 
-    let (era_id, trusted_era_validators) = era_validators
+    let (era_id, _) = era_validators
         .into_iter()
         .last()
         .expect("should have last element");
@@ -142,7 +142,7 @@ fn should_run_ee_1152_regression_test() {
 
     builder.exec(undelegate_request).expect_success().commit();
 
-    let mut step_request = StepRequestBuilder::new()
+    let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         // Next era id is used for returning future era validators, which we don't need to inspect

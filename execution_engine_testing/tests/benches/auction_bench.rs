@@ -189,7 +189,7 @@ fn setup_bench_run_auction(
         |b| {
             b.iter(|| {
                 era_end_timestamp += TIMESTAMP_INCREMENT_MILLIS;
-                step_and_run_auction(&mut builder, &validator_keys)
+                step_and_run_auction(&mut builder)
             })
         },
     );
@@ -233,8 +233,8 @@ fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
     ret
 }
 
-fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[PublicKey]) {
-    let mut step_request_builder = StepRequestBuilder::new()
+fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
+    let step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0);
 

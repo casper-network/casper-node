@@ -1852,7 +1852,7 @@ where
             DirectSystemContractCall::DistributeRewards,
             runtime_args,
             &virtual_system_account,
-            authorization_keys.clone(),
+            authorization_keys,
             BlockTime::default(),
             deploy_hash,
             gas_limit,

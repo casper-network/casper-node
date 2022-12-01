@@ -132,7 +132,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .expect("should have last element");
     assert!(era_id > INITIAL_ERA_ID, "{}", era_id);
 
-    let mut step_request = StepRequestBuilder::new()
+    let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(*NEW_PROTOCOL_VERSION)
         // Next era id is used for returning future era validators, which we don't need to inspect

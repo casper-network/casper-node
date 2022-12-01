@@ -147,7 +147,7 @@ pub fn run_blocks_with_transfers_and_step(
         let transfer_root = builder.get_post_state_hash();
         let maybe_auction_root = if run_auction {
             if use_scratch {
-                step_and_run_auction(&mut builder, &validator_keys);
+                step_and_run_auction(&mut builder);
             } else {
                 builder.advance_era();
                 builder.commit();
@@ -381,8 +381,8 @@ pub fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
 }
 
 /// Build a step request and run the auction.
-pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[PublicKey]) {
-    let mut step_request_builder = StepRequestBuilder::new()
+pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
+    let step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0);
 
