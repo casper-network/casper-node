@@ -273,23 +273,23 @@ impl<REv: 'static> ComponentHarness<REv> {
             for _ in 0..(self.scheduler.item_count()) {
                 let ((_ancestor, ev), _queue_kind) = self.runtime.block_on(self.scheduler.pop());
 
-                if let Some(ctrl_ann) = ev.as_control() {
-                    match ctrl_ann {
-                        ControlAnnouncement::ShutdownForUpgrade { .. } => {
-                            panic!("a control announcement requesting a shutdown was received")
-                        }
-                        fatal @ ControlAnnouncement::FatalError { .. } => {
-                            panic!(
-                                "a control announcement requesting a fatal error was received: {}",
-                                fatal
-                            )
-                        }
-                        ControlAnnouncement::QueueDumpRequest { .. } => {
-                            panic!("queue dumps are not supported in the test harness")
-                        }
+                if !ev.is_control() {
+                    debug!(?ev, "ignoring event while looking for a fatal");
+                    continue;
+                }
+                match ev.try_into_control().unwrap() {
+                    ControlAnnouncement::ShutdownForUpgrade { .. } => {
+                        panic!("a control announcement requesting a shutdown was received")
                     }
-                } else {
-                    debug!(?ev, "ignoring event while looking for a fatal")
+                    fatal @ ControlAnnouncement::FatalError { .. } => {
+                        panic!(
+                            "a control announcement requesting a fatal error was received: {}",
+                            fatal
+                        )
+                    }
+                    ControlAnnouncement::QueueDumpRequest { .. } => {
+                        panic!("queue dumps are not supported in the test harness")
+                    }
                 }
             }
 
@@ -335,17 +335,20 @@ pub(crate) enum UnitTestEvent {
 }
 
 impl ReactorEvent for UnitTestEvent {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
+    fn is_control(&self) -> bool {
         match self {
-            UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-            _ => None,
+            UnitTestEvent::ControlAnnouncement(_) | UnitTestEvent::FatalAnnouncement(_) => true,
+            UnitTestEvent::NetworkRequest(_) => false,
         }
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-            UnitTestEvent::FatalAnnouncement(_) | UnitTestEvent::NetworkRequest(_) => None,
+            UnitTestEvent::FatalAnnouncement(FatalAnnouncement { file, line, msg }) => {
+                Some(ControlAnnouncement::FatalError { file, line, msg })
+            }
+            UnitTestEvent::NetworkRequest(_) => None,
         }
     }
 }

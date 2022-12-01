@@ -389,13 +389,13 @@ fn get_highest_complete_block_header(
 }
 
 /// Stores a block in a storage component.
-fn put_block(
+fn put_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block: Box<Block>,
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutBlock { block, responder }.into()
+        StorageRequest::PutCompleteBlock { block, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -517,14 +517,17 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting 33 changes this.
-    let was_new = put_block(&mut harness, &mut storage, block_33.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
-    assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
+    assert_eq!(
+        get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
+        Some(block_33.header())
+    );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
@@ -541,14 +544,17 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting block with height 14, no change in highest.
-    let was_new = put_block(&mut harness, &mut storage, block_14.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
-    assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
+    assert_eq!(
+        get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
+        Some(block_33.header())
+    );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
     assert_eq!(
@@ -571,7 +577,7 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_block(&mut harness, &mut storage, block_99.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
     // Mark block 99 as complete.
     storage.completed_blocks.insert(99);
     assert!(was_new);
@@ -636,14 +642,14 @@ fn different_block_at_height_is_fatal() {
         None,
     ));
 
-    let was_new = put_block(&mut harness, &mut storage, block_44_a.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
 
-    let was_new = put_block(&mut harness, &mut storage, block_44_a);
+    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a);
     assert!(was_new);
 
     // Putting a different block with the same height should now crash.
-    put_block(&mut harness, &mut storage, block_44_b);
+    put_complete_block(&mut harness, &mut storage, block_44_b);
 }
 
 #[test]
@@ -1025,7 +1031,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let deploy = Deploy::random(&mut harness.rng);
     let execution_result: ExecutionResult = harness.rng.gen();
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
-    put_block(
+    put_complete_block(
         &mut harness,
         &mut storage,
         Box::new(block.disable_switch_block().clone()),
@@ -1097,7 +1103,7 @@ fn should_hard_reset() {
         .collect();
 
     for block in &blocks {
-        assert!(put_block(
+        assert!(put_complete_block(
             &mut harness,
             &mut storage,
             Box::new(block.clone())
@@ -1318,11 +1324,11 @@ fn can_put_and_get_block() {
 
     let mut storage = storage_fixture(&harness);
 
-    let was_new = put_block(&mut harness, &mut storage, block.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
 
     // Storing the same block again should work, but yield a result of `true`.
-    let was_new_second_time = put_block(&mut harness, &mut storage, block.clone());
+    let was_new_second_time = put_complete_block(&mut harness, &mut storage, block.clone());
     assert!(
         was_new_second_time,
         "storing block the second time should have returned `true`"
@@ -1634,7 +1640,7 @@ fn should_get_block_header_by_height() {
     // Requesting the block header before it is in storage should return None.
     assert!(get_block_header_by_height(&mut harness, &mut storage, height).is_none());
 
-    let was_new = put_block(&mut harness, &mut storage, Box::new(block));
+    let was_new = put_complete_block(&mut harness, &mut storage, Box::new(block));
     assert!(was_new);
 
     // Requesting the block header after it is in storage should return the block header.

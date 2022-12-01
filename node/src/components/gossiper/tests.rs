@@ -81,8 +81,8 @@ enum Event {
 }
 
 impl ReactorEvent for Event {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        None
+    fn is_control(&self) -> bool {
+        false
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
