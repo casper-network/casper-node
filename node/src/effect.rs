@@ -2078,7 +2078,8 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         finalized_approvals: FinalizedApprovals,
-    ) where
+    ) -> bool
+    where
         REv: From<StorageRequest>,
     {
         self.make_request(

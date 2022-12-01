@@ -490,8 +490,9 @@ pub(crate) enum StorageRequest {
         deploy_hash: DeployHash,
         /// The set of finalized approvals.
         finalized_approvals: FinalizedApprovals,
-        /// Responder, responded to once the approvals are written.
-        responder: Responder<()>,
+        /// Responder, responded to once the approvals are written.  If true, new approvals were
+        /// written.
+        responder: Responder<bool>,
     },
 }
 

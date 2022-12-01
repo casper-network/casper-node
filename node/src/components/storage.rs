@@ -2113,7 +2113,7 @@ impl Storage {
         &self,
         deploy_hash: &DeployHash,
         finalized_approvals: &FinalizedApprovals,
-    ) -> Result<(), FatalStorageError> {
+    ) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let maybe_original_deploy: Option<Deploy> = txn.get_value(self.deploy_db, &deploy_hash)?;
         let original_deploy =
@@ -2122,7 +2122,13 @@ impl Storage {
             })?;
 
         // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.inner() {
+        let maybe_existing_finalized_approvals: Option<FinalizedApprovals> =
+            txn.get_value(self.finalized_approvals_db, deploy_hash)?;
+
+        let should_store = original_deploy.approvals() != finalized_approvals.inner()
+            && maybe_existing_finalized_approvals.as_ref() != Some(finalized_approvals);
+
+        if should_store {
             let _ = txn.put_value(
                 self.finalized_approvals_db,
                 deploy_hash,
@@ -2131,7 +2137,7 @@ impl Storage {
             )?;
             txn.commit()?;
         }
-        Ok(())
+        Ok(should_store)
     }
 
     /// Retrieves a deploy from the deploy store by deploy hash.

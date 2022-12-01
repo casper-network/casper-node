@@ -547,7 +547,7 @@ async fn should_store_finalized_approvals() {
 
     let mut rng = crate::new_rng();
 
-    // Set up a network with two validators.
+    // Set up a network with two nodes.
     let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_secret_key = Arc::new(SecretKey::random(&mut rng));
@@ -562,15 +562,20 @@ async fn should_store_finalized_approvals() {
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+    chain.chainspec_mut().core_config.validator_slots = 1;
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
 
-    // Wait for all nodes to proceed to era 1.
-    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
-        .await;
+    // Wait for all nodes to complete era 0.
+    net.settle_on(
+        &mut rng,
+        has_completed_era(EraId::from(0)),
+        Duration::from_secs(30),
+    )
+    .await;
 
     // Submit a deploy.
     let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut rng);
@@ -646,7 +651,7 @@ async fn should_store_finalized_approvals() {
     }
 
     // Run until the deploy gets executed.
-    let timeout = Duration::from_secs(90);
+    let timeout = Duration::from_secs(30);
     net.settle_on(
         &mut rng,
         |nodes| {

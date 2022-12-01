@@ -32,7 +32,10 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure},
+    types::{
+        chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure,
+        FinalizedApprovals,
+    },
     utils::Source,
     NodeRng,
 };
@@ -761,35 +764,6 @@ impl DeployAcceptor {
         }
     }
 
-    fn handle_put_to_storage<REv: ReactorEventT>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
-        is_new: bool,
-        verification_start_timestamp: Timestamp,
-    ) -> Effects<Event> {
-        let EventMetadata {
-            deploy,
-            source,
-            maybe_responder,
-        } = event_metadata;
-        self.metrics.observe_accepted(verification_start_timestamp);
-        let mut effects = Effects::new();
-        if is_new {
-            effects.extend(
-                effect_builder
-                    .announce_new_deploy_accepted(deploy, source)
-                    .ignore(),
-            );
-        }
-
-        // success
-        if let Some(responder) = maybe_responder {
-            effects.extend(responder.respond(Ok(())).ignore());
-        }
-        effects
-    }
-
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -841,6 +815,70 @@ impl DeployAcceptor {
                 .announce_invalid_deploy(deploy, source)
                 .ignore(),
         );
+        effects
+    }
+
+    fn handle_put_to_storage<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: EventMetadata,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        let mut effects = Effects::new();
+        if is_new {
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(event_metadata.deploy, event_metadata.source)
+                    .ignore(),
+            );
+        } else if matches!(event_metadata.source, Source::Peer(_)) {
+            return effect_builder
+                .store_finalized_approvals(
+                    *event_metadata.deploy.hash(),
+                    FinalizedApprovals::new(event_metadata.deploy.approvals().clone()),
+                )
+                .event(move |is_new| Event::StoredFinalizedApprovals {
+                    event_metadata,
+                    is_new,
+                    verification_start_timestamp,
+                });
+        }
+        self.metrics.observe_accepted(verification_start_timestamp);
+
+        // success
+        if let Some(responder) = event_metadata.maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+        effects
+    }
+
+    fn handle_stored_finalized_approvals<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: EventMetadata,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        self.metrics.observe_accepted(verification_start_timestamp);
+        let EventMetadata {
+            deploy,
+            source,
+            maybe_responder,
+        } = event_metadata;
+        let mut effects = Effects::new();
+        if is_new {
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(deploy, source)
+                    .ignore(),
+            );
+        }
+
+        // success
+        if let Some(responder) = maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
         effects
     }
 }
@@ -945,6 +983,16 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 is_new,
                 verification_start_timestamp,
             } => self.handle_put_to_storage(
+                effect_builder,
+                event_metadata,
+                is_new,
+                verification_start_timestamp,
+            ),
+            Event::StoredFinalizedApprovals {
+                event_metadata,
+                is_new,
+                verification_start_timestamp,
+            } => self.handle_stored_finalized_approvals(
                 effect_builder,
                 event_metadata,
                 is_new,
