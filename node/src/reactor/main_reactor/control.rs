@@ -9,7 +9,7 @@ use crate::{
         block_accumulator::{StartingWith, SyncInstruction},
         block_synchronizer,
         block_synchronizer::BlockSynchronizerProgress,
-        consensus::EraReport,
+        consensus::{ChainspecConsensusExt, EraReport},
         contract_runtime::ExecutionPreState,
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port, event_stream_server, network, rest_server, rpc_server, sync_leaper,
@@ -383,7 +383,9 @@ impl MainReactor {
                 trace!("CatchUp: leap_status: {:?}", leap_status);
                 return match leap_status {
                     ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
-                        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
+                        let era_count = self.chainspec.number_of_past_switch_blocks_needed();
+                        let sync_leap_identifier =
+                            SyncLeapIdentifier::sync_to_tip(block_hash, era_count as u8);
                         if let LeapStatus::Failed {
                             error,
                             sync_leap_identifier: _,
@@ -415,7 +417,7 @@ impl MainReactor {
                                 peers_to_ask,
                             })
                         });
-                        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
+                        CatchUpInstruction::Do(Duration::from_secs(5), effects)
                     }
                     LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
                         "sync leaper is awaiting response".to_string(),
@@ -446,6 +448,25 @@ impl MainReactor {
                             self.chainspec.core_config.simultaneous_peer_requests,
                         );
                         self.block_accumulator.handle_validators(effect_builder);
+
+                        let era_count = self.chainspec.number_of_past_switch_blocks_needed();
+                        match self.storage.read_highest_switch_block_headers(era_count) {
+                            Ok(headers) => {
+                                debug!(
+                                    "populated highest switch block headers ({} headers)",
+                                    headers.len()
+                                );
+                                self.recent_switch_block_headers = headers;
+                            }
+                            Err(err) => {
+                                return CatchUpInstruction::Fatal(format!(
+                                    "CatchUp: fatal block store error when attempting to read \
+                                    highest switch block headers: {}",
+                                    err
+                                ));
+                            }
+                        }
+
                         let effects = effect_builder.immediately().event(|_| {
                             MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
                         });

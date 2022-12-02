@@ -41,10 +41,11 @@ mod tests;
 use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
+    cmp,
     collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
-    fs, mem,
+    fs, iter, mem,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -1719,18 +1720,27 @@ impl Storage {
     }
 
     /// Returns block headers of the trusted block's ancestors, back to the most recent switch
-    /// block.
+    /// block so that `number_of_switch_blocks_needed` switch blocks are included in the chain
+    /// segment.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
+        mut number_of_switch_blocks_needed: u8,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
+        if number_of_switch_blocks_needed == 0 {
+            debug!(
+                %trusted_block_header,
+                "invalid attempt to get trusted ancestor headers - no switch blocks requested"
+            );
+            return Ok(None);
+        }
         if trusted_block_header.is_genesis() {
             return Ok(Some(vec![]));
         }
         let mut result = vec![];
         let mut current_trusted_block_header = trusted_block_header.clone();
-        loop {
+        while number_of_switch_blocks_needed > 0 {
             let parent_hash = current_trusted_block_header.parent_hash();
             let parent_block_header: BlockHeader =
                 match txn.get_value(self.block_header_db, &parent_hash)? {
@@ -1743,7 +1753,11 @@ impl Storage {
 
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() {
-                break;
+                if parent_block_header.is_genesis() {
+                    number_of_switch_blocks_needed = 0;
+                } else {
+                    number_of_switch_blocks_needed -= 1;
+                }
             }
             current_trusted_block_header = parent_block_header;
         }
@@ -1757,7 +1771,6 @@ impl Storage {
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
         highest_signed_block_header: &BlockHeaderWithMetadata,
-        mut switch_block: BlockHeader,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
         if trusted_block_header.block_hash()
             == highest_signed_block_header.block_header.block_hash()
@@ -1768,6 +1781,18 @@ impl Storage {
         let start_era_id: u64 = trusted_block_header.next_block_era_id().into();
         let current_era_id: u64 = highest_signed_block_header.block_header.era_id().into();
 
+        let mut switch_block_header = if trusted_block_header.is_switch_block() {
+            trusted_block_header.clone()
+        } else {
+            let previous_era = match trusted_block_header.era_id().predecessor() {
+                Some(era_id) => era_id,
+                None => return Ok(None),
+            };
+            match self.get_switch_block_header_by_era_id(txn, previous_era)? {
+                Some(header) => header,
+                None => return Ok(None),
+            }
+        };
         let mut result = vec![];
 
         for era_id in start_era_id..current_era_id {
@@ -1781,7 +1806,8 @@ impl Storage {
                 None => return Ok(None),
             };
 
-            let next_era_validator_weights = match switch_block.next_era_validator_weights() {
+            let next_era_validator_weights = match switch_block_header.next_era_validator_weights()
+            {
                 Some(next_era_validator_weights) => next_era_validator_weights,
                 None => return Ok(None),
             };
@@ -1793,7 +1819,7 @@ impl Storage {
             )
             .is_ok()
             {
-                switch_block = block.block_header.clone();
+                switch_block_header = block.block_header.clone();
                 result.push(block);
             } else {
                 return Ok(None);
@@ -2185,22 +2211,27 @@ impl Storage {
             None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
         };
 
-        let trusted_ancestors_only = sync_leap_identifier.trusted_ancestor_only();
-        let trusted_ancestor_headers =
-            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
-                Some(trusted_ancestor_headers) => trusted_ancestor_headers,
-                None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
-            };
+        let number_of_switch_blocks_needed = match sync_leap_identifier {
+            SyncLeapIdentifier::Forward {
+                number_of_switch_blocks_needed,
+                ..
+            } => number_of_switch_blocks_needed,
+            SyncLeapIdentifier::Historical { .. } => {
+                let trusted_ancestor_headers =
+                    match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header, 1)? {
+                        Some(trusted_ancestor_headers) => trusted_ancestor_headers,
+                        None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
+                    };
 
-        // highest block and signatures are not requested
-        if trusted_ancestors_only {
-            return Ok(FetchResponse::Fetched(SyncLeap {
-                trusted_ancestor_only: true,
-                trusted_block_header,
-                trusted_ancestor_headers,
-                signed_block_headers: vec![],
-            }));
-        }
+                // highest block and signatures are not requested
+                return Ok(FetchResponse::Fetched(SyncLeap {
+                    number_of_switch_blocks_needed: None,
+                    trusted_block_header,
+                    trusted_ancestor_headers,
+                    signed_block_headers: vec![],
+                }));
+            }
+        };
 
         let highest_complete_block_header =
             match self.get_header_with_metadata_of_highest_complete_block(&mut txn)? {
@@ -2219,34 +2250,61 @@ impl Storage {
 
         if highest_complete_block_header.block_header.height() == 0 {
             return Ok(FetchResponse::Fetched(SyncLeap {
-                trusted_ancestor_only: false,
+                number_of_switch_blocks_needed: Some(number_of_switch_blocks_needed),
                 trusted_block_header,
                 trusted_ancestor_headers: vec![],
                 signed_block_headers: vec![],
             }));
         }
 
-        if let Some(signed_block_headers) = self.get_signed_block_headers(
+        let signed_block_headers = match self.get_signed_block_headers(
             &mut txn,
             &trusted_block_header,
             &highest_complete_block_header,
-            trusted_ancestor_headers
-                .last()
-                .cloned()
-                .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
-            // todo! - protocol version check - should return NotProvided if:
-            //       * signed_block_headers is empty & trusted header is not last before upgrade, or
-            //       * any signed block header is not from current PV
-            return Ok(FetchResponse::Fetched(SyncLeap {
-                trusted_ancestor_only: false,
-                trusted_block_header,
-                trusted_ancestor_headers,
-                signed_block_headers,
-            }));
-        }
+            Some(headers) => headers,
+            None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
+        };
 
-        Ok(FetchResponse::NotFound(sync_leap_identifier))
+        let current_switch_block_count = iter::once(&trusted_block_header)
+            .chain(
+                signed_block_headers
+                    .iter()
+                    .map(|block_and_sigs| &block_and_sigs.block_header),
+            )
+            .filter_map(|header| {
+                if header.is_switch_block() {
+                    return Some(header.block_hash());
+                }
+                None
+            })
+            .collect::<HashSet<_>>()
+            .len();
+
+        let remaining_switch_blocks_needed = cmp::max(
+            1,
+            number_of_switch_blocks_needed
+                .saturating_sub(u8::try_from(current_switch_block_count).unwrap_or(u8::MAX)),
+        );
+
+        let trusted_ancestor_headers = match self.get_trusted_ancestor_headers(
+            &mut txn,
+            &trusted_block_header,
+            remaining_switch_blocks_needed,
+        )? {
+            Some(trusted_ancestor_headers) => trusted_ancestor_headers,
+            None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
+        };
+
+        // todo! - protocol version check - should return NotProvided if:
+        //       * signed_block_headers is empty & trusted header is not last before upgrade, or
+        //       * any signed block header is not from current PV
+        Ok(FetchResponse::Fetched(SyncLeap {
+            number_of_switch_blocks_needed: Some(number_of_switch_blocks_needed),
+            trusted_block_header,
+            trusted_ancestor_headers,
+            signed_block_headers,
+        }))
     }
 
     /// Creates a serialized representation of a `FetchResponse` and the resulting message.

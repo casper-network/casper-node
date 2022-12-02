@@ -130,8 +130,7 @@ impl BlockAccumulator {
         min_block_time: TimeDiff,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        let local_tip = local_tip_height_and_era_id
-            .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id));
+        let local_tip = None;
         info!(?local_tip, "starting local tip");
         Ok(Self {
             validator_matrix,
@@ -172,8 +171,16 @@ impl BlockAccumulator {
         };
 
         if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
-            self.local_tip = Some(new_local_tip);
-            info!(local_tip=?self.local_tip, "new local tip detected");
+            info!(local_tip=?new_local_tip, "new local tip detected");
+            match self.local_tip {
+                None => {
+                    self.local_tip = Some(new_local_tip);
+                    return SyncInstruction::Leap { block_hash };
+                }
+                Some(_) => {
+                    self.local_tip = Some(new_local_tip);
+                }
+            }
         }
 
         if self.should_sync(block_height) {

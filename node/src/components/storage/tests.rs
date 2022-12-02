@@ -37,6 +37,7 @@ use crate::{
 };
 
 const RECENT_ERA_COUNT: u64 = 7;
+const SYNC_LEAP_NUMBER_OF_SWITCH_BLOCKS_NEEDED: u8 = 3;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
@@ -1352,7 +1353,7 @@ fn should_get_trusted_ancestor_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, requested_block_header)
+            .get_trusted_ancestor_headers(&mut txn, requested_block_header, 1)
             .unwrap()
             .unwrap()
             .iter()
@@ -1369,25 +1370,18 @@ fn should_get_trusted_ancestor_headers() {
 fn should_get_signed_block_headers() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
-    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
             .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
-        let previous_switch_block_header = storage
-            .get_block_by_height(&mut txn, previous_switch_block as u64)
-            .unwrap()
-            .unwrap()
-            .header()
-            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1397,18 +1391,18 @@ fn should_get_signed_block_headers() {
     };
 
     assert!(
-        get_results(11, 9).is_empty(),
+        get_results(11).is_empty(),
         "should return empty set if asked for a most recent signed block"
     );
-    assert_eq!(get_results(4, 3), &[6, 9, 11]);
-    assert_eq!(get_results(1, 0), &[3, 6, 9, 11]);
+    assert_eq!(get_results(4), &[6, 9, 11]);
+    assert_eq!(get_results(1), &[3, 6, 9, 11]);
     assert_eq!(
-        get_results(9, 6),
+        get_results(9),
         &[11],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(6, 3),
+        get_results(6),
         &[9, 11],
         "should not include switch block that was directly requested"
     );
@@ -1418,7 +1412,7 @@ fn should_get_signed_block_headers() {
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
     let (storage, blocks) = create_sync_leap_test_chain(&[11], false, None);
 
-    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
@@ -1426,18 +1420,11 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .unwrap()
             .unwrap();
 
-        let previous_switch_block_header = storage
-            .get_block_by_height(&mut txn, previous_switch_block as u64)
-            .unwrap()
-            .unwrap()
-            .header()
-            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1447,18 +1434,18 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
     };
 
     assert!(
-        get_results(10, 9).is_empty(),
+        get_results(10).is_empty(),
         "should return empty set if asked for a most recent signed block"
     );
-    assert_eq!(get_results(4, 3), &[6, 9, 10]);
-    assert_eq!(get_results(1, 0), &[3, 6, 9, 10]);
+    assert_eq!(get_results(4), &[6, 9, 10]);
+    assert_eq!(get_results(1), &[3, 6, 9, 10]);
     assert_eq!(
-        get_results(9, 6),
+        get_results(9),
         &[10],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(6, 3),
+        get_results(6),
         &[9, 10],
         "should not include switch block that was directly requested"
     );
@@ -1470,7 +1457,10 @@ fn should_get_sync_leap() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
-    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(
+        requested_block_hash,
+        SYNC_LEAP_NUMBER_OF_SWITCH_BLOCKS_NEEDED,
+    );
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     let sync_leap = match sync_leap_result {
@@ -1497,7 +1487,10 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let requested_block_hash = blocks.get(11).unwrap().header().block_hash();
-    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(
+        requested_block_hash,
+        SYNC_LEAP_NUMBER_OF_SWITCH_BLOCKS_NEEDED,
+    );
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     let sync_leap = match sync_leap_result {
@@ -1521,7 +1514,10 @@ fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block()
     let (storage, blocks) = create_sync_leap_test_chain(&[], true, None);
 
     let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
-    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(
+        requested_block_hash,
+        SYNC_LEAP_NUMBER_OF_SWITCH_BLOCKS_NEEDED,
+    );
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     let sync_leap = match sync_leap_result {
@@ -1545,7 +1541,10 @@ fn should_respect_allowed_era_diff_in_get_sync_leap() {
     let (storage, blocks) = create_sync_leap_test_chain(&[], false, maybe_recent_era_count);
 
     let requested_block_hash = blocks.get(5).unwrap().header().block_hash();
-    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(
+        requested_block_hash,
+        SYNC_LEAP_NUMBER_OF_SWITCH_BLOCKS_NEEDED,
+    );
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
     assert!(

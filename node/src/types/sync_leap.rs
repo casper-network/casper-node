@@ -48,44 +48,53 @@ pub(crate) enum SyncLeapValidationError {
 
 /// Identifier for a SyncLeap.
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, Hash, PartialEq, Eq, DataSize)]
-pub(crate) struct SyncLeapIdentifier {
-    /// The block hash of the initial trusted block.
-    block_hash: BlockHash,
-    /// If true, signed_block_headers are not required.
-    trusted_ancestor_only: bool,
+pub(crate) enum SyncLeapIdentifier {
+    Forward {
+        block_hash: BlockHash,
+        number_of_switch_blocks_needed: u8,
+    },
+    Historical {
+        block_hash: BlockHash,
+    },
 }
 
 impl SyncLeapIdentifier {
-    pub(crate) fn sync_to_tip(block_hash: BlockHash) -> Self {
-        SyncLeapIdentifier {
+    pub(crate) fn sync_to_tip(block_hash: BlockHash, number_of_switch_blocks_needed: u8) -> Self {
+        SyncLeapIdentifier::Forward {
             block_hash,
-            trusted_ancestor_only: false,
+            number_of_switch_blocks_needed,
         }
     }
 
     pub(crate) fn sync_to_historical(block_hash: BlockHash) -> Self {
-        SyncLeapIdentifier {
-            block_hash,
-            trusted_ancestor_only: true,
-        }
+        SyncLeapIdentifier::Historical { block_hash }
     }
 
     pub(crate) fn block_hash(&self) -> BlockHash {
-        self.block_hash
-    }
-
-    pub(crate) fn trusted_ancestor_only(&self) -> bool {
-        self.trusted_ancestor_only
+        match self {
+            SyncLeapIdentifier::Forward { block_hash, .. }
+            | SyncLeapIdentifier::Historical { block_hash } => *block_hash,
+        }
     }
 }
 
 impl Display for SyncLeapIdentifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} trusted_ancestor_only: {}",
-            self.block_hash, self.trusted_ancestor_only
-        )
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SyncLeapIdentifier::Forward {
+                block_hash,
+                number_of_switch_blocks_needed,
+            } => {
+                write!(
+                    f,
+                    "{} with {} switch blocks",
+                    block_hash, number_of_switch_blocks_needed
+                )
+            }
+            SyncLeapIdentifier::Historical { block_hash } => {
+                write!(f, "{} with ancestors only", block_hash)
+            }
+        }
     }
 }
 
@@ -93,15 +102,26 @@ impl Display for SyncLeapIdentifier {
 /// chain, then so is a later header, which should be the most recent one according to the sender.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, DataSize)]
 pub(crate) struct SyncLeap {
-    /// Requester indicates if they want only the header and ancestor headers,
-    /// of if they want everything.
-    pub trusted_ancestor_only: bool,
+    /// If `None`, this is a historical sync leap, and `signed_block_headers` should not be
+    /// populated.
+    ///
+    /// If `Some`, this defines the number of switch blocks which should be included in the leap.
+    pub number_of_switch_blocks_needed: Option<u8>,
     /// The header of the trusted block specified by hash by the requester.
     pub trusted_block_header: BlockHeader,
-    /// The block headers of the trusted block's ancestors, back to the most recent switch block.
+    /// The block headers of the trusted block's ancestors, back to a switch block.
+    ///
+    /// If `number_of_switch_blocks_needed` is `None`, the switch block will be the most recent
+    /// before the trusted header.
+    ///
+    /// If not, the switch block will be the most recent before the trusted header such that there
+    /// are at least `number_of_switch_blocks_needed` total switch blocks included between this
+    /// field and `signed_block_headers`.
     pub trusted_ancestor_headers: Vec<BlockHeader>,
     /// The headers of all switch blocks known to the sender, after the trusted block but before
     /// their highest block, with signatures, plus the signed highest block.
+    ///
+    /// This field should be empty if `number_of_switch_blocks_needed` is `None`.
     pub signed_block_headers: Vec<BlockHeaderWithMetadata>,
 }
 
@@ -184,9 +204,13 @@ impl Item for SyncLeap {
     type Id = SyncLeapIdentifier;
 
     fn id(&self) -> Self::Id {
-        SyncLeapIdentifier {
-            block_hash: self.trusted_block_header.block_hash(),
-            trusted_ancestor_only: self.trusted_ancestor_only,
+        let block_hash = self.trusted_block_header.block_hash();
+        match self.number_of_switch_blocks_needed {
+            Some(number_of_switch_blocks_needed) => SyncLeapIdentifier::Forward {
+                block_hash,
+                number_of_switch_blocks_needed,
+            },
+            None => SyncLeapIdentifier::Historical { block_hash },
         }
     }
 }
@@ -208,7 +232,7 @@ impl FetcherItem for SyncLeap {
         if self.trusted_ancestor_headers.len() as u64 > chainspec.max_blocks_per_era() {
             return Err(SyncLeapValidationError::TooManyTrustedAncestors);
         }
-        if self.trusted_ancestor_only && !self.signed_block_headers.is_empty() {
+        if self.number_of_switch_blocks_needed.is_none() && !self.signed_block_headers.is_empty() {
             return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
         }
 
@@ -370,10 +394,10 @@ mod tests {
             .collect();
 
         SyncLeap {
+            number_of_switch_blocks_needed: Some(1),
             trusted_block_header,
             trusted_ancestor_headers,
             signed_block_headers,
-            trusted_ancestor_only: false,
         }
     }
 
