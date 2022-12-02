@@ -151,7 +151,7 @@ impl AsyncWrite for WriteEnd {
 ///
 /// Dropping either end of the pipe will close it, causing writes to return broken pipe errors and
 /// reads to return successful 0-byte reads.
-pub(crate) fn pipe() -> (WriteEnd, ReadEnd) {
+pub fn pipe() -> (WriteEnd, ReadEnd) {
     let inner: Arc<Mutex<_>> = Default::default();
     let read_end = ReadEnd {
         inner: inner.clone(),
