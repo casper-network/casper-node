@@ -34,8 +34,8 @@ use crate::{
         announcements::PeerBehaviorAnnouncement,
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
-            ContractRuntimeRequest, FetcherRequest, NetworkInfoRequest, StorageRequest,
-            SyncGlobalStateRequest, TrieAccumulatorRequest,
+            ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
+            StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -106,6 +106,7 @@ pub(crate) trait ReactorEvent:
     + From<ContractRuntimeRequest>
     + From<SyncGlobalStateRequest>
     + From<BlockCompleteConfirmationRequest>
+    + From<MakeBlockExecutableRequest>
     + Send
     + 'static
 {
@@ -128,6 +129,7 @@ impl<REv> ReactorEvent for REv where
         + From<ContractRuntimeRequest>
         + From<SyncGlobalStateRequest>
         + From<BlockCompleteConfirmationRequest>
+        + From<MakeBlockExecutableRequest>
         + Send
         + 'static
 {
@@ -216,14 +218,19 @@ impl BlockSynchronizer {
         }
     }
 
-    pub(crate) fn purge(&mut self, historical_only: bool) {
+    pub(crate) fn purge(&mut self) {
+        self.purge_historical();
+        self.purge_forward();
+    }
+
+    pub(crate) fn purge_historical(&mut self) {
         if let Some(builder) = &self.historical {
             debug!(%builder, "BlockSynchronizer: purging block builder");
         }
         self.historical = None;
-        if historical_only {
-            return;
-        }
+    }
+
+    pub(crate) fn purge_forward(&mut self) {
         if let Some(builder) = &self.forward {
             debug!(%builder, "BlockSynchronizer: purging block builder");
         }
@@ -350,6 +357,28 @@ impl BlockSynchronizer {
     }
 
     /* EVENT LOGIC */
+
+    fn register_block_execution_not_enqueued(&mut self, block_hash: &BlockHash) {
+        match (&mut self.forward, &mut self.historical) {
+            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+                builder.register_block_execution_not_enqueued();
+            }
+            _ => {
+                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+            }
+        }
+    }
+
+    fn register_block_execution_enqueued(&mut self, block_hash: &BlockHash) {
+        match (&mut self.forward, &mut self.historical) {
+            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+                builder.register_block_execution_enqueued();
+            }
+            _ => {
+                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+            }
+        }
+    }
 
     fn register_marked_complete(&mut self, block_hash: &BlockHash) {
         match (&mut self.forward, &mut self.historical) {
@@ -504,12 +533,25 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
+                NeedNext::EnqueueForExecution(block_hash, _) => {
+                    if false == builder.should_fetch_execution_state() {
+                        builder.set_in_flight_latch();
+                        results.extend(
+                            effect_builder
+                                .make_block_executable(block_hash)
+                                .event(move |result| Event::MadeFinalizedBlock {
+                                    block_hash,
+                                    result,
+                                }),
+                        )
+                    }
+                }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
-                    builder.set_in_flight_latch();
                     // Only mark the block complete if we're syncing historical
                     // because we have global state and execution effects (if
                     // any).
                     if builder.should_fetch_execution_state() {
+                        builder.set_in_flight_latch();
                         results.extend(
                             effect_builder
                                 .mark_block_completed(block_height)
@@ -1159,8 +1201,27 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         debug!(%block_hash, "BlockSynchronizer: got 0 peers from accumulator");
                         self.need_next(effect_builder, rng)
                     }
-
-                    // do not hook need next; we're finished sync'ing this block
+                    // do not hook need next for the following events;
+                    Event::MadeFinalizedBlock { block_hash, result } => {
+                        let mut effects = Effects::new();
+                        match result {
+                            Some((finalized_block, deploys)) => {
+                                effects.extend(
+                                    effect_builder
+                                        .enqueue_block_for_execution(finalized_block, deploys)
+                                        .event(move |_| {
+                                            Event::MarkBlockExecutionEnqueued(block_hash)
+                                        }),
+                                );
+                            }
+                            None => self.register_block_execution_not_enqueued(&block_hash),
+                        }
+                        effects
+                    }
+                    Event::MarkBlockExecutionEnqueued(block_hash) => {
+                        self.register_block_execution_enqueued(&block_hash);
+                        Effects::new()
+                    }
                     Event::MarkBlockCompleted(block_hash) => {
                         self.register_marked_complete(&block_hash);
                         Effects::new()

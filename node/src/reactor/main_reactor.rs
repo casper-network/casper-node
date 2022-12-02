@@ -1003,6 +1003,8 @@ impl reactor::Reactor for MainReactor {
                         .handle_event(effect_builder, rng, event),
                 ));
 
+                effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
+
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
                     .validator_matrix
@@ -1105,6 +1107,10 @@ impl reactor::Reactor for MainReactor {
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::BlockCompleteConfirmationRequest(req) => reactor::wrap_effects(
+                MainEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            MainEvent::MakeBlockExecutableRequest(req) => reactor::wrap_effects(
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),

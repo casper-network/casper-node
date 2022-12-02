@@ -7,6 +7,7 @@ mod operations;
 mod types;
 
 use std::{
+    cmp::Ordering,
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
@@ -427,34 +428,56 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
             } => {
-                info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
                 let exec_queue = Arc::clone(&self.exec_queue);
-                let execution_pre_state = Arc::clone(&self.execution_pre_state);
-                let protocol_version = self.protocol_version;
-                if self.execution_pre_state.lock().unwrap().next_block_height
-                    == finalized_block.height()
-                {
-                    effects.extend(
-                        Self::execute_finalized_block_or_requeue(
-                            engine_state,
-                            metrics,
-                            exec_queue,
-                            execution_pre_state,
-                            effect_builder,
-                            protocol_version,
-                            finalized_block,
-                            deploys,
+                let next_block_height = self.execution_pre_state.lock().unwrap().next_block_height;
+                let finalized_block_height = finalized_block.height();
+                match finalized_block_height.cmp(&next_block_height) {
+                    Ordering::Less => {
+                        debug!(
+                            "ContractRuntime: finalized block({}) precedes expected next block({})",
+                            finalized_block_height, next_block_height
+                        );
+                    }
+                    Ordering::Equal => {
+                        info!(
+                            "ContractRuntime: execute finalized block({}) with {} deploys",
+                            finalized_block_height,
+                            deploys.len()
+                        );
+                        let protocol_version = self.protocol_version;
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        let execution_pre_state = Arc::clone(&self.execution_pre_state);
+                        effects.extend(
+                            Self::execute_finalized_block_or_requeue(
+                                engine_state,
+                                metrics,
+                                exec_queue,
+                                execution_pre_state,
+                                effect_builder,
+                                protocol_version,
+                                finalized_block,
+                                deploys,
+                            )
+                            .ignore(),
                         )
-                        .ignore(),
-                    )
-                } else {
-                    exec_queue
-                        .lock()
-                        .unwrap()
-                        .insert(finalized_block.height(), (finalized_block, deploys));
+                    }
+                    Ordering::Greater => {
+                        debug!(
+                            "ContractRuntime: enqueuing({}) waiting for({})",
+                            finalized_block_height, next_block_height
+                        );
+                        info!(
+                        "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
+                        finalized_block_height,
+                        deploys.len()
+                    );
+                        exec_queue
+                            .lock()
+                            .unwrap()
+                            .insert(finalized_block_height, (finalized_block, deploys));
+                    }
                 }
                 effects
             }
@@ -670,6 +693,7 @@ impl ContractRuntime {
             + From<FatalAnnouncement>
             + Send,
     {
+        debug!("ContractRuntime: execute_finalized_block_or_requeue");
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
         let BlockAndExecutionResults {
             block,
@@ -677,6 +701,7 @@ impl ContractRuntime {
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
         } = match run_intensive_task(move || {
+            debug!("ContractRuntime: execute_finalized_block");
             execute_finalized_block(
                 engine_state.as_ref(),
                 Some(metrics),
@@ -692,8 +717,10 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
+        debug!("ContractRuntime: updating new_execution_pre_state");
         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
+        debug!("ContractRuntime: updated new_execution_pre_state");
 
         let current_era_id = block.header().era_id();
 
@@ -736,6 +763,7 @@ impl ContractRuntime {
             queue.remove(&new_execution_pre_state.next_block_height)
         };
         if let Some((finalized_block, deploys)) = next_block {
+            debug!("ContractRuntime: next block enqueue_block_for_execution");
             effect_builder
                 .enqueue_block_for_execution(finalized_block, deploys)
                 .await

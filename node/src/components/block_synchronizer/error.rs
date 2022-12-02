@@ -27,6 +27,7 @@ pub(crate) enum BlockAcquisitionError {
         deploy_id: DeployId,
     },
     InvalidAttemptToMarkComplete,
+    InvalidAttemptToEnqueueBlockForExecution,
     ExecutionResults(super::execution_results_acquisition::Error),
 }
 
@@ -63,6 +64,9 @@ impl Display for BlockAcquisitionError {
                 "invalid attempt to apply approvals hashes results: {}",
                 error
             ),
+            BlockAcquisitionError::InvalidAttemptToEnqueueBlockForExecution => {
+                write!(f, "invalid attempt to enqueue block for execution")
+            }
             BlockAcquisitionError::InvalidAttemptToApplyDeploy { deploy_id } => {
                 write!(f, "invalid attempt to apply deploy: {}", deploy_id)
             }

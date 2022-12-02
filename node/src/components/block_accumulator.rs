@@ -171,40 +171,6 @@ impl BlockAccumulator {
             }
         };
 
-        // BEFORE the f-seq cant help you, LEAP
-        // ? |------------- future chain ------------------------>
-        // IN f-seq not in range of tip, LEAP
-        // |------------- future chain ----?-ATTEMPT_EXECUTION_THRESHOLD->
-        // IN f-seq in range of tip, CAUGHT UP (which will ultimately result in EXEC)
-        // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
-        // AFTER the f-seq cant help you, SYNC-all-state
-        // |------------- future chain ------------------------> ?
-        if starting_with.is_executable_block() {
-            let next_block_hash = {
-                let mut ret: Option<BlockHash> = None;
-                if let Some(highest_perceived) = self.highest_usable_block_height() {
-                    debug_assert!(
-                        block_height <= highest_perceived,
-                        "executable block height({}) is higher than highest perceived({})",
-                        block_height,
-                        highest_perceived
-                    );
-                    if highest_perceived.saturating_sub(self.attempt_execution_threshold)
-                        <= block_height
-                    {
-                        // this will short circuit the block synchronizer to start syncing the
-                        // child of this block after enqueueing this block for execution
-                        ret = self.next_syncable_block_hash(block_hash)
-                    }
-                }
-                ret
-            };
-            return SyncInstruction::BlockExec {
-                block_hash,
-                next_block_hash,
-            };
-        }
-
         if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
             self.local_tip = Some(new_local_tip);
             info!(local_tip=?self.local_tip, "new local tip detected");
@@ -212,7 +178,7 @@ impl BlockAccumulator {
 
         if self.should_sync(block_height) {
             let block_hash_to_sync = match (
-                starting_with.is_synced_block_identifier(),
+                starting_with.is_held_locally(),
                 self.next_syncable_block_hash(block_hash),
             ) {
                 (true, None) => {
@@ -233,15 +199,9 @@ impl BlockAccumulator {
                     return SyncInstruction::BlockSync { block_hash };
                 }
                 None => {
-                    // we expect to be receiving gossiped blocks from other nodes
-                    // if we haven't received any messages describing higher blocks
-                    // for more than the self.dead_air_interval config allows
-                    // we leap again to poll the network
-                    if self.last_progress.elapsed() < self.dead_air_interval {
-                        return SyncInstruction::CaughtUp;
+                    if self.is_caught_up() {
+                        return SyncInstruction::CaughtUp { block_hash };
                     }
-                    // we don't want to swamp the network with "are we there yet" leaps.
-                    self.last_progress = Timestamp::now();
                 }
             }
         }
@@ -555,6 +515,20 @@ impl BlockAccumulator {
         self.block_acceptors
             .get(&block_hash)
             .map(|acceptor| acceptor.peers().iter().cloned().collect())
+    }
+
+    fn is_caught_up(&mut self) -> bool {
+        // we expect to be receiving gossiped blocks from other nodes
+        // if we haven't received any messages describing higher blocks
+        // for more than the self.dead_air_interval config allows
+        // we leap again to poll the network
+        if self.last_progress.elapsed() >= self.dead_air_interval {
+            // we don't want to swamp the network with "are we there yet" leaps.
+            self.last_progress = Timestamp::now();
+            false
+        } else {
+            true
+        }
     }
 
     fn should_sync(&self, starting_with_block_height: u64) -> bool {
