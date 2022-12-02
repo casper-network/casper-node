@@ -275,7 +275,6 @@ impl SyncLeaper {
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
                 error!(%sync_leap_identifier, "fetched a sync leap from storage - should never happen");
-                return;
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
                 let peer_state = match leap_activity.peers.get_mut(&peer) {
