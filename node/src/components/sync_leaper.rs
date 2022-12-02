@@ -251,8 +251,7 @@ impl SyncLeaper {
         &mut self,
         sync_leap_identifier: SyncLeapIdentifier,
         fetch_result: FetchResult<SyncLeap>,
-    ) -> Effects<Event> {
-        let effects = Effects::new();
+    ) {
         let leap_activity = match &mut self.leap_activity {
             Some(leap_activity) => leap_activity,
             None => {
@@ -260,7 +259,7 @@ impl SyncLeaper {
                     %sync_leap_identifier,
                     "received a sync leap response while no requests were in progress"
                 );
-                return effects;
+                return;
             }
         };
 
@@ -270,13 +269,13 @@ impl SyncLeaper {
                 response_hash=%sync_leap_identifier,
                 "block hash in the response doesn't match the one requested"
             );
-            return effects;
+            return;
         }
 
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
                 error!(%sync_leap_identifier, "fetched a sync leap from storage - should never happen");
-                return Effects::new();
+                return;
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
                 let peer_state = match leap_activity.peers.get_mut(&peer) {
@@ -287,7 +286,7 @@ impl SyncLeaper {
                             %sync_leap_identifier,
                             "received a sync leap response from an unknown peer"
                         );
-                        return Effects::new();
+                        return;
                     }
                 };
                 *peer_state = PeerState::Fetched(Box::new(*item));
@@ -301,7 +300,7 @@ impl SyncLeaper {
                             %sync_leap_identifier,
                             "received a sync leap response from an unknown peer"
                         );
-                        return effects;
+                        return;
                     }
                 };
                 info!(%peer, %sync_leap_identifier, "peer rejected our request for a sync leap");
@@ -318,13 +317,12 @@ impl SyncLeaper {
                             %sync_leap_identifier,
                             "received a sync leap response from an unknown peer"
                         );
-                        return effects;
+                        return;
                     }
                 };
                 *peer_state = PeerState::CouldntFetch;
             }
         }
-        effects
     }
 }
 
@@ -348,7 +346,10 @@ where
             Event::FetchedSyncLeapFromPeer {
                 sync_leap_identifier,
                 fetch_result,
-            } => self.fetch_received(sync_leap_identifier, fetch_result),
+            } => {
+                self.fetch_received(sync_leap_identifier, fetch_result);
+                Effects::new()
+            }
         }
     }
 }
