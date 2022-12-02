@@ -93,6 +93,10 @@ pub struct TwoWayFixtures {
 impl TwoWayFixtures {
     /// Creates a new set of two-way fixtures.
     pub fn new(size: usize) -> Self {
+        Self::new_with_window(size, WINDOW_SIZE)
+    }
+    /// Creates a new set of two-way fixtures with a specified window size.
+    pub fn new_with_window(size: usize, window_size: u64) -> Self {
         let (sink, stream) = setup_io_pipe::<Bytes>(size);
 
         let (ack_sink, ack_stream) = setup_io_pipe::<u64>(size);
@@ -102,13 +106,13 @@ impl TwoWayFixtures {
         let boxed_ack_stream: Box<dyn Stream<Item = Result<u64, Infallible>> + Send + Unpin> =
             Box::new(ack_stream);
 
-        let client = BackpressuredSink::new(boxed_sink, boxed_ack_stream, WINDOW_SIZE);
+        let client = BackpressuredSink::new(boxed_sink, boxed_ack_stream, window_size);
 
         let boxed_stream: Box<dyn Stream<Item = Result<Bytes, Infallible>> + Send + Unpin> =
             Box::new(stream);
         let boxed_ack_sink: Box<dyn Sink<u64, Error = Infallible> + Send + Unpin> =
             Box::new(ack_sink);
-        let server = BackpressuredStream::new(boxed_stream, boxed_ack_sink, WINDOW_SIZE);
+        let server = BackpressuredStream::new(boxed_stream, boxed_ack_sink, window_size);
 
         TwoWayFixtures { client, server }
     }

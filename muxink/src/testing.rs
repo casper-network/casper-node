@@ -71,7 +71,8 @@ pub(crate) struct TestStream<T> {
 }
 
 impl<T> TestStream<T> {
-    pub fn new(items: Vec<T>) -> Self {
+    #[cfg(test)]
+    pub(crate) fn new(items: Vec<T>) -> Self {
         TestStream {
             items: items.into(),
             finished: false,
