@@ -29,9 +29,9 @@ use crate::{
             BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest,
-            RpcRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
-            UpgradeWatcherRequest,
+            MakeBlockExecutableRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+            ReactorStatusRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
+            TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -144,7 +144,8 @@ pub(crate) enum MainEvent {
     BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
     #[from]
     BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
-
+    #[from]
+    MakeBlockExecutableRequest(MakeBlockExecutableRequest),
     #[from]
     BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
     #[from]
@@ -321,6 +322,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
+            MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
         }
     }
 }
@@ -490,6 +492,7 @@ impl Display for MainEvent {
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
+            MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
         }
     }
 }

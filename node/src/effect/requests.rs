@@ -607,6 +607,20 @@ impl Display for StorageRequest {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct MakeBlockExecutableRequest {
+    /// Hash of the block to be made executable.
+    pub block_hash: BlockHash,
+    /// Responder with the executable block and it's deploys
+    pub responder: Responder<Option<(FinalizedBlock, Vec<Deploy>)>>,
+}
+
+impl Display for MakeBlockExecutableRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block made executable: {}", self.block_hash)
+    }
+}
+
 /// A request to mark a block at a specific height completed.
 ///
 /// A block is considered complete if

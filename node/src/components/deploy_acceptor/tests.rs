@@ -37,7 +37,10 @@ use crate::{
     },
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
-        requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
+        requests::{
+            BlockCompleteConfirmationRequest, ContractRuntimeRequest, MakeBlockExecutableRequest,
+            NetworkRequest,
+        },
         Responder,
     },
     logging,
@@ -73,6 +76,14 @@ enum Event {
     StorageRequest(StorageRequest),
     #[from]
     NetworkRequest(NetworkRequest<Message>),
+}
+
+impl From<MakeBlockExecutableRequest> for Event {
+    fn from(request: MakeBlockExecutableRequest) -> Self {
+        Event::Storage(storage::Event::MakeBlockExecutableRequest(Box::new(
+            request,
+        )))
+    }
 }
 
 impl From<BlockCompleteConfirmationRequest> for Event {

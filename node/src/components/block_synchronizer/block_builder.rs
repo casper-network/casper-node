@@ -4,7 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, TimeDiff, Timestamp};
@@ -205,6 +205,24 @@ impl BlockBuilder {
             self.acquisition_state,
             BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
         )
+    }
+
+    pub(super) fn register_block_execution_not_enqueued(&mut self) {
+        warn!("failed to enqueue block for execution");
+        // reset latch and try again
+        self.touch();
+    }
+
+    pub(super) fn register_block_execution_enqueued(&mut self) {
+        if let Err(error) = self
+            .acquisition_state
+            .register_block_execution_enqueued(self.should_fetch_execution_state)
+        {
+            error!(%error, "register block execution enqueued failed");
+            self.abort()
+        } else {
+            self.touch();
+        }
     }
 
     pub(super) fn register_marked_complete(&mut self) {

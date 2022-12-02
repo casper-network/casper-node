@@ -372,7 +372,11 @@ impl MainReactor {
         // the block accumulator should be receiving blocks via gossiping
         // and usually has some awareness of the chain ahead of our tip
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
-        debug!("CatchUp: sync_instruction: {:?}", sync_instruction);
+        debug!(
+            ?sync_instruction,
+            "CatchUp: sync_instruction {}",
+            sync_instruction.block_hash()
+        );
         match sync_instruction {
             SyncInstruction::Leap { block_hash } => {
                 let leap_status = self.sync_leaper.leap_status();
@@ -468,12 +472,7 @@ impl MainReactor {
                     Duration::from_millis(500),
                 );
             }
-            SyncInstruction::BlockExec { .. } => {
-                return CatchUpInstruction::Fatal(
-                    "BlockExec is not valid while in CatchUp mode".to_string(),
-                );
-            }
-            SyncInstruction::CaughtUp => {
+            SyncInstruction::CaughtUp { .. } => {
                 match self.should_commit_upgrade() {
                     Ok(true) => return CatchUpInstruction::CommitUpgrade,
                     Ok(false) => (),
@@ -484,7 +483,7 @@ impl MainReactor {
                 }
             }
         }
-        self.block_synchronizer.purge(false);
+        self.block_synchronizer.purge();
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstruction::CaughtUp
     }
@@ -578,11 +577,29 @@ impl MainReactor {
         let starting_with = match forward_progress {
             BlockSynchronizerProgress::Idle => match self.storage.read_highest_complete_block() {
                 Ok(Some(block)) => {
-                    StartingWith::LocalTip(block.id(), block.height(), block.header().era_id())
+                    let block_height = block.height();
+                    let state_root_hash = block.state_root_hash();
+                    let block_hash = block.id();
+                    let accumulated_seed = block.header().accumulated_seed();
+                    match self.refresh_contract_runtime(
+                        block_height + 1,
+                        *state_root_hash,
+                        block_hash,
+                        accumulated_seed,
+                    ) {
+                        Ok(_) => StartingWith::LocalTip(
+                            block.id(),
+                            block_height,
+                            block.header().era_id(),
+                        ),
+                        Err(msg) => {
+                            return KeepUpInstruction::Fatal(msg);
+                        }
+                    }
                 }
                 Ok(None) => {
                     error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
-                    self.block_synchronizer.purge(false);
+                    self.block_synchronizer.purge();
                     return KeepUpInstruction::CatchUp;
                 }
                 Err(error) => {
@@ -597,16 +614,25 @@ impl MainReactor {
                 Some(height) => StartingWith::BlockIdentifier(block_hash, height),
             },
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
-                debug!("KeepUp: executable block: {}", block_hash);
-                StartingWith::ExecutableBlock(block_hash, block_height, era_id)
+                debug!("KeepUp: synced block: {}", block_hash);
+                self.block_synchronizer.purge_forward();
+                StartingWith::SyncedBlockIdentifier(block_hash, block_height, era_id)
             }
         };
-        debug!("KeepUp: starting with {:?}", starting_with);
+        debug!(
+            ?starting_with,
+            "KeepUp: starting with {}",
+            starting_with.block_hash()
+        );
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
-        debug!("KeepUp: sync_instruction {:?}", sync_instruction);
+        debug!(
+            ?sync_instruction,
+            "KeepUp: sync_instruction {}",
+            sync_instruction.block_hash()
+        );
         match sync_instruction {
             SyncInstruction::Leap { .. } => {
-                self.block_synchronizer.purge(false);
+                self.block_synchronizer.purge();
                 return KeepUpInstruction::CatchUp;
             }
             SyncInstruction::BlockSync { block_hash } => {
@@ -617,6 +643,10 @@ impl MainReactor {
                     true,
                     self.chainspec.core_config.simultaneous_peer_requests,
                 ) {
+                    info!(
+                        ?block_hash,
+                        "KeepUp: BlockSync: registered block by hash {}", block_hash
+                    );
                     return KeepUpInstruction::Do(
                         Duration::ZERO,
                         effect_builder.immediately().event(|_| {
@@ -625,32 +655,7 @@ impl MainReactor {
                     );
                 }
             }
-            SyncInstruction::BlockExec {
-                block_hash,
-                next_block_hash,
-            } => {
-                debug!("KeepUp: BlockExec: {:?}", block_hash);
-                match self.enqueue_executable_block(effect_builder, block_hash) {
-                    Ok(effects) => {
-                        if let Some(sync_block_hash) = next_block_hash {
-                            debug!("KeepUp: BlockSync: {:?}", sync_block_hash);
-                            self.block_synchronizer.register_block_by_hash(
-                                sync_block_hash,
-                                false,
-                                true,
-                                self.chainspec.core_config.simultaneous_peer_requests,
-                            );
-                        }
-                        if false == effects.is_empty() {
-                            return KeepUpInstruction::Do(Duration::ZERO, effects);
-                        }
-                    }
-                    Err(msg) => {
-                        return KeepUpInstruction::Fatal(msg);
-                    }
-                }
-            }
-            SyncInstruction::CaughtUp => {
+            SyncInstruction::CaughtUp { .. } => {
                 // noop
             }
         }
@@ -763,7 +768,7 @@ impl MainReactor {
                         }),
                     );
                 } else {
-                    self.block_synchronizer.purge(true);
+                    self.block_synchronizer.purge_historical();
                     KeepUpInstruction::CheckLater(
                         "Historical: purged".to_string(),
                         self.control_logic_default_delay.into(),
@@ -931,6 +936,7 @@ impl MainReactor {
         }
         if let Some(block_header) = self.storage.get_highest_orphaned_block_header() {
             if block_header.is_genesis() {
+                self.block_synchronizer.purge_historical();
                 return Ok(None);
             }
             debug!(
@@ -1089,15 +1095,12 @@ impl MainReactor {
         );
 
         let next_block_height = 0;
-        let initial_pre_state = ExecutionPreState::new(
+        self.refresh_contract_runtime(
             next_block_height,
             post_state_hash,
             BlockHash::default(),
             Digest::default(),
-        );
-        self.contract_runtime
-            .set_initial_state(initial_pre_state)
-            .map_err(|err| err.to_string())?;
+        )?;
 
         let finalized_block = FinalizedBlock::new(
             BlockPayload::default(),
@@ -1151,7 +1154,7 @@ impl MainReactor {
             None => {
                 return Err("switch_block should be Some".to_string());
             }
-            Some(header) => header,
+            Some(header) => header.clone(),
         };
 
         match self.chainspec.ee_upgrade_config(
@@ -1170,15 +1173,12 @@ impl MainReactor {
                     );
 
                     let next_block_height = previous_block_header.height() + 1;
-                    let initial_pre_state = ExecutionPreState::new(
+                    self.refresh_contract_runtime(
                         next_block_height,
                         post_state_hash,
                         previous_block_header.block_hash(),
                         previous_block_header.accumulated_seed(),
-                    );
-                    self.contract_runtime
-                        .set_initial_state(initial_pre_state)
-                        .map_err(|err| err.to_string())?;
+                    )?;
 
                     let finalized_block = FinalizedBlock::new(
                         BlockPayload::default(),
@@ -1207,35 +1207,22 @@ impl MainReactor {
         false
     }
 
-    fn enqueue_executable_block(
+    fn refresh_contract_runtime(
         &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        block_hash: BlockHash,
-    ) -> Result<Effects<MainEvent>, String> {
-        let mut effects = Effects::new();
-        match self.storage.make_executable_block(&block_hash) {
-            Ok(Some((finalized_block, deploys))) => {
-                info!("KeepUp: enqueue_executable_block: {:?}", block_hash);
-                effects.extend(
-                    effect_builder
-                        .enqueue_block_for_execution(finalized_block, deploys)
-                        .ignore(),
-                );
-            }
-            Ok(None) => {
-                // noop
-                debug!(
-                    "KeepUp: idempotent enqueue_executable_block: {:?}",
-                    block_hash
-                );
-            }
-            Err(err) => {
-                return Err(format!(
-                    "failure to make block {} and approvals hashes into executable block: {}",
-                    block_hash, err
-                ));
-            }
-        }
-        Ok(effects)
+        next_block_height: u64,
+        pre_state_root_hash: Digest,
+        parent_hash: BlockHash,
+        parent_seed: Digest,
+    ) -> Result<(), String> {
+        let initial_pre_state = ExecutionPreState::new(
+            next_block_height,
+            pre_state_root_hash,
+            parent_hash,
+            parent_seed,
+        );
+        self.contract_runtime
+            .set_initial_state(initial_pre_state)
+            .map_err(|err| err.to_string())?;
+        Ok(())
     }
 }

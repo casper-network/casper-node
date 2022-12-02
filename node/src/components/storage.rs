@@ -80,7 +80,10 @@ use crate::{
     effect::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
-        requests::{BlockCompleteConfirmationRequest, NetworkRequest, StorageRequest},
+        requests::{
+            BlockCompleteConfirmationRequest, MakeBlockExecutableRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -216,6 +219,9 @@ pub(crate) enum Event {
     /// Block completion announcement.
     #[from]
     MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
+    /// Make block executable request.
+    #[from]
+    MakeBlockExecutableRequest(Box<MakeBlockExecutableRequest>),
 }
 
 impl Display for Event {
@@ -224,6 +230,7 @@ impl Display for Event {
             Event::StorageRequest(req) => req.fmt(f),
             Event::NetRequestIncoming(incoming) => incoming.fmt(f),
             Event::MarkBlockCompletedRequest(req) => req.fmt(f),
+            Event::MakeBlockExecutableRequest(req) => req.fmt(f),
         }
     }
 }
@@ -239,6 +246,13 @@ impl From<StorageRequest> for Event {
     #[inline]
     fn from(request: StorageRequest) -> Self {
         Event::StorageRequest(Box::new(request))
+    }
+}
+
+impl From<MakeBlockExecutableRequest> for Event {
+    #[inline]
+    fn from(request: MakeBlockExecutableRequest) -> Self {
+        Event::MakeBlockExecutableRequest(Box::new(request))
     }
 }
 
@@ -274,6 +288,13 @@ where
                 }
             }
             Event::MarkBlockCompletedRequest(req) => self.handle_mark_block_completed_request(req),
+            Event::MakeBlockExecutableRequest(req) => {
+                let ret = self.make_executable_block(&req.block_hash);
+                match ret {
+                    Ok(maybe) => Ok(req.responder.respond(maybe).ignore()),
+                    Err(err) => Err(err),
+                }
+            }
         };
 
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
@@ -367,7 +388,7 @@ impl Storage {
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             let maybe_block_body =
-                get_body_for_block_header(&mut body_txn, &block_header, block_body_db);
+                get_body_for_block_header(&mut body_txn, block_header.body_hash(), block_body_db);
             if let Some(invalid_era) = hard_reset_to_start_of_era {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
@@ -1169,34 +1190,52 @@ impl Storage {
         let BlockAndDeploys { block, deploys } =
             match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
                 Some(block_and_finalized_deploys) => block_and_finalized_deploys,
-                None => return Ok(None),
+                None => {
+                    error!(
+                        ?block_hash,
+                        "Storage: unable to make_executable_block for  {}", block_hash
+                    );
+                    return Ok(None);
+                }
             };
-
-        match self.read_approvals_hashes(block.hash())? {
-            Some(finalized_approvals) => {
-                if deploys.len() != finalized_approvals.approvals_hashes().len() {
-                    return Err(FatalStorageError::ApprovalsHashesLengthMismatch {
-                        block_hash: *block_hash,
-                        expected: deploys.len(),
-                        actual: finalized_approvals.approvals_hashes().len(),
-                    });
-                }
-
-                for (deploy, hash) in deploys.iter().zip(finalized_approvals.approvals_hashes()) {
-                    if deploy
-                        .approvals_hash()
-                        .map_err(FatalStorageError::UnexpectedDeserializationFailure)?
-                        != *hash
-                    {
-                        // todo!() - right deploy with incorrect approvals found in DB, download and
-                        // store deploy with correct approvals
-                        return Ok(None);
-                    }
-                }
-                Ok(Some((block.into(), deploys)))
+        if let Some(finalized_approvals) = self.read_approvals_hashes(block.hash())? {
+            if deploys.len() != finalized_approvals.approvals_hashes().len() {
+                error!(
+                    ?block_hash,
+                    "Storage: deploy hashes length mismatch {}", block_hash
+                );
+                return Err(FatalStorageError::ApprovalsHashesLengthMismatch {
+                    block_hash: *block_hash,
+                    expected: deploys.len(),
+                    actual: finalized_approvals.approvals_hashes().len(),
+                });
             }
-            None => Ok(None),
+            for (deploy, hash) in deploys.iter().zip(finalized_approvals.approvals_hashes()) {
+                if deploy
+                    .approvals_hash()
+                    .map_err(FatalStorageError::UnexpectedDeserializationFailure)?
+                    == *hash
+                {
+                    continue;
+                }
+                // todo!() - right deploy with incorrect approvals found in DB, download and
+                // store deploy with correct approvals
+                error!(
+                    ?block_hash,
+                    "Storage: deploy with incorrect approvals for  {}", block_hash
+                );
+                return Ok(None);
+            }
         }
+        let finalized_block: FinalizedBlock = block.into();
+        info!(
+            ?block_hash,
+            "Storage: created finalized_block({}) {} with {} deploys",
+            finalized_block.height(),
+            block_hash,
+            deploys.len()
+        );
+        Ok(Some((finalized_block, deploys)))
     }
 
     /// Writes a block to storage, updating indices as necessary.
@@ -1466,12 +1505,19 @@ impl Storage {
     /// If any of the deploys can't be found, returns `Ok(None)`.
     fn read_block_and_finalized_deploys_by_hash(
         &self,
-        hash: BlockHash,
+        block_hash: BlockHash,
     ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let block = match self.get_single_block(&mut txn, &hash)? {
-            None => return Ok(None),
+        let block = match self.get_single_block(&mut txn, &block_hash)? {
             Some(block) => block,
+            None => {
+                debug!(
+                    ?block_hash,
+                    "Storage: read_block_and_finalized_deploys_by_hash failed to get block for {}",
+                    block_hash
+                );
+                return Ok(None);
+            }
         };
         let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect_vec();
         Ok(self
@@ -1886,15 +1932,23 @@ impl Storage {
     ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
-            None => return Ok(None),
+            None => {
+                debug!(
+                    ?block_hash,
+                    "get_single_block: missing block header for {}", block_hash
+                );
+                return Ok(None);
+            }
         };
-        let maybe_block_body = get_body_for_block_header(txn, &block_header, self.block_body_db);
+        let maybe_block_body =
+            get_body_for_block_header(txn, block_header.body_hash(), self.block_body_db);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
                 debug!(
                     ?block_header,
-                    "get_single_block: retrieved block header but block body is missing from database"
+                    "get_single_block: missing block body for {}",
+                    block_header.block_hash()
                 );
                 return Ok(None);
             }
@@ -2283,7 +2337,7 @@ impl Storage {
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_for_block_header(&mut txn, &block_header, self.block_body_db);
+            get_body_for_block_header(&mut txn, block_header.body_hash(), self.block_body_db);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
@@ -2702,10 +2756,10 @@ fn initialize_block_body_db(
 /// Retrieves the block body for the given block header.
 fn get_body_for_block_header<Tx: Transaction>(
     txn: &mut Tx,
-    block_header: &BlockHeader,
+    block_body_hash: &Digest,
     block_body_db: Database,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
-    txn.get_value(block_body_db, block_header.body_hash())
+    txn.get_value(block_body_db, block_body_hash)
 }
 
 /// Purges stale entries from the block metadata database.

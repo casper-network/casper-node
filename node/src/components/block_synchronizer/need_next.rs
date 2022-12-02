@@ -35,6 +35,12 @@ pub(crate) enum NeedNext {
     DeployByHash(BlockHash, DeployHash),
     #[display(fmt = "need next for {}: deploy {}", _0, _1)]
     DeployById(BlockHash, DeployId),
+    #[display(
+        fmt = "need next for {}: enqueue this block (height {}) for execution",
+        _0,
+        _1
+    )]
+    EnqueueForExecution(BlockHash, u64),
     /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
     #[display(

@@ -149,6 +149,7 @@ impl BlockAcquisitionAction {
         block_header: &BlockHeader,
         validator_weights: &EraValidatorWeights,
         signature_acquisition: &SignatureAcquisition,
+        is_historical: bool,
     ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
         let era_id = block_header.era_id();
@@ -158,10 +159,17 @@ impl BlockAcquisitionAction {
         if let SignatureWeight::Sufficient =
             validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
         {
-            // we have enough signatures; need to make sure we've stored the necessary bits
+            if is_historical {
+                // we have enough signatures; need to make sure we've stored the necessary bits
+                return BlockAcquisitionAction {
+                    peers_to_ask: vec![],
+                    need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
+                };
+            }
+
             return BlockAcquisitionAction {
                 peers_to_ask: vec![],
-                need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
+                need_next: NeedNext::EnqueueForExecution(block_hash, block_height),
             };
         }
         // need more signatures
@@ -253,6 +261,7 @@ impl BlockAcquisitionAction {
         validator_weights: &EraValidatorWeights,
         signatures: &SignatureAcquisition,
         needs_deploy: Option<DeployIdentifier>,
+        is_historical: bool,
     ) -> Self {
         match needs_deploy {
             Some(DeployIdentifier::ById(deploy_id)) => {
@@ -279,6 +288,7 @@ impl BlockAcquisitionAction {
                 block_header,
                 validator_weights,
                 signatures,
+                is_historical,
             ),
         }
     }

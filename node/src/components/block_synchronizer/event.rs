@@ -13,7 +13,7 @@ use crate::{
     effect::requests::BlockSynchronizerRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        FinalitySignature, LegacyDeploy, NodeId,
+        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId,
     },
 };
 
@@ -22,8 +22,13 @@ pub(crate) enum Event {
     Initialize,
     #[from]
     Request(BlockSynchronizerRequest),
-
     DisconnectFromPeer(NodeId), // todo!() [RC] - Should we add `justification` here?
+    #[from]
+    MadeFinalizedBlock {
+        block_hash: BlockHash,
+        result: Option<(FinalizedBlock, Vec<Deploy>)>,
+    },
+    MarkBlockExecutionEnqueued(BlockHash),
     MarkBlockCompleted(BlockHash),
     ValidatorMatrixUpdated,
     #[from]
@@ -142,8 +147,14 @@ impl Display for Event {
             Event::AccumulatedPeers(..) => {
                 write!(f, "accumulated peers")
             }
+            Event::MadeFinalizedBlock { .. } => {
+                write!(f, "made finalized block")
+            }
+            Event::MarkBlockExecutionEnqueued(..) => {
+                write!(f, "mark block enqueued for execution")
+            }
             Event::MarkBlockCompleted(..) => {
-                write!(f, "MarkedComplete")
+                write!(f, "mark block completed")
             }
         }
     }
