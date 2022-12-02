@@ -964,19 +964,25 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (bool, Option<Effects<MainEvent>>) {
-        // if on a switch block, check if we should go to Validate
         if self.switch_block.is_some() {
-            match self.create_required_eras(effect_builder, rng) {
-                Err(msg) => {
-                    return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
-                }
-                Ok(Some(effects)) => {
-                    return (true, Some(effects));
-                }
-                Ok(None) => (),
+            self.check_validate_latch = None;
+        }
+        if let Some(should_validate) = self.check_validate_latch {
+            return (should_validate, None);
+        }
+        match self.create_required_eras(effect_builder, rng) {
+            Err(msg) => {
+                return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
+            }
+            Ok(Some(effects)) => {
+                self.check_validate_latch = Some(true);
+                (true, Some(effects))
+            }
+            Ok(None) => {
+                self.check_validate_latch = Some(false);
+                (false, None)
             }
         }
-        (false, None)
     }
 
     fn create_required_eras(

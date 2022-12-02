@@ -128,6 +128,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
+    check_validate_latch: Option<bool>,
     switch_block: Option<BlockHeader>,
 
     last_progress: Timestamp,
@@ -330,6 +331,7 @@ impl reactor::Reactor for MainReactor {
             trusted_hash,
             validator_matrix,
             recent_switch_block_headers,
+            check_validate_latch: None,
             switch_block: None,
             sync_to_historical: config.node.sync_to_genesis,
         };
