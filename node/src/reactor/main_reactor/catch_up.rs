@@ -317,6 +317,11 @@ impl MainReactor {
             DisplayIter::new(&from_peers)
         );
         info!("CatchUp: {}", best_available);
+
+        if let Err(msg) = self.update_highest_switch_block() {
+            return CatchUpInstruction::Fatal(msg);
+        }
+
         for validator_weights in
             best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
         {

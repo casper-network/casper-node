@@ -5,7 +5,7 @@ use std::{
 };
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff};
 
 use crate::{
     components::{
@@ -321,6 +321,9 @@ impl MainReactor {
             "Historical: sync leap received for: {:?}",
             best_available.trusted_block_header.block_hash()
         );
+        if let Err(msg) = self.update_highest_switch_block() {
+            return KeepUpInstruction::Fatal(msg);
+        }
         let era_validator_weights =
             best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
@@ -394,11 +397,16 @@ impl MainReactor {
                 return Ok(SyncBackInstruction::GenesisSynced);
             }
             if let Some(diff) = self.sync_back_maybe_ttl() {
-                let cutoff = Timestamp::now().saturating_sub(diff);
-                let block_time = block_header.timestamp();
-                if block_time < cutoff {
-                    // this node is configured to only sync to ttl, and we've reached ttl
-                    return Ok(SyncBackInstruction::TtlSynced);
+                match &self.switch_block {
+                    Some(switch_block) => {
+                        let cutoff = switch_block.timestamp().saturating_sub(diff);
+                        let block_time = block_header.timestamp();
+                        if block_time < cutoff {
+                            // this node is configured to only sync to ttl, and we've reached ttl
+                            return Ok(SyncBackInstruction::TtlSynced);
+                        }
+                    }
+                    None => return Ok(SyncBackInstruction::Syncing),
                 }
             }
             match self.storage.read_block_header(block_header.parent_hash()) {
