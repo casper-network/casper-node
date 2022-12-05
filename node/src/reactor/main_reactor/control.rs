@@ -14,13 +14,13 @@ use crate::{
         diagnostics_port, event_stream_server, network, rest_server, rpc_server, upgrade_watcher,
         InitializedComponent,
     },
-    effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
+    effect::{EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::{
         self,
         main_reactor::{
             catch_up::CatchUpInstruction, keep_up::KeepUpInstruction,
-            upgrade_shutdown_instruction::UpgradeShutdownInstruction,
+            upgrade_shutdown::UpgradeShutdownInstruction,
             upgrading_instruction::UpgradingInstruction, utils,
             validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
         },
@@ -33,7 +33,6 @@ use crate::{
 const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
 
 /// Allow the runner to shut down cleanly before shutting down the reactor.
-const DELAY_BEFORE_SHUTDOWN: Duration = Duration::from_secs(2);
 
 impl MainReactor {
     pub(super) fn should_shutdown_for_upgrade(&self) -> bool {
@@ -408,57 +407,6 @@ impl MainReactor {
             }
         }
         None
-    }
-
-    fn upgrade_shutdown_instruction(
-        &self,
-        effect_builder: EffectBuilder<MainEvent>,
-    ) -> UpgradeShutdownInstruction {
-        let highest_switch_block_era = match self.recent_switch_block_headers.last() {
-            None => {
-                return UpgradeShutdownInstruction::Fatal(
-                    "recent_switch_block_headers cannot be empty".to_string(),
-                );
-            }
-            Some(block_header) => block_header.era_id(),
-        };
-        match self
-            .validator_matrix
-            .validator_weights(highest_switch_block_era)
-        {
-            Some(validator_weights) => {
-                let era_has_sufficient_finality = match self
-                    .storage
-                    .era_has_sufficient_finality_signatures(&validator_weights)
-                {
-                    Ok(is_sufficient) => is_sufficient,
-                    Err(error) => {
-                        return UpgradeShutdownInstruction::Fatal(format!(
-                            "failed check for sufficient finality signatures: {}",
-                            error
-                        ));
-                    }
-                };
-                if era_has_sufficient_finality {
-                    // Allow a delay to acquire more finality signatures
-                    let effects = effect_builder
-                        .set_timeout(DELAY_BEFORE_SHUTDOWN)
-                        .event(|_| {
-                            MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade)
-                        });
-                    // should not need to crank the control logic again as the reactor will shutdown
-                    UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
-                } else {
-                    UpgradeShutdownInstruction::CheckLater(
-                        "waiting for sufficient finality".to_string(),
-                        DELAY_BEFORE_SHUTDOWN,
-                    )
-                }
-            }
-            None => {
-                UpgradeShutdownInstruction::Fatal("validator_weights cannot be missing".to_string())
-            }
-        }
     }
 
     fn validate_instruction(

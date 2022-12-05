@@ -13,7 +13,7 @@ mod keep_up;
 mod reactor_state;
 #[cfg(test)]
 mod tests;
-mod upgrade_shutdown_instruction;
+mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate_instruction;
 
