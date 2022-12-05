@@ -16,14 +16,10 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
-    reactor::{
-        self,
-        main_reactor::{
-            catch_up::CatchUpInstruction, keep_up::KeepUpInstruction,
-            upgrade_shutdown::UpgradeShutdownInstruction,
-            upgrading_instruction::UpgradingInstruction, utils,
-            validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
-        },
+    reactor::main_reactor::{
+        catch_up::CatchUpInstruction, keep_up::KeepUpInstruction,
+        upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
+        utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
     types::{BlockHash, BlockPayload, FinalizedBlock},
     NodeRng,
@@ -35,113 +31,6 @@ const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_se
 /// Allow the runner to shut down cleanly before shutting down the reactor.
 
 impl MainReactor {
-    pub(super) fn should_shutdown_for_upgrade(&self) -> bool {
-        if let Some(block_header) = self.recent_switch_block_headers.last() {
-            return self
-                .upgrade_watcher
-                .should_upgrade_after(block_header.era_id());
-        }
-        false
-    }
-
-    pub(super) fn should_commit_upgrade(&self) -> Result<bool, String> {
-        let highest_switch_block_header = match &self.switch_block {
-            None => {
-                return Ok(false);
-            }
-            Some(header) => header,
-        };
-
-        if !self
-            .chainspec
-            .protocol_config
-            .is_last_block_before_activation(highest_switch_block_header)
-        {
-            return Ok(false);
-        }
-
-        match self
-            .chainspec
-            .is_in_modified_validator_set(self.consensus.public_key())
-        {
-            None => match highest_switch_block_header.next_era_validator_weights() {
-                None => Err("switch_block should have next era validator weights".to_string()),
-                Some(next_era_validator_weights) => {
-                    Ok(next_era_validator_weights.contains_key(self.consensus.public_key()))
-                }
-            },
-            Some(is_validator) => Ok(is_validator),
-        }
-    }
-
-    pub(super) fn should_validate(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> (bool, Option<Effects<MainEvent>>) {
-        // if on a switch block, check if we should go to Validate
-        if self.switch_block.is_some() {
-            match self.create_required_eras(effect_builder, rng) {
-                Err(msg) => {
-                    return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
-                }
-                Ok(Some(effects)) => {
-                    return (true, Some(effects));
-                }
-                Ok(None) => (),
-            }
-        }
-        (false, None)
-    }
-
-    pub(super) fn refresh_contract_runtime(
-        &mut self,
-        next_block_height: u64,
-        pre_state_root_hash: Digest,
-        parent_hash: BlockHash,
-        parent_seed: Digest,
-    ) -> Result<(), String> {
-        let initial_pre_state = ExecutionPreState::new(
-            next_block_height,
-            pre_state_root_hash,
-            parent_hash,
-            parent_seed,
-        );
-        self.contract_runtime
-            .set_initial_state(initial_pre_state)
-            .map_err(|err| err.to_string())?;
-        Ok(())
-    }
-
-    pub(super) fn update_last_progress(
-        &mut self,
-        block_synchronizer_progress: &BlockSynchronizerProgress,
-        is_sync_back: bool,
-    ) {
-        if let BlockSynchronizerProgress::Syncing(_, _, last_progress) = block_synchronizer_progress
-        {
-            // do idleness / reattempt checking
-            let sync_progress = *last_progress;
-            if sync_progress > self.last_progress {
-                self.last_progress = sync_progress;
-                // if any progress has been made, reset attempts
-                self.attempts = 0;
-                let state = if is_sync_back {
-                    "Historical".to_string()
-                } else {
-                    format!("{}", self.state)
-                };
-                debug!(
-                    "{}: last_progress: {} {}",
-                    state, self.last_progress, block_synchronizer_progress
-                );
-            }
-            if self.last_progress.elapsed() > self.idle_tolerance {
-                self.attempts += 1;
-            }
-        }
-    }
-
     pub(super) fn crank(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -176,6 +65,20 @@ impl MainReactor {
                         return (Duration::from_secs(2), Effects::new());
                     }
                     info!("Initialize: switch to CatchUp");
+                    self.state = ReactorState::CatchUp;
+                    (Duration::ZERO, Effects::new())
+                }
+            },
+            ReactorState::Upgrading => match self.upgrading_instruction() {
+                UpgradingInstruction::Fatal(msg) => {
+                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                }
+                UpgradingInstruction::CheckLater(msg, wait) => {
+                    debug!("Upgrading: {}", msg);
+                    (wait, Effects::new())
+                }
+                UpgradingInstruction::CatchUp => {
+                    info!("Upgrading: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
@@ -226,55 +129,36 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
             },
-            ReactorState::Upgrading => match UpgradingInstruction::should_commit_upgrade(
-                self.should_commit_upgrade(),
-                self.control_logic_default_delay.into(),
-            ) {
-                UpgradingInstruction::Fatal(msg) => {
+            ReactorState::KeepUp => match self.keep_up_instruction(effect_builder, rng) {
+                KeepUpInstruction::Fatal(msg) => {
                     (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
-                UpgradingInstruction::CheckLater(msg, wait) => {
-                    debug!("Upgrading: {}", msg);
+                KeepUpInstruction::ShutdownForUpgrade => {
+                    info!("KeepUp: switch to ShutdownForUpgrade");
+                    self.state = ReactorState::ShutdownForUpgrade;
+                    (Duration::ZERO, Effects::new())
+                }
+                KeepUpInstruction::CheckLater(msg, wait) => {
+                    debug!("KeepUp: {}", msg);
                     (wait, Effects::new())
                 }
-                UpgradingInstruction::CatchUp => {
-                    info!("Upgrading: switch to CatchUp");
+                KeepUpInstruction::Do(wait, effects) => {
+                    debug!("KeepUp: node is processing effects");
+                    (wait, effects)
+                }
+                KeepUpInstruction::CatchUp => {
+                    info!("KeepUp: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
-            },
-            ReactorState::KeepUp => {
-                match self.keep_up_instruction(effect_builder, rng) {
-                    KeepUpInstruction::Fatal(msg) => {
-                        (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
-                    }
-                    KeepUpInstruction::ShutdownForUpgrade => {
-                        info!("KeepUp: switch to ShutdownForUpgrade");
-                        self.state = ReactorState::ShutdownForUpgrade;
-                        (Duration::ZERO, Effects::new())
-                    }
-                    KeepUpInstruction::CheckLater(msg, wait) => {
-                        debug!("KeepUp: {}", msg);
-                        (wait, Effects::new())
-                    }
-                    KeepUpInstruction::Do(wait, effects) => {
-                        debug!("KeepUp: node is processing effects");
-                        (wait, effects)
-                    }
-                    KeepUpInstruction::CatchUp => {
-                        info!("KeepUp: switch to CatchUp");
-                        self.state = ReactorState::CatchUp;
-                        (Duration::ZERO, Effects::new())
-                    }
-                    KeepUpInstruction::Validate(effects) => {
-                        // node is in validator set and consensus has what it needs to validate
-                        info!("KeepUp: switch to Validate");
-                        self.state = ReactorState::Validate;
-                        self.block_synchronizer.pause();
-                        (Duration::ZERO, effects)
-                    }
+                KeepUpInstruction::Validate(effects) => {
+                    // node is in validator set and consensus has what it needs to validate
+                    info!("KeepUp: switch to Validate");
+                    self.state = ReactorState::Validate;
+                    self.block_synchronizer.pause();
+                    (Duration::ZERO, effects)
                 }
-            }
+            },
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
                 ValidateInstruction::Fatal(msg) => {
                     (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
@@ -409,108 +293,6 @@ impl MainReactor {
         None
     }
 
-    fn validate_instruction(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> ValidateInstruction {
-        if self.switch_block.is_none() {
-            // validate status is only checked at switch blocks
-            return ValidateInstruction::NonSwitchBlock;
-        }
-
-        if self.should_shutdown_for_upgrade() {
-            return ValidateInstruction::ShutdownForUpgrade;
-        }
-
-        match self.create_required_eras(effect_builder, rng) {
-            Ok(Some(effects)) => {
-                let last_progress = self.consensus.last_progress();
-                if last_progress > self.last_progress {
-                    self.last_progress = last_progress;
-                }
-                if effects.is_empty() {
-                    ValidateInstruction::CheckLater(
-                        "consensus state is up to date".to_string(),
-                        self.control_logic_default_delay.into(),
-                    )
-                } else {
-                    ValidateInstruction::Do(Duration::ZERO, effects)
-                }
-            }
-            Ok(None) => ValidateInstruction::KeepUp,
-            Err(msg) => ValidateInstruction::Fatal(msg),
-        }
-    }
-
-    fn create_required_eras(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> Result<Option<Effects<MainEvent>>, String> {
-        let highest_switch_block_header = match self.recent_switch_block_headers.last() {
-            None => {
-                debug!("create_required_eras: recent_switch_block_headers is empty");
-                return Ok(None);
-            }
-            Some(header) => header,
-        };
-        debug!(
-            "highest_switch_block_header: {} - {}",
-            highest_switch_block_header.era_id(),
-            highest_switch_block_header.block_hash(),
-        );
-
-        if let Some(current_era) = self.consensus.current_era() {
-            debug!("consensus current_era: {}", current_era.value());
-            if highest_switch_block_header.next_block_era_id() <= current_era {
-                return Ok(Some(Effects::new()));
-            }
-        }
-
-        let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
-            None => {
-                return Err(format!(
-                    "highest switch block has no era end: {}",
-                    highest_switch_block_header
-                ));
-            }
-            Some(weights) => weights,
-        };
-        if !highest_era_weights.contains_key(self.consensus.public_key()) {
-            debug!("highest_era_weights does not contain signing_public_key");
-            return Ok(None);
-        }
-
-        if !self
-            .deploy_buffer
-            .have_full_ttl_of_deploys(highest_switch_block_header.height())
-        {
-            info!("currently have insufficient deploy TTL awareness to safely participate in consensus");
-            return Ok(None);
-        }
-
-        let era_id = highest_switch_block_header.era_id();
-        if self.upgrade_watcher.should_upgrade_after(era_id) {
-            debug!(%era_id, "upgrade required after given era");
-            return Ok(None);
-        }
-
-        let create_required_eras = self.consensus.create_required_eras(
-            effect_builder,
-            rng,
-            &self.recent_switch_block_headers,
-        );
-        if create_required_eras.is_some() {
-            info!("will attempt to create required eras for consensus");
-        }
-
-        Ok(
-            create_required_eras
-                .map(|effects| reactor::wrap_effects(MainEvent::Consensus, effects)),
-        )
-    }
-
     fn commit_genesis(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -565,6 +347,13 @@ impl MainReactor {
             .ignore())
     }
 
+    fn upgrading_instruction(&self) -> UpgradingInstruction {
+        UpgradingInstruction::should_commit_upgrade(
+            self.should_commit_upgrade(),
+            self.control_logic_default_delay.into(),
+        )
+    }
+
     fn commit_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -615,6 +404,113 @@ impl MainReactor {
                 Err(err) => Err(err.to_string()),
             },
             Err(msg) => Err(msg),
+        }
+    }
+
+    pub(super) fn should_shutdown_for_upgrade(&self) -> bool {
+        if let Some(block_header) = self.recent_switch_block_headers.last() {
+            return self
+                .upgrade_watcher
+                .should_upgrade_after(block_header.era_id());
+        }
+        false
+    }
+
+    pub(super) fn should_commit_upgrade(&self) -> Result<bool, String> {
+        let highest_switch_block_header = match &self.switch_block {
+            None => {
+                return Ok(false);
+            }
+            Some(header) => header,
+        };
+
+        if !self
+            .chainspec
+            .protocol_config
+            .is_last_block_before_activation(highest_switch_block_header)
+        {
+            return Ok(false);
+        }
+
+        match self
+            .chainspec
+            .is_in_modified_validator_set(self.consensus.public_key())
+        {
+            None => match highest_switch_block_header.next_era_validator_weights() {
+                None => Err("switch_block should have next era validator weights".to_string()),
+                Some(next_era_validator_weights) => {
+                    Ok(next_era_validator_weights.contains_key(self.consensus.public_key()))
+                }
+            },
+            Some(is_validator) => Ok(is_validator),
+        }
+    }
+
+    pub(super) fn should_validate(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+    ) -> (bool, Option<Effects<MainEvent>>) {
+        // if on a switch block, check if we should go to Validate
+        if self.switch_block.is_some() {
+            match self.create_required_eras(effect_builder, rng) {
+                Err(msg) => {
+                    return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
+                }
+                Ok(Some(effects)) => {
+                    return (true, Some(effects));
+                }
+                Ok(None) => (),
+            }
+        }
+        (false, None)
+    }
+
+    pub(super) fn refresh_contract_runtime(
+        &mut self,
+        next_block_height: u64,
+        pre_state_root_hash: Digest,
+        parent_hash: BlockHash,
+        parent_seed: Digest,
+    ) -> Result<(), String> {
+        let initial_pre_state = ExecutionPreState::new(
+            next_block_height,
+            pre_state_root_hash,
+            parent_hash,
+            parent_seed,
+        );
+        self.contract_runtime
+            .set_initial_state(initial_pre_state)
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
+    pub(super) fn update_last_progress(
+        &mut self,
+        block_synchronizer_progress: &BlockSynchronizerProgress,
+        is_sync_back: bool,
+    ) {
+        if let BlockSynchronizerProgress::Syncing(_, _, last_progress) = block_synchronizer_progress
+        {
+            // do idleness / reattempt checking
+            let sync_progress = *last_progress;
+            if sync_progress > self.last_progress {
+                self.last_progress = sync_progress;
+                // if any progress has been made, reset attempts
+                self.attempts = 0;
+                let state = if is_sync_back {
+                    "Historical".to_string()
+                } else {
+                    format!("{}", self.state)
+                };
+                debug!(
+                    "{}: last_progress: {} {}",
+                    state, self.last_progress, block_synchronizer_progress
+                );
+            }
+            if self.last_progress.elapsed() > self.idle_tolerance {
+                self.attempts += 1;
+            }
         }
     }
 }

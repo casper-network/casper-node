@@ -15,7 +15,7 @@ mod reactor_state;
 mod tests;
 mod upgrade_shutdown;
 mod upgrading_instruction;
-mod validate_instruction;
+mod validate;
 
 use std::{cmp::Ordering, collections::HashMap, sync::Arc, time::Instant};
 
