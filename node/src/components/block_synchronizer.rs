@@ -359,34 +359,52 @@ impl BlockSynchronizer {
     /* EVENT LOGIC */
 
     fn register_block_execution_not_enqueued(&mut self, block_hash: &BlockHash) {
-        match (&mut self.forward, &mut self.historical) {
-            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+        if let Some(builder) = &self.historical {
+            if builder.block_hash() == *block_hash {
+                error!(%block_hash, "historical block should not be enqueued for execution");
+            }
+        }
+
+        match &mut self.forward {
+            Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_block_execution_not_enqueued();
             }
             _ => {
-                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
             }
         }
     }
 
     fn register_block_execution_enqueued(&mut self, block_hash: &BlockHash) {
-        match (&mut self.forward, &mut self.historical) {
-            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+        if let Some(builder) = &self.historical {
+            if builder.block_hash() == *block_hash {
+                error!(%block_hash, "historical block should not be enqueued for execution");
+            }
+        }
+
+        match &mut self.forward {
+            Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_block_execution_enqueued();
             }
             _ => {
-                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
             }
         }
     }
 
     fn register_marked_complete(&mut self, block_hash: &BlockHash) {
-        match (&mut self.forward, &mut self.historical) {
-            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
+        if let Some(builder) = &self.forward {
+            if builder.block_hash() == *block_hash {
+                error!(%block_hash, "forward block should not be marked complete in block synchronizer");
+            }
+        }
+
+        match &mut self.historical {
+            Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_marked_complete();
             }
             _ => {
-                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing historical block");
             }
         }
     }
