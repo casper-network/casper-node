@@ -1,10 +1,12 @@
 use std::time::Duration;
 use tracing::{debug, info};
 
-use crate::effect::EffectBuilder;
-use crate::reactor::main_reactor::MainReactor;
-use crate::{effect::Effects, reactor::main_reactor::MainEvent};
-use crate::{reactor, NodeRng};
+use crate::{
+    effect::{EffectBuilder, Effects},
+    reactor,
+    reactor::main_reactor::{MainEvent, MainReactor},
+    NodeRng,
+};
 
 pub(super) enum ValidateInstruction {
     Do(Duration, Effects<MainEvent>),

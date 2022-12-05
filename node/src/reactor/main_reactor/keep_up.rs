@@ -1,8 +1,11 @@
 use either::Either;
-use std::time::Duration;
+use std::{
+    fmt::{Display, Formatter},
+    time::Duration,
+};
 use tracing::{debug, error, info, warn};
 
-use casper_types::EraId;
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -24,6 +27,34 @@ pub(super) enum KeepUpInstruction {
     CatchUp,
     ShutdownForUpgrade,
     Fatal(String),
+}
+
+enum SyncBackInstruction {
+    Sync {
+        parent_hash: BlockHash,
+        era_id: EraId,
+    },
+    Syncing,
+    CheckLater,
+    TtlSynced,
+    GenesisSynced,
+}
+
+impl Display for SyncBackInstruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyncBackInstruction::Sync {
+                parent_hash: block_hash,
+                ..
+            } => {
+                write!(f, "attempt to sync {}", block_hash)
+            }
+            SyncBackInstruction::Syncing => write!(f, "syncing"),
+            SyncBackInstruction::CheckLater => write!(f, "at perceived tip of chain"),
+            SyncBackInstruction::TtlSynced => write!(f, "ttl reached"),
+            SyncBackInstruction::GenesisSynced => write!(f, "genesis reached"),
+        }
+    }
 }
 
 impl MainReactor {
@@ -71,13 +102,7 @@ impl MainReactor {
         {
             return keep_up_instruction;
         }
-        match self.sync_to_historical {
-            true => self.sync_back_process(effect_builder, rng),
-            false => KeepUpInstruction::CheckLater(
-                "at perceived tip of chain".to_string(),
-                self.control_logic_default_delay.into(),
-            ),
-        }
+        self.sync_back_process(effect_builder, rng)
     }
 
     fn keep_up_process(&mut self) -> Either<StartingWith, KeepUpInstruction> {
@@ -195,15 +220,29 @@ impl MainReactor {
     ) -> KeepUpInstruction {
         let sync_back_progress = self.block_synchronizer.historical_progress();
         self.update_last_progress(&sync_back_progress, true);
-        match self.sync_back_maybe_parent_block_identifier(&sync_back_progress) {
+        match self.sync_back_instruction(&sync_back_progress) {
             Err(msg) => KeepUpInstruction::Fatal(msg),
-            Ok(None) => KeepUpInstruction::CheckLater(
-                format!("Historical: syncing {:?}", sync_back_progress),
-                self.control_logic_default_delay.into(),
-            ),
-            Ok(Some((parent_hash, era_id))) => match self.validator_matrix.has_era(&era_id) {
-                true => self.sync_back_register(effect_builder, rng, parent_hash),
-                false => self.sync_back_leap(effect_builder, rng, parent_hash),
+            Ok(sync_back_instruction) => match sync_back_instruction {
+                sbi @ SyncBackInstruction::Syncing
+                | sbi @ SyncBackInstruction::TtlSynced
+                | sbi @ SyncBackInstruction::GenesisSynced
+                | sbi @ SyncBackInstruction::CheckLater => {
+                    if false == matches!(sbi, SyncBackInstruction::Syncing) {
+                        // purge_historical for all of these variants EXCEPT syncing
+                        self.block_synchronizer.purge_historical();
+                    }
+                    KeepUpInstruction::CheckLater(
+                        format!("Historical: {}", sbi),
+                        self.control_logic_default_delay.into(),
+                    )
+                }
+                SyncBackInstruction::Sync {
+                    parent_hash,
+                    era_id,
+                } => match self.validator_matrix.has_era(&era_id) {
+                    true => self.sync_back_register(effect_builder, rng, parent_hash),
+                    false => self.sync_back_leap(effect_builder, rng, parent_hash),
+                },
             },
         }
     }
@@ -331,38 +370,53 @@ impl MainReactor {
         }
     }
 
-    fn sync_back_maybe_parent_block_identifier(
+    fn sync_back_maybe_ttl(&self) -> Option<TimeDiff> {
+        if self.sync_to_historical {
+            None
+        } else {
+            Some(self.chainspec.deploy_config.max_ttl)
+        }
+    }
+
+    fn sync_back_instruction(
         &mut self,
         block_synchronizer_progress: &BlockSynchronizerProgress,
-    ) -> Result<Option<(BlockHash, EraId)>, String> {
+    ) -> Result<SyncBackInstruction, String> {
         if matches!(
             block_synchronizer_progress,
             BlockSynchronizerProgress::Syncing(_, _, _)
         ) {
-            return Ok(None);
+            return Ok(SyncBackInstruction::Syncing);
         }
+
         if let Some(block_header) = self.storage.get_highest_orphaned_block_header() {
             if block_header.is_genesis() {
-                self.block_synchronizer.purge_historical();
-                return Ok(None);
+                return Ok(SyncBackInstruction::GenesisSynced);
             }
-            debug!(
-                "Historical: attempting({}) for: {}",
-                block_header.height().saturating_sub(1),
-                block_header.parent_hash()
-            );
+            if let Some(diff) = self.sync_back_maybe_ttl() {
+                let cutoff = Timestamp::now().saturating_sub(diff);
+                let block_time = block_header.timestamp();
+                if block_time < cutoff {
+                    // this node is configured to only sync to ttl, and we've reached ttl
+                    return Ok(SyncBackInstruction::TtlSynced);
+                }
+            }
             match self.storage.read_block_header(block_header.parent_hash()) {
-                Ok(Some(parent)) => Ok(Some((parent.block_hash(), parent.era_id()))),
+                Ok(Some(parent)) => Ok(SyncBackInstruction::Sync {
+                    parent_hash: parent.block_hash(),
+                    era_id: parent.era_id(),
+                }),
                 Ok(None) => match block_header.era_id().predecessor() {
-                    Some(previous_era_id) => {
-                        Ok(Some((*block_header.parent_hash(), previous_era_id)))
-                    }
-                    None => Ok(None),
+                    Some(previous_era_id) => Ok(SyncBackInstruction::Sync {
+                        parent_hash: *block_header.parent_hash(),
+                        era_id: previous_era_id,
+                    }),
+                    None => Ok(SyncBackInstruction::CheckLater),
                 },
                 Err(err) => Err(err.to_string()),
             }
         } else {
-            Ok(None)
+            Ok(SyncBackInstruction::CheckLater)
         }
     }
 }
