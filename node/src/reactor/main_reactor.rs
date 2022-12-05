@@ -8,7 +8,7 @@ mod fetchers;
 mod memory_metrics;
 mod utils;
 
-mod catch_up_instruction;
+mod catch_up;
 mod keep_up_instruction;
 mod reactor_state;
 #[cfg(test)]
