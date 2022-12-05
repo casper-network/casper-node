@@ -227,7 +227,10 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
             },
-            ReactorState::Upgrading => match self.upgrading_instruction() {
+            ReactorState::Upgrading => match UpgradingInstruction::should_commit_upgrade(
+                self.should_commit_upgrade(),
+                self.control_logic_default_delay.into(),
+            ) {
                 UpgradingInstruction::Fatal(msg) => {
                     (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
                 }
@@ -405,17 +408,6 @@ impl MainReactor {
             }
         }
         None
-    }
-
-    fn upgrading_instruction(&self) -> UpgradingInstruction {
-        match self.should_commit_upgrade() {
-            Ok(true) => UpgradingInstruction::CheckLater(
-                "awaiting upgrade".to_string(),
-                self.control_logic_default_delay.into(),
-            ),
-            Ok(false) => UpgradingInstruction::CatchUp,
-            Err(msg) => UpgradingInstruction::Fatal(msg),
-        }
     }
 
     fn upgrade_shutdown_instruction(
