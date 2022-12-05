@@ -9,7 +9,6 @@ testing = ["tokio-stream", "rand"]
 
 [[bin]]
 name = "load_testing"
-src = "bin/load_testing.rs"
 test = false
 bench = false
 required-features = ["testing"]
