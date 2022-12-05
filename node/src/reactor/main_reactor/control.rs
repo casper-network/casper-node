@@ -513,4 +513,14 @@ impl MainReactor {
             }
         }
     }
+
+    pub(crate) fn update_highest_switch_block(&mut self) -> Result<(), String> {
+        let maybe_highest_switch_block_header =
+            match self.storage.read_highest_switch_block_headers(1) {
+                Ok(highest_switch_block_header) => highest_switch_block_header,
+                Err(err) => return Err(err.to_string()),
+            };
+        self.switch_block = maybe_highest_switch_block_header.first().cloned();
+        Ok(())
+    }
 }
