@@ -596,8 +596,7 @@ fn should_replace_one_validator_with_unbonding() {
             balance: Some(U512::from(102)),
             validator: Some(ValidatorConfig {
                 bonded_amount: U512::from(102),
-                delegation_rate: None,
-                delegators: None,
+                ..Default::default()
             }),
         }],
         only_listed_validators: true,
