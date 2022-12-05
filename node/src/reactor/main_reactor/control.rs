@@ -379,10 +379,18 @@ impl MainReactor {
         );
         match sync_instruction {
             SyncInstruction::Leap { block_hash } => {
+                // register block builder so that control logic can tell that block is Syncing,
+                // otherwise block_synchronizer detects as Idle
+                self.block_synchronizer.register_block_by_hash(
+                    sync_instruction.block_hash(),
+                    true,
+                    true,
+                    self.chainspec.core_config.simultaneous_peer_requests,
+                );
                 let leap_status = self.sync_leaper.leap_status();
                 trace!("CatchUp: leap_status: {:?}", leap_status);
                 return match leap_status {
-                    ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
+                    ls @ LeapStatus::Idle | ls @ LeapStatus::Failed { .. } => {
                         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
                         if let LeapStatus::Failed {
                             error,
@@ -680,7 +688,7 @@ impl MainReactor {
                     let leap_status = self.sync_leaper.leap_status();
                     debug!("Historical: {:?}", leap_status);
                     match leap_status {
-                        ls @ LeapStatus::Inactive | ls @ LeapStatus::Failed { .. } => {
+                        ls @ LeapStatus::Idle | ls @ LeapStatus::Failed { .. } => {
                             if let LeapStatus::Failed {
                                 error,
                                 sync_leap_identifier: _,

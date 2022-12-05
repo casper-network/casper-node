@@ -268,14 +268,10 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         // chain / deploy management
-        let highest_block_header = storage.read_highest_block_header()?;
-        let highest_block_height_and_era_id =
-            highest_block_header.map(|header| (header.height(), header.era_id()));
 
         let block_accumulator = BlockAccumulator::new(
             config.block_accumulator,
             validator_matrix.clone(),
-            highest_block_height_and_era_id,
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.min_round_length(),
             registry,

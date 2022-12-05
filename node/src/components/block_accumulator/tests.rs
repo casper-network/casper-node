@@ -11,14 +11,12 @@ fn upsert_acceptor() {
     let config = Config::default();
     let era0 = EraId::from(0);
     let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
-    let local_tip = (0, era0);
     let recent_era_interval = 1;
     let block_time = config.purge_interval() / 2;
     let metrics_registry = Registry::new();
     let mut accumulator = BlockAccumulator::new(
         config,
         validator_matrix,
-        Some(local_tip),
         recent_era_interval,
         block_time,
         &metrics_registry,
