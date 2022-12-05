@@ -1,3 +1,4 @@
+use either::Either;
 use std::time::Duration;
 use tracing::{debug, error, info, trace, warn};
 
@@ -13,7 +14,7 @@ use crate::{
         contract_runtime::ExecutionPreState,
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port, event_stream_server, network, rest_server, rpc_server, sync_leaper,
-        sync_leaper::LeapStatus,
+        sync_leaper::{LeapActivityError, LeapStatus},
         upgrade_watcher, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
@@ -30,7 +31,10 @@ use crate::{
             validate_instruction::ValidateInstruction, MainEvent, MainReactor, ReactorState,
         },
     },
-    types::{ActivationPoint, BlockHash, BlockPayload, FinalizedBlock, Item, SyncLeapIdentifier},
+    types::{
+        ActivationPoint, BlockHash, BlockPayload, FinalizedBlock, Item, NodeId, SyncLeap,
+        SyncLeapIdentifier,
+    },
     utils::DisplayIter,
     NodeRng,
 };
@@ -218,159 +222,104 @@ impl MainReactor {
         }
     }
 
+    fn initialize_next_component(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> Option<Effects<MainEvent>> {
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.diagnostics_port,
+            MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.upgrade_watcher,
+            MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.net,
+            MainEvent::Network(network::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.event_stream_server,
+            MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rest_server,
+            MainEvent::RestServer(rest_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rpc_server,
+            MainEvent::RpcServer(rpc_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.block_synchronizer,
+            MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
+        {
+            let timestamp = self.recent_switch_block_headers.last().map_or_else(
+                Timestamp::now,
+                |switch_block| {
+                    switch_block
+                        .timestamp()
+                        .saturating_sub(self.chainspec.deploy_config.max_ttl)
+                },
+            );
+            let blocks = match self.storage.read_blocks_since(timestamp) {
+                Ok(blocks) => blocks,
+                Err(err) => {
+                    return Some(
+                        fatal!(
+                            effect_builder,
+                            "fatal block store error when attempting to read highest blocks: {}",
+                            err
+                        )
+                        .ignore(),
+                    )
+                }
+            };
+            let event = deploy_buffer::Event::Initialize(blocks);
+            if let Some(effects) = utils::initialize_component(
+                effect_builder,
+                &mut self.deploy_buffer,
+                MainEvent::DeployBuffer(event),
+            ) {
+                return Some(effects);
+            }
+        }
+        None
+    }
+
     fn catch_up_instruction(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> CatchUpInstruction {
-        let catch_up_progress = self.block_synchronizer.historical_progress();
-        self.update_last_progress(&catch_up_progress, "CatchUp");
-        let starting_with = match catch_up_progress {
-            BlockSynchronizerProgress::Idle => {
-                match self.trusted_hash {
-                    None => {
-                        // no trusted hash provided use local tip if available
-                        match self.storage.read_highest_complete_block() {
-                            Ok(Some(block)) => {
-                                // -+ : leap w/ local tip
-                                info!("CatchUp: local tip detected, no trusted hash");
-                                if block.header().is_switch_block() {
-                                    self.switch_block = Some(block.header().clone());
-                                }
-                                StartingWith::LocalTip(
-                                    *block.hash(),
-                                    block.height(),
-                                    block.header().era_id(),
-                                )
-                            }
-                            Ok(None) if self.switch_block.is_none() => {
-                                if let Some(timestamp) = self.is_genesis() {
-                                    let is_validator = self.should_commit_genesis();
-                                    if false == is_validator {
-                                        return CatchUpInstruction::Fatal(
-                                            "CatchUp: only validating nodes may participate in genesis; cannot proceed without trusted hash".to_string(),
-                                        );
-                                    }
-                                    let now = Timestamp::now();
-                                    let grace_period =
-                                        timestamp.saturating_add(TimeDiff::from_seconds(180));
-                                    if now > grace_period {
-                                        return CatchUpInstruction::Fatal(
-                                            "CatchUp: late for genesis; cannot proceed without trusted hash".to_string(),
-                                        );
-                                    }
-                                    let time_remaining = timestamp.saturating_diff(now);
-                                    if time_remaining > TimeDiff::default() {
-                                        return CatchUpInstruction::CheckLater(
-                                            format!(
-                                                "CatchUp: waiting for genesis activation at {}",
-                                                timestamp
-                                            ),
-                                            Duration::from(time_remaining),
-                                        );
-                                    }
-                                    return CatchUpInstruction::CommitGenesis;
-                                }
-                                // -- : no trusted hash, no local block, not genesis
-                                return CatchUpInstruction::Fatal(
-                                    "CatchUp: cannot proceed without trusted hash".to_string(),
-                                );
-                            }
-                            Ok(None) => {
-                                debug!("CatchUp: waiting to store genesis immediate switch block");
-                                return CatchUpInstruction::CheckLater(
-                                    "CatchUp: waiting for genesis immediate switch block to be stored"
-                                        .to_string(),
-                                    self.control_logic_default_delay.into()
-                                );
-                            }
-                            Err(err) => {
-                                return CatchUpInstruction::Fatal(format!(
-                                    "CatchUp: fatal block store error when attempting to read \
-                                    highest complete block: {}",
-                                    err
-                                ));
-                            }
-                        }
-                    }
-                    Some(trusted_hash) => {
-                        // if we have a trusted hash and we have a local tip, use the higher
-                        match self.storage.read_block_header(&trusted_hash) {
-                            Ok(Some(trusted_header)) => {
-                                match self.storage.read_highest_complete_block() {
-                                    Ok(Some(block)) => {
-                                        // ++ : leap w/ the higher of local tip or trusted hash
-                                        let trusted_height = trusted_header.height();
-                                        if trusted_height > block.height() {
-                                            StartingWith::BlockIdentifier(
-                                                trusted_hash,
-                                                trusted_height,
-                                            )
-                                        } else {
-                                            StartingWith::LocalTip(
-                                                *block.hash(),
-                                                block.height(),
-                                                block.header().era_id(),
-                                            )
-                                        }
-                                    }
-                                    Ok(None) => {
-                                        // should be unreachable if we've gotten this far
-                                        StartingWith::Hash(trusted_hash)
-                                    }
-                                    Err(_) => {
-                                        return CatchUpInstruction::Fatal(
-                                            "CatchUp: fatal block store error when attempting to \
-                                            read highest complete block"
-                                                .to_string(),
-                                        );
-                                    }
-                                }
-                            }
-                            Ok(None) => {
-                                // +- : leap w/ config hash
-                                StartingWith::Hash(trusted_hash)
-                            }
-                            Err(err) => {
-                                return CatchUpInstruction::Fatal(format!(
-                                    "CatchUp: fatal block store error when attempting to read \
-                                    highest complete block: {}",
-                                    err
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-            BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
-                // do idleness / reattempt checking
-                if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
-                    self.attempts += 1;
-                    if self.attempts > self.max_attempts {
-                        return CatchUpInstruction::Fatal(
-                            "CatchUp: block sync idleness exceeded reattempt tolerance".to_string(),
-                        );
-                    }
-                }
-                // if any progress has been made, reset attempts
-                if last_progress > self.last_progress {
-                    debug!("CatchUp: syncing last_progress: {}", last_progress);
-                    self.last_progress = last_progress;
-                    self.attempts = 0;
-                }
-                match maybe_block_height {
-                    None => StartingWith::Hash(block_hash),
-                    Some(block_height) => StartingWith::BlockIdentifier(block_hash, block_height),
-                }
-            }
-            BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
-                StartingWith::SyncedBlockIdentifier(block_hash, block_height, era_id)
-            }
+        let starting_with = match self.catch_up() {
+            Either::Left(starting_with) => starting_with,
+            Either::Right(instruction) => return instruction,
         };
         debug!("CatchUp: starting with {:?}", starting_with);
-
-        // the block accumulator should be receiving blocks via gossiping
-        // and usually has some awareness of the chain ahead of our tip
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
         debug!(
             ?sync_instruction,
@@ -379,118 +328,18 @@ impl MainReactor {
         );
         match sync_instruction {
             SyncInstruction::Leap { block_hash } => {
-                // register block builder so that control logic can tell that block is Syncing,
-                // otherwise block_synchronizer detects as Idle
-                self.block_synchronizer.register_block_by_hash(
-                    sync_instruction.block_hash(),
-                    true,
-                    true,
-                    self.chainspec.core_config.simultaneous_peer_requests,
-                );
-                let leap_status = self.sync_leaper.leap_status();
-                trace!("CatchUp: leap_status: {:?}", leap_status);
-                return match leap_status {
-                    ls @ LeapStatus::Idle | ls @ LeapStatus::Failed { .. } => {
-                        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-                        if let LeapStatus::Failed {
-                            error,
-                            sync_leap_identifier: _,
-                            from_peers: _,
-                            in_flight: _,
-                        } = ls
-                        {
-                            self.attempts += 1;
-                            if self.attempts > self.max_attempts {
-                                return CatchUpInstruction::Fatal(format!(
-                                    "CatchUp: failed leap exceeded reattempt tolerance: {}",
-                                    error,
-                                ));
-                            }
-                        }
-                        let peers_to_ask = self.net.fully_connected_peers_random(
-                            rng,
-                            self.chainspec.core_config.simultaneous_peer_requests as usize,
-                        );
-                        info!(
-                            "CatchUp: initiating sync leap for {} using peers {}",
-                            block_hash,
-                            DisplayIter::new(&peers_to_ask)
-                        );
-
-                        let effects = effect_builder.immediately().event(move |_| {
-                            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                                sync_leap_identifier,
-                                peers_to_ask,
-                            })
-                        });
-                        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
-                    }
-                    LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
-                        "sync leaper is awaiting response".to_string(),
-                        self.control_logic_default_delay.into(),
-                    ),
-                    LeapStatus::Received {
-                        best_available,
-                        from_peers,
-                        ..
-                    } => {
-                        debug!(
-                            "CatchUp: {} received from {}",
-                            best_available,
-                            DisplayIter::new(&from_peers)
-                        );
-                        info!("CatchUp: {}", best_available);
-                        for validator_weights in best_available.era_validator_weights(
-                            self.validator_matrix.fault_tolerance_threshold(),
-                        ) {
-                            self.validator_matrix
-                                .register_era_validator_weights(validator_weights);
-                        }
-
-                        self.block_synchronizer.register_sync_leap(
-                            &*best_available,
-                            from_peers,
-                            true,
-                            self.chainspec.core_config.simultaneous_peer_requests,
-                        );
-                        self.block_accumulator.handle_validators(effect_builder);
-                        let effects = effect_builder.immediately().event(|_| {
-                            MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                        });
-                        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
-                    }
-                };
+                return self.catch_up_leap(effect_builder, rng, block_hash);
             }
             SyncInstruction::BlockSync { block_hash } => {
-                if self.block_synchronizer.register_block_by_hash(
-                    block_hash,
-                    true,
-                    true,
-                    self.chainspec.core_config.simultaneous_peer_requests,
-                ) {
-                    // once started NeedNext should perpetuate until nothing is needed
-                    let mut effects = Effects::new();
-                    effects.extend(effect_builder.immediately().event(|_| {
-                        MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
-                    }));
-                    return CatchUpInstruction::Do(Duration::ZERO, effects);
-                }
-                return CatchUpInstruction::CheckLater(
-                    format!("syncing {:?}", catch_up_progress),
-                    Duration::from_millis(500),
-                );
+                return self.catch_up_block_sync(effect_builder, block_hash);
             }
             SyncInstruction::CaughtUp { .. } => {
-                match self.should_commit_upgrade() {
-                    Ok(true) => return CatchUpInstruction::CommitUpgrade,
-                    Ok(false) => (),
-                    Err(msg) => return CatchUpInstruction::Fatal(msg),
-                }
-                if self.should_shutdown_for_upgrade() {
-                    return CatchUpInstruction::ShutdownForUpgrade;
+                if let Some(instruction) = self.catch_up_caught_up() {
+                    return instruction;
                 }
             }
         }
+        // purge synchronizer to keep state detection and reporting correct and fresh
         self.block_synchronizer.purge();
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstruction::CaughtUp
@@ -820,94 +669,6 @@ impl MainReactor {
         }
     }
 
-    fn initialize_next_component(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-    ) -> Option<Effects<MainEvent>> {
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.diagnostics_port,
-            MainEvent::DiagnosticsPort(diagnostics_port::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.upgrade_watcher,
-            MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.net,
-            MainEvent::Network(network::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.event_stream_server,
-            MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rest_server,
-            MainEvent::RestServer(rest_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.block_synchronizer,
-            MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
-        {
-            let timestamp = self.recent_switch_block_headers.last().map_or_else(
-                Timestamp::now,
-                |switch_block| {
-                    switch_block
-                        .timestamp()
-                        .saturating_sub(self.chainspec.deploy_config.max_ttl)
-                },
-            );
-            let blocks = match self.storage.read_blocks_since(timestamp) {
-                Ok(blocks) => blocks,
-                Err(err) => {
-                    return Some(
-                        fatal!(
-                            effect_builder,
-                            "fatal block store error when attempting to read highest blocks: {}",
-                            err
-                        )
-                        .ignore(),
-                    )
-                }
-            };
-            let event = deploy_buffer::Event::Initialize(blocks);
-            if let Some(effects) = utils::initialize_component(
-                effect_builder,
-                &mut self.deploy_buffer,
-                MainEvent::DeployBuffer(event),
-            ) {
-                return Some(effects);
-            }
-        }
-        None
-    }
-
     fn update_last_progress(
         &mut self,
         block_synchronizer_progress: &BlockSynchronizerProgress,
@@ -930,6 +691,305 @@ impl MainReactor {
             "{}: last_progress: {} {}",
             phase_prefix, self.last_progress, block_synchronizer_progress
         );
+    }
+
+    fn catch_up(&mut self) -> Either<StartingWith, CatchUpInstruction> {
+        let catch_up_progress = self.block_synchronizer.historical_progress();
+        self.update_last_progress(&catch_up_progress, "CatchUp");
+        match catch_up_progress {
+            BlockSynchronizerProgress::Idle => match self.trusted_hash {
+                None => self.catch_up_no_trusted_hash(),
+                Some(trusted_hash) => self.catch_up_trusted_hash(trusted_hash),
+            },
+            BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
+                self.catch_up_syncing(block_hash, maybe_block_height, last_progress)
+            }
+            BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => Either::Left(
+                StartingWith::SyncedBlockIdentifier(block_hash, block_height, era_id),
+            ),
+        }
+    }
+
+    fn catch_up_no_trusted_hash(&mut self) -> Either<StartingWith, CatchUpInstruction> {
+        // no trusted hash provided use local tip if available
+        match self.storage.read_highest_complete_block() {
+            Ok(Some(block)) => {
+                // -+ : leap w/ local tip
+                info!("CatchUp: local tip detected, no trusted hash");
+                if block.header().is_switch_block() {
+                    self.switch_block = Some(block.header().clone());
+                }
+                Either::Left(StartingWith::LocalTip(
+                    *block.hash(),
+                    block.height(),
+                    block.header().era_id(),
+                ))
+            }
+            Ok(None) if self.switch_block.is_none() => {
+                if let Some(timestamp) = self.is_genesis() {
+                    let is_validator = self.should_commit_genesis();
+                    if false == is_validator {
+                        return Either::Right(CatchUpInstruction::Fatal(
+                            "CatchUp: only validating nodes may participate in genesis; cannot proceed without trusted hash".to_string(),
+                        ));
+                    }
+                    let now = Timestamp::now();
+                    let grace_period = timestamp.saturating_add(TimeDiff::from_seconds(180));
+                    if now > grace_period {
+                        return Either::Right(CatchUpInstruction::Fatal(
+                            "CatchUp: late for genesis; cannot proceed without trusted hash"
+                                .to_string(),
+                        ));
+                    }
+                    let time_remaining = timestamp.saturating_diff(now);
+                    if time_remaining > TimeDiff::default() {
+                        return Either::Right(CatchUpInstruction::CheckLater(
+                            format!("CatchUp: waiting for genesis activation at {}", timestamp),
+                            Duration::from(time_remaining),
+                        ));
+                    }
+                    return Either::Right(CatchUpInstruction::CommitGenesis);
+                }
+                // -- : no trusted hash, no local block, not genesis
+                Either::Right(CatchUpInstruction::Fatal(
+                    "CatchUp: cannot proceed without trusted hash".to_string(),
+                ))
+            }
+            Ok(None) => {
+                debug!("CatchUp: waiting to store genesis immediate switch block");
+                Either::Right(CatchUpInstruction::CheckLater(
+                    "CatchUp: waiting for genesis immediate switch block to be stored".to_string(),
+                    self.control_logic_default_delay.into(),
+                ))
+            }
+            Err(err) => Either::Right(CatchUpInstruction::Fatal(format!(
+                "CatchUp: fatal block store error when attempting to read \
+                                    highest complete block: {}",
+                err
+            ))),
+        }
+    }
+
+    fn catch_up_trusted_hash(
+        &mut self,
+        trusted_hash: BlockHash,
+    ) -> Either<StartingWith, CatchUpInstruction> {
+        // if we have a trusted hash and we have a local tip, use the higher
+        match self.storage.read_block_header(&trusted_hash) {
+            Ok(Some(trusted_header)) => {
+                match self.storage.read_highest_complete_block() {
+                    Ok(Some(block)) => {
+                        // ++ : leap w/ the higher of local tip or trusted hash
+                        let trusted_height = trusted_header.height();
+                        if trusted_height > block.height() {
+                            Either::Left(StartingWith::BlockIdentifier(
+                                trusted_hash,
+                                trusted_height,
+                            ))
+                        } else {
+                            Either::Left(StartingWith::LocalTip(
+                                *block.hash(),
+                                block.height(),
+                                block.header().era_id(),
+                            ))
+                        }
+                    }
+                    Ok(None) => {
+                        // should be unreachable if we've gotten this far
+                        Either::Left(StartingWith::Hash(trusted_hash))
+                    }
+                    Err(_) => Either::Right(CatchUpInstruction::Fatal(
+                        "CatchUp: fatal block store error when attempting to \
+                                            read highest complete block"
+                            .to_string(),
+                    )),
+                }
+            }
+            Ok(None) => {
+                // +- : leap w/ config hash
+                Either::Left(StartingWith::Hash(trusted_hash))
+            }
+            Err(err) => Either::Right(CatchUpInstruction::Fatal(format!(
+                "CatchUp: fatal block store error when attempting to read \
+                                    highest complete block: {}",
+                err
+            ))),
+        }
+    }
+
+    fn catch_up_syncing(
+        &mut self,
+        block_hash: BlockHash,
+        maybe_block_height: Option<u64>,
+        last_progress: Timestamp,
+    ) -> Either<StartingWith, CatchUpInstruction> {
+        // do idleness / reattempt checking
+        if Timestamp::now().saturating_diff(last_progress) > self.idle_tolerance {
+            self.attempts += 1;
+            if self.attempts > self.max_attempts {
+                return Either::Right(CatchUpInstruction::Fatal(
+                    "CatchUp: block sync idleness exceeded reattempt tolerance".to_string(),
+                ));
+            }
+        }
+        // if any progress has been made, reset attempts
+        if last_progress > self.last_progress {
+            debug!("CatchUp: syncing last_progress: {}", last_progress);
+            self.last_progress = last_progress;
+            self.attempts = 0;
+        }
+        match maybe_block_height {
+            None => Either::Left(StartingWith::Hash(block_hash)),
+            Some(block_height) => {
+                Either::Left(StartingWith::BlockIdentifier(block_hash, block_height))
+            }
+        }
+    }
+    fn catch_up_leap(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        block_hash: BlockHash,
+    ) -> CatchUpInstruction {
+        // register block builder so that control logic can tell that block is Syncing,
+        // otherwise block_synchronizer detects as Idle
+        self.block_synchronizer.register_block_by_hash(
+            block_hash,
+            true,
+            true,
+            self.chainspec.core_config.simultaneous_peer_requests,
+        );
+        let leap_status = self.sync_leaper.leap_status();
+        trace!("CatchUp: leap_status: {:?}", leap_status);
+        match leap_status {
+            LeapStatus::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
+            LeapStatus::Failed { error, .. } => {
+                self.catch_up_leap_failed(effect_builder, rng, block_hash, error)
+            }
+            LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
+                "sync leaper is awaiting response".to_string(),
+                self.control_logic_default_delay.into(),
+            ),
+            LeapStatus::Received {
+                best_available,
+                from_peers,
+                ..
+            } => self.catch_up_leap_received(effect_builder, best_available, from_peers),
+        }
+    }
+
+    fn catch_up_leap_failed(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        block_hash: BlockHash,
+        error: LeapActivityError,
+    ) -> CatchUpInstruction {
+        self.attempts += 1;
+        if self.attempts > self.max_attempts {
+            CatchUpInstruction::Fatal(format!(
+                "CatchUp: failed leap exceeded reattempt tolerance: {}",
+                error,
+            ))
+        } else {
+            self.catch_up_leaper_idle(effect_builder, rng, block_hash)
+        }
+    }
+
+    fn catch_up_leaper_idle(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        block_hash: BlockHash,
+    ) -> CatchUpInstruction {
+        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
+        let peers_to_ask = self.net.fully_connected_peers_random(
+            rng,
+            self.chainspec.core_config.simultaneous_peer_requests as usize,
+        );
+        info!(
+            "CatchUp: initiating sync leap for {} using peers {}",
+            block_hash,
+            DisplayIter::new(&peers_to_ask)
+        );
+
+        let effects = effect_builder.immediately().event(move |_| {
+            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                sync_leap_identifier,
+                peers_to_ask,
+            })
+        });
+        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
+    }
+
+    fn catch_up_leap_received(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        best_available: Box<SyncLeap>,
+        from_peers: Vec<NodeId>,
+    ) -> CatchUpInstruction {
+        debug!(
+            "CatchUp: {} received from {}",
+            best_available,
+            DisplayIter::new(&from_peers)
+        );
+        info!("CatchUp: {}", best_available);
+        for validator_weights in
+            best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
+        {
+            self.validator_matrix
+                .register_era_validator_weights(validator_weights);
+        }
+
+        self.block_synchronizer.register_sync_leap(
+            &*best_available,
+            from_peers,
+            true,
+            self.chainspec.core_config.simultaneous_peer_requests,
+        );
+        self.block_accumulator.handle_validators(effect_builder);
+        let effects = effect_builder
+            .immediately()
+            .event(|_| MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext));
+        CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
+    }
+
+    fn catch_up_block_sync(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        block_hash: BlockHash,
+    ) -> CatchUpInstruction {
+        if self.block_synchronizer.register_block_by_hash(
+            block_hash,
+            true,
+            true,
+            self.chainspec.core_config.simultaneous_peer_requests,
+        ) {
+            // once started NeedNext should perpetuate until nothing is needed
+            let mut effects = Effects::new();
+            effects.extend(effect_builder.immediately().event(|_| {
+                MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext)
+            }));
+            CatchUpInstruction::Do(Duration::ZERO, effects)
+        } else {
+            CatchUpInstruction::CheckLater(
+                format!("block_synchronizer unable to register block {}", block_hash),
+                self.control_logic_default_delay.into(),
+            )
+        }
+    }
+
+    fn catch_up_caught_up(&mut self) -> Option<CatchUpInstruction> {
+        match self.should_commit_upgrade() {
+            Err(msg) => return Some(CatchUpInstruction::Fatal(msg)),
+            Ok(true) => return Some(CatchUpInstruction::CommitUpgrade),
+            Ok(false) => (),
+        }
+        if self.should_shutdown_for_upgrade() {
+            Some(CatchUpInstruction::ShutdownForUpgrade)
+        } else {
+            None
+        }
     }
 
     fn maybe_parent_block_identifier(
