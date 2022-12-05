@@ -9,7 +9,7 @@ mod memory_metrics;
 mod utils;
 
 mod catch_up;
-mod keep_up_instruction;
+mod keep_up;
 mod reactor_state;
 #[cfg(test)]
 mod tests;

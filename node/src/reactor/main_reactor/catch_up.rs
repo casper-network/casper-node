@@ -36,28 +36,21 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> CatchUpInstruction {
         let starting_with = match self.catch_up_process() {
-            Either::Left(starting_with) => starting_with,
             Either::Right(instruction) => return instruction,
+            Either::Left(starting_with) => starting_with,
         };
         debug!("CatchUp: starting with {:?}", starting_with);
+
         let sync_instruction = self.block_accumulator.sync_instruction(starting_with);
         debug!(
             ?sync_instruction,
             "CatchUp: sync_instruction {}",
             sync_instruction.block_hash()
         );
-        match sync_instruction {
-            SyncInstruction::Leap { block_hash } => {
-                return self.catch_up_leap(effect_builder, rng, block_hash);
-            }
-            SyncInstruction::BlockSync { block_hash } => {
-                return self.catch_up_block_sync(effect_builder, block_hash);
-            }
-            SyncInstruction::CaughtUp { .. } => {
-                if let Some(instruction) = self.catch_up_caught_up() {
-                    return instruction;
-                }
-            }
+        if let Some(catch_up_instruction) =
+            self.catch_up_sync_instruction(effect_builder, rng, sync_instruction)
+        {
+            return catch_up_instruction;
         }
         // purge synchronizer to keep state detection and reporting correct and fresh
         self.block_synchronizer.purge();
@@ -215,6 +208,23 @@ impl MainReactor {
             Some(block_height) => {
                 Either::Left(StartingWith::BlockIdentifier(block_hash, block_height))
             }
+        }
+    }
+
+    fn catch_up_sync_instruction(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        sync_instruction: SyncInstruction,
+    ) -> Option<CatchUpInstruction> {
+        match sync_instruction {
+            SyncInstruction::Leap { block_hash } => {
+                Some(self.catch_up_leap(effect_builder, rng, block_hash))
+            }
+            SyncInstruction::BlockSync { block_hash } => {
+                Some(self.catch_up_block_sync(effect_builder, block_hash))
+            }
+            SyncInstruction::CaughtUp { .. } => self.catch_up_caught_up(),
         }
     }
 
