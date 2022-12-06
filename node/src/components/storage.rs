@@ -2416,7 +2416,9 @@ impl Storage {
         if let Some(metrics) = self.metrics.as_ref() {
             if let Some(sequence) = self.completed_blocks.highest_sequence() {
                 let chain_height: i64 = sequence.high().try_into().unwrap_or(i64::MIN);
+                let low_seq_height: i64 = sequence.low().try_into().unwrap_or(i64::MIN);
                 metrics.chain_height.set(chain_height);
+                metrics.chain_low_seq_block_height.set(low_seq_height);
             }
         }
     }
