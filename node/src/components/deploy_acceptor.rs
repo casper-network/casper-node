@@ -833,6 +833,12 @@ impl DeployAcceptor {
                     .ignore(),
             );
         } else if matches!(event_metadata.source, Source::Peer(_)) {
+            // If `is_new` is `false`, the deploy was previously stored.  If the source is `Peer`,
+            // we got here as a result of a Fetch<Deploy>, and the incoming deploy could have a
+            // different set of approvals to the one already stored.  We can treat the incoming
+            // approvals as finalized and now try and store them.  If storing them returns `true`,
+            // (indicating the approvals are different to any previously stored) we can announce a
+            // new deploy accepted, causing the fetcher to be notified.
             return effect_builder
                 .store_finalized_approvals(
                     *event_metadata.deploy.hash(),
