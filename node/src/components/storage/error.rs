@@ -162,6 +162,9 @@ pub enum FatalStorageError {
         /// The number of approvals hashes.
         actual: usize,
     },
+    /// Error initializing metrics.
+    #[error("failed to initialize metrics for storage: {0}")]
+    Prometheus(#[from] prometheus::Error),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.

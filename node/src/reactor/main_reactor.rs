@@ -183,6 +183,7 @@ impl reactor::Reactor for MainReactor {
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
+            Some(registry),
         )?;
 
         let contract_runtime = ContractRuntime::new(

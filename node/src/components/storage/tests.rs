@@ -191,6 +191,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         "test",
         MAX_TTL,
         RECENT_ERA_COUNT,
+        None,
     )
     .expect("could not create storage component fixture")
 }
@@ -220,6 +221,7 @@ fn storage_fixture_from_parts(
         network_name.unwrap_or("test"),
         max_ttl.unwrap_or(MAX_TTL),
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
+        None,
     )
     .expect("could not create storage component fixture from parts")
 }
@@ -1208,6 +1210,7 @@ fn should_create_subdir_named_after_network() {
         network_name,
         MAX_TTL,
         RECENT_ERA_COUNT,
+        None,
     )
     .unwrap();
 
