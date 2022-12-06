@@ -8,14 +8,14 @@ mod fetchers;
 mod memory_metrics;
 mod utils;
 
-mod catch_up_instruction;
-mod keep_up_instruction;
+mod catch_up;
+mod keep_up;
 mod reactor_state;
 #[cfg(test)]
 mod tests;
-mod upgrade_shutdown_instruction;
+mod upgrade_shutdown;
 mod upgrading_instruction;
-mod validate_instruction;
+mod validate;
 
 use std::{cmp::Ordering, collections::HashMap, sync::Arc, time::Instant};
 
@@ -268,14 +268,10 @@ impl reactor::Reactor for MainReactor {
         )?;
 
         // chain / deploy management
-        let highest_block_header = storage.read_highest_block_header()?;
-        let highest_block_height_and_era_id =
-            highest_block_header.map(|header| (header.height(), header.era_id()));
 
         let block_accumulator = BlockAccumulator::new(
             config.block_accumulator,
             validator_matrix.clone(),
-            highest_block_height_and_era_id,
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.min_round_length(),
             registry,

@@ -125,14 +125,10 @@ impl BlockAccumulator {
     pub(crate) fn new(
         config: Config,
         validator_matrix: ValidatorMatrix,
-        local_tip_height_and_era_id: Option<(u64, EraId)>,
         recent_era_interval: u64,
         min_block_time: TimeDiff,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        let local_tip = local_tip_height_and_era_id
-            .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id));
-        info!(?local_tip, "starting local tip");
         Ok(Self {
             validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
@@ -141,7 +137,7 @@ impl BlockAccumulator {
             block_children: Default::default(),
             last_progress: Timestamp::now(),
             purge_interval: config.purge_interval(),
-            local_tip,
+            local_tip: None,
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
@@ -172,40 +168,48 @@ impl BlockAccumulator {
         };
 
         if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
+            let had_no_local_tip = self.local_tip.is_none();
             self.local_tip = Some(new_local_tip);
             info!(local_tip=?self.local_tip, "new local tip detected");
+            if had_no_local_tip {
+                // force a leap when accumulator is starting cold.
+                return SyncInstruction::Leap { block_hash };
+            }
         }
 
-        if self.should_sync(block_height) {
-            let block_hash_to_sync = match (
-                starting_with.is_held_locally(),
-                self.next_syncable_block_hash(block_hash),
-            ) {
-                (true, None) => {
-                    // the block we just finished syncing appears to have no perceived children
-                    // and is either at tip or within execution range of tip
-                    None
-                }
-                (true, Some(child_hash)) => {
-                    // we know of the child of this synced block
-                    Some(child_hash)
-                }
-                (false, _) => Some(block_hash),
-            };
+        if self.should_leap(block_height) {
+            return SyncInstruction::Leap { block_hash };
+        }
 
-            match block_hash_to_sync {
-                Some(block_hash) => {
-                    self.last_progress = Timestamp::now();
-                    return SyncInstruction::BlockSync { block_hash };
-                }
-                None => {
-                    if !self.is_stalled() {
-                        return SyncInstruction::CaughtUp { block_hash };
-                    }
+        let block_hash_to_sync = match (
+            starting_with.is_held_locally(),
+            self.next_syncable_block_hash(block_hash),
+        ) {
+            (false, _) => Some(block_hash),
+            (true, Some(child_hash)) => {
+                // we know of the child of this synced block
+                Some(child_hash)
+            }
+            (true, None) => {
+                // the block we just finished syncing appears to have no perceived children
+                // and is either at tip or within execution range of tip
+                None
+            }
+        };
+
+        match block_hash_to_sync {
+            Some(block_hash) => {
+                self.last_progress = Timestamp::now();
+                SyncInstruction::BlockSync { block_hash }
+            }
+            None => {
+                if !self.is_stalled() {
+                    SyncInstruction::CaughtUp { block_hash }
+                } else {
+                    SyncInstruction::Leap { block_hash }
                 }
             }
         }
-        SyncInstruction::Leap { block_hash }
     }
 
     /// Drops all old block acceptors and tracks new local block height;
@@ -531,14 +535,13 @@ impl BlockAccumulator {
         }
     }
 
-    fn should_sync(&self, starting_with_block_height: u64) -> bool {
+    fn should_leap(&self, from_block_height: u64) -> bool {
         match self.highest_usable_block_height() {
             Some(highest_usable_block_height) => {
-                let height_diff =
-                    highest_usable_block_height.saturating_sub(starting_with_block_height);
-                height_diff <= self.attempt_execution_threshold
+                let height_diff = highest_usable_block_height.saturating_sub(from_block_height);
+                height_diff > self.attempt_execution_threshold
             }
-            None => false,
+            None => true,
         }
     }
 
@@ -546,6 +549,10 @@ impl BlockAccumulator {
         match (starting_with.maybe_local_tip_identifier(), self.local_tip) {
             (Some((block_height, era_id)), Some(local_tip)) => {
                 if local_tip.height < block_height && local_tip.era_id <= era_id {
+                    debug!(
+                        "new block({}) higher than local tip({})",
+                        block_height, local_tip.height
+                    );
                     return Some(LocalTipIdentifier::new(block_height, era_id));
                 }
             }
