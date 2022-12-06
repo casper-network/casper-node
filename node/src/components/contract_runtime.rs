@@ -469,10 +469,10 @@ impl ContractRuntime {
                             finalized_block_height, next_block_height
                         );
                         info!(
-                        "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
-                        finalized_block_height,
-                        deploys.len()
-                    );
+                            "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
+                            finalized_block_height,
+                            deploys.len()
+                        );
                         exec_queue
                             .lock()
                             .unwrap()
@@ -653,6 +653,9 @@ impl ContractRuntime {
     ) -> Result<(), ConfigError> {
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
+
+        let mut exec_queue = self.exec_queue.lock().unwrap();
+        *exec_queue = exec_queue.split_off(&execution_pre_state.next_block_height);
 
         // Initialize the system contract registry.
         //

@@ -203,7 +203,7 @@ impl BlockAccumulator {
                 SyncInstruction::BlockSync { block_hash }
             }
             None => {
-                if self.is_caught_up() {
+                if !self.is_stalled() {
                     SyncInstruction::CaughtUp { block_hash }
                 } else {
                     SyncInstruction::Leap { block_hash }
@@ -521,7 +521,7 @@ impl BlockAccumulator {
             .map(|acceptor| acceptor.peers().iter().cloned().collect())
     }
 
-    fn is_caught_up(&mut self) -> bool {
+    fn is_stalled(&mut self) -> bool {
         // we expect to be receiving gossiped blocks from other nodes
         // if we haven't received any messages describing higher blocks
         // for more than the self.dead_air_interval config allows
@@ -529,9 +529,9 @@ impl BlockAccumulator {
         if self.last_progress.elapsed() >= self.dead_air_interval {
             // we don't want to swamp the network with "are we there yet" leaps.
             self.last_progress = Timestamp::now();
-            false
-        } else {
             true
+        } else {
+            false
         }
     }
 
