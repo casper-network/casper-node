@@ -52,7 +52,8 @@ pub(crate) enum Event {
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
-    /// The result of the `DeployAcceptor` storing the approvals from a `Deploy` provided by a peer.
+    /// The result of the `DeployAcceptor` storing the approvals from a `Deploy` provided by a
+    /// peer.
     StoredFinalizedApprovals {
         event_metadata: EventMetadata,
         is_new: bool,
