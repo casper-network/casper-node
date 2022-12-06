@@ -29,7 +29,7 @@ enum PeerState {
 
 #[derive(Debug, DataSize)]
 pub(crate) enum LeapStatus {
-    Inactive,
+    Idle,
     Awaiting {
         sync_leap_identifier: SyncLeapIdentifier,
         in_flight: usize,
@@ -50,7 +50,7 @@ pub(crate) enum LeapStatus {
 impl LeapStatus {
     fn in_flight(&self) -> usize {
         match self {
-            LeapStatus::Inactive => 0,
+            LeapStatus::Idle => 0,
             LeapStatus::Awaiting { in_flight, .. }
             | LeapStatus::Received { in_flight, .. }
             | LeapStatus::Failed { in_flight, .. } => *in_flight,
@@ -175,7 +175,7 @@ impl SyncLeaper {
     // called from Reactor control logic to scrape results
     pub(crate) fn leap_status(&mut self) -> LeapStatus {
         match &self.leap_activity {
-            None => LeapStatus::Inactive,
+            None => LeapStatus::Idle,
             Some(activity) => {
                 let result = activity.status();
                 if result.active() == false {

@@ -79,7 +79,7 @@ reduced_reward_multiplier = [1, 5]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
 max_payment_cost = '0'
 # The duration after the deploy timestamp that it can be included in a block.
-max_ttl = '1day'
+max_ttl = '5minutes'
 # The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
 max_dependencies = 10
 # Maximum block size in bytes including deploys contained by the block.  0 means unlimited.
