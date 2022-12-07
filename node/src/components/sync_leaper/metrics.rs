@@ -3,7 +3,7 @@ use prometheus::{Histogram, IntCounter, Registry};
 use crate::{unregister_metric, utils};
 
 const SYNC_LEAP_DURATION_NAME: &str = "sync_leap_duration";
-const SYNC_LEAP_DURATION_HELP: &str = "Time duration (in sec) to perform a successful sync leap.";
+const SYNC_LEAP_DURATION_HELP: &str = "duration (in sec) to perform a successful sync leap";
 
 // We use linear buckets to observe the time it takes to do a sync leap.
 // Buckets have 1s widths and cover up to 4s durations with this granularity.
@@ -37,15 +37,15 @@ impl Metrics {
 
         let sync_leap_fetched_from_peer = IntCounter::new(
             "sync_leap_fetched_from_peer".to_string(),
-            "Number of successful sync leap responses that were received from peers.".to_string(),
+            "number of successful sync leap responses that were received from peers".to_string(),
         )?;
         let sync_leap_rejected_by_peer = IntCounter::new(
             "sync_leap_rejected_by_peer".to_string(),
-            "Number of requests that were rejected by peers.".to_string(),
+            "number of sync leap requests that were rejected by peers".to_string(),
         )?;
         let sync_leap_cant_fetch = IntCounter::new(
             "sync_leap_cant_fetch".to_string(),
-            "Number of requests that couldn't be fetched from peers.".to_string(),
+            "number of sync leap requests that couldn't be fetched from peers".to_string(),
         )?;
 
         registry.register(Box::new(sync_leap_fetched_from_peer.clone()))?;
