@@ -2108,7 +2108,10 @@ impl Storage {
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
 
-    /// Stores a set of finalized approvals.
+    /// Stores a set of finalized approvals if they are different to the approvals in the original
+    /// deploy and if they are different to existing finalized approvals if any.
+    ///
+    /// Returns `true` if the provided approvals were stored.
     fn store_finalized_approvals(
         &self,
         deploy_hash: &DeployHash,
