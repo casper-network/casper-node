@@ -256,16 +256,16 @@ function _setup_asset_node_config_workaround_1()
 function _validators_string()
 {
     local IDX
-    local COUNT_NODES=${1}
+    local COUNT_NODES_AT_GENESIS=$(get_count_of_genesis_nodes)
     local PATH_TO_NET
 
     local VALIDATORS
 
     PATH_TO_NET="$(get_path_to_net)"
 
-    for IDX in $(seq 1 "$COUNT_NODES")
+    for IDX in $(seq 1 "$COUNT_NODES_AT_GENESIS")
     do
-        VALIDATORS+="--validator $(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex"),$(get_node_pos_stake_weight "$COUNT_NODES" "$IDX") "
+        VALIDATORS+="--validator $(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex"),$(get_node_pos_stake_weight "$COUNT_NODES_AT_GENESIS" "$IDX") "
     done
 
     echo $VALIDATORS
@@ -292,8 +292,7 @@ function _setup_asset_global_state_toml() {
         exit 1
     fi
 
-    VALIDATOR_SETUP_STRING=$(_validators_string "$COUNT_NODES" )
-
+    VALIDATOR_SETUP_STRING=$(validators_string)
 
     if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -gt "140" ]; then
         # Check new data.lmdb path under ..storage/<chain_name>/
