@@ -451,10 +451,7 @@ impl Storage {
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
-        let mut metrics: Option<Metrics> = None;
-        if let Some(metrics_registry) = registry {
-            metrics = Some(Metrics::new(metrics_registry)?);
-        }
+        let metrics = registry.map(Metrics::new).transpose()?;
 
         let mut component = Self {
             root,

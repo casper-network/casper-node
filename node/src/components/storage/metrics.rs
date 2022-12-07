@@ -3,13 +3,11 @@ use prometheus::{self, IntGauge, Registry};
 use crate::unregister_metric;
 
 const CHAIN_HEIGHT_NAME: &str = "chain_height";
-const CHAIN_HEIGHT_HELP: &str = "Current chain height";
+const CHAIN_HEIGHT_HELP: &str = "highest complete block";
 
 const LOW_SEQ_BLOCK_HEIGHT_NAME: &str = "chain_low_seq_block_height";
-const LOW_SEQ_BLOCK_HEIGHT_HELP: &str = concat!(
-    "Lowest sequential height of the synchronized chain. ",
-    "The node has all blocks in the [chain_low_seq_block_height, chain_height] range"
-);
+const LOW_SEQ_BLOCK_HEIGHT_HELP: &str =
+    "lowest of available block range (the highest contiguous chain of complete blocks)";
 
 /// Metrics for the storage component.
 #[derive(Debug)]
