@@ -234,7 +234,7 @@ impl reactor::Reactor for MainReactor {
             DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
 
         // local / remote data management
-        let sync_leaper = SyncLeaper::new(chainspec.clone());
+        let sync_leaper = SyncLeaper::new(chainspec.clone(), registry)?;
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
