@@ -154,7 +154,7 @@ impl DisjointSequences {
         self.sequences.first()
     }
 
-    /// Returns the highest sequence, or `None` if there are no sequences.
+    /// Returns all the sequences, if any.
     pub(super) fn sequences(&self) -> &Vec<Sequence> {
         &self.sequences
     }
