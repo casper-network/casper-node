@@ -105,7 +105,6 @@ pub fn execute_finalized_block(
 
     // Write the deploy approvals and execution results Merkle root hashes to global state if there
     // were any deploys.
-    let block_height = finalized_block.height();
     let execution_results_checksum = compute_execution_results_checksum(
         &execution_results
             .iter()
@@ -141,7 +140,7 @@ pub fn execute_finalized_block(
                 execution_journal: step_execution_journal,
             } = commit_step(
                 &scratch_state, // engine_state
-                metrics.clone(),
+                metrics,
                 protocol_version,
                 state_root_hash,
                 era_report,
@@ -178,11 +177,6 @@ pub fn execute_finalized_block(
 
     let proof_of_checksum_registry =
         engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
-
-    // Update the metric.
-    if let Some(metrics) = metrics.as_ref() {
-        metrics.chain_height.set(block_height as i64);
-    }
 
     let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators

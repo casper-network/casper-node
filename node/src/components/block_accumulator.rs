@@ -203,13 +203,18 @@ impl BlockAccumulator {
                 SyncInstruction::BlockSync { block_hash }
             }
             None => {
-                if !self.is_stalled() {
-                    SyncInstruction::CaughtUp { block_hash }
-                } else {
+                if self.is_stalled() {
                     SyncInstruction::Leap { block_hash }
+                } else {
+                    SyncInstruction::CaughtUp { block_hash }
                 }
             }
         }
+    }
+
+    /// Gets local tip block_height if available.
+    pub(crate) fn local_tip(&self) -> Option<u64> {
+        self.local_tip.map(|lti| lti.height)
     }
 
     /// Drops all old block acceptors and tracks new local block height;
@@ -480,7 +485,7 @@ impl BlockAccumulator {
     {
         let mut effects = Effects::new();
         if let Some(block) = block {
-            effects.extend(effect_builder.announce_block_accepted(block).ignore());
+            effects.extend(effect_builder.announce_block_added(block).ignore());
         };
         for finality_signature in finality_signatures {
             effects.extend(

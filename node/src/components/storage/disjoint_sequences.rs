@@ -154,6 +154,11 @@ impl DisjointSequences {
         self.sequences.first()
     }
 
+    /// Returns all the sequences, if any.
+    pub(super) fn sequences(&self) -> &Vec<Sequence> {
+        &self.sequences
+    }
+
     /// Reduces the sequence(s), keeping all entries below and including `max_value`.  If
     /// `max_value` is not already included in a sequence, it will not be added.
     ///

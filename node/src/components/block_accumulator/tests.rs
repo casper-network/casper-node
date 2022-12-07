@@ -23,6 +23,8 @@ fn upsert_acceptor() {
     )
     .unwrap();
 
+    accumulator.register_local_tip(0, EraId::new(0));
+
     let max_block_count =
         PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval() / block_time) as usize);
 
