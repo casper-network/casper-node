@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    time::Instant,
 };
 
 use datasize::DataSize;
@@ -52,6 +53,7 @@ pub(super) struct BlockBuilder {
     peer_list: PeerList,
 
     // progress tracking
+    sync_start: Instant,
     last_progress: Timestamp,
     in_flight_latch: Option<Timestamp>,
 
@@ -92,6 +94,7 @@ impl BlockBuilder {
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
             requires_strict_finality,
+            sync_start: Instant::now(),
             last_progress: Timestamp::now(),
             in_flight_latch: None,
         }
@@ -134,6 +137,7 @@ impl BlockBuilder {
             peer_list,
             should_fetch_execution_state,
             requires_strict_finality,
+            sync_start: Instant::now(),
             last_progress: Timestamp::now(),
             in_flight_latch: None,
         }
@@ -154,6 +158,10 @@ impl BlockBuilder {
         self.block_hash
     }
 
+    pub(super) fn maybe_block(&self) -> Option<Box<Block>> {
+        self.acquisition_state.maybe_block()
+    }
+
     pub(super) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
     }
@@ -169,6 +177,10 @@ impl BlockBuilder {
 
     pub(super) fn should_fetch_execution_state(&self) -> bool {
         self.should_fetch_execution_state
+    }
+
+    pub(super) fn sync_start_time(&self) -> Instant {
+        self.sync_start
     }
 
     pub(super) fn last_progress_time(&self) -> Timestamp {

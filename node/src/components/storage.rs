@@ -33,6 +33,7 @@
 pub(crate) mod disjoint_sequences;
 mod error;
 mod lmdb_ext;
+mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
@@ -42,7 +43,7 @@ use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
     collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
     fs, mem,
     path::{Path, PathBuf},
@@ -58,6 +59,7 @@ use lmdb::{
     WriteFlags,
 };
 use num_rational::Ratio;
+use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -103,6 +105,7 @@ use crate::{
 
 use crate::types::SyncLeapIdentifier;
 pub use error::FatalStorageError;
+use metrics::Metrics;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -203,6 +206,8 @@ pub struct Storage {
     recent_era_count: u64,
     #[data_size(skip)]
     fault_tolerance_fraction: Ratio<u64>,
+    #[data_size(skip)]
+    metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: TimeDiff,
 }
@@ -309,6 +314,7 @@ where
 
 impl Storage {
     /// Creates a new storage component.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
         fault_tolerance_fraction: Ratio<u64>,
@@ -317,6 +323,7 @@ impl Storage {
         network_name: &str,
         max_ttl: TimeDiff,
         recent_era_count: u64,
+        registry: Option<&Registry>,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -444,6 +451,8 @@ impl Storage {
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
 
+        let metrics = registry.map(Metrics::new).transpose()?;
+
         let mut component = Self {
             root,
             env: Rc::new(env),
@@ -465,6 +474,7 @@ impl Storage {
             recent_era_count,
             fault_tolerance_fraction,
             max_ttl,
+            metrics,
         };
 
         if let Some(raw) =
@@ -1084,6 +1094,7 @@ impl Storage {
             block_height,
             self.get_available_block_range()
         );
+        self.update_chain_height_metrics();
         Ok(())
     }
 
@@ -1435,6 +1446,10 @@ impl Storage {
             }
         }
         result.reverse();
+        debug!(
+            ?result,
+            "Storage: read_highest_switch_block_headers count:({})", count
+        );
         Ok(result)
     }
 
@@ -1548,10 +1563,19 @@ impl Storage {
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         trace!(switch_block_era_id_index = ?self.switch_block_era_id_index);
-        self.switch_block_era_id_index
+        let ret = self
+            .switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(txn, block_hash).transpose())
-            .transpose()
+            .transpose();
+        if let Ok(maybe) = &ret {
+            debug!(
+                "Storage: get_switch_block_header_by_era_id({:?}) has entry:{}",
+                era_id,
+                maybe.is_some()
+            )
+        }
+        ret
     }
 
     /// Retrieves a single block header by deploy hash by looking it up in the index and returning
@@ -1678,18 +1702,22 @@ impl Storage {
     where
         F: Fn(&Block) -> bool,
     {
-        let mut next_block = self.get_highest_block(txn)?;
         let mut blocks = Vec::new();
-        loop {
-            match next_block {
-                None => break,
-                Some(block) if !predicate(&block) => break,
-                Some(block) => {
-                    next_block = match block.parent() {
-                        None => None,
-                        Some(parent_hash) => self.get_single_block(txn, parent_hash)?,
-                    };
-                    blocks.push(block);
+        for sequence in self.completed_blocks.sequences().iter().rev() {
+            let hi = sequence.high();
+            let low = sequence.low();
+            for idx in (low..=hi).rev() {
+                match self.get_block_by_height(txn, idx) {
+                    Ok(Some(block)) => {
+                        if false == predicate(&block) {
+                            return Ok(blocks);
+                        }
+                        blocks.push(block);
+                    }
+                    Ok(None) => {
+                        continue;
+                    }
+                    Err(err) => return Err(err),
                 }
             }
         }
@@ -2405,6 +2433,17 @@ impl Storage {
             }
         };
         Ok(Some(request.response(value_or_chunk)))
+    }
+
+    fn update_chain_height_metrics(&self) {
+        if let Some(metrics) = self.metrics.as_ref() {
+            if let Some(sequence) = self.completed_blocks.highest_sequence() {
+                let chain_height: i64 = sequence.high().try_into().unwrap_or(i64::MIN);
+                let low_seq_height: i64 = sequence.low().try_into().unwrap_or(i64::MIN);
+                metrics.chain_height.set(chain_height);
+                metrics.chain_low_seq_block_height.set(low_seq_height);
+            }
+        }
     }
 }
 

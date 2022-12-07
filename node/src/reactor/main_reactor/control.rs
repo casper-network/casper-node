@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::time::Duration;
 use tracing::{debug, info, trace};
 
@@ -21,7 +22,7 @@ use crate::{
         upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
         utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock},
+    types::{BlockHash, BlockPayload, FinalizedBlock, Item},
     NodeRng,
 };
 
@@ -63,6 +64,9 @@ impl MainReactor {
                     if false == self.net.has_sufficient_fully_connected_peers() {
                         info!("Initialize: awaiting sufficient fully-connected peers");
                         return (Duration::from_secs(2), Effects::new());
+                    }
+                    if let Err(msg) = self.refresh_contract_runtime() {
+                        return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
                     }
                     info!("Initialize: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
@@ -124,6 +128,9 @@ impl MainReactor {
                     (wait, effects)
                 }
                 CatchUpInstruction::CaughtUp => {
+                    if let Err(msg) = self.refresh_contract_runtime() {
+                        return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
+                    }
                     info!("CatchUp: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
@@ -225,13 +232,6 @@ impl MainReactor {
         }
         if let Some(effects) = utils::initialize_component(
             effect_builder,
-            &mut self.net,
-            MainEvent::Network(network::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
             &mut self.event_stream_server,
             MainEvent::EventStreamServer(event_stream_server::Event::Initialize),
         ) {
@@ -241,13 +241,6 @@ impl MainReactor {
             effect_builder,
             &mut self.rest_server,
             MainEvent::RestServer(rest_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
         ) {
             return Some(effects);
         }
@@ -281,6 +274,10 @@ impl MainReactor {
                     )
                 }
             };
+            debug!(
+                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
+                "DeployBuffer: initialization"
+            );
             let event = deploy_buffer::Event::Initialize(blocks);
             if let Some(effects) = utils::initialize_component(
                 effect_builder,
@@ -289,6 +286,20 @@ impl MainReactor {
             ) {
                 return Some(effects);
             }
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rpc_server,
+            MainEvent::RpcServer(rpc_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.net,
+            MainEvent::Network(network::Event::Initialize),
+        ) {
+            return Some(effects);
         }
         None
     }
@@ -327,7 +338,7 @@ impl MainReactor {
         );
 
         let next_block_height = 0;
-        self.refresh_contract_runtime(
+        self.initialize_contract_runtime(
             next_block_height,
             post_state_hash,
             BlockHash::default(),
@@ -382,7 +393,7 @@ impl MainReactor {
                     );
 
                     let next_block_height = previous_block_header.height() + 1;
-                    self.refresh_contract_runtime(
+                    self.initialize_contract_runtime(
                         next_block_height,
                         post_state_hash,
                         previous_block_header.block_hash(),
@@ -451,28 +462,52 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (bool, Option<Effects<MainEvent>>) {
-        // if on a switch block, check if we should go to Validate
-        if self.switch_block.is_some() {
-            match self.create_required_eras(effect_builder, rng) {
-                Err(msg) => {
-                    return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
-                }
-                Ok(Some(effects)) => {
-                    return (true, Some(effects));
-                }
-                Ok(None) => (),
+        match self.create_required_eras(effect_builder, rng) {
+            Err(msg) => {
+                return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
             }
+            Ok(Some(effects)) => {
+                debug!("Validate: should validate");
+                return (true, Some(effects));
+            }
+            Ok(None) => (),
         }
+        debug!("Validate: should not validate");
         (false, None)
     }
 
-    pub(super) fn refresh_contract_runtime(
+    fn refresh_contract_runtime(&mut self) -> Result<(), String> {
+        match self.storage.read_highest_complete_block() {
+            Ok(Some(block)) => {
+                let block_height = block.height();
+                let state_root_hash = block.state_root_hash();
+                let block_hash = block.id();
+                let accumulated_seed = block.header().accumulated_seed();
+                self.initialize_contract_runtime(
+                    block_height + 1,
+                    *state_root_hash,
+                    block_hash,
+                    accumulated_seed,
+                )
+            }
+            Ok(None) => {
+                Ok(()) // noop
+            }
+            Err(error) => Err(format!("failed to read highest complete block: {}", error)),
+        }
+    }
+
+    fn initialize_contract_runtime(
         &mut self,
         next_block_height: u64,
         pre_state_root_hash: Digest,
         parent_hash: BlockHash,
         parent_seed: Digest,
     ) -> Result<(), String> {
+        // a better approach might be to have an announcement for immediate switch block
+        // creation, which the contract runtime handles and sets itself into
+        // the proper state to handle the unexpected block.
+        // in the meantime, this is expedient.
         let initial_pre_state = ExecutionPreState::new(
             next_block_height,
             pre_state_root_hash,

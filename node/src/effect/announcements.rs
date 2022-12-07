@@ -110,6 +110,22 @@ impl Display for FatalAnnouncement {
     }
 }
 
+#[derive(Serialize, Debug)]
+#[must_use]
+pub(crate) enum ReactorAnnouncement {
+    CompletedBlock { block: Box<Block> },
+}
+
+impl Display for ReactorAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ReactorAnnouncement::CompletedBlock { block } => {
+                write!(f, "added complete block block_height: {}", block.height())
+            }
+        }
+    }
+}
+
 /// Queue dump format with handler.
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {
@@ -396,6 +412,22 @@ impl Display for BlockAccumulatorAnnouncement {
             }
             BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
                 write!(f, "finality signature {} accepted", finality_signature.id())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockSynchronizerAnnouncement {
+    /// A block which wasn't previously stored on this node has been accepted and stored.
+    CompletedBlock { block: Box<Block> },
+}
+
+impl Display for BlockSynchronizerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockSynchronizerAnnouncement::CompletedBlock { block } => {
+                write!(f, "block {} completed", block.hash())
             }
         }
     }
