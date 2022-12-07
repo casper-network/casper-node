@@ -397,7 +397,7 @@ impl BlockSynchronizer {
                 builder.register_block_execution_enqueued();
                 self.metrics
                     .forward_block_sync_time
-                    .observe(builder.get_sync_start_time().elapsed().as_secs_f64());
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
@@ -417,7 +417,7 @@ impl BlockSynchronizer {
                 builder.register_marked_complete();
                 self.metrics
                     .historical_block_sync_time
-                    .observe(builder.get_sync_start_time().elapsed().as_secs_f64());
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing historical block");

@@ -175,7 +175,7 @@ impl BlockBuilder {
         self.should_fetch_execution_state
     }
 
-    pub(super) fn get_sync_start_time(&self) -> Instant {
+    pub(super) fn sync_start_time(&self) -> Instant {
         self.sync_start
     }
 
