@@ -65,7 +65,7 @@ use smallvec::SmallVec;
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -1562,6 +1562,7 @@ impl Storage {
         txn: &mut Tx,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        trace!(switch_block_era_id_index = ?self.switch_block_era_id_index);
         let ret = self
             .switch_block_era_id_index
             .get(&era_id)
@@ -2135,12 +2136,15 @@ impl Storage {
         Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
 
-    /// Stores a set of finalized approvals.
+    /// Stores a set of finalized approvals if they are different to the approvals in the original
+    /// deploy and if they are different to existing finalized approvals if any.
+    ///
+    /// Returns `true` if the provided approvals were stored.
     fn store_finalized_approvals(
         &self,
         deploy_hash: &DeployHash,
         finalized_approvals: &FinalizedApprovals,
-    ) -> Result<(), FatalStorageError> {
+    ) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let maybe_original_deploy: Option<Deploy> = txn.get_value(self.deploy_db, &deploy_hash)?;
         let original_deploy =
@@ -2149,7 +2153,13 @@ impl Storage {
             })?;
 
         // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.inner() {
+        let maybe_existing_finalized_approvals: Option<FinalizedApprovals> =
+            txn.get_value(self.finalized_approvals_db, deploy_hash)?;
+
+        let should_store = original_deploy.approvals() != finalized_approvals.inner()
+            && maybe_existing_finalized_approvals.as_ref() != Some(finalized_approvals);
+
+        if should_store {
             let _ = txn.put_value(
                 self.finalized_approvals_db,
                 deploy_hash,
@@ -2158,7 +2168,7 @@ impl Storage {
             )?;
             txn.commit()?;
         }
-        Ok(())
+        Ok(should_store)
     }
 
     /// Retrieves a deploy from the deploy store by deploy hash.

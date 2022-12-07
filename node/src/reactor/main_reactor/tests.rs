@@ -16,8 +16,13 @@ use casper_types::{
 };
 
 use crate::{
-    components::{gossiper, network, storage, upgrade_watcher::NextUpgrade},
+    components::{
+        consensus::{ClContext, ConsensusMessage, HighwayMessage, HighwayVertex},
+        gossiper, network, storage,
+        upgrade_watcher::NextUpgrade,
+    },
     effect::{
+        incoming::ConsensusMessageIncoming,
         requests::{ContractRuntimeRequest, DeployBufferRequest, NetworkRequest},
         EffectExt,
     },
@@ -31,7 +36,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, NodeRng,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, NodeRng,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -191,6 +196,37 @@ fn is_in_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     }
 }
 
+/// Given an era number, returns a predicate to check if all of the nodes have completed the
+/// specified era.
+fn has_completed_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
+    move |nodes: &Nodes| {
+        nodes.values().all(|runner| {
+            runner
+                .main_reactor()
+                .storage()
+                .read_highest_switch_block_headers(1)
+                .unwrap()
+                .last()
+                .map_or(false, |header| header.era_id() == era_id)
+        })
+    }
+}
+
+fn is_ping(event: &MainEvent) -> bool {
+    if let MainEvent::ConsensusMessageIncoming(ConsensusMessageIncoming {
+        message: ConsensusMessage::Protocol { payload, .. },
+        ..
+    }) = event
+    {
+        let msg = bincode::deserialize(payload).unwrap();
+        return matches!(
+            msg,
+            HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(_))
+        );
+    }
+    false
+}
+
 /// A set of consecutive switch blocks.
 struct SwitchBlocks {
     headers: Vec<BlockHeader>,
@@ -248,13 +284,17 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
         let correlation_id = Default::default();
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
-        let request = GetBidsRequest::new(state_root_hash);
-        let runner = nodes.values().next().expect("missing node");
-        let engine_state = runner.main_reactor().contract_runtime().engine_state();
-        let bids_result = engine_state
-            .get_bids(correlation_id, request)
-            .expect("get_bids failed");
-        bids_result.into_success().expect("no bids returned")
+        for runner in nodes.values() {
+            let request = GetBidsRequest::new(state_root_hash);
+            let engine_state = runner.main_reactor().contract_runtime().engine_state();
+            let bids_result = engine_state
+                .get_bids(correlation_id, request)
+                .expect("get_bids failed");
+            if let Some(bids) = bids_result.into_success() {
+                return bids;
+            }
+        }
+        unreachable!("at least one node should have bids for era {}", era_number);
     }
 }
 
@@ -309,11 +349,11 @@ async fn run_equivocator_network() {
     keys.push(alice_secret_key.clone());
     keys.push(alice_secret_key);
 
-    // We configure the era to take ten rounds, and delay all messages to and from one of Alice's
-    // nodes until three rounds after the first message. That should guarantee that the two nodes
+    // We configure the era to take ten rounds. That should guarantee that the two nodes
     // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 10;
+    chain.chainspec_mut().core_config.validator_slots = size as u32;
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -321,78 +361,108 @@ async fn run_equivocator_network() {
         .expect("network initialization failed");
     let min_round_len = chain.chainspec.highway_config.min_round_length();
     let mut maybe_first_message_time = None;
-    net.reactors_mut()
-        .find(|reactor| *reactor.inner().consensus().public_key() == alice_public_key)
-        .unwrap()
-        .set_filter(move |event| {
-            let now = Timestamp::now();
-            match &event {
-                MainEvent::ConsensusMessageIncoming { .. } => {}
-                MainEvent::NetworkRequest(
-                    NetworkRequest::SendMessage { payload, .. }
-                    | NetworkRequest::ValidatorBroadcast { payload, .. }
-                    | NetworkRequest::Gossip { payload, .. },
-                ) if matches!(**payload, Message::Consensus(_)) => {}
-                _ => return Either::Right(event),
-            };
-            let first_message_time = *maybe_first_message_time.get_or_insert(now);
-            if now < first_message_time + min_round_len * 3 {
-                return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
-            }
-            Either::Right(event)
-        });
+
+    let mut alice_reactors = net
+        .reactors_mut()
+        .filter(|reactor| *reactor.inner().consensus().public_key() == alice_public_key);
+
+    // Delay all messages to and from the first of Alice's nodes until three rounds after the first
+    // message.  Further, significantly delay any incoming pings to avoid the node detecting the
+    // doppelganger and deactivating itself.
+    alice_reactors.next().unwrap().set_filter(move |event| {
+        if is_ping(&event) {
+            return Either::Left(time::sleep((min_round_len * 30).into()).event(move |_| event));
+        }
+        let now = Timestamp::now();
+        match &event {
+            MainEvent::ConsensusMessageIncoming(_) => {}
+            MainEvent::NetworkRequest(
+                NetworkRequest::SendMessage { payload, .. }
+                | NetworkRequest::ValidatorBroadcast { payload, .. }
+                | NetworkRequest::Gossip { payload, .. },
+            ) if matches!(**payload, Message::Consensus(_)) => {}
+            _ => return Either::Right(event),
+        };
+        let first_message_time = *maybe_first_message_time.get_or_insert(now);
+        if now < first_message_time + min_round_len * 3 {
+            return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
+        }
+        Either::Right(event)
+    });
+
+    // Significantly delay all incoming pings to the second of Alice's nodes.
+    alice_reactors.next().unwrap().set_filter(move |event| {
+        if is_ping(&event) {
+            return Either::Left(time::sleep((min_round_len * 30).into()).event(move |_| event));
+        }
+        Either::Right(event)
+    });
+
+    drop(alice_reactors);
 
     let era_count = 4;
 
     let timeout = Duration::from_secs(90 * era_count);
     info!("Waiting for {} eras to end.", era_count);
-    net.settle_on(&mut rng, is_in_era(EraId::new(era_count)), timeout)
-        .await;
+    net.settle_on(
+        &mut rng,
+        has_completed_era(EraId::new(era_count - 1)),
+        timeout,
+    )
+    .await;
     let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
     let bids: Vec<Bids> = (0..era_count)
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
 
-    // Since this setup sometimes fails to produce an equivocation we return early here.
+    // Since this setup sometimes produces an equivocation in era 2 rather than era 1, we set an
+    // offset here.
     // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
-    if switch_blocks.equivocators(0).is_empty() {
-        error!("Failed to equivocate in the first era.");
-        return;
-    }
+    let offset = if switch_blocks.equivocators(1).is_empty() {
+        error!("failed to equivocate in era 1 - asserting equivocation detected in era 2");
+        1
+    } else {
+        0
+    };
 
     // Era 0 consists only of the genesis block.
     // In era 1, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
-    assert_eq!(switch_blocks.equivocators(1), [alice_public_key.clone()]);
-    assert_eq!(switch_blocks.inactive_validators(1), []);
-    assert!(bids[1][&alice_public_key].inactive());
+    assert_eq!(
+        switch_blocks.equivocators(1 + offset),
+        [alice_public_key.clone()]
+    );
+    assert_eq!(switch_blocks.inactive_validators(1 + offset), []);
+    assert!(bids[1 + offset as usize][&alice_public_key].inactive());
     assert!(switch_blocks
-        .next_era_validators(1)
+        .next_era_validators(1 + offset)
         .contains_key(&alice_public_key));
 
     // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
-    assert_eq!(switch_blocks.equivocators(2), []);
-    assert_eq!(switch_blocks.inactive_validators(2), []);
-    assert!(bids[2][&alice_public_key].inactive());
+    assert_eq!(switch_blocks.equivocators(2 + offset), []);
+    assert_eq!(switch_blocks.inactive_validators(2 + offset), []);
+    assert!(bids[2 + offset as usize][&alice_public_key].inactive());
     assert!(!switch_blocks
-        .next_era_validators(2)
+        .next_era_validators(2 + offset)
         .contains_key(&alice_public_key));
 
     // In era 3 she is not a validator anymore and her bid remains deactivated.
-    assert_eq!(switch_blocks.equivocators(3), []);
-    assert_eq!(switch_blocks.inactive_validators(3), []);
-    assert!(bids[3][&alice_public_key].inactive());
-    assert!(!switch_blocks
-        .next_era_validators(3)
-        .contains_key(&alice_public_key));
+    if offset == 0 {
+        assert_eq!(switch_blocks.equivocators(3), []);
+        assert_eq!(switch_blocks.inactive_validators(3), []);
+        assert!(bids[3][&alice_public_key].inactive());
+        assert!(!switch_blocks
+            .next_era_validators(3)
+            .contains_key(&alice_public_key));
+    }
 
     // We don't slash, so the stakes are never reduced.
-    for (pk, stake) in &stakes {
-        assert!(bids[0][pk].staked_amount() >= stake);
-        assert!(bids[1][pk].staked_amount() >= stake);
-        assert!(bids[2][pk].staked_amount() >= stake);
-        assert!(bids[3][pk].staked_amount() >= stake);
+    for (public_key, stake) in &stakes {
+        assert!(bids[0][public_key].staked_amount() >= stake);
+        assert!(bids[1][public_key].staked_amount() >= stake);
+        assert!(bids[2][public_key].staked_amount() >= stake);
+        assert!(bids[3][public_key].staked_amount() >= stake);
     }
 }
 
@@ -402,15 +472,8 @@ async fn dont_upgrade_without_switch_block() {
 
     let mut rng = crate::new_rng();
 
-    // Set up a network with only a single validator.
-    let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
-    let keys: Vec<Arc<SecretKey>> = vec![alice_secret_key];
-    let stakes: BTreeMap<PublicKey, U512> =
-        iter::once((alice_public_key, U512::from(100))).collect();
-
-    // Eras have exactly two blocks each, and there is one block per second.
-    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    const NETWORK_SIZE: usize = 2;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
@@ -458,18 +521,10 @@ async fn dont_upgrade_without_switch_block() {
         });
     }
 
-    // Run until the node shuts down for the upgrade.
+    // Run until the nodes shut down for the upgrade.
     let timeout = Duration::from_secs(120);
-    net.settle_on(
-        &mut rng,
-        |nodes| {
-            nodes
-                .values()
-                .all(|runner| runner.is_shutting_down.is_set())
-        },
-        timeout,
-    )
-    .await;
+    net.settle_on_exit(&mut rng, ExitCode::Success, timeout)
+        .await;
 
     // Verify that the switch block has been stored: Even though it was delayed the node didn't
     // restart before executing and storing it.
@@ -492,7 +547,7 @@ async fn should_store_finalized_approvals() {
 
     let mut rng = crate::new_rng();
 
-    // Set up a network with two validators.
+    // Set up a network with two nodes.
     let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_secret_key = Arc::new(SecretKey::random(&mut rng));
@@ -507,15 +562,20 @@ async fn should_store_finalized_approvals() {
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+    chain.chainspec_mut().core_config.validator_slots = 1;
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
 
-    // Wait for all nodes to proceed to era 1.
-    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
-        .await;
+    // Wait for all nodes to complete era 0.
+    net.settle_on(
+        &mut rng,
+        has_completed_era(EraId::from(0)),
+        Duration::from_secs(30),
+    )
+    .await;
 
     // Submit a deploy.
     let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut rng);
@@ -591,7 +651,7 @@ async fn should_store_finalized_approvals() {
     }
 
     // Run until the deploy gets executed.
-    let timeout = Duration::from_secs(90);
+    let timeout = Duration::from_secs(30);
     net.settle_on(
         &mut rng,
         |nodes| {

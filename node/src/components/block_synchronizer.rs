@@ -1065,8 +1065,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 ComponentStatus::Paused,
                 Event::Request(BlockSynchronizerRequest::Status { responder }),
             ) => responder.respond(self.status()).ignore(),
-            (ComponentStatus::Paused, _) => {
-                warn!("component paused - ignoring event");
+            (ComponentStatus::Paused, event) => {
+                warn!(%event, "component paused - ignoring event");
                 Effects::new()
             }
             (ComponentStatus::Fatal(msg), _) => {

@@ -92,12 +92,6 @@ impl MainReactor {
             }
             Ok(None) if self.switch_block.is_none() => {
                 if let Some(timestamp) = self.is_genesis() {
-                    let is_validator = self.should_commit_genesis();
-                    if false == is_validator {
-                        return Either::Right(CatchUpInstruction::Fatal(
-                            "CatchUp: only validating nodes may participate in genesis; cannot proceed without trusted hash".to_string(),
-                        ));
-                    }
                     let now = Timestamp::now();
                     let grace_period = timestamp.saturating_add(TimeDiff::from_seconds(180));
                     if now > grace_period {
@@ -385,12 +379,5 @@ impl MainReactor {
             ActivationPoint::Genesis(timestamp) => Some(timestamp),
             ActivationPoint::EraId(_) => None,
         }
-    }
-
-    fn should_commit_genesis(&self) -> bool {
-        self.chainspec
-            .network_config
-            .is_genesis_validator(self.validator_matrix.public_signing_key())
-            .unwrap_or(false)
     }
 }

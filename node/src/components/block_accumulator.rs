@@ -307,6 +307,7 @@ impl BlockAccumulator {
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
         let block_hash = block.hash();
+        debug!(%block_hash, "registering block");
         let era_id = block.header().era_id();
         let block_height = block.header().height();
         if self
@@ -393,6 +394,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
+        debug!(%finality_signature, "registering finality signature");
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
         self.upsert_acceptor(block_hash, Some(era_id), sender);
@@ -626,6 +628,7 @@ impl BlockAccumulator {
                 signatures,
                 executed,
             } => {
+                debug!(block_hash = %block.hash(), %executed, "storing block and finality signatures");
                 if let Some(parent_hash) = block.parent() {
                     if self
                         .block_children
@@ -674,13 +677,19 @@ impl BlockAccumulator {
                         })
                 }
             }
-            ShouldStore::SingleSignature(signature) => effect_builder
-                .put_finality_signature_to_storage(signature.clone())
-                .event(move |_| Event::Stored {
-                    block: None,
-                    finality_signatures: vec![signature],
-                }),
-            ShouldStore::Nothing => Effects::new(),
+            ShouldStore::SingleSignature(signature) => {
+                debug!(%signature, "storing finality signature");
+                effect_builder
+                    .put_finality_signature_to_storage(signature.clone())
+                    .event(move |_| Event::Stored {
+                        block: None,
+                        finality_signatures: vec![signature],
+                    })
+            }
+            ShouldStore::Nothing => {
+                debug!("not storing block or finality signatures");
+                Effects::new()
+            }
         };
         effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
             effect_builder

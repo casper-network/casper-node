@@ -52,6 +52,13 @@ pub(crate) enum Event {
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
+    /// The result of the `DeployAcceptor` storing the approvals from a `Deploy` provided by a
+    /// peer.
+    StoredFinalizedApprovals {
+        event_metadata: EventMetadata,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    },
     /// The result of querying the highest available `BlockHeader` from the storage component.
     GetBlockHeaderResult {
         event_metadata: EventMetadata,
@@ -127,6 +134,25 @@ impl Display for Event {
                     write!(
                         formatter,
                         "had already stored {}",
+                        event_metadata.deploy.hash()
+                    )
+                }
+            }
+            Event::StoredFinalizedApprovals {
+                event_metadata,
+                is_new,
+                ..
+            } => {
+                if *is_new {
+                    write!(
+                        formatter,
+                        "put new finalized approvals {} to storage",
+                        event_metadata.deploy.hash()
+                    )
+                } else {
+                    write!(
+                        formatter,
+                        "had already stored finalized approvals for {}",
                         event_metadata.deploy.hash()
                     )
                 }
