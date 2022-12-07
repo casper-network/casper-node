@@ -277,8 +277,11 @@ impl reactor::Reactor for MainReactor {
             chainspec.highway_config.min_round_length(),
             registry,
         )?;
-        let block_synchronizer =
-            BlockSynchronizer::new(config.block_synchronizer, validator_matrix.clone());
+        let block_synchronizer = BlockSynchronizer::new(
+            config.block_synchronizer,
+            validator_matrix.clone(),
+            registry,
+        )?;
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
