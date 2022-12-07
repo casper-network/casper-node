@@ -3,7 +3,7 @@ mod config;
 mod error;
 mod event;
 mod metrics;
-mod starting_with;
+mod sync_identifier;
 mod sync_instruction;
 #[cfg(test)]
 mod tests;
@@ -41,7 +41,7 @@ use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 pub use error::Error;
 pub(crate) use event::Event;
-pub(crate) use starting_with::StartingWith;
+pub(crate) use sync_identifier::SyncIdentifier;
 pub(crate) use sync_instruction::SyncInstruction;
 
 use metrics::Metrics;
@@ -145,9 +145,9 @@ impl BlockAccumulator {
         })
     }
 
-    pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
-        let block_hash = starting_with.block_hash();
-        let block_height = match starting_with.block_height() {
+    pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
+        let block_hash = sync_identifier.block_hash();
+        let block_height = match sync_identifier.block_height() {
             Some(height) => height,
             None => {
                 let maybe_height = {
@@ -167,7 +167,7 @@ impl BlockAccumulator {
             }
         };
 
-        if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
+        if let Some(new_local_tip) = self.maybe_new_local_tip(&sync_identifier) {
             let had_no_local_tip = self.local_tip.is_none();
             self.local_tip = Some(new_local_tip);
             info!(local_tip=?self.local_tip, "new local tip detected");
@@ -182,7 +182,7 @@ impl BlockAccumulator {
         }
 
         let block_hash_to_sync = match (
-            starting_with.is_held_locally(),
+            sync_identifier.is_held_locally(),
             self.next_syncable_block_hash(block_hash),
         ) {
             (false, _) => Some(block_hash),
@@ -550,8 +550,8 @@ impl BlockAccumulator {
         }
     }
 
-    fn maybe_new_local_tip(&self, starting_with: &StartingWith) -> Option<LocalTipIdentifier> {
-        match (starting_with.maybe_local_tip_identifier(), self.local_tip) {
+    fn maybe_new_local_tip(&self, sync_identifier: &SyncIdentifier) -> Option<LocalTipIdentifier> {
+        match (sync_identifier.maybe_local_tip_identifier(), self.local_tip) {
             (Some((block_height, era_id)), Some(local_tip)) => {
                 if local_tip.height < block_height && local_tip.era_id <= era_id {
                     debug!(

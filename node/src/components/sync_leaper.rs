@@ -3,7 +3,13 @@ mod error;
 mod event;
 mod metrics;
 
-use std::{cmp::Ordering, collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{Display, Formatter},
+    sync::Arc,
+    time::Instant,
+};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -49,6 +55,52 @@ pub(crate) enum LeapStatus {
         from_peers: Vec<NodeId>,
         in_flight: usize,
     },
+}
+
+impl Display for LeapStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LeapStatus::Idle => {
+                write!(f, "Idle")
+            }
+            LeapStatus::Awaiting {
+                sync_leap_identifier,
+                in_flight,
+            } => {
+                write!(
+                    f,
+                    "Awaiting {} responses for {}",
+                    in_flight,
+                    sync_leap_identifier.block_hash(),
+                )
+            }
+            LeapStatus::Received {
+                best_available,
+                from_peers,
+                in_flight,
+            } => {
+                write!(
+                    f,
+                    "Received {} from {} peers, awaiting {} responses",
+                    best_available.highest_block_hash(),
+                    from_peers.len(),
+                    in_flight
+                )
+            }
+            LeapStatus::Failed {
+                sync_leap_identifier,
+                error,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Failed leap for {} {}",
+                    sync_leap_identifier.block_hash(),
+                    error
+                )
+            }
+        }
+    }
 }
 
 impl LeapStatus {

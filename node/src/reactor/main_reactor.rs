@@ -135,7 +135,7 @@ pub(crate) struct MainReactor {
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
     recent_switch_block_headers: Vec<BlockHeader>,
-    sync_to_historical: bool,
+    sync_to_genesis: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -331,7 +331,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix,
             recent_switch_block_headers,
             switch_block: None,
-            sync_to_historical: config.node.sync_to_genesis,
+            sync_to_genesis: config.node.sync_to_genesis,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
