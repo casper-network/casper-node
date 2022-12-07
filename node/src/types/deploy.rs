@@ -659,7 +659,7 @@ impl Deploy {
     /// Returns a random deploy.
     pub fn random(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
-        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        let ttl = TimeDiff::from(rng.gen_range(60_000..300_000));
         Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 
