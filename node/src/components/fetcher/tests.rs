@@ -268,6 +268,7 @@ impl ReactorTrait for Reactor {
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.unbonding_delay,
+            Some(registry),
         )
         .unwrap();
 

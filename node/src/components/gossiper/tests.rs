@@ -164,6 +164,7 @@ impl reactor::Reactor for Reactor {
             "test",
             MAX_TTL,
             RECENT_ERA_COUNT,
+            Some(registry),
         )
         .unwrap();
 

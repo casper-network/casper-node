@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 
 * Add `net-info` command to diagnostics port to gain insights into the nodes network connectivity state.
-* Add metrics `deploy_buffer_total_deploys`, `deploy_buffer_held_deploys`, `deploy_buffer_dead_deploys` to report status of the node deploy buffer, `block_accumulator_block_acceptors`,  `block_accumulator_known_child_blocks` to track status of the block accumulator component and `{forward|historical}_block_sync_time` histogram metric to track the progress of block synchronization.
+* Add metrics `deploy_buffer_total_deploys`, `deploy_buffer_held_deploys`, `deploy_buffer_dead_deploys` to report status of the node deploy buffer, `block_accumulator_block_acceptors`,  `block_accumulator_known_child_blocks` to track status of the block accumulator component, `{forward|historical}_block_sync_time` histogram metric to track the progress of block synchronization, `chain_low_seq_block_height` to report the lowest height that has been synchronized continuously from the tip.
 
 ### Changed
 

@@ -446,6 +446,7 @@ impl reactor::Reactor for Reactor {
             "test",
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
+            Some(registry),
         )
         .unwrap();
 
