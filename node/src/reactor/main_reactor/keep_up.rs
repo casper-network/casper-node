@@ -67,17 +67,10 @@ impl MainReactor {
             return KeepUpInstruction::ShutdownForUpgrade;
         }
 
-        match self.should_validate(effect_builder, rng) {
-            (true, Some(effects)) => {
-                info!("KeepUp: go to Validate");
-                return KeepUpInstruction::Validate(effects);
-            }
-            (_, Some(effects)) => {
-                // shutting down per consensus
-                return KeepUpInstruction::Do(Duration::ZERO, effects);
-            }
-            (_, None) => {
-                // remain in KeepUp
+        if self.switch_block.is_some() {
+            if let Some(keep_up_instruction) = self.should_validate_instruction(effect_builder, rng)
+            {
+                return keep_up_instruction;
             }
         }
 
@@ -103,7 +96,35 @@ impl MainReactor {
             return keep_up_instruction;
         }
         // if there's no work to do to keep up, see if we should get a historical block
-        self.sync_back_process(effect_builder, rng)
+        if let Some(keep_up_instruction) = self.sync_back_process(effect_builder, rng) {
+            return keep_up_instruction;
+        }
+
+        self.should_validate_instruction(effect_builder, rng)
+            .unwrap_or_else(|| {
+                KeepUpInstruction::CheckLater(
+                    "KeepUp: node is keeping up".to_string(),
+                    self.control_logic_default_delay.into(),
+                )
+            })
+    }
+
+    fn should_validate_instruction(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+    ) -> Option<KeepUpInstruction> {
+        match self.should_validate(effect_builder, rng) {
+            (true, Some(effects)) => {
+                info!("KeepUp: go to Validate");
+                Some(KeepUpInstruction::Validate(effects))
+            }
+            (_, Some(effects)) => {
+                // shutting down per consensus
+                Some(KeepUpInstruction::Do(Duration::ZERO, effects))
+            }
+            (_, None) => None,
+        }
     }
 
     fn keep_up_process(&mut self) -> Either<StartingWith, KeepUpInstruction> {
@@ -204,31 +225,28 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-    ) -> KeepUpInstruction {
+    ) -> Option<KeepUpInstruction> {
         let sync_back_progress = self.block_synchronizer.historical_progress();
         self.update_last_progress(&sync_back_progress, true);
         match self.sync_back_instruction(&sync_back_progress) {
-            Err(msg) => KeepUpInstruction::Fatal(msg),
+            Err(msg) => Some(KeepUpInstruction::Fatal(msg)),
             Ok(sync_back_instruction) => match sync_back_instruction {
-                sbi @ SyncBackInstruction::Syncing
-                | sbi @ SyncBackInstruction::TtlSynced
-                | sbi @ SyncBackInstruction::GenesisSynced
-                | sbi @ SyncBackInstruction::CheckLater => {
-                    if false == matches!(sbi, SyncBackInstruction::Syncing) {
-                        // purge_historical for all of these variants EXCEPT syncing
-                        self.block_synchronizer.purge_historical();
-                    }
-                    KeepUpInstruction::CheckLater(
-                        format!("Historical: {}", sbi),
-                        self.control_logic_default_delay.into(),
-                    )
+                SyncBackInstruction::TtlSynced
+                | SyncBackInstruction::GenesisSynced
+                | SyncBackInstruction::CheckLater => {
+                    self.block_synchronizer.purge_historical();
+                    None
                 }
+                SyncBackInstruction::Syncing => Some(KeepUpInstruction::CheckLater(
+                    format!("Historical: {}", SyncBackInstruction::Syncing),
+                    self.control_logic_default_delay.into(),
+                )),
                 SyncBackInstruction::Sync {
                     parent_hash,
                     era_id,
                 } => match self.validator_matrix.has_era(&era_id) {
-                    true => self.sync_back_register(effect_builder, rng, parent_hash),
-                    false => self.sync_back_leap(effect_builder, rng, parent_hash),
+                    true => Some(self.sync_back_register(effect_builder, rng, parent_hash)),
+                    false => Some(self.sync_back_leap(effect_builder, rng, parent_hash)),
                 },
             },
         }

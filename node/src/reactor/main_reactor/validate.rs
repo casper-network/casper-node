@@ -65,9 +65,10 @@ impl MainReactor {
             Some(header) => header,
         };
         debug!(
-            "Validate: highest_switch_block_header: {} - {}",
+            "Validate: highest_switch_block_header: {} - {} - height {}",
             highest_switch_block_header.era_id(),
             highest_switch_block_header.block_hash(),
+            highest_switch_block_header.height(),
         );
 
         if let Some(current_era) = self.consensus.current_era() {
