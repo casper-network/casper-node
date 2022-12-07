@@ -462,16 +462,17 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (bool, Option<Effects<MainEvent>>) {
-        // if on a switch block, check if we should go to Validate
         match self.create_required_eras(effect_builder, rng) {
             Err(msg) => {
                 return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
             }
             Ok(Some(effects)) => {
+                debug!("Validate: should validate");
                 return (true, Some(effects));
             }
             Ok(None) => (),
         }
+        debug!("Validate: should not validate");
         (false, None)
     }
 

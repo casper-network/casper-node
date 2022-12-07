@@ -33,8 +33,8 @@ pub(crate) enum Error {
     PutTrie(engine_state::Error),
     #[error("no peers available to ask for a trie: {0}")]
     NoPeersAvailable(Digest),
-    #[error("request to fetch cancelled")]
-    Cancelled,
+    // #[error("request to fetch cancelled")]
+    // Cancelled,
 }
 
 #[derive(Debug, From, Serialize)]

@@ -102,6 +102,7 @@ impl MainReactor {
         {
             return keep_up_instruction;
         }
+        // if there's no work to do to keep up, see if we should get a historical block
         self.sync_back_process(effect_builder, rng)
     }
 

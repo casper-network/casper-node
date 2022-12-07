@@ -31,7 +31,7 @@ use crate::{
         Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
-        announcements::{BlockAccumulatorAnnouncement, PeerBehaviorAnnouncement},
+        announcements::{BlockSynchronizerAnnouncement, PeerBehaviorAnnouncement},
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
             ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
@@ -107,7 +107,7 @@ pub(crate) trait ReactorEvent:
     + From<SyncGlobalStateRequest>
     + From<BlockCompleteConfirmationRequest>
     + From<MakeBlockExecutableRequest>
-    + From<BlockAccumulatorAnnouncement>
+    + From<BlockSynchronizerAnnouncement>
     + Send
     + 'static
 {
@@ -131,7 +131,7 @@ impl<REv> ReactorEvent for REv where
         + From<SyncGlobalStateRequest>
         + From<BlockCompleteConfirmationRequest>
         + From<MakeBlockExecutableRequest>
-        + From<BlockAccumulatorAnnouncement>
+        + From<BlockSynchronizerAnnouncement>
         + Send
         + 'static
 {
@@ -400,7 +400,7 @@ impl BlockSynchronizer {
         block_hash: &BlockHash,
     ) -> Effects<Event>
     where
-        REv: From<BlockAccumulatorAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
+        REv: From<BlockSynchronizerAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
     {
         if let Some(builder) = &self.forward {
             if builder.block_hash() == *block_hash {
@@ -415,7 +415,7 @@ impl BlockSynchronizer {
                 // other components need to know that we've added an historical block
                 // that they may be interested in
                 if let Some(block) = builder.maybe_block() {
-                    effects.extend(effect_builder.announce_block_added(block).ignore());
+                    effects.extend(effect_builder.announce_completed_block(block).ignore());
                 }
             }
             _ => {
@@ -979,33 +979,6 @@ impl BlockSynchronizer {
         }
     }
 
-    fn register_block_added_notification(
-        &mut self,
-        block_hash: BlockHash,
-        block_height: u64,
-        state_root_hash: Digest,
-    ) {
-        // if the block being synchronized has already been added, drop it.
-        let finished_with_forward = if let Some(builder) = self.forward.as_ref() {
-            let ret = builder.block_hash() == block_hash
-                || builder
-                    .block_height()
-                    .map_or(false, |forward_height| forward_height <= block_height);
-            if ret {
-                debug!(%block_hash, "BlockSynchronizer: finished_with_forward");
-            }
-            ret
-        } else {
-            debug!(%block_hash, "BlockSynchronizer: register_block_added_notification else");
-            false
-        };
-
-        if finished_with_forward {
-            self.global_sync
-                .cancel_request(state_root_hash, global_state_synchronizer::Error::Cancelled);
-        }
-    }
-
     fn progress(&self, builder: &BlockBuilder) -> BlockSynchronizerProgress {
         if builder.is_finished() {
             match builder.block_height_and_era() {
@@ -1106,14 +1079,6 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     }
                     Event::Request(BlockSynchronizerRequest::NeedNext) => {
                         self.need_next(effect_builder, rng)
-                    }
-                    Event::Request(BlockSynchronizerRequest::BlockAdded {
-                        block_hash,
-                        height,
-                        state_root_hash,
-                    }) => {
-                        self.register_block_added_notification(block_hash, height, state_root_hash);
-                        Effects::new()
                     }
                     Event::Request(BlockSynchronizerRequest::DishonestPeers) => {
                         let mut effects: Effects<Self::Event> = self

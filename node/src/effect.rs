@@ -142,7 +142,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::requests::BlockAccumulatorRequest,
+    effect::{announcements::BlockSynchronizerAnnouncement, requests::BlockAccumulatorRequest},
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -851,6 +851,19 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 GossiperAnnouncement::NewItemBody { item, sender },
                 QueueKind::Gossip,
+            )
+            .await;
+    }
+
+    /// The block synchronizer has ensured that all the parts of this block are stored
+    pub(crate) async fn announce_completed_block(self, block: Box<Block>)
+    where
+        REv: From<BlockSynchronizerAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                BlockSynchronizerAnnouncement::CompletedBlock { block },
+                QueueKind::Validation,
             )
             .await;
     }

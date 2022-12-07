@@ -14,10 +14,11 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            FatalAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            DeployBufferAnnouncement, FatalAnnouncement, GossiperAnnouncement,
+            PeerBehaviorAnnouncement, ReactorAnnouncement, RpcServerAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -128,6 +129,8 @@ pub(crate) enum MainEvent {
     BlockSynchronizer(#[serde(skip_serializing)] block_synchronizer::Event),
     #[from]
     BlockSynchronizerRequest(#[serde(skip_serializing)] BlockSynchronizerRequest),
+    #[from]
+    BlockSynchronizerAnnouncement(#[serde(skip_serializing)] BlockSynchronizerAnnouncement),
 
     #[from]
     ApprovalsHashesFetcher(#[serde(skip_serializing)] fetcher::Event<ApprovalsHashes>),
@@ -216,6 +219,8 @@ pub(crate) enum MainEvent {
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
     MainReactorRequest(#[serde(skip_serializing)] ReactorStatusRequest),
+    #[from]
+    MainReactorAnnouncement(#[serde(skip_serializing)] ReactorAnnouncement),
 }
 
 impl ReactorEvent for MainEvent {
@@ -316,12 +321,14 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockAccumulatorAnnouncement(_) => "BlockAccumulatorAnnouncement",
             MainEvent::BlockSynchronizer(_) => "BlockSynchronizer",
             MainEvent::BlockSynchronizerRequest(_) => "BlockSynchronizerRequest",
+            MainEvent::BlockSynchronizerAnnouncement(_) => "BlockSynchronizerAnnouncement",
             MainEvent::BlockGossiper(_) => "BlockGossiper",
             MainEvent::BlockGossiperIncoming(_) => "BlockGossiperIncoming",
             MainEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
+            MainEvent::MainReactorAnnouncement(_) => "MainReactorAnnouncement",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
         }
     }
@@ -386,6 +393,9 @@ impl Display for MainEvent {
             }
             MainEvent::BlockSynchronizerRequest(req) => {
                 write!(f, "block synchronizer request: {}", req)
+            }
+            MainEvent::BlockSynchronizerAnnouncement(ann) => {
+                write!(f, "block synchronizer announcement: {}", ann)
             }
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
@@ -492,6 +502,7 @@ impl Display for MainEvent {
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
+            MainEvent::MainReactorAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
         }
     }

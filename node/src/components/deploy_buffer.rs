@@ -270,20 +270,20 @@ impl DeployBuffer {
 
     /// Update buffer and holds considering new added block.
     fn register_block(&mut self, block: &Block) {
+        let block_height = block.header().height();
+        let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
-        self.register_deploys(
-            block.header().height(),
-            block.timestamp(),
-            block.deploy_and_transfer_hashes(),
-        );
+        self.register_deploys(block_height, timestamp, block.deploy_and_transfer_hashes());
     }
 
     /// Update buffer and holds considering new finalized block.
     fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
+        let block_height = finalized_block.height();
+        let timestamp = finalized_block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block_finalized({}) timestamp finalized", block_height);
         self.register_deploys(
-            finalized_block.height(),
-            finalized_block.timestamp(),
+            block_height,
+            timestamp,
             finalized_block.deploy_and_transfer_hashes(),
         );
     }
