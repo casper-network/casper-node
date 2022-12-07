@@ -59,19 +59,19 @@ impl MainReactor {
     ) -> Result<Option<Effects<MainEvent>>, String> {
         let highest_switch_block_header = match self.recent_switch_block_headers.last() {
             None => {
-                debug!("create_required_eras: recent_switch_block_headers is empty");
+                debug!("Validate: create_required_eras: recent_switch_block_headers is empty");
                 return Ok(None);
             }
             Some(header) => header,
         };
         debug!(
-            "highest_switch_block_header: {} - {}",
+            "Validate: highest_switch_block_header: {} - {}",
             highest_switch_block_header.era_id(),
             highest_switch_block_header.block_hash(),
         );
 
         if let Some(current_era) = self.consensus.current_era() {
-            debug!("consensus current_era: {}", current_era.value());
+            debug!("Validate: consensus current_era: {}", current_era.value());
             if highest_switch_block_header.next_block_era_id() <= current_era {
                 return Ok(Some(Effects::new()));
             }
@@ -80,28 +80,31 @@ impl MainReactor {
         let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
             None => {
                 return Err(format!(
-                    "highest switch block has no era end: {}",
+                    "Validate: highest switch block has no era end: {}",
                     highest_switch_block_header
                 ));
             }
             Some(weights) => weights,
         };
         if !highest_era_weights.contains_key(self.consensus.public_key()) {
-            debug!("highest_era_weights does not contain signing_public_key");
+            debug!("Validate: highest_era_weights does not contain signing_public_key");
             return Ok(None);
         }
 
-        if !self
-            .deploy_buffer
-            .have_full_ttl_of_deploys(highest_switch_block_header.height())
-        {
-            info!("currently have insufficient deploy TTL awareness to safely participate in consensus");
+        // use local tip if it is higher than highest switch block, otherwise highest switch block
+        let from_height = match self.block_accumulator.local_tip() {
+            Some(tip) => highest_switch_block_header.height().max(tip),
+            None => highest_switch_block_header.height(),
+        };
+
+        if !self.deploy_buffer.have_full_ttl_of_deploys(from_height) {
+            info!("Validate: insufficient deploy TTL awareness to safely participate in consensus");
             return Ok(None);
         }
 
         let era_id = highest_switch_block_header.era_id();
         if self.upgrade_watcher.should_upgrade_after(era_id) {
-            debug!(%era_id, "upgrade required after given era");
+            debug!(%era_id, "Validate: upgrade required after given era");
             return Ok(None);
         }
 
@@ -110,10 +113,18 @@ impl MainReactor {
             rng,
             &self.recent_switch_block_headers,
         );
-        if create_required_eras.is_some() {
-            info!("will attempt to create required eras for consensus");
+        match &create_required_eras {
+            Some(effects) => {
+                if effects.is_empty() {
+                    info!("Validate: create_required_eras is empty");
+                } else {
+                    info!("Validate: will attempt to create required eras for consensus");
+                }
+            }
+            None => {
+                info!("Validate: create_required_eras is none");
+            }
         }
-
         Ok(
             create_required_eras
                 .map(|effects| reactor::wrap_effects(MainEvent::Consensus, effects)),

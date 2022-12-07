@@ -756,7 +756,7 @@ impl ContractRuntime {
         }
 
         effect_builder
-            .announce_new_linear_chain_block(block, approvals_hashes, execution_results)
+            .announce_executed_block(block, approvals_hashes, execution_results)
             .await;
 
         // If the child is already finalized, start execution.

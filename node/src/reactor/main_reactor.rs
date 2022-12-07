@@ -49,13 +49,13 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            GossiperAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
-            UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            DeployBufferAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement,
+            ReactorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{BlockSynchronizerRequest, ChainspecRawBytesRequest},
+        requests::ChainspecRawBytesRequest,
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
@@ -378,6 +378,34 @@ impl reactor::Reactor for MainReactor {
             // PRIMARY REACTOR STATE CONTROL LOGIC
             MainEvent::ReactorCrank => self.crank(effect_builder, rng),
 
+            MainEvent::MainReactorRequest(req) => {
+                req.0.respond((self.state, self.last_progress)).ignore()
+            }
+            MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }) => {
+                let mut effects = Effects::new();
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(
+                        block.clone(),
+                    )),
+                ));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone())),
+                ));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    MainEvent::Consensus(consensus::Event::BlockAdded {
+                        header: Box::new(block.header().clone()),
+                        header_hash: *block.hash(),
+                    }),
+                ));
+                effects
+            }
+
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
                 MainEvent::UpgradeWatcher,
@@ -389,9 +417,6 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::MainReactorRequest(req) => {
-                req.0.respond((self.state, self.last_progress)).ignore()
-            }
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => reactor::wrap_effects(
@@ -584,31 +609,21 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::BlockSynchronizerAnnouncement(
+                BlockSynchronizerAnnouncement::CompletedBlock { block },
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }),
+            ),
+
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
             ) => {
                 let mut effects = Effects::new();
-
-                let reactor_event_es = MainEvent::EventStreamServer(
-                    event_stream_server::Event::BlockAdded(block.clone()),
-                );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_es));
-                let block_sync_event =
-                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
-                        block_hash: *block.hash(),
-                        height: block.height(),
-                        state_root_hash: *block.header().state_root_hash(),
-                    });
-                effects.extend(self.dispatch_event(effect_builder, rng, block_sync_event));
                 let deploy_buffer_event =
                     MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
                 effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
-
-                let reactor_event_consensus = MainEvent::Consensus(consensus::Event::BlockAdded {
-                    header: Box::new(block.header().clone()),
-                    header_hash: *block.hash(),
-                });
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
 
                 // if it is a switch block, get validators
                 if let Some(validator_weights) = block.header().next_era_validator_weights() {
@@ -982,6 +997,7 @@ impl reactor::Reactor for MainReactor {
                     .cloned()
                     .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
                     .collect();
+
                 effects.extend(
                     effect_builder
                         .put_executed_block_to_storage(
@@ -991,18 +1007,6 @@ impl reactor::Reactor for MainReactor {
                         )
                         .ignore(),
                 );
-
-                // notify the block accumulator
-                let event = block_accumulator::Event::ExecutedBlock {
-                    block: block.clone(),
-                };
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator
-                        .handle_event(effect_builder, rng, event),
-                ));
-
-                effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
 
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
@@ -1031,6 +1035,23 @@ impl reactor::Reactor for MainReactor {
                             .ignore(),
                     ));
                 }
+
+                effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock {
+                        block: block.clone(),
+                    }),
+                ));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::ExecutedBlock { block },
+                    ),
+                ));
 
                 // send deploy processed events to event stream
                 for (deploy_hash, deploy_header, execution_result) in execution_results {

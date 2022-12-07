@@ -158,6 +158,10 @@ impl BlockBuilder {
         self.block_hash
     }
 
+    pub(super) fn maybe_block(&self) -> Option<Box<Block>> {
+        self.acquisition_state.maybe_block()
+    }
+
     pub(super) fn block_height(&self) -> Option<u64> {
         self.acquisition_state.block_height()
     }
