@@ -591,7 +591,7 @@ impl reactor::Reactor for MainReactor {
                 );
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_es));
                 let block_sync_event =
-                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockExecuted {
+                    MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::BlockAdded {
                         block_hash: *block.hash(),
                         height: block.height(),
                         state_root_hash: *block.header().state_root_hash(),
@@ -979,6 +979,7 @@ impl reactor::Reactor for MainReactor {
                     .cloned()
                     .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
                     .collect();
+
                 effects.extend(
                     effect_builder
                         .put_executed_block_to_storage(
@@ -988,6 +989,19 @@ impl reactor::Reactor for MainReactor {
                         )
                         .ignore(),
                 );
+
+                // this is a temporary measure...need to extricate
+                // accepted new block out of block accumulator
+                // and make it a more general announcement
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    MainEvent::BlockAccumulatorAnnouncement(
+                        BlockAccumulatorAnnouncement::AcceptedNewBlock {
+                            block: block.clone(),
+                        },
+                    ),
+                ));
 
                 // notify the block accumulator
                 let event = block_accumulator::Event::ExecutedBlock {

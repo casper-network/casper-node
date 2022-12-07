@@ -121,25 +121,11 @@ impl MainReactor {
 
     fn keep_up_idle(&mut self) -> Either<StartingWith, KeepUpInstruction> {
         match self.storage.read_highest_complete_block() {
-            Ok(Some(block)) => {
-                let block_height = block.height();
-                let state_root_hash = block.state_root_hash();
-                let block_hash = block.id();
-                let accumulated_seed = block.header().accumulated_seed();
-                match self.refresh_contract_runtime(
-                    block_height + 1,
-                    *state_root_hash,
-                    block_hash,
-                    accumulated_seed,
-                ) {
-                    Ok(_) => Either::Left(StartingWith::LocalTip(
-                        block.id(),
-                        block_height,
-                        block.header().era_id(),
-                    )),
-                    Err(msg) => Either::Right(KeepUpInstruction::Fatal(msg)),
-                }
-            }
+            Ok(Some(block)) => Either::Left(StartingWith::LocalTip(
+                block.id(),
+                block.height(),
+                block.header().era_id(),
+            )),
             Ok(None) => {
                 error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
                 self.block_synchronizer.purge();

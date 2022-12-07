@@ -1435,6 +1435,10 @@ impl Storage {
             }
         }
         result.reverse();
+        debug!(
+            ?result,
+            "Storage: read_highest_switch_block_headers count:({})", count
+        );
         Ok(result)
     }
 
@@ -1547,11 +1551,19 @@ impl Storage {
         txn: &mut Tx,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        debug!(switch_block_era_id_index = ?self.switch_block_era_id_index);
-        self.switch_block_era_id_index
+        let ret = self
+            .switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(txn, block_hash).transpose())
-            .transpose()
+            .transpose();
+        if let Ok(maybe) = &ret {
+            debug!(
+                "Storage: get_switch_block_header_by_era_id({:?}) has entry:{}",
+                era_id,
+                maybe.is_some()
+            )
+        }
+        ret
     }
 
     /// Retrieves a single block header by deploy hash by looking it up in the index and returning
@@ -1678,18 +1690,22 @@ impl Storage {
     where
         F: Fn(&Block) -> bool,
     {
-        let mut next_block = self.get_highest_block(txn)?;
         let mut blocks = Vec::new();
-        loop {
-            match next_block {
-                None => break,
-                Some(block) if !predicate(&block) => break,
-                Some(block) => {
-                    next_block = match block.parent() {
-                        None => None,
-                        Some(parent_hash) => self.get_single_block(txn, parent_hash)?,
-                    };
-                    blocks.push(block);
+        for sequence in self.completed_blocks.sequences().iter().rev() {
+            let hi = sequence.high();
+            let low = sequence.low();
+            for idx in (low..=hi).rev() {
+                match self.get_block_by_height(txn, idx) {
+                    Ok(Some(block)) => {
+                        if false == predicate(&block) {
+                            return Ok(blocks);
+                        }
+                        blocks.push(block);
+                    }
+                    Ok(None) => {
+                        continue;
+                    }
+                    Err(err) => return Err(err),
                 }
             }
         }

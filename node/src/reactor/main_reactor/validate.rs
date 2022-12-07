@@ -91,10 +91,14 @@ impl MainReactor {
             return Ok(None);
         }
 
-        if !self
-            .deploy_buffer
-            .have_full_ttl_of_deploys(highest_switch_block_header.height())
-        {
+        // get local tip if we have it, otherwise
+        // highest switch block
+        let from_height = match self.block_accumulator.local_tip() {
+            Some(tip) => tip,
+            None => highest_switch_block_header.height(),
+        };
+
+        if !self.deploy_buffer.have_full_ttl_of_deploys(from_height) {
             info!("currently have insufficient deploy TTL awareness to safely participate in consensus");
             return Ok(None);
         }

@@ -856,7 +856,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that the block accumulator has received and stored a new block.
-    pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
+    pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
         REv: From<BlockAccumulatorAnnouncement>,
     {
@@ -1032,7 +1032,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a new block has been created.
-    pub(crate) async fn announce_new_linear_chain_block(
+    pub(crate) async fn announce_executed_block(
         self,
         block: Box<Block>,
         approvals_hashes: Box<ApprovalsHashes>,

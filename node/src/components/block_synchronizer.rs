@@ -31,7 +31,7 @@ use crate::{
         Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
-        announcements::PeerBehaviorAnnouncement,
+        announcements::{BlockAccumulatorAnnouncement, PeerBehaviorAnnouncement},
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
             ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
@@ -107,6 +107,7 @@ pub(crate) trait ReactorEvent:
     + From<SyncGlobalStateRequest>
     + From<BlockCompleteConfirmationRequest>
     + From<MakeBlockExecutableRequest>
+    + From<BlockAccumulatorAnnouncement>
     + Send
     + 'static
 {
@@ -130,6 +131,7 @@ impl<REv> ReactorEvent for REv where
         + From<SyncGlobalStateRequest>
         + From<BlockCompleteConfirmationRequest>
         + From<MakeBlockExecutableRequest>
+        + From<BlockAccumulatorAnnouncement>
         + Send
         + 'static
 {
@@ -392,21 +394,35 @@ impl BlockSynchronizer {
         }
     }
 
-    fn register_marked_complete(&mut self, block_hash: &BlockHash) {
+    fn register_marked_complete<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block_hash: &BlockHash,
+    ) -> Effects<Event>
+    where
+        REv: From<BlockAccumulatorAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
+    {
         if let Some(builder) = &self.forward {
             if builder.block_hash() == *block_hash {
                 error!(%block_hash, "forward block should not be marked complete in block synchronizer");
             }
         }
 
+        let mut effects = Effects::new();
         match &mut self.historical {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_marked_complete();
+                // other components need to know that we've added an historical block
+                // that they may be interested in
+                if let Some(block) = builder.maybe_block() {
+                    effects.extend(effect_builder.announce_block_added(block).ignore());
+                }
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing historical block");
             }
         }
+        effects
     }
 
     fn dishonest_peers(&self) -> Vec<NodeId> {
@@ -963,19 +979,24 @@ impl BlockSynchronizer {
         }
     }
 
-    fn register_executed_block_notification(
+    fn register_block_added_notification(
         &mut self,
         block_hash: BlockHash,
-        height: u64,
+        block_height: u64,
         state_root_hash: Digest,
     ) {
-        // if the block being synchronized for execution has already executed, drop it.
+        // if the block being synchronized has already been added, drop it.
         let finished_with_forward = if let Some(builder) = self.forward.as_ref() {
-            builder
-                .block_height()
-                .map_or(false, |forward_height| forward_height <= height)
-                || builder.block_hash() == block_hash
+            let ret = builder.block_hash() == block_hash
+                || builder
+                    .block_height()
+                    .map_or(false, |forward_height| forward_height <= block_height);
+            if ret {
+                debug!(%block_hash, "BlockSynchronizer: finished_with_forward");
+            }
+            ret
         } else {
+            debug!(%block_hash, "BlockSynchronizer: register_block_added_notification else");
             false
         };
 
@@ -1086,16 +1107,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     Event::Request(BlockSynchronizerRequest::NeedNext) => {
                         self.need_next(effect_builder, rng)
                     }
-                    Event::Request(BlockSynchronizerRequest::BlockExecuted {
+                    Event::Request(BlockSynchronizerRequest::BlockAdded {
                         block_hash,
                         height,
                         state_root_hash,
                     }) => {
-                        self.register_executed_block_notification(
-                            block_hash,
-                            height,
-                            state_root_hash,
-                        );
+                        self.register_block_added_notification(block_hash, height, state_root_hash);
                         Effects::new()
                     }
                     Event::Request(BlockSynchronizerRequest::DishonestPeers) => {
@@ -1241,8 +1258,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         Effects::new()
                     }
                     Event::MarkBlockCompleted(block_hash) => {
-                        self.register_marked_complete(&block_hash);
-                        Effects::new()
+                        self.register_marked_complete(effect_builder, &block_hash)
                     }
                 }
             }

@@ -28,7 +28,7 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Approval, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId,
+        Approval, Block, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId,
         FinalizedBlock,
     },
     NodeRng,
@@ -94,27 +94,41 @@ impl DeployBuffer {
 
     /// True if we have full TTL worth of deploy awareness, else false.
     pub(crate) fn have_full_ttl_of_deploys(&self, from_height: u64) -> bool {
+        debug!(?self.chain_index, "DeployBuffer: chain_index check from_height: {}", from_height);
         let ttl = self.deploy_config.max_ttl;
-        let mut curr = match self.chain_index.get(&from_height) {
+        let mut current = match self.chain_index.get(&from_height) {
             None => {
+                debug!("DeployBuffer: not in chain_index: {}", from_height);
                 return false;
             }
             Some(timestamp) => (from_height, timestamp),
         };
 
         // genesis special case
-        if from_height == 0 {
+        if from_height == 0
+            && self.chain_index.len() == 1
+            && self.chain_index.contains_key(&from_height)
+        {
             return true;
         }
 
+        // note the .rev() at the end (we go backwards)
+        // I only mention it as it seems to keep tripping people up. Not YOU of course, but people.
         for (height, timestamp) in self.chain_index.range(..from_height).rev() {
-            if height.saturating_add(1) != curr.0 {
-                return false;
-            }
-            if timestamp.elapsed() > ttl || *height == 0 {
+            // if we've reached genesis via an unbroken sequence, we're good
+            // if we've seen a full ttl period of blocks, we're good
+            if *height == 0 || timestamp.elapsed() > ttl {
                 return true;
             }
-            curr = (*height, timestamp);
+            // gap detection; any gaps in the chain index means we do not have full ttl awareness
+            // for instance, for block_height 6 in set [0,1,2,4,5,6] block 3 is missing
+            // therefore, we can't possibly have ttl
+            let contiguous_next = height.saturating_add(1);
+            if contiguous_next != current.0 {
+                debug!("DeployBuffer: missing block at height: {}", contiguous_next);
+                return false;
+            }
+            current = (*height, timestamp);
         }
         false
     }
@@ -231,25 +245,47 @@ impl DeployBuffer {
         );
     }
 
-    /// Update buffer and holds considering new finalized block.
-    fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
-        let timestamp = finalized_block.timestamp();
-        self.chain_index.insert(finalized_block.height(), timestamp);
+    fn register_deploys<'a>(
+        &mut self,
+        block_height: u64,
+        timestamp: Timestamp,
+        deploy_hashes: impl Iterator<Item = &'a DeployHash>,
+    ) {
+        self.chain_index.insert(block_height, timestamp);
         let expiry_timestamp = timestamp.saturating_add(self.deploy_config.max_ttl);
-        // all deploys in the finalized block must not be included in future proposals
-        for hash in finalized_block.deploy_and_transfer_hashes() {
-            if !self.buffer.contains_key(hash) {
-                self.buffer.insert(*hash, (expiry_timestamp, None));
+
+        for deploy_hash in deploy_hashes {
+            if !self.buffer.contains_key(deploy_hash) {
+                self.buffer.insert(*deploy_hash, (expiry_timestamp, None));
             }
-            self.dead.insert(*hash);
+            self.dead.insert(*deploy_hash);
         }
         // deploys held for proposed blocks which did not get finalized in time are eligible again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
             .partition(|(ts, _)| *ts > timestamp);
-        debug!(%timestamp, "DeployBuffer: timestamp finalized");
         self.hold = hold;
         self.update_all_metrics();
+    }
+
+    /// Update buffer and holds considering new added block.
+    fn register_block(&mut self, block: &Block) {
+        debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
+        self.register_deploys(
+            block.header().height(),
+            block.timestamp(),
+            block.deploy_and_transfer_hashes(),
+        );
+    }
+
+    /// Update buffer and holds considering new finalized block.
+    fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
+        debug!(%timestamp, "DeployBuffer: register_block_finalized({}) timestamp finalized", block_height);
+        self.register_deploys(
+            finalized_block.height(),
+            finalized_block.timestamp(),
+            finalized_block.deploy_and_transfer_hashes(),
+        );
     }
 
     /// Returns eligible deploys that are buffered and not held or dead.
@@ -388,7 +424,7 @@ where
             ComponentStatus::Uninitialized => {
                 if let Event::Initialize(blocks) = event {
                     for block in blocks {
-                        self.register_block_finalized(&block.into());
+                        self.register_block(&block);
                     }
                     self.status = ComponentStatus::Initialized;
                     // start self-expiry management on initialization
@@ -417,7 +453,7 @@ where
                     Effects::new()
                 }
                 Event::Block(block) => {
-                    self.register_block_finalized(&FinalizedBlock::from(*block));
+                    self.register_block(&block);
                     Effects::new()
                 }
                 Event::BlockProposed(proposed) => {
