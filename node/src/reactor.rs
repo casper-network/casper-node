@@ -292,16 +292,12 @@ pub(crate) trait Reactor: Sized {
 
 /// A reactor event type.
 pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'static {
-    /// Returns the event as a control announcement, if possible.
-    ///
-    /// Returns a reference to a wrapped
-    /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
-    /// is indeed a control announcement variant.
-    fn as_control(&self) -> Option<&ControlAnnouncement>;
+    /// Returns `true` if the event is a control announcement variant.
+    fn is_control(&self) -> bool;
 
     /// Converts the event into a control announcement without copying.
     ///
-    /// Note that this function must return `Some` if and only `as_control` returns `Some`.
+    /// Note that this function must return `Some` if and only `is_control` returns `true`.
     fn try_into_control(self) -> Option<ControlAnnouncement>;
 
     /// Returns a cheap but human-readable description of the event.
@@ -579,7 +575,7 @@ where
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
 
-        let (effects, maybe_exit_code, queue_kind) = if event.as_control().is_some() {
+        let (effects, maybe_exit_code, queue_kind) = if event.is_control() {
             // We've received a control event, which will _not_ be handled by the reactor.
             match event.try_into_control() {
                 None => {

@@ -224,12 +224,8 @@ pub(crate) enum MainEvent {
 }
 
 impl ReactorEvent for MainEvent {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+    fn is_control(&self) -> bool {
+        matches!(self, MainEvent::ControlAnnouncement(_))
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {

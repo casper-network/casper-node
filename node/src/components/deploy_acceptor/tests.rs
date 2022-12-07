@@ -93,12 +93,8 @@ impl From<BlockCompleteConfirmationRequest> for Event {
 }
 
 impl ReactorEvent for Event {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+    fn is_control(&self) -> bool {
+        matches!(self, Event::ControlAnnouncement(_))
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
