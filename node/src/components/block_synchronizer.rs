@@ -8,6 +8,7 @@ mod error;
 mod event;
 mod execution_results_acquisition;
 mod global_state_synchronizer;
+mod metrics;
 mod need_next;
 mod peer_list;
 mod signature_acquisition;
@@ -16,6 +17,7 @@ mod trie_accumulator;
 use datasize::DataSize;
 use either::Either;
 use once_cell::sync::Lazy;
+use prometheus::Registry;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
@@ -88,6 +90,7 @@ static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
         }),
     )
 });
+use metrics::Metrics;
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
@@ -184,11 +187,17 @@ pub(crate) struct BlockSynchronizer {
     historical: Option<BlockBuilder>,
     // deals with global state acquisition for historical blocks
     global_sync: GlobalStateSynchronizer,
+    #[data_size(skip)]
+    metrics: Metrics,
 }
 
 impl BlockSynchronizer {
-    pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
-        BlockSynchronizer {
+    pub(crate) fn new(
+        config: Config,
+        validator_matrix: ValidatorMatrix,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(BlockSynchronizer {
             status: ComponentStatus::Uninitialized,
             status_before_pause: ComponentStatus::Uninitialized,
             validator_matrix,
@@ -199,7 +208,8 @@ impl BlockSynchronizer {
             forward: None,
             historical: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
-        }
+            metrics: Metrics::new(registry)?,
+        })
     }
 
     /// Returns the progress being made on the historical syncing.
@@ -385,6 +395,9 @@ impl BlockSynchronizer {
         match &mut self.forward {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_block_execution_enqueued();
+                self.metrics
+                    .forward_block_sync_time
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
@@ -402,6 +415,9 @@ impl BlockSynchronizer {
         match &mut self.historical {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_marked_complete();
+                self.metrics
+                    .historical_block_sync_time
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing historical block");
