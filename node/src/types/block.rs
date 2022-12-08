@@ -1417,14 +1417,6 @@ impl Block {
         Ok(())
     }
 
-    /// Overrides the era end of a block with a `None`, making it a non-switch block.
-    #[cfg(any(feature = "testing", test))]
-    pub fn disable_switch_block(&mut self) -> &mut Self {
-        let _ = self.header.era_end.take();
-        self.hash = self.header.block_hash();
-        self
-    }
-
     /// Generates a random instance using a `TestRng`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {

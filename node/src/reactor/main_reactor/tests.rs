@@ -522,7 +522,7 @@ async fn dont_upgrade_without_switch_block() {
     }
 
     // Run until the nodes shut down for the upgrade.
-    let timeout = Duration::from_secs(120);
+    let timeout = Duration::from_secs(30);
     net.settle_on_exit(&mut rng, ExitCode::Success, timeout)
         .await;
 

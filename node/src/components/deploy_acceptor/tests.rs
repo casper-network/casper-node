@@ -917,15 +917,18 @@ async fn run_deploy_acceptor_without_timeout(
                     )
                 )
             }
-            // Check that repeated valid deploys raise the `PutToStorageResult` with the
+            // Check that repeated valid deploys from a client raises `PutToStorageResult` with the
             // `is_new` flag as false.
-            TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::FromPeerRepeatedValidDeploy => {
-                matches!(
-                    event,
-                    Event::DeployAcceptor(super::Event::PutToStorageResult { is_new: false, .. })
-                )
-            }
+            TestScenario::FromClientRepeatedValidDeploy => matches!(
+                event,
+                Event::DeployAcceptor(super::Event::PutToStorageResult { is_new: false, .. })
+            ),
+            // Check that repeated valid deploys from a peer raises `StoredFinalizedApprovals` with
+            // the `is_new` flag as false.
+            TestScenario::FromPeerRepeatedValidDeploy => matches!(
+                event,
+                Event::DeployAcceptor(super::Event::StoredFinalizedApprovals { is_new: false, .. })
+            ),
         }
     };
     runner
