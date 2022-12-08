@@ -259,8 +259,11 @@ impl BlockAccumulator {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
             _ => {
-                debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
-                return;
+                // If we created the event, it's safe to create the acceptor.
+                if maybe_sender.is_some() {
+                    debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
+                    return;
+                }
             }
         }
 
@@ -776,6 +779,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
 
 impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
     fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
+        debug!("handling updated validator matrix");
         let validator_matrix = &self.validator_matrix; // Closure can't borrow all of self.
         let should_stores = self
             .block_acceptors
