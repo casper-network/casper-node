@@ -99,7 +99,7 @@ impl MainReactor {
         };
 
         if self.deploy_buffer.have_full_ttl_of_deploys(from_height) {
-            info!("Validate: sufficient deploy TTL awareness to safely participate in consensus");
+            debug!("Validate: sufficient deploy TTL awareness to safely participate in consensus");
         } else {
             info!("Validate: insufficient deploy TTL awareness to safely participate in consensus");
             return Ok(None);

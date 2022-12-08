@@ -40,7 +40,11 @@ impl MainReactor {
             Either::Right(catch_up_instruction) => return catch_up_instruction,
             Either::Left(sync_identifier) => sync_identifier,
         };
-        debug!("CatchUp: starting with {:?}", sync_identifier);
+        debug!(
+            ?sync_identifier,
+            "CatchUp: sync identifier {}",
+            sync_identifier.block_hash()
+        );
         // we check with the block accumulator before doing sync work as it may be aware of one or
         // more blocks that are higher than our current highest block
         let sync_instruction = self.block_accumulator.sync_instruction(sync_identifier);
@@ -190,10 +194,7 @@ impl MainReactor {
                             ))
                         }
                     }
-                    Ok(None) => {
-                        // should be unreachable if we've gotten this far
-                        Either::Left(SyncIdentifier::BlockHash(trusted_hash))
-                    }
+                    Ok(None) => Either::Left(SyncIdentifier::BlockHash(trusted_hash)),
                     Err(_) => Either::Right(CatchUpInstruction::Fatal(
                         "CatchUp: fatal block store error when attempting to \
                                             read highest complete block"

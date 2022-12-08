@@ -84,7 +84,7 @@ impl MainReactor {
         };
         debug!(
             ?sync_identifier,
-            "KeepUp: starting with {}",
+            "KeepUp: sync identifier {}",
             sync_identifier.block_hash()
         );
         // we check with the block accumulator before doing sync work as it may be aware of one or
