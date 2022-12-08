@@ -140,18 +140,25 @@ impl<REv> ReactorEvent for REv where
 {
 }
 
+/// The status of syncing an individual block.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BlockSyncStatus {
+    /// The block hash.
     block_hash: BlockHash,
+    /// The height of the block, if known.
     block_height: Option<u64>,
+    /// The state of acquisition of the data associated with the block.
     acquisition_state: String,
 }
 
+/// The status of the block synchronizer.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BlockSynchronizerStatus {
+    /// The status of syncing a historical block, if any.
     historical: Option<BlockSyncStatus>,
+    /// The status of syncing a forward block, if any.
     forward: Option<BlockSyncStatus>,
 }
 
@@ -1021,7 +1028,7 @@ impl BlockSynchronizer {
         )
     }
 
-    pub fn status(&self) -> BlockSynchronizerStatus {
+    fn status(&self) -> BlockSynchronizerStatus {
         BlockSynchronizerStatus::new(
             self.historical.as_ref().map(|builder| BlockSyncStatus {
                 block_hash: builder.block_hash(),
