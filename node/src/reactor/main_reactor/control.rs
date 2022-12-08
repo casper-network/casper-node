@@ -159,9 +159,10 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::Validate(effects) => {
-                    // node is in validator set and consensus has what it needs to validate
                     info!("KeepUp: switch to Validate");
                     self.state = ReactorState::Validate;
+                    // purge to avoid polluting the status endpoints w/ stale state
+                    self.block_synchronizer.purge();
                     self.block_synchronizer.pause();
                     (Duration::ZERO, effects)
                 }
@@ -212,10 +213,13 @@ impl MainReactor {
         }
     }
 
+    // NOTE: the order in which components are initialized is purposeful,
+    // so don't alter the order without understanding the semantics
     fn initialize_next_component(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Option<Effects<MainEvent>> {
+        // open the diagnostic port first to make sure it can bind & to be responsive during init.
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.diagnostics_port,
@@ -223,13 +227,7 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.upgrade_watcher,
-            MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
+        // init event stream to make sure it can bind & allow early client connection
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.event_stream_server,
@@ -237,6 +235,17 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
+        // init upgrade watcher to make sure we have file access & to observe possible upgrade
+        // this should be init'd before the rest & rpc servers as the status endpoints include
+        // detected upgrade info.
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.upgrade_watcher,
+            MainEvent::UpgradeWatcher(upgrade_watcher::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        // open the rest server to make sure it can bind & allow metrics & status endpoint access
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.rest_server,
@@ -244,15 +253,12 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.block_synchronizer,
-            MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
+        // initialize deploy buffer from local storage; on a new node this is nearly a noop
+        // but on a restarting node it can be relatively time consuming (depending upon TTL and
+        // how many deploys there have been within the TTL)
         if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
         {
+            // todo!("this logic should be pushed down into the component itself.");
             let timestamp = self.recent_switch_block_headers.last().map_or_else(
                 Timestamp::now,
                 |switch_block| {
@@ -287,6 +293,7 @@ impl MainReactor {
                 return Some(effects);
             }
         }
+        // bring up rpc server near-to-last to defer complications (such as put_deploy)
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.rpc_server,
@@ -294,10 +301,20 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
+        // bring up networking near-to-last to avoid unnecessary premature connectivity
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.net,
             MainEvent::Network(network::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        // bring up the BlockSynchronizer after Network to start it's self-perpetuating
+        // dishonest peer announcing behavior
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.block_synchronizer,
+            MainEvent::BlockSynchronizer(block_synchronizer::Event::Initialize),
         ) {
             return Some(effects);
         }
@@ -455,25 +472,6 @@ impl MainReactor {
             },
             Some(is_validator) => Ok(is_validator),
         }
-    }
-
-    pub(super) fn should_validate(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> (bool, Option<Effects<MainEvent>>) {
-        match self.create_required_eras(effect_builder, rng) {
-            Err(msg) => {
-                return (false, Some(fatal!(effect_builder, "{}", msg).ignore()));
-            }
-            Ok(Some(effects)) => {
-                debug!("Validate: should validate");
-                return (true, Some(effects));
-            }
-            Ok(None) => (),
-        }
-        debug!("Validate: should not validate");
-        (false, None)
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {

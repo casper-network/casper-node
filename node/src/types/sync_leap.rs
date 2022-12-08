@@ -153,6 +153,10 @@ impl SyncLeap {
         (header, signatures)
     }
 
+    pub(crate) fn highest_block_hash(&self) -> BlockHash {
+        self.highest_block_header().0.block_hash()
+    }
+
     pub(crate) fn headers(&self) -> impl Iterator<Item = &BlockHeader> {
         iter::once(&self.trusted_block_header)
             .chain(&self.trusted_ancestor_headers)

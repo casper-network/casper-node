@@ -98,7 +98,9 @@ impl MainReactor {
             None => highest_switch_block_header.height(),
         };
 
-        if !self.deploy_buffer.have_full_ttl_of_deploys(from_height) {
+        if self.deploy_buffer.have_full_ttl_of_deploys(from_height) {
+            debug!("Validate: sufficient deploy TTL awareness to safely participate in consensus");
+        } else {
             info!("Validate: insufficient deploy TTL awareness to safely participate in consensus");
             return Ok(None);
         }
