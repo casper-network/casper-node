@@ -45,7 +45,7 @@ use crate::{
     },
     logging,
     protocol::Message,
-    reactor::{self, EventQueueHandle, QueueKind, Runner},
+    reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::ConditionCheckReactor,
     types::{Block, Chainspec, ChainspecRawBytes, Deploy, NodeId},
     utils::{Loadable, WithDir},
@@ -739,7 +739,7 @@ async fn run_deploy_acceptor_without_timeout(
     // There are two scheduled events, so we only need to try cranking until the second time it
     // returns `Some`.
     for _ in 0..2 {
-        while runner.try_crank(&mut rng).await.is_none() {
+        while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
             time::sleep(POLL_INTERVAL).await;
         }
     }
@@ -762,7 +762,7 @@ async fn run_deploy_acceptor_without_timeout(
             runner
                 .process_injected_effects(put_deploy_to_storage(injected_deploy, result_sender))
                 .await;
-            while runner.try_crank(&mut rng).await.is_none() {
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
                 time::sleep(POLL_INTERVAL).await;
             }
             // Check that the "previously seen" deploy is present in storage.
@@ -780,7 +780,7 @@ async fn run_deploy_acceptor_without_timeout(
                     deploy_responder,
                 ))
                 .await;
-            while runner.try_crank(&mut rng).await.is_none() {
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
                 time::sleep(POLL_INTERVAL).await;
             }
         }
@@ -933,12 +933,15 @@ async fn run_deploy_acceptor_without_timeout(
         .set_condition_checker(Box::new(stopping_condition));
 
     loop {
-        if runner.try_crank(&mut rng).await.is_some() {
-            if runner.reactor().condition_result() {
-                break;
+        match runner.try_crank(&mut rng).await {
+            TryCrankOutcome::ProcessedAnEvent => {
+                if runner.reactor().condition_result() {
+                    break;
+                }
             }
-        } else {
-            time::sleep(POLL_INTERVAL).await;
+            TryCrankOutcome::NoEventsToProcess => time::sleep(POLL_INTERVAL).await,
+            TryCrankOutcome::ShouldExit(exit_code) => panic!("should not exit: {:?}", exit_code),
+            TryCrankOutcome::Exited => unreachable!(),
         }
     }
 

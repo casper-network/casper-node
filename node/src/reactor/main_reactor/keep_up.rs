@@ -5,7 +5,7 @@ use std::{
 };
 use tracing::{debug, error, info};
 
-use casper_types::EraId;
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::{
@@ -16,7 +16,7 @@ use crate::{
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{BlockHash, Item, SyncLeap, SyncLeapIdentifier},
+    types::{ActivationPoint, BlockHash, Item, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
@@ -112,7 +112,7 @@ impl MainReactor {
         self.keep_up_should_validate(effect_builder, rng)
             .unwrap_or_else(|| {
                 KeepUpInstruction::CheckLater(
-                    "KeepUp: node is keeping up".to_string(),
+                    "node is keeping up".to_string(),
                     self.control_logic_default_delay.into(),
                 )
             })
@@ -123,6 +123,15 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Option<KeepUpInstruction> {
+        if let ActivationPoint::Genesis(genesis_timestamp) =
+            self.chainspec.protocol_config.activation_point
+        {
+            // this is a non-validator node in KeepUp prior to genesis; there is no reason to
+            // check consensus in this state, and it log spams if we do, so exiting early
+            if genesis_timestamp > Timestamp::now() {
+                return None;
+            }
+        }
         match self.create_required_eras(effect_builder, rng) {
             Ok(Some(effects)) => Some(KeepUpInstruction::Validate(effects)),
             Ok(None) => None,
@@ -261,7 +270,7 @@ impl MainReactor {
                     None
                 }
                 SyncBackInstruction::Syncing => Some(KeepUpInstruction::CheckLater(
-                    format!("Historical: {}", SyncBackInstruction::Syncing),
+                    format!("historical {}", SyncBackInstruction::Syncing),
                     self.control_logic_default_delay.into(),
                 )),
                 SyncBackInstruction::Sync {
@@ -375,7 +384,7 @@ impl MainReactor {
                 debug!("Historical: already had era: {}", era_id);
             }
         }
-        KeepUpInstruction::CheckLater("Historical: sync leap received".to_string(), Duration::ZERO)
+        KeepUpInstruction::CheckLater("historical sync leap received".to_string(), Duration::ZERO)
     }
 
     fn sync_back_register(
@@ -413,7 +422,7 @@ impl MainReactor {
             )
         } else {
             KeepUpInstruction::CheckLater(
-                format!("Historical: syncing {}", parent_hash),
+                format!("historical syncing {}", parent_hash),
                 self.control_logic_default_delay.into(),
             )
         }

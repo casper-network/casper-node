@@ -260,7 +260,7 @@ impl Display for ConsensusAnnouncement {
                 timestamp,
             } => write!(
                 formatter,
-                "Validator fault with public key: {} has been identified at time: {} in era: {}",
+                "Validator fault with public key: {} has been identified at time: {} in {}",
                 public_key, timestamp, era_id,
             ),
         }

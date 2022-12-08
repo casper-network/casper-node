@@ -203,6 +203,7 @@ impl BlockAcceptor {
 
         if self.block.is_none() || self.signatures.is_empty() {
             debug!(
+                block_hash = %self.block_hash,
                 no_block = self.block.is_none(),
                 no_sigs = self.signatures.is_empty(),
                 "not storing block"

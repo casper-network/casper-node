@@ -382,8 +382,9 @@ fn next_installed_version(
 fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUpgrade> {
     let next_version = match next_installed_version(&dir, &current_version) {
         Ok(version) => version,
-        Err(error) => {
-            warn!(dir=%dir.display(), %error, "failed to get a valid version from subdirs");
+        Err(_error) => {
+            #[cfg(not(test))]
+            warn!(dir=%dir.display(), error=%_error, "failed to get a valid version from subdirs");
             return None;
         }
     };

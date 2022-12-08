@@ -114,7 +114,7 @@ impl MainReactor {
                 // no trusted hash, no local block, no error, must be waiting for genesis
                 info!("CatchUp: waiting to store genesis immediate switch block");
                 Either::Right(CatchUpInstruction::CheckLater(
-                    "CatchUp: waiting for genesis immediate switch block to be stored".to_string(),
+                    "waiting for genesis immediate switch block to be stored".to_string(),
                     self.control_logic_default_delay.into(),
                 ))
             }
@@ -132,33 +132,23 @@ impl MainReactor {
                 // this bootstraps a network; it only occurs once ever on a given network but is
                 // very load-bearing as errors in this logic can prevent the network from coming
                 // into existence or surviving its initial existence.
-                if self
-                    .chainspec
-                    .network_config
-                    .is_genesis_validator(self.validator_matrix.public_signing_key())
-                    .unwrap_or(false)
-                {
-                    let now = Timestamp::now();
-                    let grace_period = timestamp.saturating_add(TimeDiff::from_seconds(180));
-                    if now > grace_period {
-                        return Either::Right(CatchUpInstruction::Fatal(
-                            "CatchUp: late for genesis; cannot proceed without trusted hash"
-                                .to_string(),
-                        ));
-                    }
-                    let time_remaining = timestamp.saturating_diff(now);
-                    if time_remaining > TimeDiff::default() {
-                        return Either::Right(CatchUpInstruction::CheckLater(
-                            format!("CatchUp: waiting for genesis activation at {}", timestamp),
-                            Duration::from(time_remaining),
-                        ));
-                    }
-                    Either::Right(CatchUpInstruction::CommitGenesis)
-                } else {
-                    Either::Right(CatchUpInstruction::Fatal(
-                        "CatchUp: only validating nodes may participate in genesis; cannot proceed without trusted hash".to_string(),
-                    ))
+
+                let now = Timestamp::now();
+                let grace_period = timestamp.saturating_add(TimeDiff::from_seconds(180));
+                if now > grace_period {
+                    return Either::Right(CatchUpInstruction::Fatal(
+                        "CatchUp: late for genesis; cannot proceed without trusted hash"
+                            .to_string(),
+                    ));
                 }
+                let time_remaining = timestamp.saturating_diff(now);
+                if time_remaining > TimeDiff::default() {
+                    return Either::Right(CatchUpInstruction::CheckLater(
+                        format!("waiting for genesis activation at {}", timestamp),
+                        Duration::from(time_remaining),
+                    ));
+                }
+                Either::Right(CatchUpInstruction::CommitGenesis)
             }
             ActivationPoint::EraId(_) => {
                 // no trusted hash, no local block, not genesis
