@@ -2,9 +2,9 @@ use prometheus::{Histogram, Registry};
 
 use crate::{unregister_metric, utils};
 
-const HIST_SYNC_TIME_NAME: &str = "historical_block_sync_time";
+const HIST_SYNC_TIME_NAME: &str = "historical_block_sync_time_seconds";
 const HIST_SYNC_TIME_HELP: &str = "duration (in sec) to synchronize a historical block";
-const FWD_SYNC_TIME_NAME: &str = "forward_block_sync_time";
+const FWD_SYNC_TIME_NAME: &str = "forward_block_sync_time_seconds";
 const FWD_SYNC_TIME_HELP: &str = "duration (in sec) to synchronize a forward block";
 
 // We use exponential buckets to observe the time it takes to synchronize blocks.
