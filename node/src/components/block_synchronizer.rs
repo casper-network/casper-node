@@ -398,7 +398,7 @@ impl BlockSynchronizer {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_block_execution_enqueued();
                 self.metrics
-                    .forward_block_sync_time
+                    .forward_block_sync_duration
                     .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
@@ -431,7 +431,7 @@ impl BlockSynchronizer {
                     effects.extend(effect_builder.announce_completed_block(block).ignore());
                 }
                 self.metrics
-                    .historical_block_sync_time
+                    .historical_block_sync_duration
                     .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
