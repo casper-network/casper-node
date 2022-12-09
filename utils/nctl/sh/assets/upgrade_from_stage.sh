@@ -113,6 +113,8 @@ function _main()
                                  "$PROTOCOL_VERSION" \
                                  "$CONFIG_PATH" \
                                  false
+
+        # Protocol version parameter is currently unused
         setup_asset_global_state_toml "$COUNT_NODES" \
                                       "$PROTOCOL_VERSION"
         sleep 10.0

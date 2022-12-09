@@ -454,21 +454,15 @@ function setup_asset_global_state_toml() {
     log "... setting node global_state.toml"
 
     local COUNT_NODES=${1}
-    local PROTOCOL_VERSION=${2}
+    local TARGET_PROTOCOL_VERSION
     local IDX
     local GLOBAL_STATE_OUTPUT
     local GLOBAL_STATE_VALIDATOR_OUTPUT
-    local PATH_TO_NET
-    local PRE_1_4_0
+    local PATH_TO_NET="$(get_path_to_net)"
     local GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION
     local STATE_ROOT_HASH
-
-    PATH_TO_NET="$(get_path_to_net)"
-
-    # Checks stages dir for lowest protocol version
-    pushd "$(get_path_to_stages)/stage-1/"
-    PRE_1_4_0=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | tr -d '_' | sort | head -n 1)
-    popd
+    local PRE_14
+    local DATA_LMDB_PATH
 
     # Check version of the global state update tool. This is not a proper semver check, for simplicity, we rely on the minor part only.
     # 0.3 marks the transition to 1.5 fast sync node and supports the "validators" command.
@@ -479,44 +473,61 @@ function setup_asset_global_state_toml() {
         exit 1
     fi
 
-    VALIDATOR_SETUP_STRING=$(validators_string)
+    pushd "$(get_path_to_stages)/stage-1/"
+    local STAGE_1_PRE_VERSION=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | tr -d '_' | sort | head -n 1)
+    echo $STAGE_1_PRE_VERSION
+    popd
+    pushd "$(get_path_to_stages)/stage-1/"
+    local TARGET_PROTOCOL_VERSION=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | sort | tail -n 1)
+    echo $TARGET_PROTOCOL_VERSION
+    local STAGE_1_POST_VERSION="$(echo $TARGET_PROTOCOL_VERSION | tr -d '_')"
+    echo $STAGE_1_POST_VERSION
+    popd
 
-    for IDX in $(seq 1 "$COUNT_NODES")
-    do
-        # if the combined integers from the PROTOCOL_VERISON >= 140 ( 1_4_0 )
-        if [ "$PRE_1_4_0" -ge "140" ]; then
-            # Check new data.lmdb path under ..storage/<chain_name>/
-            if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
-                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
+    log "... processing upgrade from $STAGE_1_PRE_VERSION to $STAGE_1_POST_VERSION (protocol version = $PROTOCOL_VERSION)"
+    STAGE_1_PRE_VERSION_LEN=`echo $STAGE_1_PRE_VERSION | wc -c`
+    STAGE_1_POST_VERSION_LEN=`echo $STAGE_1_POST_VERSION | wc -c`
 
-                GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
+    if [ "$STAGE_1_PRE_VERSION_LEN" -ne "4" ] || [ "$STAGE_1_POST_VERSION_LEN" -ne "4" ]; then
+        log "ERROR :: Node version segments must be single digit (eg. 1.4.5). Versions like 1.4.12 are not supported. This is only a limitation of this test script - for IRL upgrades any version should work"
+    fi
+
+    if [ "$STAGE_1_PRE_VERSION" -lt "140" ]; then
+        log "... upgrading from pre 1.4.0 version"
+        PRE_14=1
+    else
+        log "... upgrading from version 1.4.0 or later, no 'global_state.toml' file needed"
+        PRE_14=0
+    fi
+
+    if [ "$PRE_14" -eq "1" ]; then
+        for IDX in $(seq 1 "$COUNT_NODES")
+        do
+            STORAGE_PATH="$PATH_TO_NET/nodes/node-$IDX/storage"
+            DATA_LMDB_PATH="$STORAGE_PATH/data.lmdb"
+            log "... path to DB: $DATA_LMDB_PATH"
+
+            VALIDATOR_SETUP_STRING=$(validators_string)
+
+            STATE_ROOT_HASH=$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')
+            log "... state root hash for node $IDX: $STATE_ROOT_HASH"
+
+            if [ -f $DATA_LMDB_PATH ]; then
+                    GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                            system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
+
+                    GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                            change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage) 
             else
-                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
+                    GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                            system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)
 
-                GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
+                    GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                            change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)
             fi
-        else
-            if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/data.lmdb" ]; then
-                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
 
-                GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
-
-            else
-                GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
-
-                GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-1/storage)
-            fi
-        fi
-
-        echo "$GLOBAL_STATE_VALIDATOR_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$PROTOCOL_VERSION/global_state.toml"
-        echo "$GLOBAL_STATE_OUTPUT" >> "$PATH_TO_NET/nodes/node-$IDX/config/$PROTOCOL_VERSION/global_state.toml"
-    done
+            echo "$GLOBAL_STATE_VALIDATOR_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
+            echo "$GLOBAL_STATE_OUTPUT" >> "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
+        done
+    fi
 }
