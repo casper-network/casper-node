@@ -58,6 +58,9 @@ pub struct NodeConfig {
 
     /// Default delay for the control events that have no dedicated delay requirements.
     pub control_logic_default_delay: TimeDiff,
+
+    /// Flag which forces the node to resync all of the blocks.
+    pub force_resync: bool,
 }
 
 impl Default for NodeConfig {
@@ -74,6 +77,7 @@ impl Default for NodeConfig {
             max_attempts: DEFAULT_MAX_ATTEMPTS,
             control_logic_default_delay: DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY.parse().unwrap(),
             sync_to_genesis: false,
+            force_resync: false,
         }
     }
 }

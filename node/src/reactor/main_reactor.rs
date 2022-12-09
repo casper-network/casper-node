@@ -183,6 +183,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
             Some(registry),
+            config.node.force_resync,
         )?;
 
         let contract_runtime = ContractRuntime::new(

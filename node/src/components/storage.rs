@@ -95,7 +95,7 @@ use crate::{
         FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
         SyncLeapIdentifier, ValueOrChunk,
     },
-    utils::{self, display_error, WithDir},
+    utils::{self, display_error, pid_file::PidFile, WithDir},
     NodeRng,
 };
 use disjoint_sequences::{DisjointSequences, Sequence};
@@ -127,6 +127,8 @@ const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 const MAX_DB_COUNT: u32 = 9;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
+/// Key under which completed blocks are to be stored.
+const FORCE_RESYNC_PID_FILE_NAME: &str = "force_resync.pid";
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -208,6 +210,8 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: TimeDiff,
+    #[data_size(skip)]
+    force_resync_pid_file: Option<PidFile>,
 }
 
 /// A storage component event.
@@ -322,6 +326,7 @@ impl Storage {
         max_ttl: TimeDiff,
         recent_era_count: u64,
         registry: Option<&Registry>,
+        force_resync: bool,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -473,7 +478,45 @@ impl Storage {
             fault_tolerance_fraction,
             max_ttl,
             metrics,
+            force_resync_pid_file: None,
         };
+
+        if force_resync {
+            // Check if resync is already in progress. Force resync will kick
+            // in only when the pid file was cleanly initialized and acquired
+            // (i.e. it didn't exist before).
+            match PidFile::acquire(component.root_path().join(FORCE_RESYNC_PID_FILE_NAME)) {
+                utils::pid_file::PidFileOutcome::Clean(pid_file) => {
+                    // When no pid file was detected, initialize force resync.
+                    info!("Initializing force resync.");
+                    // Default `storage.completed_blocks`.
+                    component.completed_blocks = Default::default();
+                    component.persist_completed_blocks()?;
+                    component.force_resync_pid_file = Some(pid_file);
+                    // Exit the initialization function early.
+                    return Ok(component);
+                }
+                utils::pid_file::PidFileOutcome::AnotherNodeRunning(pid_file_error) => {
+                    warn!(
+                        "Another node is using the force resync pid file: {}",
+                        pid_file_error
+                    );
+                    info!("Skipping force resync as pid file exists.");
+                }
+                utils::pid_file::PidFileOutcome::Existing(pid_file) => {
+                    info!("Skipping force resync as pid file exists.");
+                    component.force_resync_pid_file = Some(pid_file);
+                }
+                utils::pid_file::PidFileOutcome::NonNumericContents(pid_file) => {
+                    info!("Skipping force resync as pid file exists.");
+                    warn!("Force resync pid file has non-numeric, possibly corrupt content.");
+                    component.force_resync_pid_file = Some(pid_file);
+                }
+                utils::pid_file::PidFileOutcome::PidFileError(pid_file_error) => {
+                    warn!("Error checking force resync pid file: {}", pid_file_error);
+                }
+            }
+        }
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
             Some(raw) => {
@@ -1116,6 +1159,29 @@ impl Storage {
     fn mark_block_complete(&mut self, block_height: u64) -> Result<(), FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;
+        if self
+            .completed_blocks
+            .highest_sequence()
+            .map(|seq| {
+                seq.low() == 0
+                    // This next bit might not be necessary actually because
+                    // the highest sequence starting with 0 means we have
+                    // complete blocks starting from genesis with no gaps, and
+                    // the actual height of the tip might not give us any
+                    // relevant information, as it's constantly changing with
+                    // the chain progressing.
+                    && seq.high()
+                        == self
+                            .block_height_index
+                            .keys()
+                            .last()
+                            .copied()
+                            .unwrap_or_default()
+            })
+            .unwrap_or_default()
+        {
+            // Notify resync is complete.
+        }
         info!(
             "Storage: marked block {} complete: {}",
             block_height,
