@@ -444,120 +444,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::VecDeque, convert::Infallible, sync::Arc};
+    use std::{collections::VecDeque, convert::Infallible};
 
-    use bytes::Bytes;
-    use futures::{FutureExt, Sink, SinkExt, Stream, StreamExt};
+    use futures::{FutureExt, SinkExt, StreamExt};
     use tokio_stream::wrappers::ReceiverStream;
     use tokio_util::sync::PollSender;
 
     use crate::testing::{
         collect_bufs,
         encoding::{EncodeAndSend, TestEncodeable},
-        testing_sink::{TestingSink, TestingSinkRef},
+        fixtures::{OneWayFixtures, TwoWayFixtures, WINDOW_SIZE},
     };
 
-    use super::{
-        BackpressureError, BackpressuredSink, BackpressuredStream, BackpressuredStreamError,
-    };
-
-    /// Window size used in tests.
-    const WINDOW_SIZE: u64 = 3;
-
-    /// Sets up a `Sink`/`Stream` pair that outputs infallible results.
-    fn setup_io_pipe<T: Send + Sync + 'static>(
-        size: usize,
-    ) -> (
-        impl Sink<T, Error = Infallible> + Unpin + 'static,
-        impl Stream<Item = Result<T, Infallible>> + Unpin + 'static,
-    ) {
-        let (send, recv) = tokio::sync::mpsc::channel::<T>(size);
-
-        let stream = ReceiverStream::new(recv).map(Ok);
-
-        let sink =
-            PollSender::new(send).sink_map_err(|_err| panic!("did not expect a `PollSendError`"));
-
-        (sink, stream)
-    }
-
-    /// A common set of fixtures used in the backpressure tests.
-    ///
-    /// The fixtures represent what a server holds when dealing with a backpressured client.
-    struct OneWayFixtures {
-        /// A sender for ACKs back to the client.
-        ack_sink: Box<dyn Sink<u64, Error = Infallible> + Unpin>,
-        /// The clients sink for requests, with no backpressure wrapper. Used for retrieving the
-        /// test data in the end or setting plugged/clogged status.
-        sink: Arc<TestingSink>,
-        /// The properly set up backpressured sink.
-        bp: BackpressuredSink<
-            TestingSinkRef,
-            Box<dyn Stream<Item = Result<u64, Infallible>> + Unpin>,
-            Bytes,
-        >,
-    }
-
-    impl OneWayFixtures {
-        /// Creates a new set of fixtures.
-        fn new() -> Self {
-            let sink = Arc::new(TestingSink::new());
-
-            let (raw_ack_sink, raw_ack_stream) = setup_io_pipe::<u64>(1024);
-
-            // The ACK stream and sink need to be boxed to make their types named.
-            let ack_sink: Box<dyn Sink<u64, Error = Infallible> + Unpin> = Box::new(raw_ack_sink);
-            let ack_stream: Box<dyn Stream<Item = Result<u64, Infallible>> + Unpin> =
-                Box::new(raw_ack_stream);
-
-            let bp = BackpressuredSink::new(sink.clone().into_ref(), ack_stream, WINDOW_SIZE);
-
-            Self { ack_sink, sink, bp }
-        }
-    }
-
-    /// A more complicated setup for testing backpressure that allows accessing both sides of the
-    /// connection.
-    ///
-    /// The resulting `client` sends byte frames across to the `server`, with ACKs flowing through
-    /// the associated ACK pipe.
-    #[allow(clippy::type_complexity)]
-    struct TwoWayFixtures {
-        client: BackpressuredSink<
-            Box<dyn Sink<Bytes, Error = Infallible> + Send + Unpin>,
-            Box<dyn Stream<Item = Result<u64, Infallible>> + Send + Unpin>,
-            Bytes,
-        >,
-        server: BackpressuredStream<
-            Box<dyn Stream<Item = Result<Bytes, Infallible>> + Send + Unpin>,
-            Box<dyn Sink<u64, Error = Infallible> + Send + Unpin>,
-            Bytes,
-        >,
-    }
-
-    impl TwoWayFixtures {
-        /// Creates a new set of two-way fixtures.
-        fn new(size: usize) -> Self {
-            let (sink, stream) = setup_io_pipe::<Bytes>(size);
-
-            let (ack_sink, ack_stream) = setup_io_pipe::<u64>(size);
-
-            let boxed_sink: Box<dyn Sink<Bytes, Error = Infallible> + Send + Unpin + 'static> =
-                Box::new(sink);
-            let boxed_ack_stream: Box<dyn Stream<Item = Result<u64, Infallible>> + Send + Unpin> =
-                Box::new(ack_stream);
-
-            let client = BackpressuredSink::new(boxed_sink, boxed_ack_stream, WINDOW_SIZE);
-
-            let boxed_stream: Box<dyn Stream<Item = Result<Bytes, Infallible>> + Send + Unpin> =
-                Box::new(stream);
-            let boxed_ack_sink: Box<dyn Sink<u64, Error = Infallible> + Send + Unpin> =
-                Box::new(ack_sink);
-            let server = BackpressuredStream::new(boxed_stream, boxed_ack_sink, WINDOW_SIZE);
-
-            TwoWayFixtures { client, server }
-        }
-    }
+    use super::{BackpressureError, BackpressuredStream, BackpressuredStreamError};
 
     #[test]
     fn backpressured_sink_lifecycle() {

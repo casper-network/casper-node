@@ -1,6 +1,7 @@
 //! Testing support utilities.
 
 pub mod encoding;
+pub mod fixtures;
 pub mod pipe;
 pub mod testing_sink;
 
@@ -70,6 +71,7 @@ pub(crate) struct TestStream<T> {
 }
 
 impl<T> TestStream<T> {
+    #[cfg(test)]
     pub(crate) fn new(items: Vec<T>) -> Self {
         TestStream {
             items: items.into(),

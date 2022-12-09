@@ -30,7 +30,7 @@ pub mod fragmented;
 pub mod framing;
 pub mod io;
 pub mod mux;
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
 use bytes::Buf;
