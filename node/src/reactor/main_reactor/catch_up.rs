@@ -59,8 +59,6 @@ impl MainReactor {
             // do necessary work to catch up
             return catch_up_instruction;
         }
-        // purge synchronizer to keep state detection and reporting correct and fresh
-        self.block_synchronizer.purge();
         // there are no catch up or shutdown instructions, so we must be caught up
         CatchUpInstruction::CaughtUp
     }

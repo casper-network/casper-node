@@ -2,6 +2,7 @@ use std::time::Duration;
 use tracing::{debug, info};
 
 use crate::{
+    components::consensus::ChainspecConsensusExt,
     effect::{EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::{MainEvent, MainReactor},
@@ -23,6 +24,11 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> ValidateInstruction {
+        let queue_depth = self.contract_runtime.queue_depth();
+        if self.contract_runtime.queue_depth() > 0 {
+            debug!("Validate: should_validate queue_depth {}", queue_depth);
+            return ValidateInstruction::KeepUp;
+        }
         if self.switch_block.is_none() {
             // validate status is only checked at switch blocks
             return ValidateInstruction::NonSwitchBlock;
@@ -59,10 +65,25 @@ impl MainReactor {
     ) -> Result<Option<Effects<MainEvent>>, String> {
         let highest_switch_block_header = match self.recent_switch_block_headers.last() {
             None => {
-                debug!("Validate: create_required_eras: recent_switch_block_headers is empty");
-                return Ok(None);
+                // attempt to refresh switch blocks from storage
+                match self.storage.read_highest_switch_block_headers(
+                    self.chainspec.number_of_past_switch_blocks_needed(),
+                ) {
+                    Ok(switch_headers) => {
+                        self.recent_switch_block_headers = switch_headers.clone();
+                        debug!(
+                            "Validate: create_required_eras: recent_switch_block_headers is empty"
+                        );
+                        if let Some(ret) = switch_headers.last().cloned() {
+                            ret
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                    Err(err) => return Err(err.to_string()),
+                }
             }
-            Some(header) => header,
+            Some(header) => header.clone(),
         };
         debug!(
             "Validate: highest_switch_block_header: {} - {} - height {}",
