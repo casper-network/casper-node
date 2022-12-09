@@ -17,7 +17,7 @@ fn main() {
         .version(crate_version!())
         .about("Generates a global state update file based on the supplied parameters")
         .subcommand(
-            SubCommand::with_name("validators")
+            SubCommand::with_name("change-validators")
                 .about("Generates an update changing the validators set")
                 .arg(
                     Arg::with_name("data_dir")
@@ -152,7 +152,7 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        ("validators", Some(sub_matches)) => generate_validators_update(sub_matches),
+        ("change-validators", Some(sub_matches)) => generate_validators_update(sub_matches),
         ("balances", Some(sub_matches)) => generate_balances_update(sub_matches),
         ("system-contract-registry", Some(sub_matches)) => {
             generate_system_contract_registry(sub_matches)

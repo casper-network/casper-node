@@ -4,7 +4,7 @@ If the network experiences a catastrophic failure, it might become impossible to
 
 The tool consists of 1 main subcommand and 3 legacy subcommands:
 - `generic` - a generic update based on a config file,
-- `validators` (legacy) - updating the set of validators on the network,
+- `change-validators` (legacy) - updating the set of validators on the network,
 - `balances` (legacy) - performing some transfers between accounts,
 - `system-contract-registry` (legacy) - this was a single-use subcommand intended to introduce some changes to the system structures in the global state that couldn't be made otherwise.
 
@@ -56,7 +56,7 @@ For every such definition, if the `balance` key is present, the balance of the a
 
 Updating the validator properties (stake, delegators) behaves differently based on the value of `only_listed_validators`. If it is false, the existing list of validators is treated as a base, and validator properties are modified based on the entries in the config. If the `validator` key is present, the stake and delegators are set to the configured values. If it is not present, the pre-existing properties are left untouched.
 
-If `only_listed_validators` is true, pre-existing validators are discarded, and only the accounts with non-zero stakes configured in the config file will be validators after the update. This option exists to match the behavior of the legacy `validators` subcommand and to cater to some use cases in testing.
+If `only_listed_validators` is true, pre-existing validators are discarded, and only the accounts with non-zero stakes configured in the config file will be validators after the update. This option exists to match the behavior of the legacy `change-validators` subcommand and to cater to some use cases in testing.
 
 So, for example, if the network has 100 validators and we want to only change the stake of a single one:
 - with `only_listed_validators` set to false, we need only a single `[[accounts]]` entry for the validator we want to change,
@@ -79,9 +79,9 @@ The tool also takes care to update the total supply in the network to reflect th
 
 ### Legacy commands
 
-#### `validators`
+#### `change-validators`
 
-Usage: `global-state-update-gen validators -d DATA-DIRECTORY -s STATE-ROOT-HASH -v VALIDATOR-KEY,STAKE,BALANCE -v VALIDATOR-KEY,STAKE,BALANCE ...`
+Usage: `global-state-update-gen change-validators -d DATA-DIRECTORY -s STATE-ROOT-HASH -v VALIDATOR-KEY,STAKE,BALANCE -v VALIDATOR-KEY,STAKE,BALANCE ...`
 
 Apart from the common `-d` and `-s` parameters, the subcommand has one additional parameter, `-v` or `--validator`. Multiple such parameters can be supplied. Also note that the third field, `BALANCE`, is optional (ie., the definition can be just `-v VALIDATOR-KEY,STAKE`).
 

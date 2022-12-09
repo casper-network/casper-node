@@ -491,13 +491,13 @@ function setup_asset_global_state_toml() {
                         system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
 
                 GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
+                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
             else
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                         system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
 
                 GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
+                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
             fi
         else
             if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/data.lmdb" ]; then
@@ -505,14 +505,14 @@ function setup_asset_global_state_toml() {
                         system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
 
                 GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
+                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
 
             else
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                         system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
 
                 GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-1/storage)
+                        change-validators $VALIDATOR_SETUP_STRING -d "$PATH_TO_NET"/nodes/node-1/storage)
             fi
         fi
 
