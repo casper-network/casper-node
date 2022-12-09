@@ -634,7 +634,8 @@ impl reactor::Reactor for MainReactor {
                     self.validator_matrix
                         .register_validator_weights(era_id.successor(), validator_weights.clone());
                     debug!(
-                        "block_accumulator added switch block (notifying components of validator weights at end of: {})",
+                        "block_accumulator added switch block (notifying components of validator \
+                        weights at end of: {})",
                         era_id
                     );
                     effects.extend(reactor::wrap_effects(

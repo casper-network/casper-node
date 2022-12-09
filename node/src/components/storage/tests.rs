@@ -1014,18 +1014,14 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let mut block = Block::random(&mut harness.rng);
+    let block = Block::random(&mut harness.rng);
     let block_height = block.height();
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let execution_result: ExecutionResult = harness.rng.gen();
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
-    put_complete_block(
-        &mut harness,
-        &mut storage,
-        Box::new(block.disable_switch_block().clone()),
-    );
+    put_complete_block(&mut harness, &mut storage, Box::new(block.clone()));
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
     put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);

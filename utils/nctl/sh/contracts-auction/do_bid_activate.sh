@@ -45,7 +45,7 @@ function main()
             --chain-name "$CHAIN_NAME" \
             --node-address "$NODE_ADDRESS" \
             --payment-amount "$GAS_PAYMENT" \
-            --ttl "1day" \
+            --ttl "5minutes" \
             --secret-key "$VALIDATOR_SECRET_KEY" \
             --session-arg "$(get_cl_arg_account_key 'validator_public_key' "$VALIDATOR_ACCOUNT_KEY")" \
             --session-path "$PATH_TO_CONTRACT" \
