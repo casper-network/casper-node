@@ -363,17 +363,34 @@ function get_running_node_count {
 function assert_node_proposed() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node "$NODE_ID")
-    local PUBLIC_KEY_HEX=$(get_node_public_key_hex "$NODE_ID")
+    local PUBLIC_KEY_HEX=$(get_node_public_key_hex_extended "$NODE_ID")
     local TIMEOUT=${2:-300}
-    log_step "Waiting for a node-$NODE_ID to produce a block..."
-    local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)")
-    if ( echo "$OUTPUT" | grep -q "proposer: PublicKey::Ed25519($PUBLIC_KEY_HEX)" ); then
-        log "Node-$NODE_ID created a block!"
-        log "$OUTPUT"
-    else
-        log "ERROR: Node-$NODE_ID didn't create a block within timeout=$TIMEOUT"
-        exit 1
-    fi
+    local OUTPUT
+    local PROPOSER
+
+    log_step "Waiting for a node-$NODE_ID to produce a block"
+    log "...node-$NODE_ID public key hex: $PUBLIC_KEY_HEX"
+
+    while true; do
+        OUTPUT=$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc)")
+        PROPOSER=$(echo "$OUTPUT" | jq -r '.result.block.body.proposer')
+
+        if [ "$PROPOSER" == "$PUBLIC_KEY_HEX" ]; then
+            log "Node-$NODE_ID created a block!"
+            log "$OUTPUT"
+            log "Proposer: $PROPOSER"
+            break;
+        else
+            sleep 1
+            TIMEOUT=$((TIMEOUT-1))
+            if [ "$TIMEOUT" = '0' ]; then
+                log "ERROR: Timed out before node created a block"
+                exit 1
+            else
+                log "...waiting for node to propose: timeout=$TIMEOUT"
+            fi
+        fi
+    done
 }
 
 function assert_no_proposal_walkback() {
