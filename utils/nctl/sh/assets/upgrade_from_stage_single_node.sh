@@ -303,7 +303,7 @@ function _setup_asset_global_state_toml() {
     echo $STAGE_1_POST_VERSION
     popd
 
-    log "... processing upgrade from $STAGE_1_PRE_VERSION to $STAGE_1_POST_VERSION (protocol version = $PROTOCOL_VERSION)"
+    log "... processing upgrade from $STAGE_1_PRE_VERSION to $STAGE_1_POST_VERSION"
     STAGE_1_PRE_VERSION_LEN=`echo $STAGE_1_PRE_VERSION | wc -c`
     STAGE_1_POST_VERSION_LEN=`echo $STAGE_1_POST_VERSION | wc -c`
 
