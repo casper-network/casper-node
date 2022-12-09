@@ -34,15 +34,6 @@ function _main()
     SCENARIOS_CHAINSPECS_DIR="$SCENARIOS_DIR/chainspecs"
     SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 
-    if [ "$NCTL_UPGRADE_TEST" = false ]; then
-        CONFIGS=($(ls "$SCENARIOS_CONFIGS_DIR" | grep -v "upgrade_scenario" | awk -F'.' '{print $1}'))
-        CHAINSPECS=($(ls "$SCENARIOS_CHAINSPECS_DIR" | grep -v "upgrade_scenario" | awk -F'.' '{print $1}'))
-        ACCOUNTS=($(ls "$SCENARIOS_ACCOUNTS_DIR" | grep -v "upgrade_scenario" | awk -F'.' '{print $1}'))
-    else
-        CONFIGS=($(ls "$SCENARIOS_CONFIGS_DIR" | grep "upgrade_scenario" | awk -F'.' '{print $1}'))
-        CHAINSPECS=($(ls "$SCENARIOS_CHAINSPECS_DIR" | grep "upgrade_scenario" | awk -F'.' '{print $1}'))
-        ACCOUNTS=($(ls "$SCENARIOS_ACCOUNTS_DIR" | grep "upgrade_scenario" | awk -F'.' '{print $1}'))
-    fi
     LOCAL_CONFIG="$NCTL_CASPER_HOME/resources/local/config.toml"
     LOCAL_CHAINSPEC="$NCTL_CASPER_HOME/resources/local/chainspec.toml.in"
     LOCAL_ACCOUNT="$NCTL_CASPER_HOME/resources/local/accounts.toml"
@@ -54,47 +45,80 @@ function _main()
 
     mkdir -p "$STAGE_DIR"
 
-    pushd "$SCENARIOS_CONFIGS_DIR"
-    for i in "${CONFIGS[@]}"; do
-        if [[ "$i" == *"upgrade_scenario"* ]]; then
-            # Pre
-            call_config_gen "$i.config.toml.override" "$PROTO_DIR/config.toml" "$STAGE_DIR/$i.pre.config.toml"
-            # Post
-            call_config_gen "$i.config.toml.override" "$LOCAL_CONFIG" "$STAGE_DIR/$i.post.config.toml"
-        else
-            # Itsts
-            call_config_gen "$i.config.toml.override" "$LOCAL_CONFIG" "$STAGE_DIR/$i.config.toml"
-        fi
-    done
-    popd
+    # check if config overrides dir exist
+    if [ -d "$SCENARIOS_CONFIGS_DIR" ]; then
+        log "... config overrides directory found"
+        pushd "$SCENARIOS_CONFIGS_DIR"
 
-    pushd "$SCENARIOS_CHAINSPECS_DIR"
-    for i in "${CHAINSPECS[@]}"; do
-        if [[ "$i" == *"upgrade_scenario"* ]]; then
-            # Pre
-            call_config_gen "$i.chainspec.toml.override" "$PROTO_DIR/chainspec.toml.in" "$STAGE_DIR/$i.pre.chainspec.toml.in"
-            # Post
-            call_config_gen "$i.chainspec.toml.override" "$LOCAL_CHAINSPEC" "$STAGE_DIR/$i.post.chainspec.toml.in"
+        if [ "$NCTL_UPGRADE_TEST" = false ]; then
+            CONFIGS=($(ls "$SCENARIOS_CONFIGS_DIR" | grep -v "upgrade_scenario" | awk -F'.' '{print $1}'))
         else
-            # Itsts
-            call_config_gen "$i.chainspec.toml.override" "$LOCAL_CHAINSPEC" "$STAGE_DIR/$i.chainspec.toml.in"
+            CONFIGS=($(ls "$SCENARIOS_CONFIGS_DIR" | grep "upgrade_scenario" | awk -F'.' '{print $1}'))
         fi
-    done
-    popd
 
-    pushd "$SCENARIOS_ACCOUNTS_DIR"
-    for i in "${ACCOUNTS[@]}"; do
-        if [[ "$i" == *"upgrade_scenario"* ]]; then
-            # Pre
-            call_config_gen "$i.accounts.toml.override" "$PROTO_DIR/accounts.toml" "$STAGE_DIR/$i.pre.accounts.toml"
-            # Post
-            call_config_gen "$i.accounts.toml.override" "$LOCAL_ACCOUNT" "$STAGE_DIR/$i.post.accounts.toml"
+        for i in "${CONFIGS[@]}"; do
+            if [[ "$i" == *"upgrade_scenario"* ]]; then
+                # Pre
+                call_config_gen "$i.config.toml.override" "$PROTO_DIR/config.toml" "$STAGE_DIR/$i.pre.config.toml"
+                # Post
+                call_config_gen "$i.config.toml.override" "$LOCAL_CONFIG" "$STAGE_DIR/$i.post.config.toml"
+            else
+                # Itsts
+                call_config_gen "$i.config.toml.override" "$LOCAL_CONFIG" "$STAGE_DIR/$i.config.toml"
+            fi
+        done
+        popd
+    fi
+
+    # check if chainspec overrides dir exist
+    if [ -d "$SCENARIOS_CHAINSPECS_DIR" ]; then
+        log "... chainspec overrides directory found"
+        pushd "$SCENARIOS_CHAINSPECS_DIR"
+
+        if [ "$NCTL_UPGRADE_TEST" = false ]; then
+            CHAINSPECS=($(ls "$SCENARIOS_CHAINSPECS_DIR" | grep -v "upgrade_scenario" | awk -F'.' '{print $1}'))
         else
-            # Itsts
-            call_config_gen "$i.accounts.toml.override" "$LOCAL_ACCOUNT" "$STAGE_DIR/$i.accounts.toml"
+            CHAINSPECS=($(ls "$SCENARIOS_CHAINSPECS_DIR" | grep "upgrade_scenario" | awk -F'.' '{print $1}'))
         fi
-    done
-    popd
+
+        for i in "${CHAINSPECS[@]}"; do
+            if [[ "$i" == *"upgrade_scenario"* ]]; then
+                # Pre
+                call_config_gen "$i.chainspec.toml.override" "$PROTO_DIR/chainspec.toml.in" "$STAGE_DIR/$i.pre.chainspec.toml.in"
+                # Post
+                call_config_gen "$i.chainspec.toml.override" "$LOCAL_CHAINSPEC" "$STAGE_DIR/$i.post.chainspec.toml.in"
+            else
+                # Itsts
+                call_config_gen "$i.chainspec.toml.override" "$LOCAL_CHAINSPEC" "$STAGE_DIR/$i.chainspec.toml.in"
+            fi
+        done
+        popd
+    fi
+
+    # check if accounts overrides dir exist
+    if [ -d "$SCENARIOS_ACCOUNTS_DIR" ]; then
+        log "... account overrides directory found"
+        pushd "$SCENARIOS_ACCOUNTS_DIR"
+
+        if [ "$NCTL_UPGRADE_TEST" = false ]; then
+            ACCOUNTS=($(ls "$SCENARIOS_ACCOUNTS_DIR" | grep -v "upgrade_scenario" | awk -F'.' '{print $1}'))
+        else
+            ACCOUNTS=($(ls "$SCENARIOS_ACCOUNTS_DIR" | grep "upgrade_scenario" | awk -F'.' '{print $1}'))
+        fi
+
+        for i in "${ACCOUNTS[@]}"; do
+            if [[ "$i" == *"upgrade_scenario"* ]]; then
+                # Pre
+                call_config_gen "$i.accounts.toml.override" "$PROTO_DIR/accounts.toml" "$STAGE_DIR/$i.pre.accounts.toml"
+                # Post
+                call_config_gen "$i.accounts.toml.override" "$LOCAL_ACCOUNT" "$STAGE_DIR/$i.post.accounts.toml"
+            else
+                # Itsts
+                call_config_gen "$i.accounts.toml.override" "$LOCAL_ACCOUNT" "$STAGE_DIR/$i.accounts.toml"
+            fi
+        done
+        popd
+    fi
 
 }
 
