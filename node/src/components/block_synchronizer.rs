@@ -8,6 +8,7 @@ mod error;
 mod event;
 mod execution_results_acquisition;
 mod global_state_synchronizer;
+mod metrics;
 mod need_next;
 mod peer_list;
 mod signature_acquisition;
@@ -16,6 +17,7 @@ mod trie_accumulator;
 use datasize::DataSize;
 use either::Either;
 use once_cell::sync::Lazy;
+use prometheus::Registry;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
@@ -31,7 +33,7 @@ use crate::{
         Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
-        announcements::PeerBehaviorAnnouncement,
+        announcements::{BlockSynchronizerAnnouncement, PeerBehaviorAnnouncement},
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
             ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
@@ -88,6 +90,7 @@ static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
         }),
     )
 });
+use metrics::Metrics;
 
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
@@ -107,6 +110,7 @@ pub(crate) trait ReactorEvent:
     + From<SyncGlobalStateRequest>
     + From<BlockCompleteConfirmationRequest>
     + From<MakeBlockExecutableRequest>
+    + From<BlockSynchronizerAnnouncement>
     + Send
     + 'static
 {
@@ -130,23 +134,31 @@ impl<REv> ReactorEvent for REv where
         + From<SyncGlobalStateRequest>
         + From<BlockCompleteConfirmationRequest>
         + From<MakeBlockExecutableRequest>
+        + From<BlockSynchronizerAnnouncement>
         + Send
         + 'static
 {
 }
 
+/// The status of syncing an individual block.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BlockSyncStatus {
+    /// The block hash.
     block_hash: BlockHash,
+    /// The height of the block, if known.
     block_height: Option<u64>,
+    /// The state of acquisition of the data associated with the block.
     acquisition_state: String,
 }
 
+/// The status of the block synchronizer.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BlockSynchronizerStatus {
+    /// The status of syncing a historical block, if any.
     historical: Option<BlockSyncStatus>,
+    /// The status of syncing a forward block, if any.
     forward: Option<BlockSyncStatus>,
 }
 
@@ -171,7 +183,6 @@ impl DocExample for BlockSynchronizerStatus {
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     status: ComponentStatus,
-    status_before_pause: ComponentStatus,
     validator_matrix: ValidatorMatrix,
     timeout: TimeDiff,
     peer_refresh_interval: TimeDiff,
@@ -184,13 +195,18 @@ pub(crate) struct BlockSynchronizer {
     historical: Option<BlockBuilder>,
     // deals with global state acquisition for historical blocks
     global_sync: GlobalStateSynchronizer,
+    #[data_size(skip)]
+    metrics: Metrics,
 }
 
 impl BlockSynchronizer {
-    pub(crate) fn new(config: Config, validator_matrix: ValidatorMatrix) -> Self {
-        BlockSynchronizer {
+    pub(crate) fn new(
+        config: Config,
+        validator_matrix: ValidatorMatrix,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(BlockSynchronizer {
             status: ComponentStatus::Uninitialized,
-            status_before_pause: ComponentStatus::Uninitialized,
             validator_matrix,
             timeout: config.timeout(),
             peer_refresh_interval: config.peer_refresh_interval(),
@@ -199,7 +215,8 @@ impl BlockSynchronizer {
             forward: None,
             historical: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
-        }
+            metrics: Metrics::new(registry)?,
+        })
     }
 
     /// Returns the progress being made on the historical syncing.
@@ -235,25 +252,6 @@ impl BlockSynchronizer {
             debug!(%builder, "BlockSynchronizer: purging block builder");
         }
         self.forward = None;
-    }
-
-    /// Pauses block synchronization.
-    pub(crate) fn pause(&mut self) {
-        if self.status == ComponentStatus::Paused {
-            return;
-        }
-        debug!(?self.status, "pausing component");
-        self.status_before_pause = self.status.clone();
-        self.status = ComponentStatus::Paused;
-    }
-
-    /// Resumes block synchronization.
-    pub(crate) fn resume(&mut self) {
-        if self.status != ComponentStatus::Paused {
-            return;
-        }
-        debug!(?self.status_before_pause, "resuming component");
-        self.status = self.status_before_pause.clone();
     }
 
     /// Registers a block for synchronization.
@@ -385,6 +383,9 @@ impl BlockSynchronizer {
         match &mut self.forward {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_block_execution_enqueued();
+                self.metrics
+                    .forward_block_sync_duration
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
@@ -392,21 +393,38 @@ impl BlockSynchronizer {
         }
     }
 
-    fn register_marked_complete(&mut self, block_hash: &BlockHash) {
+    fn register_marked_complete<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block_hash: &BlockHash,
+    ) -> Effects<Event>
+    where
+        REv: From<BlockSynchronizerAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
+    {
         if let Some(builder) = &self.forward {
             if builder.block_hash() == *block_hash {
                 error!(%block_hash, "forward block should not be marked complete in block synchronizer");
             }
         }
 
+        let mut effects = Effects::new();
         match &mut self.historical {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_marked_complete();
+                // other components need to know that we've added an historical block
+                // that they may be interested in
+                if let Some(block) = builder.maybe_block() {
+                    effects.extend(effect_builder.announce_completed_block(block).ignore());
+                }
+                self.metrics
+                    .historical_block_sync_duration
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing historical block");
             }
         }
+        effects
     }
 
     fn dishonest_peers(&self) -> Vec<NodeId> {
@@ -963,28 +981,6 @@ impl BlockSynchronizer {
         }
     }
 
-    fn register_executed_block_notification(
-        &mut self,
-        block_hash: BlockHash,
-        height: u64,
-        state_root_hash: Digest,
-    ) {
-        // if the block being synchronized for execution has already executed, drop it.
-        let finished_with_forward = if let Some(builder) = self.forward.as_ref() {
-            builder
-                .block_height()
-                .map_or(false, |forward_height| forward_height <= height)
-                || builder.block_hash() == block_hash
-        } else {
-            false
-        };
-
-        if finished_with_forward {
-            self.global_sync
-                .cancel_request(state_root_hash, global_state_synchronizer::Error::Cancelled);
-        }
-    }
-
     fn progress(&self, builder: &BlockBuilder) -> BlockSynchronizerProgress {
         if builder.is_finished() {
             match builder.block_height_and_era() {
@@ -1011,7 +1007,7 @@ impl BlockSynchronizer {
         )
     }
 
-    pub fn status(&self) -> BlockSynchronizerStatus {
+    fn status(&self) -> BlockSynchronizerStatus {
         BlockSynchronizerStatus::new(
             self.historical.as_ref().map(|builder| BlockSyncStatus {
                 block_hash: builder.block_hash(),
@@ -1049,204 +1045,202 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        // MISSING EVENT: ANNOUNCEMENT OF BAD PEERS
-        match (&self.status, event) {
-            (
-                ComponentStatus::Paused,
-                Event::Request(BlockSynchronizerRequest::Status { responder }),
-            ) => responder.respond(self.status()).ignore(),
-            (ComponentStatus::Paused, _) => {
-                warn!("component paused - ignoring event");
-                Effects::new()
-            }
-            (ComponentStatus::Fatal(msg), _) => {
+        match &self.status {
+            ComponentStatus::Fatal(msg) => {
                 error!(
                     msg,
                     "BlockSynchronizer: should not handle this event when this component has fatal error"
                 );
+                return Effects::new();
+            }
+            ComponentStatus::Uninitialized => {
+                return if matches!(event, Event::Initialize) {
+                    self.status = ComponentStatus::Initialized;
+                    // start dishonest peer management on initialization
+                    effect_builder
+                        .set_timeout(self.disconnect_dishonest_peers_interval.into())
+                        .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
+                } else {
+                    warn!("BlockSynchronizer: should not handle this event when component is uninitialized");
+                    Effects::new()
+                };
+            }
+            ComponentStatus::Initialized => (),
+        }
+
+        return match event {
+            Event::Initialize => Effects::new(), //noop
+            Event::Request(request) => match request {
+                // the rpc and rest servers include block sync data on their status responses
+                BlockSynchronizerRequest::Status { responder } => {
+                    responder.respond(self.status()).ignore()
+                }
+                // prompts for what data (if any) is needed next to acquire block(s) being sync'd
+                BlockSynchronizerRequest::NeedNext => self.need_next(effect_builder, rng),
+                // this component is periodically asked for any peers that have provided false
+                // data (if any) which are then disconnected from
+                BlockSynchronizerRequest::DishonestPeers => {
+                    let mut effects: Effects<Self::Event> = self
+                        .dishonest_peers()
+                        .into_iter()
+                        .flat_map(|node_id| {
+                            effect_builder
+                                .announce_block_peer_with_justification(
+                                    node_id,
+                                    BlocklistJustification::DishonestPeer,
+                                )
+                                .ignore()
+                        })
+                        .collect();
+                    self.flush_dishonest_peers();
+                    effects.extend(
+                        effect_builder
+                            .set_timeout(self.disconnect_dishonest_peers_interval.into())
+                            .event(move |_| {
+                                Event::Request(BlockSynchronizerRequest::DishonestPeers)
+                            }),
+                    );
+                    effects
+                }
+            },
+            // tunnel event to global state synchronizer
+            // global_state_sync is a black box; we do not hook need next here
+            // global_state_sync signals the historical sync builder at the end of its process,
+            // and need next is then re-hooked to get the rest of the block
+            Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
+                Event::GlobalStateSynchronizer,
+                self.global_sync.handle_event(effect_builder, rng, event),
+            ),
+            // when a peer is disconnected from for any reason, disqualify peer
+            Event::DisconnectFromPeer(node_id) => {
+                self.register_disconnected_peer(node_id);
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
-                self.status = ComponentStatus::Initialized;
-                // start dishonest peer management on initialization
-                effect_builder
-                    .set_timeout(self.disconnect_dishonest_peers_interval.into())
-                    .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
+            // each of the following trigger the next need next
+            Event::ValidatorMatrixUpdated => {
+                let mut effects = self.handle_validators(effect_builder);
+                effects.extend(self.need_next(effect_builder, rng));
+                effects
             }
-            (ComponentStatus::Uninitialized, _) => {
-                warn!("BlockSynchronizer: should not handle this event when component is uninitialized");
-                Effects::new()
+            // for both historical and forward sync, the block header has been fetched
+            Event::BlockHeaderFetched(result) => {
+                self.block_header_fetched(result);
+                self.need_next(effect_builder, rng)
             }
-            (ComponentStatus::Initialized, event) => {
-                match event {
-                    Event::Initialize => {
-                        // noop
-                        Effects::new()
+            // for both historical and forward sync, the block body has been fetched
+            Event::BlockFetched(result) => {
+                self.block_fetched(result);
+                self.need_next(effect_builder, rng)
+            }
+            // for both historical and forward sync, a finality signature has been fetched
+            Event::FinalitySignatureFetched(result) => {
+                self.finality_signature_fetched(result);
+                self.need_next(effect_builder, rng)
+            }
+            // for both historical and forward sync, post-1.4 blocks track approvals hashes
+            // for the deploys they contain
+            Event::ApprovalsHashesFetched(result) => {
+                self.approvals_hashes_fetched(result);
+                self.need_next(effect_builder, rng)
+            }
+            // we use the existence of n execution results checksum as an expedient way to
+            // determine if a block is post-1.4
+            Event::GotExecutionResultsChecksum { block_hash, result } => {
+                self.got_execution_results_checksum(block_hash, result);
+                self.need_next(effect_builder, rng)
+            }
+            // historical sync needs to know that global state has been sync'd
+            Event::GlobalStateSynced { block_hash, result } => {
+                self.global_state_synced(block_hash, result);
+                self.need_next(effect_builder, rng)
+            }
+            // historical sync needs to know that execution results have been fetched
+            Event::ExecutionResultsFetched { block_hash, result } => {
+                let mut effects =
+                    self.execution_results_fetched(effect_builder, block_hash, result);
+                effects.extend(self.need_next(effect_builder, rng));
+                effects
+            }
+            // historical sync needs to know that execution effects have been stored
+            Event::ExecutionResultsStored(block_hash) => {
+                self.register_execution_results_stored(block_hash);
+                self.need_next(effect_builder, rng)
+            }
+            // for pre-1.5 blocks we use the legacy deploy fetcher, otherwise we use the deploy
+            // fetcher but the results of both are forwarded to this handler
+            Event::DeployFetched { block_hash, result } => {
+                match result {
+                    Either::Left(Ok(fetched_legacy_deploy)) => {
+                        let deploy_id = fetched_legacy_deploy.id();
+                        debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched legacy deploy");
+                        self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
                     }
-                    Event::Request(BlockSynchronizerRequest::NeedNext) => {
-                        self.need_next(effect_builder, rng)
+                    Either::Right(Ok(fetched_deploy)) => {
+                        let deploy_id = fetched_deploy.id();
+                        debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched deploy");
+                        self.deploy_fetched(block_hash, fetched_deploy)
                     }
-                    Event::Request(BlockSynchronizerRequest::BlockExecuted {
-                        block_hash,
-                        height,
-                        state_root_hash,
-                    }) => {
-                        self.register_executed_block_notification(
-                            block_hash,
-                            height,
-                            state_root_hash,
-                        );
-                        Effects::new()
+                    Either::Left(Err(error)) => {
+                        debug!(%error, "BlockSynchronizer: failed to fetch legacy deploy");
                     }
-                    Event::Request(BlockSynchronizerRequest::DishonestPeers) => {
-                        let mut effects: Effects<Self::Event> = self
-                            .dishonest_peers()
-                            .into_iter()
-                            .flat_map(|node_id| {
-                                effect_builder
-                                    .announce_block_peer_with_justification(
-                                        node_id,
-                                        BlocklistJustification::DishonestPeer,
-                                    )
-                                    .ignore()
-                            })
-                            .collect();
-                        self.flush_dishonest_peers();
+                    Either::Right(Err(error)) => {
+                        debug!(%error, "BlockSynchronizer: failed to fetch deploy");
+                    }
+                };
+                self.need_next(effect_builder, rng)
+            }
+            // fresh peers to apply (random sample from network)
+            Event::NetworkPeers(block_hash, peers) => {
+                debug!(%block_hash, "BlockSynchronizer: got {} peers from network", peers.len());
+                self.register_peers(block_hash, peers);
+                self.need_next(effect_builder, rng)
+            }
+            // fresh peers to apply (qualified peers from accumulator)
+            Event::AccumulatedPeers(block_hash, Some(peers)) => {
+                debug!(%block_hash, "BlockSynchronizer: got {} peers from accumulator", peers.len());
+                self.register_peers(block_hash, peers);
+                self.need_next(effect_builder, rng)
+            }
+            // no more peers available, what do we need next?
+            Event::AccumulatedPeers(block_hash, None) => {
+                debug!(%block_hash, "BlockSynchronizer: got 0 peers from accumulator");
+                self.need_next(effect_builder, rng)
+            }
+
+            // do not hook need next for the following events;
+            Event::MadeFinalizedBlock { block_hash, result } => {
+                // when syncing a forward block the node does not acquire
+                // global state and execution results from peers; instead
+                // the node attempts to execute the block to produce the
+                // global state and execution results and check the results
+                // first, the block it must be turned into a finalized block
+                // and then enqueued for execution.
+                let mut effects = Effects::new();
+                match result {
+                    Some((finalized_block, deploys)) => {
                         effects.extend(
                             effect_builder
-                                .set_timeout(self.disconnect_dishonest_peers_interval.into())
-                                .event(move |_| {
-                                    Event::Request(BlockSynchronizerRequest::DishonestPeers)
-                                }),
+                                .enqueue_block_for_execution(finalized_block, deploys)
+                                .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
                         );
-                        effects
                     }
-                    Event::Request(BlockSynchronizerRequest::Status { responder }) => {
-                        responder.respond(self.status()).ignore()
-                    }
-
-                    // tunnel event to global state synchronizer
-                    // global_state_sync is a black box, a builder isn't aware of its progress
-                    // until the end. so, we do not hook need next here; it will be re-hooked
-                    // after we have all the global state and the historical builder is notified
-                    // i.e. don't call self.need_next here, mkay?
-                    Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
-                        Event::GlobalStateSynchronizer,
-                        self.global_sync.handle_event(effect_builder, rng, event),
-                    ),
-
-                    // when a peer is disconnected from for any reason, disqualify peer
-                    Event::DisconnectFromPeer(node_id) => {
-                        self.register_disconnected_peer(node_id);
-                        Effects::new()
-                    }
-
-                    // each of the following trigger the next need next
-                    Event::ValidatorMatrixUpdated => {
-                        let mut effects = self.handle_validators(effect_builder);
-                        effects.extend(self.need_next(effect_builder, rng));
-                        effects
-                    }
-                    Event::BlockHeaderFetched(result) => {
-                        self.block_header_fetched(result);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::BlockFetched(result) => {
-                        self.block_fetched(result);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::FinalitySignatureFetched(result) => {
-                        self.finality_signature_fetched(result);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::ApprovalsHashesFetched(result) => {
-                        self.approvals_hashes_fetched(result);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::GotExecutionResultsChecksum { block_hash, result } => {
-                        self.got_execution_results_checksum(block_hash, result);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::GlobalStateSynced { block_hash, result } => {
-                        self.global_state_synced(block_hash, result);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::ExecutionResultsFetched { block_hash, result } => {
-                        let mut effects =
-                            self.execution_results_fetched(effect_builder, block_hash, result);
-                        effects.extend(self.need_next(effect_builder, rng));
-                        effects
-                    }
-                    Event::ExecutionResultsStored(block_hash) => {
-                        self.register_execution_results_stored(block_hash);
-                        self.need_next(effect_builder, rng)
-                    }
-                    Event::DeployFetched { block_hash, result } => {
-                        match result {
-                            Either::Left(Ok(fetched_legacy_deploy)) => {
-                                let deploy_id = fetched_legacy_deploy.id();
-                                debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched legacy deploy");
-                                self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
-                            }
-                            Either::Right(Ok(fetched_deploy)) => {
-                                let deploy_id = fetched_deploy.id();
-                                debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched deploy");
-                                self.deploy_fetched(block_hash, fetched_deploy)
-                            }
-                            Either::Left(Err(error)) => {
-                                debug!(%error, "BlockSynchronizer: failed to fetch legacy deploy");
-                            }
-                            Either::Right(Err(error)) => {
-                                debug!(%error, "BlockSynchronizer: failed to fetch deploy");
-                            }
-                        };
-                        self.need_next(effect_builder, rng)
-                    }
-                    // fresh peers to apply
-                    Event::NetworkPeers(block_hash, peers) => {
-                        debug!(%block_hash, "BlockSynchronizer: got {} peers from network", peers.len());
-                        self.register_peers(block_hash, peers);
-                        self.need_next(effect_builder, rng)
-                    }
-                    // fresh peers to apply
-                    Event::AccumulatedPeers(block_hash, Some(peers)) => {
-                        debug!(%block_hash, "BlockSynchronizer: got {} peers from accumulator", peers.len());
-                        self.register_peers(block_hash, peers);
-                        self.need_next(effect_builder, rng)
-                    }
-                    // no more peers available, what do we need next?
-                    Event::AccumulatedPeers(block_hash, None) => {
-                        debug!(%block_hash, "BlockSynchronizer: got 0 peers from accumulator");
-                        self.need_next(effect_builder, rng)
-                    }
-                    // do not hook need next for the following events;
-                    Event::MadeFinalizedBlock { block_hash, result } => {
-                        let mut effects = Effects::new();
-                        match result {
-                            Some((finalized_block, deploys)) => {
-                                effects.extend(
-                                    effect_builder
-                                        .enqueue_block_for_execution(finalized_block, deploys)
-                                        .event(move |_| {
-                                            Event::MarkBlockExecutionEnqueued(block_hash)
-                                        }),
-                                );
-                            }
-                            None => self.register_block_execution_not_enqueued(&block_hash),
-                        }
-                        effects
-                    }
-                    Event::MarkBlockExecutionEnqueued(block_hash) => {
-                        self.register_block_execution_enqueued(&block_hash);
-                        Effects::new()
-                    }
-                    Event::MarkBlockCompleted(block_hash) => {
-                        self.register_marked_complete(&block_hash);
-                        Effects::new()
-                    }
+                    None => self.register_block_execution_not_enqueued(&block_hash),
                 }
+                effects
             }
-        }
+            Event::MarkBlockExecutionEnqueued(block_hash) => {
+                // when syncing a forward block the synchronizer considers it
+                // finished after it has been successfully enqueued for execution
+                self.register_block_execution_enqueued(&block_hash);
+                Effects::new()
+            }
+            Event::MarkBlockCompleted(block_hash) => {
+                // when syncing an historical block, the synchronizer considers it
+                // finished after receiving confirmation that the complete block
+                // has been stored.
+                self.register_marked_complete(effect_builder, &block_hash)
+            }
+        };
     }
 }
 

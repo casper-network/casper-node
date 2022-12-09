@@ -26,7 +26,7 @@ max_sync_fetch_attempts = 5000
 # How often between sync attempts to redeem a bad node.
 sync_peer_redemption_interval = 0
 
-# Whether to synchronize all data back to genesis when joining.
+# Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
 sync_to_genesis = true
 
 # Idle time after which the syncing process is considered stalled.

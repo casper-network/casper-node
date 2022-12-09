@@ -142,6 +142,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         "test",
         TimeDiff::from_seconds(60 * 60 * 24),
         RECENT_ERA_COUNT,
+        None,
     )?)
 }
 

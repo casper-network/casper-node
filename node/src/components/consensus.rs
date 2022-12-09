@@ -54,6 +54,10 @@ pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
+#[cfg(test)]
+pub(crate) use highway_core::highway::Vertex as HighwayVertex;
+#[cfg(test)]
+pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use protocols::highway::HighwayProtocol;
 pub(crate) use validator_change::ValidatorChange;
 

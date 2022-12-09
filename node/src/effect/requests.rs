@@ -490,8 +490,9 @@ pub(crate) enum StorageRequest {
         deploy_hash: DeployHash,
         /// The set of finalized approvals.
         finalized_approvals: FinalizedApprovals,
-        /// Responder, responded to once the approvals are written.
-        responder: Responder<()>,
+        /// Responder, responded to once the approvals are written.  If true, new approvals were
+        /// written.
+        responder: Responder<bool>,
     },
 }
 
@@ -1171,11 +1172,6 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
-    BlockExecuted {
-        block_hash: BlockHash,
-        height: u64,
-        state_root_hash: Digest,
-    },
     Status {
         responder: Responder<BlockSynchronizerStatus>,
     },
@@ -1189,18 +1185,6 @@ impl Display for BlockSynchronizerRequest {
             }
             BlockSynchronizerRequest::DishonestPeers => {
                 write!(f, "block synchronizer request: dishonest peers")
-            }
-            BlockSynchronizerRequest::BlockExecuted {
-                block_hash,
-                height,
-                state_root_hash,
-            } => {
-                write!(
-                    f,
-                    "block synchronizer request: executed block {} at height {}, state root hash \
-                    {}",
-                    block_hash, height, state_root_hash
-                )
             }
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")

@@ -143,11 +143,8 @@ impl Display for Event {
 }
 
 impl ReactorEvent for Event {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        match self {
-            Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-            _ => None,
-        }
+    fn is_control(&self) -> bool {
+        matches!(self, Event::ControlAnnouncement(_))
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
@@ -271,6 +268,7 @@ impl ReactorTrait for Reactor {
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.unbonding_delay,
+            Some(registry),
         )
         .unwrap();
 

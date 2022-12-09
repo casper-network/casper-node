@@ -142,7 +142,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::requests::BlockAccumulatorRequest,
+    effect::{announcements::BlockSynchronizerAnnouncement, requests::BlockAccumulatorRequest},
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -855,8 +855,21 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// The block synchronizer has ensured that all the parts of this block are stored
+    pub(crate) async fn announce_completed_block(self, block: Box<Block>)
+    where
+        REv: From<BlockSynchronizerAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                BlockSynchronizerAnnouncement::CompletedBlock { block },
+                QueueKind::Validation,
+            )
+            .await;
+    }
+
     /// Announces that the block accumulator has received and stored a new block.
-    pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
+    pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
         REv: From<BlockAccumulatorAnnouncement>,
     {
@@ -1032,7 +1045,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a new block has been created.
-    pub(crate) async fn announce_new_linear_chain_block(
+    pub(crate) async fn announce_executed_block(
         self,
         block: Box<Block>,
         approvals_hashes: Box<ApprovalsHashes>,
@@ -2078,7 +2091,8 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         finalized_approvals: FinalizedApprovals,
-    ) where
+    ) -> bool
+    where
         REv: From<StorageRequest>,
     {
         self.make_request(

@@ -55,8 +55,8 @@ proptest = "1.0.0"
 proptest-attr-macro = "1.0.0"
 rand = "0.8.3"
 rand_pcg = "0.3.0"
-serde_json = "1.0.55"
-serde_test = "1.0.117"
+serde_json = "1"
+serde_test = "1"
 strum = { version = "0.21", features = ["derive"] }
 tempfile = "3"
 thiserror = "1"
@@ -64,7 +64,7 @@ untrusted = "0.7.1"
 
 [features]
 json-schema = ["once_cell", "schemars"]
-std = ["derp", "getrandom", "humantime", "once_cell", "pem", "thiserror", "untrusted"]
+std = ["derp", "getrandom", "humantime", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
 testing = ["proptest", "rand_pcg"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]

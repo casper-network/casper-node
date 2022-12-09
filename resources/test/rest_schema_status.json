@@ -124,10 +124,11 @@
     },
     "block_sync": {
       "description": "The status of the block synchronizer builders.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/BlockSyncStatus"
-      }
+      "allOf": [
+        {
+          "$ref": "#/definitions/BlockSynchronizerStatus"
+        }
+      ]
     }
   },
   "additionalProperties": false,
@@ -255,6 +256,7 @@
       ]
     },
     "ReactorState": {
+      "description": "The state of the reactor.",
       "type": "string",
       "enum": [
         "Initialize",
@@ -288,7 +290,37 @@
       },
       "additionalProperties": false
     },
+    "BlockSynchronizerStatus": {
+      "description": "The status of the block synchronizer.",
+      "type": "object",
+      "properties": {
+        "historical": {
+          "description": "The status of syncing a historical block, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forward": {
+          "description": "The status of syncing a forward block, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "BlockSyncStatus": {
+      "description": "The status of syncing an individual block.",
       "type": "object",
       "required": [
         "acquisition_state",
@@ -296,9 +328,15 @@
       ],
       "properties": {
         "block_hash": {
-          "$ref": "#/definitions/BlockHash"
+          "description": "The block hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
         },
         "block_height": {
+          "description": "The height of the block, if known.",
           "type": [
             "integer",
             "null"
@@ -307,6 +345,7 @@
           "minimum": 0.0
         },
         "acquisition_state": {
+          "description": "The state of acquisition of the data associated with the block.",
           "type": "string"
         }
       },

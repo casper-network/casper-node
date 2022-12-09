@@ -236,6 +236,11 @@ where
 }
 
 impl ContractRuntime {
+    /// How many blocks are backed up in the queue
+    pub(crate) fn queue_depth(&self) -> usize {
+        self.exec_queue.lock().unwrap().len()
+    }
+
     /// Handles an incoming request to get a trie.
     fn handle_trie_request<REv>(
         &self,
@@ -756,7 +761,7 @@ impl ContractRuntime {
         }
 
         effect_builder
-            .announce_new_linear_chain_block(block, approvals_hashes, execution_results)
+            .announce_executed_block(block, approvals_hashes, execution_results)
             .await;
 
         // If the child is already finalized, start execution.

@@ -3,7 +3,7 @@ mod config;
 mod error;
 mod event;
 mod metrics;
-mod starting_with;
+mod sync_identifier;
 mod sync_instruction;
 #[cfg(test)]
 mod tests;
@@ -41,7 +41,7 @@ use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 pub use error::Error;
 pub(crate) use event::Event;
-pub(crate) use starting_with::StartingWith;
+pub(crate) use sync_identifier::SyncIdentifier;
 pub(crate) use sync_instruction::SyncInstruction;
 
 use metrics::Metrics;
@@ -145,9 +145,9 @@ impl BlockAccumulator {
         })
     }
 
-    pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
-        let block_hash = starting_with.block_hash();
-        let block_height = match starting_with.block_height() {
+    pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
+        let block_hash = sync_identifier.block_hash();
+        let block_height = match sync_identifier.block_height() {
             Some(height) => height,
             None => {
                 let maybe_height = {
@@ -167,7 +167,7 @@ impl BlockAccumulator {
             }
         };
 
-        if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
+        if let Some(new_local_tip) = self.maybe_new_local_tip(&sync_identifier) {
             let had_no_local_tip = self.local_tip.is_none();
             self.local_tip = Some(new_local_tip);
             info!(local_tip=?self.local_tip, "new local tip detected");
@@ -182,7 +182,7 @@ impl BlockAccumulator {
         }
 
         let block_hash_to_sync = match (
-            starting_with.is_held_locally(),
+            sync_identifier.is_held_locally(),
             self.next_syncable_block_hash(block_hash),
         ) {
             (false, _) => Some(block_hash),
@@ -203,13 +203,18 @@ impl BlockAccumulator {
                 SyncInstruction::BlockSync { block_hash }
             }
             None => {
-                if !self.is_stalled() {
-                    SyncInstruction::CaughtUp { block_hash }
-                } else {
+                if self.is_stalled() {
                     SyncInstruction::Leap { block_hash }
+                } else {
+                    SyncInstruction::CaughtUp { block_hash }
                 }
             }
         }
+    }
+
+    /// Gets local tip block_height if available.
+    pub(crate) fn local_tip(&self) -> Option<u64> {
+        self.local_tip.map(|lti| lti.height)
     }
 
     /// Drops all old block acceptors and tracks new local block height;
@@ -254,8 +259,11 @@ impl BlockAccumulator {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
             _ => {
-                debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
-                return;
+                // If we created the event, it's safe to create the acceptor.
+                if maybe_sender.is_some() {
+                    debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
+                    return;
+                }
             }
         }
 
@@ -302,6 +310,7 @@ impl BlockAccumulator {
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
         let block_hash = block.hash();
+        debug!(%block_hash, "registering block");
         let era_id = block.header().era_id();
         let block_height = block.header().height();
         if self
@@ -388,6 +397,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
+        debug!(%finality_signature, "registering finality signature");
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
         self.upsert_acceptor(block_hash, Some(era_id), sender);
@@ -480,7 +490,7 @@ impl BlockAccumulator {
     {
         let mut effects = Effects::new();
         if let Some(block) = block {
-            effects.extend(effect_builder.announce_block_accepted(block).ignore());
+            effects.extend(effect_builder.announce_block_added(block).ignore());
         };
         for finality_signature in finality_signatures {
             effects.extend(
@@ -545,8 +555,8 @@ impl BlockAccumulator {
         }
     }
 
-    fn maybe_new_local_tip(&self, starting_with: &StartingWith) -> Option<LocalTipIdentifier> {
-        match (starting_with.maybe_local_tip_identifier(), self.local_tip) {
+    fn maybe_new_local_tip(&self, sync_identifier: &SyncIdentifier) -> Option<LocalTipIdentifier> {
+        match (sync_identifier.maybe_local_tip_identifier(), self.local_tip) {
             (Some((block_height, era_id)), Some(local_tip)) => {
                 if local_tip.height < block_height && local_tip.era_id <= era_id {
                     debug!(
@@ -621,6 +631,7 @@ impl BlockAccumulator {
                 signatures,
                 executed,
             } => {
+                debug!(block_hash = %block.hash(), %executed, "storing block and finality signatures");
                 if let Some(parent_hash) = block.parent() {
                     if self
                         .block_children
@@ -669,13 +680,19 @@ impl BlockAccumulator {
                         })
                 }
             }
-            ShouldStore::SingleSignature(signature) => effect_builder
-                .put_finality_signature_to_storage(signature.clone())
-                .event(move |_| Event::Stored {
-                    block: None,
-                    finality_signatures: vec![signature],
-                }),
-            ShouldStore::Nothing => Effects::new(),
+            ShouldStore::SingleSignature(signature) => {
+                debug!(%signature, "storing finality signature");
+                effect_builder
+                    .put_finality_signature_to_storage(signature.clone())
+                    .event(move |_| Event::Stored {
+                        block: None,
+                        finality_signatures: vec![signature],
+                    })
+            }
+            ShouldStore::Nothing => {
+                debug!("not storing block or finality signatures");
+                Effects::new()
+            }
         };
         effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
             effect_builder
@@ -762,6 +779,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
 
 impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
     fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
+        debug!("handling updated validator matrix");
         let validator_matrix = &self.validator_matrix; // Closure can't borrow all of self.
         let should_stores = self
             .block_acceptors
