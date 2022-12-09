@@ -298,9 +298,7 @@ function _setup_asset_global_state_toml() {
     popd
     pushd "$(get_path_to_stages)/stage-1/"
     local TARGET_PROTOCOL_VERSION=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | sort | tail -n 1)
-    echo $TARGET_PROTOCOL_VERSION
     local STAGE_1_POST_VERSION="$(echo $TARGET_PROTOCOL_VERSION | tr -d '_')"
-    echo $STAGE_1_POST_VERSION
     popd
 
     log "... processing upgrade from $STAGE_1_PRE_VERSION to $STAGE_1_POST_VERSION"
