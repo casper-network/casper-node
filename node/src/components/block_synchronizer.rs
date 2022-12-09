@@ -1054,16 +1054,16 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 return Effects::new();
             }
             ComponentStatus::Uninitialized => {
-                if matches!(event, Event::Initialize) {
+                return if matches!(event, Event::Initialize) {
                     self.status = ComponentStatus::Initialized;
                     // start dishonest peer management on initialization
-                    return effect_builder
+                    effect_builder
                         .set_timeout(self.disconnect_dishonest_peers_interval.into())
-                        .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers));
+                        .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
                 } else {
                     warn!("BlockSynchronizer: should not handle this event when component is uninitialized");
-                    return Effects::new();
-                }
+                    Effects::new()
+                };
             }
             ComponentStatus::Initialized => (),
         }
@@ -1166,8 +1166,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 self.register_execution_results_stored(block_hash);
                 self.need_next(effect_builder, rng)
             }
-            // for pre-1.5 blocks we use the legacy deploy fetcher, otherwise we use the deploy fetcher
-            // but the results of both are forwarded to this handler
+            // for pre-1.5 blocks we use the legacy deploy fetcher, otherwise we use the deploy
+            // fetcher but the results of both are forwarded to this handler
             Event::DeployFetched { block_hash, result } => {
                 match result {
                     Either::Left(Ok(fetched_legacy_deploy)) => {
