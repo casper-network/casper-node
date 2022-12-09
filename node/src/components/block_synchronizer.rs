@@ -1211,7 +1211,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
             Event::MadeFinalizedBlock { block_hash, result } => {
                 // when syncing a forward block the node does not acquire
                 // global state and execution results from peers; instead
-                // the we attempt to execute the block to produce the
+                // the node attempts to execute the block to produce the
                 // global state and execution results and check the results
                 // first, the block it must be turned into a finalized block
                 // and then enqueued for execution.
