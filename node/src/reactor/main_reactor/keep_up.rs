@@ -66,16 +66,6 @@ impl MainReactor {
             return KeepUpInstruction::ShutdownForUpgrade;
         }
 
-        if self.switch_block.is_some() {
-            // when we see a switch block, re-check to see if this node is in the
-            // new era's validator set. this is how nodes switch to validator behavior under
-            // normal circumstances, however mid-era restarts require re-syncing before they
-            // can safely switch; that scenario is handled elsewhere.
-            if let Some(keep_up_instruction) = self.keep_up_should_validate(effect_builder, rng) {
-                return keep_up_instruction;
-            }
-        }
-
         // if there is instruction, return to start working on it
         // else fall thru with the current best available id for block syncing
         let sync_identifier = match self.keep_up_process() {
@@ -132,6 +122,11 @@ impl MainReactor {
                 return None;
             }
         }
+        let queue_depth = self.contract_runtime.queue_depth();
+        if queue_depth > 0 {
+            debug!("KeepUp: should_validate queue_depth {}", queue_depth);
+            return None;
+        }
         match self.create_required_eras(effect_builder, rng) {
             Ok(Some(effects)) => Some(KeepUpInstruction::Validate(effects)),
             Ok(None) => None,
@@ -172,7 +167,6 @@ impl MainReactor {
                 // with no complete local blocks. go back to catch up which will either correct
                 // or handle retry / shutdown behavior.
                 error!("KeepUp: block synchronizer idle, local storage has no complete blocks");
-                self.block_synchronizer.purge();
                 Either::Right(KeepUpInstruction::CatchUp)
             }
             Err(error) => Either::Right(KeepUpInstruction::Fatal(format!(
@@ -221,7 +215,6 @@ impl MainReactor {
                 // if we've received no gossip about new blocks from peers within an interval.
                 // this is to protect against partitioning and is not problematic behavior
                 // when / if it occurs.
-                self.block_synchronizer.purge();
                 Some(KeepUpInstruction::CatchUp)
             }
             SyncInstruction::BlockSync { block_hash } => {

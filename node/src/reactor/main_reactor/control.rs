@@ -100,7 +100,6 @@ impl MainReactor {
                     Ok(effects) => {
                         info!("CatchUp: switch to Validate at genesis");
                         self.state = ReactorState::Validate;
-                        self.block_synchronizer.pause();
                         (Duration::ZERO, effects)
                     }
                     Err(msg) => (
@@ -131,6 +130,8 @@ impl MainReactor {
                     if let Err(msg) = self.refresh_contract_runtime() {
                         return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
                     }
+                    // purge to avoid polluting the status endpoints w/ stale state
+                    self.block_synchronizer.purge();
                     info!("CatchUp: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
@@ -154,16 +155,16 @@ impl MainReactor {
                     (wait, effects)
                 }
                 KeepUpInstruction::CatchUp => {
+                    self.block_synchronizer.purge();
                     info!("KeepUp: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::Validate(effects) => {
-                    info!("KeepUp: switch to Validate");
-                    self.state = ReactorState::Validate;
                     // purge to avoid polluting the status endpoints w/ stale state
                     self.block_synchronizer.purge();
-                    self.block_synchronizer.pause();
+                    info!("KeepUp: switch to Validate");
+                    self.state = ReactorState::Validate;
                     (Duration::ZERO, effects)
                 }
             },
@@ -190,7 +191,6 @@ impl MainReactor {
                 ValidateInstruction::KeepUp => {
                     info!("Validate: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
-                    self.block_synchronizer.resume();
                     (Duration::ZERO, Effects::new())
                 }
             },

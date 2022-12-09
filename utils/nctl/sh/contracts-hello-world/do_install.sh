@@ -47,7 +47,7 @@ function main()
             --chain-name "$CHAIN_NAME" \
             --node-address "$NODE_ADDRESS" \
             --payment-amount "$GAS_PAYMENT" \
-            --ttl "5minutes" \
+            --ttl "5min" \
             --secret-key "$CONTRACT_OWNER_SECRET_KEY" \
             --session-path "$PATH_TO_CONTRACT" \
             --session-arg "$(get_cl_arg_string 'message' "$CONTRACT_ARG_MESSAGE")" \

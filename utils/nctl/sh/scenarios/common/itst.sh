@@ -439,7 +439,7 @@ function do_submit_auction_bids()
     log_step "submitting POS auction bids:"
     log "----- ----- ----- ----- ----- -----"
     BID_AMOUNT="1000000000000000000000000000000"
-    BID_DELEGATION_RATE=6
+    BID_DELEGATION_RATE=${1}
 
     source "$NCTL"/sh/contracts-auction/do_bid.sh \
             node="$NODE_ID" \

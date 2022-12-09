@@ -236,6 +236,11 @@ where
 }
 
 impl ContractRuntime {
+    /// How many blocks are backed up in the queue
+    pub(crate) fn queue_depth(&self) -> usize {
+        self.exec_queue.lock().unwrap().len()
+    }
+
     /// Handles an incoming request to get a trie.
     fn handle_trie_request<REv>(
         &self,
