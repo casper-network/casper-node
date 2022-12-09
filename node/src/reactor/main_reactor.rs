@@ -17,7 +17,7 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{cmp::Ordering, collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
@@ -31,7 +31,7 @@ use crate::{
         block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        consensus::{self, ChainspecConsensusExt, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
@@ -134,7 +134,6 @@ pub(crate) struct MainReactor {
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
-    recent_switch_block_headers: Vec<BlockHeader>,
     sync_to_genesis: bool,
 }
 
@@ -288,8 +287,6 @@ impl reactor::Reactor for MainReactor {
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_buffer =
             DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
-        let era_count = chainspec.number_of_past_switch_blocks_needed();
-        let recent_switch_block_headers = storage.read_highest_switch_block_headers(era_count)?;
 
         let reactor = MainReactor {
             chainspec,
@@ -329,7 +326,6 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            recent_switch_block_headers,
             switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
         };
@@ -654,30 +650,6 @@ impl reactor::Reactor for MainReactor {
                             block_synchronizer::Event::ValidatorMatrixUpdated,
                         ),
                     ));
-
-                    match self.recent_switch_block_headers.last() {
-                        Some(header) => {
-                            match block.header().era_id().cmp(&header.era_id().successor()) {
-                                Ordering::Greater => {
-                                    self.recent_switch_block_headers = vec![block.header().clone()];
-                                }
-                                Ordering::Equal => self
-                                    .recent_switch_block_headers
-                                    .push(block.header().clone()),
-                                Ordering::Less => {
-                                    warn!("recent switch blocks has later entry than this block");
-                                }
-                            }
-                        }
-                        None => self
-                            .recent_switch_block_headers
-                            .push(block.header().clone()),
-                    }
-
-                    let era_count = self.chainspec.number_of_past_switch_blocks_needed();
-                    while self.recent_switch_block_headers.len() as u64 > era_count {
-                        self.recent_switch_block_headers.remove(0);
-                    }
                 }
                 debug!(
                     "notifying block gossiper to start gossiping for: {}",
