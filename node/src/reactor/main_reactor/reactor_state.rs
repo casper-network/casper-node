@@ -1,19 +1,23 @@
 use datasize::DataSize;
+use derive_more::Display;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, PartialEq, Eq, DataSize, Debug, Deserialize, JsonSchema, Serialize)]
+/// The state of the reactor.
+#[derive(
+    Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,
+)]
 pub enum ReactorState {
-    // get all components and reactor state set up on start
+    /// Get all components and reactor state set up on start.
     Initialize,
-    // orient to the network and attempt to catch up to tip
+    /// Orient to the network and attempt to catch up to tip.
     CatchUp,
-    // running commit upgrade and creating immediate switch block
+    /// Running commit upgrade and creating immediate switch block.
     Upgrading,
-    // stay caught up with tip
+    /// Stay caught up with tip.
     KeepUp,
-    // node is currently caught up and is an active validator
+    /// Node is currently caught up and is an active validator.
     Validate,
-    // node should be shut down for upgrade
+    /// Node should be shut down for upgrade.
     ShutdownForUpgrade,
 }

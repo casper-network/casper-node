@@ -82,8 +82,8 @@ enum Event {
 }
 
 impl ReactorEvent for Event {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        None
+    fn is_control(&self) -> bool {
+        false
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
@@ -166,6 +166,7 @@ impl reactor::Reactor for Reactor {
             "test",
             MAX_TTL,
             RECENT_ERA_COUNT,
+            Some(registry),
         )
         .unwrap();
 

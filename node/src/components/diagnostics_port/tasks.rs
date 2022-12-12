@@ -596,11 +596,8 @@ mod tests {
     }
 
     impl ReactorEvent for Event {
-        fn as_control(&self) -> Option<&ControlAnnouncement> {
-            match self {
-                Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-                _ => None,
-            }
+        fn is_control(&self) -> bool {
+            matches!(self, Event::ControlAnnouncement(_))
         }
 
         fn try_into_control(self) -> Option<ControlAnnouncement> {

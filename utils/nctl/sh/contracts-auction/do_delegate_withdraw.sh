@@ -49,7 +49,7 @@ function main()
             --chain-name "$CHAIN_NAME" \
             --node-address "$NODE_ADDRESS" \
             --payment-amount "$GAS_PAYMENT" \
-            --ttl "1day" \
+            --ttl "5minutes" \
             --secret-key "$DELEGATOR_SECRET_KEY" \
             --session-arg "$(get_cl_arg_u512 'amount' "$AMOUNT")" \
             --session-arg "$(get_cl_arg_account_key 'delegator' "$DELEGATOR_ACCOUNT_KEY")" \

@@ -3,7 +3,7 @@ mod config;
 mod error;
 mod event;
 mod metrics;
-mod starting_with;
+mod sync_identifier;
 mod sync_instruction;
 #[cfg(test)]
 mod tests;
@@ -41,7 +41,7 @@ use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 pub use error::Error;
 pub(crate) use event::Event;
-pub(crate) use starting_with::StartingWith;
+pub(crate) use sync_identifier::SyncIdentifier;
 pub(crate) use sync_instruction::SyncInstruction;
 
 use metrics::Metrics;
@@ -125,14 +125,10 @@ impl BlockAccumulator {
     pub(crate) fn new(
         config: Config,
         validator_matrix: ValidatorMatrix,
-        local_tip_height_and_era_id: Option<(u64, EraId)>,
         recent_era_interval: u64,
         min_block_time: TimeDiff,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        let local_tip = local_tip_height_and_era_id
-            .map(|(height, era_id)| LocalTipIdentifier::new(height, era_id));
-        info!(?local_tip, "starting local tip");
         Ok(Self {
             validator_matrix,
             attempt_execution_threshold: config.attempt_execution_threshold(),
@@ -141,7 +137,7 @@ impl BlockAccumulator {
             block_children: Default::default(),
             last_progress: Timestamp::now(),
             purge_interval: config.purge_interval(),
-            local_tip,
+            local_tip: None,
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
@@ -149,9 +145,9 @@ impl BlockAccumulator {
         })
     }
 
-    pub(crate) fn sync_instruction(&mut self, starting_with: StartingWith) -> SyncInstruction {
-        let block_hash = starting_with.block_hash();
-        let block_height = match starting_with.block_height() {
+    pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
+        let block_hash = sync_identifier.block_hash();
+        let block_height = match sync_identifier.block_height() {
             Some(height) => height,
             None => {
                 let maybe_height = {
@@ -171,81 +167,54 @@ impl BlockAccumulator {
             }
         };
 
-        // BEFORE the f-seq cant help you, LEAP
-        // ? |------------- future chain ------------------------>
-        // IN f-seq not in range of tip, LEAP
-        // |------------- future chain ----?-ATTEMPT_EXECUTION_THRESHOLD->
-        // IN f-seq in range of tip, CAUGHT UP (which will ultimately result in EXEC)
-        // |------------- future chain ----?ATTEMPT_EXECUTION_THRESHOLD>
-        // AFTER the f-seq cant help you, SYNC-all-state
-        // |------------- future chain ------------------------> ?
-        if starting_with.is_executable_block() {
-            let next_block_hash = {
-                let mut ret: Option<BlockHash> = None;
-                if let Some(highest_perceived) = self.highest_usable_block_height() {
-                    debug_assert!(
-                        block_height <= highest_perceived,
-                        "executable block height({}) is higher than highest perceived({})",
-                        block_height,
-                        highest_perceived
-                    );
-                    if highest_perceived.saturating_sub(self.attempt_execution_threshold)
-                        <= block_height
-                    {
-                        // this will short circuit the block synchronizer to start syncing the
-                        // child of this block after enqueueing this block for execution
-                        ret = self.next_syncable_block_hash(block_hash)
-                    }
-                }
-                ret
-            };
-            return SyncInstruction::BlockExec {
-                block_hash,
-                next_block_hash,
-            };
-        }
-
-        if let Some(new_local_tip) = self.maybe_new_local_tip(&starting_with) {
+        if let Some(new_local_tip) = self.maybe_new_local_tip(&sync_identifier) {
+            let had_no_local_tip = self.local_tip.is_none();
             self.local_tip = Some(new_local_tip);
             info!(local_tip=?self.local_tip, "new local tip detected");
+            if had_no_local_tip {
+                // force a leap when accumulator is starting cold.
+                return SyncInstruction::Leap { block_hash };
+            }
         }
 
-        if self.should_sync(block_height) {
-            let block_hash_to_sync = match (
-                starting_with.is_synced_block_identifier(),
-                self.next_syncable_block_hash(block_hash),
-            ) {
-                (true, None) => {
-                    // the block we just finished syncing appears to have no perceived children
-                    // and is either at tip or within execution range of tip
-                    None
-                }
-                (true, Some(child_hash)) => {
-                    // we know of the child of this synced block
-                    Some(child_hash)
-                }
-                (false, _) => Some(block_hash),
-            };
+        if self.should_leap(block_height) {
+            return SyncInstruction::Leap { block_hash };
+        }
 
-            match block_hash_to_sync {
-                Some(block_hash) => {
-                    self.last_progress = Timestamp::now();
-                    return SyncInstruction::BlockSync { block_hash };
-                }
-                None => {
-                    // we expect to be receiving gossiped blocks from other nodes
-                    // if we haven't received any messages describing higher blocks
-                    // for more than the self.dead_air_interval config allows
-                    // we leap again to poll the network
-                    if self.last_progress.elapsed() < self.dead_air_interval {
-                        return SyncInstruction::CaughtUp;
-                    }
-                    // we don't want to swamp the network with "are we there yet" leaps.
-                    self.last_progress = Timestamp::now();
+        let block_hash_to_sync = match (
+            sync_identifier.is_held_locally(),
+            self.next_syncable_block_hash(block_hash),
+        ) {
+            (false, _) => Some(block_hash),
+            (true, Some(child_hash)) => {
+                // we know of the child of this synced block
+                Some(child_hash)
+            }
+            (true, None) => {
+                // the block we just finished syncing appears to have no perceived children
+                // and is either at tip or within execution range of tip
+                None
+            }
+        };
+
+        match block_hash_to_sync {
+            Some(block_hash) => {
+                self.last_progress = Timestamp::now();
+                SyncInstruction::BlockSync { block_hash }
+            }
+            None => {
+                if self.is_stalled() {
+                    SyncInstruction::Leap { block_hash }
+                } else {
+                    SyncInstruction::CaughtUp { block_hash }
                 }
             }
         }
-        SyncInstruction::Leap { block_hash }
+    }
+
+    /// Gets local tip block_height if available.
+    pub(crate) fn local_tip(&self) -> Option<u64> {
+        self.local_tip.map(|lti| lti.height)
     }
 
     /// Drops all old block acceptors and tracks new local block height;
@@ -290,8 +259,11 @@ impl BlockAccumulator {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
             _ => {
-                debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
-                return;
+                // If we created the event, it's safe to create the acceptor.
+                if maybe_sender.is_some() {
+                    debug!(?maybe_era_id, local_tip=?self.local_tip, "not creating acceptor");
+                    return;
+                }
             }
         }
 
@@ -338,6 +310,7 @@ impl BlockAccumulator {
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
         let block_hash = block.hash();
+        debug!(%block_hash, "registering block");
         let era_id = block.header().era_id();
         let block_height = block.header().height();
         if self
@@ -424,6 +397,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
     {
+        debug!(%finality_signature, "registering finality signature");
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
         self.upsert_acceptor(block_hash, Some(era_id), sender);
@@ -516,7 +490,7 @@ impl BlockAccumulator {
     {
         let mut effects = Effects::new();
         if let Some(block) = block {
-            effects.extend(effect_builder.announce_block_accepted(block).ignore());
+            effects.extend(effect_builder.announce_block_added(block).ignore());
         };
         for finality_signature in finality_signatures {
             effects.extend(
@@ -557,21 +531,38 @@ impl BlockAccumulator {
             .map(|acceptor| acceptor.peers().iter().cloned().collect())
     }
 
-    fn should_sync(&self, starting_with_block_height: u64) -> bool {
-        match self.highest_usable_block_height() {
-            Some(highest_usable_block_height) => {
-                let height_diff =
-                    highest_usable_block_height.saturating_sub(starting_with_block_height);
-                height_diff <= self.attempt_execution_threshold
-            }
-            None => false,
+    fn is_stalled(&mut self) -> bool {
+        // we expect to be receiving gossiped blocks from other nodes
+        // if we haven't received any messages describing higher blocks
+        // for more than the self.dead_air_interval config allows
+        // we leap again to poll the network
+        if self.last_progress.elapsed() >= self.dead_air_interval {
+            // we don't want to swamp the network with "are we there yet" leaps.
+            self.last_progress = Timestamp::now();
+            true
+        } else {
+            false
         }
     }
 
-    fn maybe_new_local_tip(&self, starting_with: &StartingWith) -> Option<LocalTipIdentifier> {
-        match (starting_with.maybe_local_tip_identifier(), self.local_tip) {
+    fn should_leap(&self, from_block_height: u64) -> bool {
+        match self.highest_usable_block_height() {
+            Some(highest_usable_block_height) => {
+                let height_diff = highest_usable_block_height.saturating_sub(from_block_height);
+                height_diff > self.attempt_execution_threshold
+            }
+            None => true,
+        }
+    }
+
+    fn maybe_new_local_tip(&self, sync_identifier: &SyncIdentifier) -> Option<LocalTipIdentifier> {
+        match (sync_identifier.maybe_local_tip_identifier(), self.local_tip) {
             (Some((block_height, era_id)), Some(local_tip)) => {
                 if local_tip.height < block_height && local_tip.era_id <= era_id {
+                    debug!(
+                        "new block({}) higher than local tip({})",
+                        block_height, local_tip.height
+                    );
                     return Some(LocalTipIdentifier::new(block_height, era_id));
                 }
             }
@@ -640,6 +631,7 @@ impl BlockAccumulator {
                 signatures,
                 executed,
             } => {
+                debug!(block_hash = %block.hash(), %executed, "storing block and finality signatures");
                 if let Some(parent_hash) = block.parent() {
                     if self
                         .block_children
@@ -688,13 +680,19 @@ impl BlockAccumulator {
                         })
                 }
             }
-            ShouldStore::SingleSignature(signature) => effect_builder
-                .put_finality_signature_to_storage(signature.clone())
-                .event(move |_| Event::Stored {
-                    block: None,
-                    finality_signatures: vec![signature],
-                }),
-            ShouldStore::Nothing => Effects::new(),
+            ShouldStore::SingleSignature(signature) => {
+                debug!(%signature, "storing finality signature");
+                effect_builder
+                    .put_finality_signature_to_storage(signature.clone())
+                    .event(move |_| Event::Stored {
+                        block: None,
+                        finality_signatures: vec![signature],
+                    })
+            }
+            ShouldStore::Nothing => {
+                debug!("not storing block or finality signatures");
+                Effects::new()
+            }
         };
         effects.extend(faulty_senders.into_iter().flat_map(|(node_id, error)| {
             effect_builder
@@ -781,6 +779,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
 
 impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
     fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
+        debug!("handling updated validator matrix");
         let validator_matrix = &self.validator_matrix; // Closure can't borrow all of self.
         let should_stores = self
             .block_acceptors

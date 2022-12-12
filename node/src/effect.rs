@@ -142,7 +142,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::requests::BlockAccumulatorRequest,
+    effect::{announcements::BlockSynchronizerAnnouncement, requests::BlockAccumulatorRequest},
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -164,8 +164,8 @@ use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     BeginGossipRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
     BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, FetcherRequest,
-    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, StorageRequest,
-    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    MakeBlockExecutableRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 use self::requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest};
@@ -855,8 +855,21 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// The block synchronizer has ensured that all the parts of this block are stored
+    pub(crate) async fn announce_completed_block(self, block: Box<Block>)
+    where
+        REv: From<BlockSynchronizerAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                BlockSynchronizerAnnouncement::CompletedBlock { block },
+                QueueKind::Validation,
+            )
+            .await;
+    }
+
     /// Announces that the block accumulator has received and stored a new block.
-    pub(crate) async fn announce_block_accepted(self, block: Box<Block>)
+    pub(crate) async fn announce_block_added(self, block: Box<Block>)
     where
         REv: From<BlockAccumulatorAnnouncement>,
     {
@@ -881,6 +894,28 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::FinalitySignature,
             )
             .await;
+    }
+
+    /// Request that a block be made executable (i.e. produce a FinalizedBlock plus any Deploys),
+    /// if able to.
+    ///
+    /// Completion means that the block can be enqueued for processing by the execution engine via
+    /// the contract_runtime component.
+    pub(crate) async fn make_block_executable(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<(FinalizedBlock, Vec<Deploy>)>
+    where
+        REv: From<MakeBlockExecutableRequest>,
+    {
+        self.make_request(
+            |responder| MakeBlockExecutableRequest {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
     }
 
     /// Request that a block with a specific height be marked completed.
@@ -1010,7 +1045,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a new block has been created.
-    pub(crate) async fn announce_new_linear_chain_block(
+    pub(crate) async fn announce_executed_block(
         self,
         block: Box<Block>,
         approvals_hashes: Box<ApprovalsHashes>,
@@ -2056,7 +2091,8 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         finalized_approvals: FinalizedApprovals,
-    ) where
+    ) -> bool
+    where
         REv: From<StorageRequest>,
     {
         self.make_request(

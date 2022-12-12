@@ -37,12 +37,15 @@ use crate::{
     },
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
-        requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
+        requests::{
+            BlockCompleteConfirmationRequest, ContractRuntimeRequest, MakeBlockExecutableRequest,
+            NetworkRequest,
+        },
         Responder,
     },
     logging,
     protocol::Message,
-    reactor::{self, EventQueueHandle, QueueKind, Runner},
+    reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::ConditionCheckReactor,
     types::{Block, Chainspec, ChainspecRawBytes, Deploy, NodeId},
     utils::{Loadable, WithDir},
@@ -75,6 +78,14 @@ enum Event {
     NetworkRequest(NetworkRequest<Message>),
 }
 
+impl From<MakeBlockExecutableRequest> for Event {
+    fn from(request: MakeBlockExecutableRequest) -> Self {
+        Event::Storage(storage::Event::MakeBlockExecutableRequest(Box::new(
+            request,
+        )))
+    }
+}
+
 impl From<BlockCompleteConfirmationRequest> for Event {
     fn from(request: BlockCompleteConfirmationRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
@@ -82,12 +93,8 @@ impl From<BlockCompleteConfirmationRequest> for Event {
 }
 
 impl ReactorEvent for Event {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+    fn is_control(&self) -> bool {
+        matches!(self, Event::ControlAnnouncement(_))
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
@@ -439,6 +446,7 @@ impl reactor::Reactor for Reactor {
             "test",
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
+            Some(registry),
         )
         .unwrap();
 
@@ -731,7 +739,7 @@ async fn run_deploy_acceptor_without_timeout(
     // There are two scheduled events, so we only need to try cranking until the second time it
     // returns `Some`.
     for _ in 0..2 {
-        while runner.try_crank(&mut rng).await.is_none() {
+        while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
             time::sleep(POLL_INTERVAL).await;
         }
     }
@@ -754,7 +762,7 @@ async fn run_deploy_acceptor_without_timeout(
             runner
                 .process_injected_effects(put_deploy_to_storage(injected_deploy, result_sender))
                 .await;
-            while runner.try_crank(&mut rng).await.is_none() {
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
                 time::sleep(POLL_INTERVAL).await;
             }
             // Check that the "previously seen" deploy is present in storage.
@@ -772,7 +780,7 @@ async fn run_deploy_acceptor_without_timeout(
                     deploy_responder,
                 ))
                 .await;
-            while runner.try_crank(&mut rng).await.is_none() {
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
                 time::sleep(POLL_INTERVAL).await;
             }
         }
@@ -909,15 +917,18 @@ async fn run_deploy_acceptor_without_timeout(
                     )
                 )
             }
-            // Check that repeated valid deploys raise the `PutToStorageResult` with the
+            // Check that repeated valid deploys from a client raises `PutToStorageResult` with the
             // `is_new` flag as false.
-            TestScenario::FromClientRepeatedValidDeploy
-            | TestScenario::FromPeerRepeatedValidDeploy => {
-                matches!(
-                    event,
-                    Event::DeployAcceptor(super::Event::PutToStorageResult { is_new: false, .. })
-                )
-            }
+            TestScenario::FromClientRepeatedValidDeploy => matches!(
+                event,
+                Event::DeployAcceptor(super::Event::PutToStorageResult { is_new: false, .. })
+            ),
+            // Check that repeated valid deploys from a peer raises `StoredFinalizedApprovals` with
+            // the `is_new` flag as false.
+            TestScenario::FromPeerRepeatedValidDeploy => matches!(
+                event,
+                Event::DeployAcceptor(super::Event::StoredFinalizedApprovals { is_new: false, .. })
+            ),
         }
     };
     runner
@@ -925,12 +936,15 @@ async fn run_deploy_acceptor_without_timeout(
         .set_condition_checker(Box::new(stopping_condition));
 
     loop {
-        if runner.try_crank(&mut rng).await.is_some() {
-            if runner.reactor().condition_result() {
-                break;
+        match runner.try_crank(&mut rng).await {
+            TryCrankOutcome::ProcessedAnEvent => {
+                if runner.reactor().condition_result() {
+                    break;
+                }
             }
-        } else {
-            time::sleep(POLL_INTERVAL).await;
+            TryCrankOutcome::NoEventsToProcess => time::sleep(POLL_INTERVAL).await,
+            TryCrankOutcome::ShouldExit(exit_code) => panic!("should not exit: {:?}", exit_code),
+            TryCrankOutcome::Exited => unreachable!(),
         }
     }
 

@@ -886,7 +886,7 @@ impl EraSupervisor {
         let current_era = match self.current_era() {
             Some(current_era) => current_era,
             None => {
-                error!("");
+                error!("no current era");
                 return Effects::new();
             }
         };

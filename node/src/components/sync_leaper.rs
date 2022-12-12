@@ -1,10 +1,18 @@
 //! The Sync Leaper
 mod error;
 mod event;
+mod metrics;
 
-use std::{cmp::Ordering, collections::HashMap, sync::Arc};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{Display, Formatter},
+    sync::Arc,
+    time::Instant,
+};
 
 use datasize::DataSize;
+use prometheus::Registry;
 use tracing::{error, info, warn};
 
 use crate::{
@@ -19,6 +27,8 @@ use crate::{
 pub(crate) use error::LeapActivityError;
 pub(crate) use event::Event;
 
+use metrics::Metrics;
+
 #[derive(Debug, DataSize)]
 enum PeerState {
     RequestSent,
@@ -29,7 +39,7 @@ enum PeerState {
 
 #[derive(Debug, DataSize)]
 pub(crate) enum LeapStatus {
-    Inactive,
+    Idle,
     Awaiting {
         sync_leap_identifier: SyncLeapIdentifier,
         in_flight: usize,
@@ -47,10 +57,56 @@ pub(crate) enum LeapStatus {
     },
 }
 
+impl Display for LeapStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LeapStatus::Idle => {
+                write!(f, "Idle")
+            }
+            LeapStatus::Awaiting {
+                sync_leap_identifier,
+                in_flight,
+            } => {
+                write!(
+                    f,
+                    "Awaiting {} responses for {}",
+                    in_flight,
+                    sync_leap_identifier.block_hash(),
+                )
+            }
+            LeapStatus::Received {
+                best_available,
+                from_peers,
+                in_flight,
+            } => {
+                write!(
+                    f,
+                    "Received {} from {} peers, awaiting {} responses",
+                    best_available.highest_block_hash(),
+                    from_peers.len(),
+                    in_flight
+                )
+            }
+            LeapStatus::Failed {
+                sync_leap_identifier,
+                error,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Failed leap for {} {}",
+                    sync_leap_identifier.block_hash(),
+                    error
+                )
+            }
+        }
+    }
+}
+
 impl LeapStatus {
     fn in_flight(&self) -> usize {
         match self {
-            LeapStatus::Inactive => 0,
+            LeapStatus::Idle => 0,
             LeapStatus::Awaiting { in_flight, .. }
             | LeapStatus::Received { in_flight, .. }
             | LeapStatus::Failed { in_flight, .. } => *in_flight,
@@ -66,6 +122,7 @@ impl LeapStatus {
 struct LeapActivity {
     sync_leap_identifier: SyncLeapIdentifier,
     peers: HashMap<NodeId, PeerState>,
+    leap_start: Instant,
 }
 
 impl LeapActivity {
@@ -162,23 +219,34 @@ impl LeapActivity {
 pub(crate) struct SyncLeaper {
     leap_activity: Option<LeapActivity>,
     chainspec: Arc<Chainspec>,
+    #[data_size(skip)]
+    metrics: Metrics,
 }
 
 impl SyncLeaper {
-    pub(crate) fn new(chainspec: Arc<Chainspec>) -> SyncLeaper {
-        SyncLeaper {
+    pub(crate) fn new(
+        chainspec: Arc<Chainspec>,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(SyncLeaper {
             leap_activity: None,
             chainspec,
-        }
+            metrics: Metrics::new(registry)?,
+        })
     }
 
     // called from Reactor control logic to scrape results
     pub(crate) fn leap_status(&mut self) -> LeapStatus {
         match &self.leap_activity {
-            None => LeapStatus::Inactive,
+            None => LeapStatus::Idle,
             Some(activity) => {
                 let result = activity.status();
                 if result.active() == false {
+                    if matches!(result, LeapStatus::Received { .. }) {
+                        self.metrics
+                            .sync_leap_duration
+                            .observe(activity.leap_start.elapsed().as_secs_f64());
+                    }
                     self.leap_activity = None;
                 }
                 result
@@ -243,6 +311,7 @@ impl SyncLeaper {
         self.leap_activity = Some(LeapActivity {
             sync_leap_identifier,
             peers,
+            leap_start: Instant::now(),
         });
         effects
     }
@@ -251,8 +320,7 @@ impl SyncLeaper {
         &mut self,
         sync_leap_identifier: SyncLeapIdentifier,
         fetch_result: FetchResult<SyncLeap>,
-    ) -> Effects<Event> {
-        let effects = Effects::new();
+    ) {
         let leap_activity = match &mut self.leap_activity {
             Some(leap_activity) => leap_activity,
             None => {
@@ -260,7 +328,7 @@ impl SyncLeaper {
                     %sync_leap_identifier,
                     "received a sync leap response while no requests were in progress"
                 );
-                return effects;
+                return;
             }
         };
 
@@ -270,13 +338,12 @@ impl SyncLeaper {
                 response_hash=%sync_leap_identifier,
                 "block hash in the response doesn't match the one requested"
             );
-            return effects;
+            return;
         }
 
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
                 error!(%sync_leap_identifier, "fetched a sync leap from storage - should never happen");
-                return Effects::new();
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
                 let peer_state = match leap_activity.peers.get_mut(&peer) {
@@ -287,10 +354,11 @@ impl SyncLeaper {
                             %sync_leap_identifier,
                             "received a sync leap response from an unknown peer"
                         );
-                        return Effects::new();
+                        return;
                     }
                 };
                 *peer_state = PeerState::Fetched(Box::new(*item));
+                self.metrics.sync_leap_fetched_from_peer.inc();
             }
             Err(fetcher::Error::Rejected { peer, .. }) => {
                 let peer_state = match leap_activity.peers.get_mut(&peer) {
@@ -301,11 +369,12 @@ impl SyncLeaper {
                             %sync_leap_identifier,
                             "received a sync leap response from an unknown peer"
                         );
-                        return effects;
+                        return;
                     }
                 };
                 info!(%peer, %sync_leap_identifier, "peer rejected our request for a sync leap");
                 *peer_state = PeerState::Rejected;
+                self.metrics.sync_leap_rejected_by_peer.inc();
             }
             Err(error) => {
                 let peer = error.peer();
@@ -318,13 +387,13 @@ impl SyncLeaper {
                             %sync_leap_identifier,
                             "received a sync leap response from an unknown peer"
                         );
-                        return effects;
+                        return;
                     }
                 };
                 *peer_state = PeerState::CouldntFetch;
+                self.metrics.sync_leap_cant_fetch.inc();
             }
         }
-        effects
     }
 }
 
@@ -348,7 +417,10 @@ where
             Event::FetchedSyncLeapFromPeer {
                 sync_leap_identifier,
                 fetch_result,
-            } => self.fetch_received(sync_leap_identifier, fetch_result),
+            } => {
+                self.fetch_received(sync_leap_identifier, fetch_result);
+                Effects::new()
+            }
         }
     }
 }

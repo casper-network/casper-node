@@ -198,11 +198,18 @@ impl BlockAcceptor {
         era_validator_weights: &EraValidatorWeights,
     ) -> (ShouldStore, Vec<(NodeId, AcceptorError)>) {
         if self.has_sufficient_finality {
+            debug!(
+                block_hash = %self.block_hash,
+                no_block = self.block.is_none(),
+                no_sigs = self.signatures.is_empty(),
+                "not storing anything - already have sufficient finality signatures"
+            );
             return (ShouldStore::Nothing, Vec::new());
         }
 
         if self.block.is_none() || self.signatures.is_empty() {
             debug!(
+                block_hash = %self.block_hash,
                 no_block = self.block.is_none(),
                 no_sigs = self.signatures.is_empty(),
                 "not storing block"
@@ -232,6 +239,12 @@ impl BlockAcceptor {
             }
         }
 
+        debug!(
+            block_hash = %self.block_hash,
+            no_block = self.block.is_none(),
+            no_sigs = self.signatures.is_empty(),
+            "not storing anything - insufficient finality signatures"
+        );
         (ShouldStore::Nothing, faulty_senders)
     }
 

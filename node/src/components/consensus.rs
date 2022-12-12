@@ -57,7 +57,10 @@ pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
+#[cfg(test)]
+pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
+pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use validator_change::ValidatorChange;
 
 /// A message to be handled by the consensus protocol instance in a particular era.
@@ -67,7 +70,7 @@ where
     C: Context,
 {
     Zug(Box<protocols::zug::Message<C>>),
-    Highway(Box<protocols::highway::HighwayMessage<C>>),
+    Highway(Box<HighwayMessage<C>>),
 }
 
 impl<C: Context> EraMessage<C> {
@@ -81,7 +84,7 @@ impl<C: Context> EraMessage<C> {
 
     /// Returns the message for the Highway protocol, or an error if it is for a different
     /// protocol.
-    fn try_into_highway(self) -> Result<protocols::highway::HighwayMessage<C>, Self> {
+    pub(crate) fn try_into_highway(self) -> Result<HighwayMessage<C>, Self> {
         match self {
             EraMessage::Highway(msg) => Ok(*msg),
             other => Err(other),
@@ -95,8 +98,8 @@ impl<C: Context> From<protocols::zug::Message<C>> for EraMessage<C> {
     }
 }
 
-impl<C: Context> From<protocols::highway::HighwayMessage<C>> for EraMessage<C> {
-    fn from(msg: protocols::highway::HighwayMessage<C>) -> EraMessage<C> {
+impl<C: Context> From<HighwayMessage<C>> for EraMessage<C> {
+    fn from(msg: HighwayMessage<C>) -> EraMessage<C> {
         EraMessage::Highway(Box::new(msg))
     }
 }
