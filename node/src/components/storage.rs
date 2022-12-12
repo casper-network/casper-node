@@ -1182,14 +1182,27 @@ impl Storage {
         Ok(maybe_block)
     }
 
-    pub(crate) fn read_blocks_since(
+    /// Retrieves the contiguous segment of the block chain starting at the highest known switch
+    /// block such that the blocks' timestamps cover a duration of at least the max TTL for deploys
+    /// (a chainspec setting).
+    ///
+    /// If storage doesn't hold enough blocks to cover the specified duration, it will still return
+    /// the highest contiguous segment starting at the highest switch block which it does hold.
+    pub(crate) fn read_blocks_for_replay_protection(
         &self,
-        timestamp: Timestamp,
     ) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
+        let timestamp = match self.switch_block_era_id_index.keys().last() {
+            Some(era_id) => self
+                .get_switch_block_header_by_era_id(&mut txn, *era_id)?
+                .map(|switch_block| switch_block.timestamp().saturating_sub(self.max_ttl))
+                .unwrap_or_else(Timestamp::now),
+            None => Timestamp::now(),
+        };
+
         self.get_blocks_while(&mut txn, |block| block.timestamp() >= timestamp)
     }
 
@@ -1422,6 +1435,7 @@ impl Storage {
         Ok(true)
     }
 
+    /// Returns `count` highest switch block headers, sorted from lowest (oldest) to highest.
     pub(crate) fn read_highest_switch_block_headers(
         &self,
         count: u64,
@@ -2438,10 +2452,11 @@ impl Storage {
     fn update_chain_height_metrics(&self) {
         if let Some(metrics) = self.metrics.as_ref() {
             if let Some(sequence) = self.completed_blocks.highest_sequence() {
-                let chain_height: i64 = sequence.high().try_into().unwrap_or(i64::MIN);
-                let low_seq_height: i64 = sequence.low().try_into().unwrap_or(i64::MIN);
-                metrics.chain_height.set(chain_height);
-                metrics.chain_low_seq_block_height.set(low_seq_height);
+                let highest_available_block: i64 = sequence.high().try_into().unwrap_or(i64::MIN);
+                let lowest_available_block: i64 = sequence.low().try_into().unwrap_or(i64::MIN);
+                metrics.chain_height.set(highest_available_block);
+                metrics.highest_available_block.set(highest_available_block);
+                metrics.lowest_available_block.set(lowest_available_block);
             }
         }
     }

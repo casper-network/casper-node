@@ -19,7 +19,16 @@ impl MainReactor {
         &self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> UpgradeShutdownInstruction {
-        if let Some(block_header) = self.recent_switch_block_headers.last() {
+        let recent_switch_block_headers = match self.storage.read_highest_switch_block_headers(1) {
+            Ok(headers) => headers,
+            Err(error) => {
+                return UpgradeShutdownInstruction::Fatal(format!(
+                    "error getting recent switch block headers: {}",
+                    error
+                ))
+            }
+        };
+        if let Some(block_header) = recent_switch_block_headers.last() {
             let highest_switch_block_era = block_header.era_id();
             return match self
                 .validator_matrix

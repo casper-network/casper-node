@@ -63,27 +63,17 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Result<Option<Effects<MainEvent>>, String> {
-        let highest_switch_block_header = match self.recent_switch_block_headers.last() {
+        let recent_switch_block_headers = self
+            .storage
+            .read_highest_switch_block_headers(self.chainspec.number_of_past_switch_blocks_needed())
+            .map_err(|err| err.to_string())?;
+
+        let highest_switch_block_header = match recent_switch_block_headers.last() {
             None => {
-                // attempt to refresh switch blocks from storage
-                match self.storage.read_highest_switch_block_headers(
-                    self.chainspec.number_of_past_switch_blocks_needed(),
-                ) {
-                    Ok(switch_headers) => {
-                        self.recent_switch_block_headers = switch_headers.clone();
-                        debug!(
-                            "Validate: create_required_eras: recent_switch_block_headers is empty"
-                        );
-                        if let Some(ret) = switch_headers.last().cloned() {
-                            ret
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                    Err(err) => return Err(err.to_string()),
-                }
+                debug!("Validate: create_required_eras: recent_switch_block_headers is empty");
+                return Ok(None);
             }
-            Some(header) => header.clone(),
+            Some(header) => header,
         };
         debug!(
             "Validate: highest_switch_block_header: {} - {} - height {}",
@@ -132,11 +122,9 @@ impl MainReactor {
             return Ok(None);
         }
 
-        let create_required_eras = self.consensus.create_required_eras(
-            effect_builder,
-            rng,
-            &self.recent_switch_block_headers,
-        );
+        let create_required_eras =
+            self.consensus
+                .create_required_eras(effect_builder, rng, &recent_switch_block_headers);
         match &create_required_eras {
             Some(effects) => {
                 if effects.is_empty() {

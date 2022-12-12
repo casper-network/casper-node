@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use std::time::Duration;
-use tracing::{debug, info, trace};
+use tracing::{debug, error, info, trace};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
@@ -258,16 +258,7 @@ impl MainReactor {
         // how many deploys there have been within the TTL)
         if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
         {
-            // todo!("this logic should be pushed down into the component itself.");
-            let timestamp = self.recent_switch_block_headers.last().map_or_else(
-                Timestamp::now,
-                |switch_block| {
-                    switch_block
-                        .timestamp()
-                        .saturating_sub(self.chainspec.deploy_config.max_ttl)
-                },
-            );
-            let blocks = match self.storage.read_blocks_since(timestamp) {
+            let blocks = match self.storage.read_blocks_for_replay_protection() {
                 Ok(blocks) => blocks,
                 Err(err) => {
                     return Some(
@@ -436,7 +427,15 @@ impl MainReactor {
     }
 
     pub(super) fn should_shutdown_for_upgrade(&self) -> bool {
-        if let Some(block_header) = self.recent_switch_block_headers.last() {
+        let recent_switch_block_headers = match self.storage.read_highest_switch_block_headers(1) {
+            Ok(headers) => headers,
+            Err(error) => {
+                error!("error getting recent switch block headers: {}", error);
+                return false;
+            }
+        };
+
+        if let Some(block_header) = recent_switch_block_headers.last() {
             return self
                 .upgrade_watcher
                 .should_upgrade_after(block_header.era_id());
