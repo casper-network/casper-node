@@ -186,7 +186,7 @@ function do_await_era_change() {
     # allow chain height to grow
     local ERA_COUNT=${1:-"1"}
     log_step "awaiting $ERA_COUNT eras…"
-    await_n_eras "$ERA_COUNT"
+    nctl-await-n-eras offset="$ERA_COUNT" sleep_interval='5.0'
 }
 
 function check_current_era {
