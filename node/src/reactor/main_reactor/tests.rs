@@ -539,7 +539,7 @@ async fn dont_upgrade_without_switch_block() {
     }
 
     // Run until the nodes shut down for the upgrade.
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(90);
     net.settle_on_exit(&mut rng, ExitCode::Success, timeout)
         .await;
 
@@ -590,7 +590,7 @@ async fn should_store_finalized_approvals() {
     net.settle_on(
         &mut rng,
         has_completed_era(EraId::from(0)),
-        Duration::from_secs(30),
+        Duration::from_secs(90),
     )
     .await;
 
@@ -668,7 +668,7 @@ async fn should_store_finalized_approvals() {
     }
 
     // Run until the deploy gets executed.
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(90);
     net.settle_on(
         &mut rng,
         |nodes| {
