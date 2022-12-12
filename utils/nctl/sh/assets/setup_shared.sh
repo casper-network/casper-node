@@ -467,7 +467,7 @@ function setup_asset_global_state_toml() {
     # Check version of the global state update tool. This is not a proper semver check, for simplicity, we rely on the minor part only.
     # 0.3 marks the transition to 1.5 fast sync node and supports the "validators" command.
     GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-        -h | grep "Global State Update Generator" | grep -oE '[^ ]+$' | cut -c3-3)
+        --version | grep -oE '[^ ]+$' | cut -c3-3)
     if [ "$GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION" -lt "3" ]; then
         log "ERROR :: Global State Update Generator must be version 0.3 or greater (found version 0.$GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION)"
         exit 1
