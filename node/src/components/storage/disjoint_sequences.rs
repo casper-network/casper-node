@@ -30,6 +30,14 @@ pub(crate) struct Sequence {
 }
 
 impl Sequence {
+    /// Constructs a new sequence using the bounds of `a` and `b`.
+    ///
+    /// `low` and `high` will be automatically determined.
+    pub(super) fn new(a: u64, b: u64) -> Self {
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        Sequence { low, high }
+    }
+
     /// Constructs a new sequence containing only `value`.
     fn single(value: u64) -> Self {
         Sequence {
@@ -88,6 +96,15 @@ pub(super) struct DisjointSequences {
 }
 
 impl DisjointSequences {
+    /// Constructs disjoint sequences from one initial sequence.
+    ///
+    /// Note: Use [`Default::default()`] to create an empty set of sequences.
+    pub(super) fn new(initial_sequence: Sequence) -> Self {
+        DisjointSequences {
+            sequences: vec![initial_sequence],
+        }
+    }
+
     /// Inserts `value` into the appropriate sequence and merges sequences if required.
     ///
     /// Note, this method is efficient where `value` is one greater than the current highest value.

@@ -72,10 +72,6 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
 };
-use disjoint_sequences::DisjointSequences;
-use error::GetRequestError;
-use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt};
-use object_pool::ObjectPool;
 
 use crate::{
     components::{fetcher::FetchResponse, Component},
@@ -97,15 +93,17 @@ use crate::{
         BlockWithMetadata, Deploy, DeployHash, DeployId, DeployMetadata, DeployMetadataExt,
         DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem, FinalitySignature,
         FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
-        ValueOrChunk,
+        SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{self, display_error, WithDir},
     NodeRng,
 };
-
-use crate::types::SyncLeapIdentifier;
+use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
+use error::GetRequestError;
+use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt};
 use metrics::Metrics;
+use object_pool::ObjectPool;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -477,18 +475,47 @@ impl Storage {
             metrics,
         };
 
-        if let Some(raw) =
-            component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))?
-        {
-            let (mut sequences, _) = DisjointSequences::from_vec(raw)
-                .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
+        match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
+            Some(raw) => {
+                let (mut sequences, _) = DisjointSequences::from_vec(raw)
+                    .map_err(FatalStorageError::UnexpectedDeserializationFailure)?;
 
-            // Truncate the sequences in case we removed blocks via a hard reset.
-            if let Some(&highest_block_height) = component.block_height_index.keys().last() {
-                sequences.truncate(highest_block_height);
+                // Truncate the sequences in case we removed blocks via a hard reset.
+                if let Some(&highest_block_height) = component.block_height_index.keys().last() {
+                    sequences.truncate(highest_block_height);
+                }
+
+                component.completed_blocks = sequences;
             }
-
-            component.completed_blocks = sequences;
+            None => {
+                // No state so far. We can make the following observations:
+                //
+                // 1. Any block already in storage from versions prior to 1.5 (no fast-sync) MUST
+                //    have the corresponding global state in contract runtime due to the way sync
+                //    worked previously, so with the potential exception of finality signatures, we
+                //    can consider all these blocks complete.
+                // 2. Any block acquired from that point onwards was subject to the insertion of the
+                //    appropriate announcements (`BlockCompletedAnnouncement`), which would have
+                //    caused the creation of the completed blocks index, thus would not have
+                //    resulted in a `None` value here.
+                //
+                // Note that a previous run of this version which aborted early could have stored
+                // some blocks and/or block-headers without completing the sync process. Hence, when
+                // setting the `completed_blocks` in this None case, we'll only consider blocks
+                // from a previous protocol version as complete.
+                let mut txn = component.env.begin_ro_txn()?;
+                for block_hash in component.block_height_index.values().rev() {
+                    if let Some(header) = component.get_single_block_header(&mut txn, block_hash)? {
+                        if header.protocol_version() < protocol_version {
+                            drop(txn);
+                            component.completed_blocks =
+                                DisjointSequences::new(Sequence::new(0, header.height()));
+                            component.persist_completed_blocks()?;
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         Ok(component)
