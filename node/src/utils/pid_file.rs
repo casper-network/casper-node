@@ -5,13 +5,12 @@
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
-    path::{Path, PathBuf},
+    path::Path,
     process,
 };
 
 use fs2::FileExt;
 use thiserror::Error;
-use tracing::warn;
 
 /// A PID (process ID) file.
 ///
@@ -25,8 +24,6 @@ pub(crate) struct PidFile {
     ///
     /// The file will be locked for the lifetime of `PidFile`.
     _pid_file: File,
-    /// The pid_file location.
-    path: PathBuf,
     /// Previous pid_file contents.
     previous: PreviousContents,
 }
@@ -64,25 +61,16 @@ enum PreviousContents {
 #[must_use]
 #[derive(Debug)]
 pub(crate) enum PidFileOutcome {
-    /// Another instance of the node is likely running, or an attempt was made to reuse a pid_file.
-    ///
-    /// **Recommendation**: Exit to avoid resource conflicts.
+    /// Another instance of the node is likely running, or an attempt was made
+    /// to reuse a pid_file.
     AnotherNodeRunning(PidFileError),
-    /// The node crashed previously and could potentially have been corrupted.
-    ///
-    /// **Recommendation**: Run an integrity check, then potentially continue with initialization.
-    ///                     **Store the `PidFile`**.
-    Crashed(PidFile),
-    /// The user manually created an invalid PidFile to force integrity checks.
-    ForceIntegrityChecks(PidFile),
+    /// Existing pid file detected, but the lock was successfully acquired.
+    Existing(PidFile),
+    /// The user manually created/edited an invalid PidFile.
+    NonNumericContents(PidFile),
     /// Clean start, pid_file lock acquired.
-    ///
-    /// **Recommendation**: Continue with initialization, but **store the `PidFile`**.
     Clean(PidFile),
-    /// There was an error managing the PidFile, not sure if we have crashed or not.
-    ///
-    /// **Recommendation**: Exit, as it will not be possible to determine a crash at the next
-    /// start.
+    /// There was an error managing the pic file.
     PidFileError(PidFileError),
 }
 
@@ -94,8 +82,8 @@ impl PidFile {
     pub(crate) fn acquire<P: AsRef<Path>>(path: P) -> PidFileOutcome {
         match PidFile::new(path) {
             Ok(pid_file) => match pid_file.previous {
-                PreviousContents::Pid(_) => PidFileOutcome::Crashed(pid_file),
-                PreviousContents::NonNumeric => PidFileOutcome::ForceIntegrityChecks(pid_file),
+                PreviousContents::Pid(_) => PidFileOutcome::Existing(pid_file),
+                PreviousContents::NonNumeric => PidFileOutcome::NonNumericContents(pid_file),
                 PreviousContents::None => PidFileOutcome::Clean(pid_file),
             },
             Err(err @ PidFileError::LockFailed(_)) => PidFileOutcome::AnotherNodeRunning(err),
@@ -157,19 +145,8 @@ impl PidFile {
 
         Ok(PidFile {
             _pid_file: pid_file,
-            path: path.as_ref().to_owned(),
             previous,
         })
-    }
-}
-
-impl Drop for PidFile {
-    fn drop(&mut self) {
-        // When dropping the pid_file, we delete its file. We are still keeping the logs and the
-        // opened file handle, which will get cleaned up naturally.
-        if let Err(err) = fs::remove_file(&self.path) {
-            warn!(path=%self.path.display(), %err, "could not delete pid_file");
-        }
     }
 }
 
@@ -190,11 +167,9 @@ mod tests {
 
         match outcome {
             PidFileOutcome::Clean(pid_file) => {
-                // Check the pid_file exists, then verify it gets removed after dropping the
-                // pid_file.
-                assert!(pid_file_path.exists());
+                // Check the pid_file exists, then verify the pid file is still there.
                 drop(pid_file);
-                assert!(!pid_file_path.exists());
+                assert!(pid_file_path.exists());
             }
             other => panic!("pid_file outcome not clean, but {:?}", other),
         }
@@ -211,14 +186,13 @@ mod tests {
         let outcome = PidFile::acquire(&pid_file_path);
 
         match outcome {
-            PidFileOutcome::Crashed(pid_file) => {
+            PidFileOutcome::Existing(pid_file) => {
                 // Now check if the written pid matches our PID.
                 assert_eq!(pid_file.previous, PreviousContents::Pid(12345));
 
-                // After we've crashed, we still expect cleanup.
-                assert!(pid_file_path.exists());
+                // After we've crashed, we still expect the pid file to be there.
                 drop(pid_file);
-                assert!(!pid_file_path.exists());
+                assert!(pid_file_path.exists());
             }
             other => panic!("pid_file outcome did not detect crash, is {:?}", other),
         }
@@ -235,14 +209,13 @@ mod tests {
         let outcome = PidFile::acquire(&pid_file_path);
 
         match outcome {
-            PidFileOutcome::ForceIntegrityChecks(pid_file) => {
+            PidFileOutcome::NonNumericContents(pid_file) => {
                 // Now check if the written pid matches our PID.
                 assert_eq!(pid_file.previous, PreviousContents::NonNumeric);
 
-                // After we've crashed, we still expect cleanup.
-                assert!(pid_file_path.exists());
+                // After we've crashed, we still expect the pid file to be there.
                 drop(pid_file);
-                assert!(!pid_file_path.exists());
+                assert!(pid_file_path.exists());
             }
             other => panic!("pid_file outcome did not detect crash, is {:?}", other),
         }
