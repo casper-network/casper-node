@@ -284,10 +284,10 @@ function _setup_asset_global_state_toml() {
     popd
 
     log "... processing upgrade from $STAGE_1_PRE_VERSION to $STAGE_1_POST_VERSION"
-    STAGE_1_PRE_VERSION_LEN=`echo $STAGE_1_PRE_VERSION | wc -c`
-    STAGE_1_POST_VERSION_LEN=`echo $STAGE_1_POST_VERSION | wc -c`
+    STAGE_1_PRE_VERSION_LEN=`echo -n $STAGE_1_PRE_VERSION | wc -c`
+    STAGE_1_POST_VERSION_LEN=`echo -n $STAGE_1_POST_VERSION | wc -c`
 
-    if [ "$STAGE_1_PRE_VERSION_LEN" -ne "4" ] || [ "$STAGE_1_POST_VERSION_LEN" -ne "4" ]; then
+    if [ "$STAGE_1_PRE_VERSION_LEN" -ne "3" ] || [ "$STAGE_1_POST_VERSION_LEN" -ne "3" ]; then
         log "ERROR :: Node version segments must be single digit (eg. 1.4.5). Versions like 1.4.12 are not supported. This is only a limitation of this test script - for IRL upgrades any version should work"
     fi
 
