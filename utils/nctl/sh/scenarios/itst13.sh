@@ -42,7 +42,7 @@ function main() {
     # 6. Assert node is marked as inactive
     assert_inactive '5'
     # 7. Restart node 5
-    do_start_node '5'
+    do_start_node '5' "$(do_read_lfb_hash '1')"
     # 8-9. Assert joined within expected era
     assert_joined_in_era_4 '5'
     # 10. Assert eviction of node
@@ -82,15 +82,30 @@ function assert_joined_in_era_4() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node "$NODE_ID")
     local TIMEOUT=${2:-300}
+    local OUTPUT
+    local REACTOR_STATE
+
     log_step "Waiting for node-$NODE_ID to join..."
-    local OUTPUT=$(timeout "$TIMEOUT" tail -n 1 -f "$NODE_PATH/logs/stdout.log" | grep -o -m 1 "finished joining")
-    if ( echo "$OUTPUT" | grep -q "finished joining" ); then
-        log "Node-$NODE_ID joined!"
-        log "$OUTPUT"
-    else
-        log "ERROR: Node-$NODE_ID didn't join within timeout=$TIMEOUT"
-        exit 1
-    fi
+    while true; do
+        OUTPUT=$(nctl-view-node-status node=5)
+        REACTOR_STATE=$(echo "$OUTPUT" | tail -n +2 | jq -r '.reactor_state')
+
+        if [ "$REACTOR_STATE" == "KeepUp" ] || [ "$REACTOR_STATE" == "Validate" ]; then
+            log "Node-$NODE_ID joined!"
+            log "Node-$NODE_ID's reactor_state = $REACTOR_STATE"
+            break
+        else
+            sleep 1
+            TIMEOUT=$((TIMEOUT-1))
+            if [ "$TIMEOUT" = '0' ]; then
+                log "ERROR: Timed out before joining"
+                exit 1
+            else
+                log "...waiting for node to be in sync: timeout=$TIMEOUT"
+                log "...node-$NODE_ID's reactor_state = $REACTOR_STATE"
+            fi
+        fi
+    done
 
     assert_same_era '4' '1'
 }
