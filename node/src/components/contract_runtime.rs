@@ -239,7 +239,12 @@ where
 impl ContractRuntime {
     /// How many blocks are backed up in the queue
     pub(crate) fn queue_depth(&self) -> usize {
-        self.exec_queue.lock().expect("mutex poisoned").len()
+        self.exec_queue
+            .lock()
+            .expect(
+                "components::contract_runtime: couldn't get execution queue size; mutex poisoned",
+            )
+            .len()
     }
 
     /// Handles an incoming request to get a trie.
@@ -481,7 +486,7 @@ impl ContractRuntime {
                         );
                         exec_queue
                             .lock()
-                            .expect("mutex poisoned")
+                            .expect("components::contract_runtime: couldn't enqueue block for execution; mutex poisoned")
                             .insert(finalized_block_height, (finalized_block, deploys));
                         self.metrics.exec_queue_size.inc();
                     }
@@ -662,7 +667,11 @@ impl ContractRuntime {
         *execution_pre_state = sequential_block_state;
 
         {
-            let mut exec_queue = self.exec_queue.lock().expect("mutex poisoned");
+            let mut exec_queue = self.exec_queue
+                .lock()
+                .expect(
+                    "components::contract_runtime: couldn't initialize contract runtime block execution queue; mutex poisoned"
+                );
             *exec_queue = exec_queue.split_off(&execution_pre_state.next_block_height);
             self.metrics
                 .exec_queue_size
@@ -775,7 +784,9 @@ impl ContractRuntime {
         // If the child is already finalized, start execution.
         let next_block = {
             // needed to help this async block impl Send (the MutexGuard lives too long)
-            let queue = &mut *exec_queue.lock().expect("mutex poisoned");
+            let queue = &mut *exec_queue
+                .lock()
+                .expect("components::contract_runtime: couldn't get next block for execution; mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
         if let Some((finalized_block, deploys)) = next_block {
