@@ -6,7 +6,7 @@ The tool consists of 1 main subcommand and 3 legacy subcommands:
 - `generic` - a generic update based on a config file,
 - `change-validators` (legacy) - updating the set of validators on the network,
 - `balances` (legacy) - performing some transfers between accounts,
-- `system-contract-registry` (legacy) - this was a single-use subcommand intended to introduce some changes to the system structures in the global state that couldn't be made otherwise.
+- `migrate-into-system-contract-registry` (legacy) - this was a single-use subcommand intended to introduce some changes to the system structures in the global state that couldn't be made otherwise.
 
 ## A detailed description of the subcommands
 
@@ -111,9 +111,9 @@ to = "TO-ACCOUNT"
 amount = "AMOUNT"
 ```
 
-#### `system-contract-registry`
+#### `migrate-into-system-contract-registry`
 
-Usage: `global-state-update-gen system-contract-registry -d DATA_DIRECTORY -s STATE_ROOT_HASH`
+Usage: `global-state-update-gen migrate-into-system-contract-registry -d DATA_DIRECTORY -s STATE_ROOT_HASH`
 
 This subcommand doesn't take any additional parameters. It adds a registry of system contracts to the global state, based either on the data contained within the state (if `-s` is present), or based on the protocol data in storage (if `-s` is not present).
 

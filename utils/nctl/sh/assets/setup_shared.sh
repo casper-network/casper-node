@@ -511,13 +511,13 @@ function setup_asset_global_state_toml() {
 
             if [ -f $DATA_LMDB_PATH ]; then
                     GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                            system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
+                            migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
 
                     GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                             change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage) 
             else
                     GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                            system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)
+                            migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)
 
                     GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                             change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)

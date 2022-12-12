@@ -99,7 +99,7 @@ fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("system-contract-registry")
+            SubCommand::with_name("migrate-into-system-contract-registry")
                 .about("Generates an update creating the system contract registry")
                 .arg(
                     Arg::with_name("data_dir")
@@ -154,7 +154,7 @@ fn main() {
     match matches.subcommand() {
         ("change-validators", Some(sub_matches)) => generate_validators_update(sub_matches),
         ("balances", Some(sub_matches)) => generate_balances_update(sub_matches),
-        ("system-contract-registry", Some(sub_matches)) => {
+        ("migrate-into-system-contract-registry", Some(sub_matches)) => {
             generate_system_contract_registry(sub_matches)
         }
         ("generic", Some(sub_matches)) => generate_generic_update(sub_matches),
