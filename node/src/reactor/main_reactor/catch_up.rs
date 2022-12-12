@@ -392,10 +392,8 @@ impl MainReactor {
     fn catch_up_check_transition(&mut self) -> Option<CatchUpInstruction> {
         // we may be starting back up after a shutdown for upgrade; if so we need to
         // commit upgrade now before proceeding further
-        match self.should_commit_upgrade() {
-            Err(msg) => return Some(CatchUpInstruction::Fatal(msg)),
-            Ok(true) => return Some(CatchUpInstruction::CommitUpgrade),
-            Ok(false) => (),
+        if self.should_commit_upgrade() {
+            return Some(CatchUpInstruction::CommitUpgrade);
         }
         // we may need to shutdown to go thru an upgrade
         if self.should_shutdown_for_upgrade() {
