@@ -1317,11 +1317,12 @@ function get_generate_completion_shells() {
 function get_client_subcommand_list() {
     local OUTPUT
     OUTPUT=$($(get_path_to_client) --help \
-        | grep -A 999 SUBCOMMANDS \
-        | awk -F'    ' '{print $2}' \
+        | awk -v RS= 'NR==3' \
+        | sed -e 's/^[ \t]*//' \
+        | awk '{print $1}' \
+        | sed -n '1!p' \
         | sort \
-        | uniq \
-        | sed '/^$/d')
+        | uniq)
 
     # Check non-empty
     check_client_responded "$OUTPUT"
