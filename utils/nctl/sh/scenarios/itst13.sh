@@ -87,7 +87,7 @@ function assert_joined_in_era_4() {
 
     log_step "Waiting for node-$NODE_ID to join..."
     while true; do
-        OUTPUT=$(nctl-view-node-status node=5)
+        OUTPUT=$(nctl-view-node-status node="$NODE_ID")
         REACTOR_STATE=$(echo "$OUTPUT" | tail -n +2 | jq -r '.reactor_state')
 
         if [ "$REACTOR_STATE" == "KeepUp" ] || [ "$REACTOR_STATE" == "Validate" ]; then
