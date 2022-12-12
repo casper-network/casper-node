@@ -160,6 +160,7 @@ impl Chainspec {
 
     /// Returns `Some` if the validator set is being modified by the upgrade (otherwise `None`)
     /// and `true` if the provided public key is a member of the new set, otherwise `false`.
+    #[allow(unused)] // check w/ Fraser...seems odd that we don't care about this anywhere else
     pub(crate) fn is_in_modified_validator_set(&self, public_key: &PublicKey) -> Option<bool> {
         self.protocol_config
             .global_state_update

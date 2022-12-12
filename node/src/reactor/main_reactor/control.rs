@@ -74,9 +74,6 @@ impl MainReactor {
                 }
             },
             ReactorState::Upgrading => match self.upgrading_instruction() {
-                UpgradingInstruction::Fatal(msg) => {
-                    (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
-                }
                 UpgradingInstruction::CheckLater(msg, wait) => {
                     debug!("Upgrading: {}", msg);
                     (wait, Effects::new())
@@ -443,34 +440,17 @@ impl MainReactor {
         false
     }
 
-    pub(super) fn should_commit_upgrade(&self) -> Result<bool, String> {
+    pub(super) fn should_commit_upgrade(&self) -> bool {
         let highest_switch_block_header = match &self.switch_block {
             None => {
-                return Ok(false);
+                return false;
             }
             Some(header) => header,
         };
 
-        if !self
-            .chainspec
+        self.chainspec
             .protocol_config
             .is_last_block_before_activation(highest_switch_block_header)
-        {
-            return Ok(false);
-        }
-
-        match self
-            .chainspec
-            .is_in_modified_validator_set(self.consensus.public_key())
-        {
-            None => match highest_switch_block_header.next_era_validator_weights() {
-                None => Err("switch_block should have next era validator weights".to_string()),
-                Some(next_era_validator_weights) => {
-                    Ok(next_era_validator_weights.contains_key(self.consensus.public_key()))
-                }
-            },
-            Some(is_validator) => Ok(is_validator),
-        }
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
