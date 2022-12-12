@@ -1300,12 +1300,10 @@ function get_keygen_algos() {
 function get_generate_completion_shells() {
     local OUTPUT
     OUTPUT=$($(get_path_to_client) generate-completion --help \
-        | grep 'possible values' \
-        | cut -d "[" -f2 \
+        | awk -F'possible values:' '{print $2}' \
         | cut -d "]" -f1 \
-        | awk -F'possible values: ' '{print $2}' \
         | tr -d "[:space:]" \
-        |sed 's/,/ /g')
+        | sed 's/,/ /g')
 
     # Check non-empty
     check_client_responded "$OUTPUT"
