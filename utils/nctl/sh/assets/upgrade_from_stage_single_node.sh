@@ -253,24 +253,6 @@ function _setup_asset_node_config_workaround_1()
     python3 -c "${SCRIPT[*]}"
 }
 
-function _validators_string()
-{
-    local IDX
-    local COUNT_NODES_AT_GENESIS=$(get_count_of_genesis_nodes)
-    local PATH_TO_NET
-
-    local VALIDATORS
-
-    PATH_TO_NET="$(get_path_to_net)"
-
-    for IDX in $(seq 1 "$COUNT_NODES_AT_GENESIS")
-    do
-        VALIDATORS+="--validator $(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex"),$(get_node_pos_stake_weight "$COUNT_NODES_AT_GENESIS" "$IDX") "
-    done
-
-    echo $VALIDATORS
-}
-
 function _setup_asset_global_state_toml() {
     log "... setting node global_state.toml"
 
