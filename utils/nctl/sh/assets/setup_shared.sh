@@ -459,45 +459,43 @@ function setup_asset_global_state_toml() {
     local GLOBAL_STATE_OUTPUT
     local GLOBAL_STATE_VALIDATOR_OUTPUT
     local PATH_TO_NET="$(get_path_to_net)"
-    local GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION
     local STATE_ROOT_HASH
-    local PRE_14
+    local VERSION_14_BOUNDARY
     local DATA_LMDB_PATH
 
-    # Check version of the global state update tool. This is not a proper semver check, for simplicity, we rely on the minor part only.
-    # 0.3 marks the transition to 1.5 fast sync node and supports the "validators" command.
-    GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-        --version | grep -oE '[^ ]+$' | cut -c3-3)
-    if [ "$GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION" -lt "3" ]; then
-        log "ERROR :: Global State Update Generator must be version 0.3 or greater (found version 0.$GLOBAL_STATE_UPDATE_TOOL_MINOR_VERSION)"
+    local SEMVER_GLOBAL_STATE_UPDATE_TOOL
+    local SEMVER_STAGE_1_PRE_VERSION
+
+    read -ra SEMVER_GLOBAL_STATE_UPDATE_TOOL <<< "$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen --version | grep -oE '[^ ]+$' | tr '.' ' ')"
+
+    # Check version of the global state update tool. 0.3 marks the transition to 1.5 fast sync node and supports the "validators" command.
+    if [ "${SEMVER_GLOBAL_STATE_UPDATE_TOOL[1]}" -lt "3" ]; then
+        log "ERROR :: Global State Update Generator must be version 0.3 or greater (found version ${SEMVER_GLOBAL_STATE_UPDATE_TOOL[0]}.${SEMVER_GLOBAL_STATE_UPDATE_TOOL[1]}.${SEMVER_GLOBAL_STATE_UPDATE_TOOL[2]})"
         exit 1
     fi
 
     pushd "$(get_path_to_stages)/stage-1/"
-    local STAGE_1_PRE_VERSION=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | tr -d '_' | sort | head -n 1)
+    read -ra SEMVER_STAGE_1_PRE_VERSION <<< $(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' |  sort | head -n 1 | tr '_' ' ')
     popd
     pushd "$(get_path_to_stages)/stage-1/"
+    read -ra SEMVER_STAGE_1_POST_VERSION <<< $(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' |  sort | tail -n 1 | tr '_' ' ')
     local TARGET_PROTOCOL_VERSION=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | sort | tail -n 1)
-    local STAGE_1_POST_VERSION="$(echo $TARGET_PROTOCOL_VERSION | tr -d '_')"
     popd
 
-    log "... processing upgrade from $STAGE_1_PRE_VERSION to $STAGE_1_POST_VERSION"
-    STAGE_1_PRE_VERSION_LEN=`echo $STAGE_1_PRE_VERSION | wc -c`
-    STAGE_1_POST_VERSION_LEN=`echo $STAGE_1_POST_VERSION | wc -c`
+    log "... processing upgrade from ${SEMVER_STAGE_1_PRE_VERSION[0]}.${SEMVER_STAGE_1_PRE_VERSION[1]}.${SEMVER_STAGE_1_PRE_VERSION[2]} to ${SEMVER_STAGE_1_POST_VERSION[0]}.${SEMVER_STAGE_1_POST_VERSION[1]}.${SEMVER_STAGE_1_POST_VERSION[2]}"
 
-    if [ "$STAGE_1_PRE_VERSION_LEN" -ne "4" ] || [ "$STAGE_1_POST_VERSION_LEN" -ne "4" ]; then
-        log "ERROR :: Node version segments must be single digit (eg. 1.4.5). Versions like 1.4.12 are not supported. This is only a limitation of this test script - for IRL upgrades any version should work"
-    fi
-
-    if [ "$STAGE_1_PRE_VERSION" -lt "140" ]; then
-        log "... upgrading from pre 1.4.0 version"
-        PRE_14=1
+    if [ "${SEMVER_STAGE_1_PRE_VERSION[0]}" -le "1" ] && \
+       [ "${SEMVER_STAGE_1_PRE_VERSION[1]}" -lt "4" ] && \
+       [ "${SEMVER_STAGE_1_POST_VERSION[0]}" -ge "1" ] && \
+       [ "${SEMVER_STAGE_1_POST_VERSION[1]}" -ge "4" ]; then
+        log "... upgrading across the 1.4.0 boundary, generating 'global_state.toml' file"
+        VERSION_14_BOUNDARY=1
     else
-        log "... upgrading from version 1.4.0 or later, no 'global_state.toml' file needed"
-        PRE_14=0
+        log "... not upgrading across the 1.4.0 boundary, no 'global_state.toml' file needed"
+        VERSION_14_BOUNDARY=0
     fi
 
-    if [ "$PRE_14" -eq "1" ]; then
+    if [ "$VERSION_14_BOUNDARY" -eq "1" ]; then
         for IDX in $(seq 1 "$COUNT_NODES")
         do
             STORAGE_PATH="$PATH_TO_NET/nodes/node-$IDX/storage"
