@@ -450,18 +450,43 @@ function validators_string()
     echo $VALIDATORS
 }
 
+function setup_asset_global_state_toml_for_node() {
+    local IDX=${1}
+    local TARGET_PROTOCOL_VERSION=${2}
+    local STATE_ROOT_HASH
+    local PATH_TO_NET="$(get_path_to_net)"
+    local STORAGE_PATH="$PATH_TO_NET/nodes/node-$IDX/storage"
+
+    VALIDATOR_SETUP_STRING=$(validators_string)
+
+    STATE_ROOT_HASH=$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')
+    log "... state root hash for node $IDX: $STATE_ROOT_HASH"
+
+    if [ -f "$STORAGE_PATH/$(get_chain_name)/data.lmdb" ]; then
+        GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$STORAGE_PATH"/"$(get_chain_name)")
+
+        GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$STORAGE_PATH"/"$(get_chain_name)") 
+    else
+        GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$STORAGE_PATH")
+
+        GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
+                change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$STORAGE_PATH")
+    fi
+
+    echo "$GLOBAL_STATE_VALIDATOR_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
+    echo "$GLOBAL_STATE_OUTPUT" >> "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
+}
+
 function setup_asset_global_state_toml() {
     log "... setting node global_state.toml"
 
     local COUNT_NODES=${1}
+    local COUNT_NODES_AT_GENESIS=$((COUNT_NODES / 2))
     local TARGET_PROTOCOL_VERSION
-    local IDX
-    local GLOBAL_STATE_OUTPUT
-    local GLOBAL_STATE_VALIDATOR_OUTPUT
-    local PATH_TO_NET="$(get_path_to_net)"
-    local STATE_ROOT_HASH
     local VERSION_14_BOUNDARY
-    local DATA_LMDB_PATH
 
     local SEMVER_GLOBAL_STATE_UPDATE_TOOL
     local SEMVER_STAGE_1_PRE_VERSION
@@ -496,33 +521,9 @@ function setup_asset_global_state_toml() {
     fi
 
     if [ "$VERSION_14_BOUNDARY" -eq "1" ]; then
-        for IDX in $(seq 1 "$COUNT_NODES")
+        for IDX in $(seq 1 "$COUNT_NODES_AT_GENESIS")
         do
-            STORAGE_PATH="$PATH_TO_NET/nodes/node-$IDX/storage"
-            DATA_LMDB_PATH="$STORAGE_PATH/data.lmdb"
-            log "... path to DB: $DATA_LMDB_PATH"
-
-            VALIDATOR_SETUP_STRING=$(validators_string)
-
-            STATE_ROOT_HASH=$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')
-            log "... state root hash for node $IDX: $STATE_ROOT_HASH"
-
-            if [ -f $DATA_LMDB_PATH ]; then
-                    GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                            migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage)
-
-                    GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                            change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage) 
-            else
-                    GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                            migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)
-
-                    GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                            change-validators $VALIDATOR_SETUP_STRING -s $STATE_ROOT_HASH -d "$PATH_TO_NET"/nodes/node-1/storage)
-            fi
-
-            echo "$GLOBAL_STATE_VALIDATOR_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
-            echo "$GLOBAL_STATE_OUTPUT" >> "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
+            setup_asset_global_state_toml_for_node $IDX $TARGET_PROTOCOL_VERSION
         done
     fi
 }
