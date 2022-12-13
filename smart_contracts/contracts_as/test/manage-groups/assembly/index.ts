@@ -97,7 +97,7 @@ export function remove_group_urefs(): void {
   }
   let groupName: String = fromBytesString(CL.getNamedArg(GROUP_NAME_ARG)).unwrap();
 
-  let decodeOrdinal = function (bytes: Array<u8>): Result<u64> { return fromBytesU64(StaticArray.fromArray(bytes)); }
+  let decodeOrdinal = function (bytes: StaticArray<u8>): Result<u64> { return fromBytesU64(bytes); }
 
   let ordinals = fromBytesArray(CL.getNamedArg(GROUP_NAME_ARG), decodeOrdinal);
 

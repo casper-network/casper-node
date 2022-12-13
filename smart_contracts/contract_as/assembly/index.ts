@@ -614,7 +614,7 @@ export function createContractUserGroup(packageHash: StaticArray<u8>, label: Str
   // it generates unreachable code. Anonymous functions seems to be working
   // consistently.
   let toBytesURef = function (item: URef): Array<u8> { return item.toBytes(); }
-  let fromBytesURef = function (bytes: Array<u8>): Result<URef> { return URef.fromBytes(StaticArray.fromArray(bytes)); }
+  let fromBytesURef = function (bytes: StaticArray<u8>): Result<URef> { return URef.fromBytes(bytes); }
 
   let existingUrefBytes: Array<u8> = toBytesVecT(existingURefs, toBytesURef);
 
@@ -637,6 +637,7 @@ export function createContractUserGroup(packageHash: StaticArray<u8>, label: Str
     unreachable();
   }
   let bytes = readHostBuffer(outputSize[0]);
+
   return fromBytesArray<URef>(bytes, fromBytesURef).unwrap();
 }
 

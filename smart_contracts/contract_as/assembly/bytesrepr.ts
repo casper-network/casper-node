@@ -349,7 +349,7 @@ export function toBytesVecT<T>(ts: Array<T>, encodeItem: (item: T) => Array<u8>)
  * @param bytes The array of bytes to be deserialized.
  * @param decodeItem A function deserializing a value of type `T`.
  */
-export function fromBytesArray<T>(bytes: StaticArray<u8>, decodeItem: (bytes: Array<u8>) => Result<T>): Result<Array<T>> {
+export function fromBytesArray<T>(bytes: StaticArray<u8>, decodeItem: (bytes: StaticArray<u8>) => Result<T>): Result<Array<T>> {
     if (bytes.length < 4) {
         return new Result<Array<T>>(null, Error.EarlyEndOfStream, 0);
     }
@@ -366,7 +366,7 @@ export function fromBytesArray<T>(bytes: StaticArray<u8>, decodeItem: (bytes: Ar
     let result: Array<T> = new Array<T>();
 
     for (let i = 0; i < len; ++i) {
-        let decodeResult = decodeItem(head);
+        let decodeResult = decodeItem(StaticArray.fromArray(head));
         if (decodeResult.error != Error.Ok) {
             return new Result<Array<T>>(null, decodeResult.error, 0);
         }
@@ -382,7 +382,7 @@ export function fromBytesArray<T>(bytes: StaticArray<u8>, decodeItem: (bytes: Ar
 /**
  * Deserializes a list of strings from an array of bytes.
  */
-export function fromBytesStringList(bytes: Uint8Array): Result<Array<String>> {
+export function fromBytesStringList(bytes: StaticArray<u8>): Result<Array<String>> {
     return fromBytesArray(bytes, fromBytesString);
 }
 
