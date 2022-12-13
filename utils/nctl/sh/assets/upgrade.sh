@@ -88,7 +88,7 @@ function _generate_global_state_update() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash.
     local PARAMS
-    PARAMS="validators -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH}"
+    PARAMS="change-validators -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH}"
 
     # Add the parameters that define the new validators.
     # We're using the reserve validators, from NODE_COUNT+1 to NODE_COUNT*2.
