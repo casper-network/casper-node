@@ -226,6 +226,9 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     /// We want to disconnect from a sender of invalid data.
     Disconnect(NodeId),
     /// We added a proposed block to the protocol state.
+    ///
+    /// This is used to inform the deploy buffer, so we don't propose the same deploys again.
+    /// Does not need to be raised for proposals this node created itself.
     HandledProposedBlock(ProposedBlock<C>),
 }
 
