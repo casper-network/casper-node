@@ -488,9 +488,11 @@ impl ContractRuntime {
                             .lock()
                             .expect("components::contract_runtime: couldn't enqueue block for execution; mutex poisoned")
                             .insert(finalized_block_height, (finalized_block, deploys));
-                        self.metrics.exec_queue_size.inc();
                     }
                 }
+                self.metrics
+                    .exec_queue_size
+                    .set(self.queue_depth().try_into().unwrap_or(i64::MIN));
                 effects
             }
             ContractRuntimeRequest::GetBids {
