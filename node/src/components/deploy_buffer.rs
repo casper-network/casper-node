@@ -100,7 +100,7 @@ impl DeployBuffer {
     /// which is the switch block's timestamp. A deploy D in a block B cannot have timed out as of
     /// B's timestamp, so it cannot be older than T - ttl, where ttl is the maximum deploy
     /// time-to-live. So if D were also in an earlier block C, then C's timestamp would be at
-    /// least T - ttl. Thus to prevent replays, we need all blocks with a timetstamp between
+    /// least T - ttl. Thus to prevent replays, we need all blocks with a timestamp between
     /// T - ttl and T.
     ///
     /// Note that we don't need to already have any blocks from E itself, since the consensus
