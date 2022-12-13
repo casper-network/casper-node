@@ -1316,7 +1316,7 @@ function get_client_subcommand_list() {
     local OUTPUT
     OUTPUT=$($(get_path_to_client) --help \
         | awk -v RS= 'NR==3' \
-        | sed -e 's/^[ \t]*//' \
+        | sed -e '/^[ \t]\{3,\}/d' \
         | awk '{print $1}' \
         | sed -n '1!p' \
         | sort \
