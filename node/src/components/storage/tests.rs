@@ -95,7 +95,6 @@ fn create_sync_leap_test_chain(
         None,
         None,
         maybe_recent_era_count,
-        false,
     );
 
     let mut trusted_validator_weights = BTreeMap::new();
@@ -204,7 +203,6 @@ fn storage_fixture_from_parts(
     network_name: Option<&str>,
     max_ttl: Option<TimeDiff>,
     recent_era_count: Option<u64>,
-    force_resync: bool,
 ) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
@@ -216,7 +214,7 @@ fn storage_fixture_from_parts(
         max_ttl.unwrap_or(MAX_TTL),
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
         None,
-        force_resync,
+        false,
     )
     .expect("could not create storage component fixture from parts")
 }
@@ -262,7 +260,6 @@ fn storage_fixture_with_hard_reset(
         None,
         None,
         None,
-        false,
     )
 }
 
@@ -1671,17 +1668,14 @@ fn check_force_resync_with_pid_file() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
     let cfg = WithDir::new(harness.tmp.path(), new_config(&harness));
-    let force_resync_pid_file_path = storage
-        .root_path()
-        .join(FORCE_RESYNC_PID_FILE_NAME)
-        .to_path_buf();
+    let force_resync_pid_file_path = storage.root_path().join(FORCE_RESYNC_PID_FILE_NAME);
     assert!(!force_resync_pid_file_path.exists());
 
     // Add a couple of blocks into storage.
     let first_block = Block::random(&mut harness.rng);
     put_complete_block(&mut harness, &mut storage, Box::new(first_block.clone()));
     let second_block = Block::random(&mut harness.rng);
-    put_complete_block(&mut harness, &mut storage, Box::new(second_block.clone()));
+    put_complete_block(&mut harness, &mut storage, Box::new(second_block));
     // Make sure the completed blocks are not the default anymore.
     assert_ne!(
         storage.get_available_block_range(),
