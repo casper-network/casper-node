@@ -282,6 +282,7 @@ function test_put_deploy() {
         --chain-name "$CHAIN_NAME" \
         --payment-amount "$PAYMENT" \
         --session-path "$CONTRACT_PATH" \
+        --ttl '5minutes' \
         --secret-key "$SIGNER_SECRET_KEY_PATH")
 
     # Check client responded
@@ -332,6 +333,7 @@ function test_make_deploy() {
         --payment-amount "$PAYMENT" \
         --output "$DEPLOY_FILE" \
         --session-path "$CONTRACT_PATH" \
+        --ttl '5minutes' \
         --secret-key "$SIGNER_SECRET_KEY_PATH"
 
     # Test Valid JSON
@@ -414,6 +416,7 @@ function test_transfer() {
         --payment-amount "$PAYMENT" \
         --target-account "$TRANSFER_TO" \
         --secret-key "$SIGNER_SECRET_KEY_PATH" \
+        --ttl '5minutes' \
         --transfer-id "$TRANSFER_ID"
     )
 
@@ -806,6 +809,7 @@ function test_make_transfer() {
         --target-account "$TRANSFER_TO" \
         --secret-key "$SIGNER_SECRET_KEY_PATH" \
         --transfer-id "$TRANSFER_ID" \
+        --ttl '5minutes' \
         --output "$DEPLOY_FILE"
 
     # Test Valid JSON
