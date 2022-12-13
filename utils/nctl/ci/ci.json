@@ -2,7 +2,7 @@
     "external_deps": {
         "casper-client-rs": {
             "github_repo_url": "https://github.com/casper-ecosystem/casper-client-rs.git",
-            "branch": "dev"
+            "branch": "release-2.0.0"
         },
         "casper-node-launcher": {
             "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
