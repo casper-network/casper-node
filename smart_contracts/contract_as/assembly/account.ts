@@ -173,9 +173,22 @@ export function removeAssociatedKey(accountHash: AccountHash): RemoveKeyFailure 
  * @returns The [[URef]] that can be used to access the main purse.
  */
 export function getMainPurse(): URef {
-    let data = new Uint8Array(UREF_SERIALIZED_LENGTH);
-    data.fill(0);
-    externals.get_main_purse(data.dataStart);
+    const data = getMainPurseBytes();
     let urefResult = URef.fromBytes(data);
     return urefResult.unwrap();
+}
+
+/**
+ * Gets the [[URef]] representing the main purse of the account in raw bytes form.
+ *
+ * Useful in scenarios where main purse does not need to be parsed, and can be
+ * immediatelly passed in raw bytes form to avoid deserialization and serialization.
+ *
+ * @internal
+ * @returns The [[URef]] that can be used to access the main purse.
+ */
+ export function getMainPurseBytes(): StaticArray<u8> {
+    let data = new StaticArray<u8>(UREF_SERIALIZED_LENGTH);
+    externals.get_main_purse(changetype<usize>(data));
+    return data;
 }

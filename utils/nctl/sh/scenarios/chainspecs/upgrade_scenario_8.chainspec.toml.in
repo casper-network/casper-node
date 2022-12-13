@@ -129,7 +129,7 @@ local = 390
 # Global operations multiplier.
 global = 390
 # Control flow operations multiplier.
-control_flow = 440
+control_flow = 440000
 # Integer operations multiplier.
 integer_comparison = 250
 # Conversion operations multiplier.

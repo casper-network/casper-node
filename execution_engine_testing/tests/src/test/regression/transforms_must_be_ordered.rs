@@ -1,14 +1,16 @@
 //! Tests whether transforms produced by contracts appear ordered in the transform journal.
+use core::convert::TryInto;
+
+use rand::{rngs::StdRng, Rng, SeedableRng};
+
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::transform::Transform;
+use casper_execution_engine::{self, shared::transform::Transform};
 use casper_types::{
     runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef, U512,
 };
-use core::convert::TryInto;
-use rand::{rngs::StdRng, Rng, SeedableRng};
 
 #[ignore]
 #[test]
@@ -23,24 +25,15 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
 
     let mut rng = StdRng::seed_from_u64(0);
 
+    let execution_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        "ordered-transforms.wasm",
+        runtime_args! { "n" => N_UREFS },
+    )
+    .build();
+
     // Installs the contract and creates the URefs, all initialized to `0_i32`.
-    builder
-        .exec(
-            ExecuteRequestBuilder::from_deploy_item(
-                DeployItemBuilder::new()
-                    .with_address(*DEFAULT_ACCOUNT_ADDR)
-                    .with_empty_payment_bytes(runtime_args! {
-                        standard_payment::ARG_AMOUNT => U512::from(30_000_000_000_u64)
-                    })
-                    .with_session_code("ordered-transforms.wasm", runtime_args! { "n" => N_UREFS })
-                    .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-                    .with_deploy_hash(rng.gen())
-                    .build(),
-            )
-            .build(),
-        )
-        .expect_success()
-        .commit();
+    builder.exec(execution_request).expect_success().commit();
 
     let contract_hash: ContractHash = match builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
@@ -73,7 +66,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
                 DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
                     .with_empty_payment_bytes(runtime_args! {
-                        standard_payment::ARG_AMOUNT => U512::from(10_000_000_000_u64),
+                        standard_payment::ARG_AMOUNT => U512::from(150_000_000_000_u64),
                     })
                     .with_stored_session_hash(
                         contract_hash,

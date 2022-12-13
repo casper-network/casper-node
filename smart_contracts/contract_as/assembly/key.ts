@@ -4,7 +4,7 @@ import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
 import {CLValue} from "./clvalue";
 import {Error, ErrorCode} from "./error";
-import {checkTypedArrayEqual, typedToArray, encodeUTF8} from "./utils";
+import {checkTypedArrayEqual, typedToArray, encodeUTF8, checkArraysEqual} from "./utils";
 import {Ref} from "./ref";
 import {Result, Error as BytesreprError} from "./bytesrepr";
 import {PublicKey} from "./public_key";
@@ -30,12 +30,12 @@ export class AccountHash {
      *
      * @param bytes The bytes constituting the public key.
      */
-    constructor(public bytes: Uint8Array) {}
+    constructor(public bytes: Array<u8>) {}
 
     /** Checks whether two `AccountHash`s are equal. */
     @operator("==")
     equalsTo(other: AccountHash): bool {
-        return checkTypedArrayEqual(this.bytes, other.bytes);
+        return checkArraysEqual<u8, Array<u8>>(this.bytes, other.bytes);
     }
 
     /** Checks whether two `AccountHash`s are not equal. */
@@ -46,13 +46,13 @@ export class AccountHash {
 
     static fromPublicKey(publicKey: PublicKey) : AccountHash {
         let algorithmName = publicKey.getAlgorithmName();
-        let algorithmNameBytes = encodeUTF8(algorithmName);
+        let algorithmNameBytes = Uint8Array.wrap(encodeUTF8(algorithmName));
         let publicKeyBytes = publicKey.getRawBytes();
         let dataLength = algorithmNameBytes.length + publicKeyBytes.length + 1;
 
         let data = new Array<u8>(dataLength);
         for (let i=0; i < algorithmNameBytes.length; i++){
-            data[i]=algorithmNameBytes[i];
+            data[i] = algorithmNameBytes[i];
         }
 
         data[algorithmNameBytes.length] = 0;
@@ -67,12 +67,12 @@ export class AccountHash {
 
 
     /** Deserializes a `AccountHash` from an array of bytes. */
-    static fromBytes(bytes: Uint8Array): Result<AccountHash> {
+    static fromBytes(bytes: Array<u8>): Result<AccountHash> {
         if (bytes.length < 32) {
             return new Result<AccountHash>(null, BytesreprError.EarlyEndOfStream, 0);
         }
 
-        let accountHashBytes = bytes.subarray(0, 32);
+        let accountHashBytes = bytes.slice(0, 32);
         let accountHash = new AccountHash(accountHashBytes);
         let ref = new Ref<AccountHash>(accountHash);
         return new Result<AccountHash>(ref, BytesreprError.Ok, 32);
@@ -80,7 +80,7 @@ export class AccountHash {
 
     /** Serializes a `AccountHash` into an array of bytes. */
     toBytes(): Array<u8> {
-        return typedToArray(this.bytes);
+        return this.bytes;
     }
 }
 
@@ -90,7 +90,7 @@ export class AccountHash {
  */
 export class Key {
     variant: KeyVariant;
-    hash: Uint8Array | null;
+    hash: StaticArray<u8> | null;
     uref: URef | null;
     account: AccountHash | null;
 
@@ -103,7 +103,7 @@ export class Key {
     }
 
     /** Creates a `Key` from a given hash. */
-    static fromHash(hash: Uint8Array): Key {
+    static fromHash(hash: StaticArray<u8>): Key {
         let key = new Key();
         key.variant = KeyVariant.HASH_ID;
         key.hash = hash;
@@ -125,9 +125,9 @@ export class Key {
      */
     static create(value: CLValue): Key | null {
         const valueBytes = value.toBytes();
-        let urefBytes = new Uint8Array(UREF_SERIALIZED_LENGTH);
+        let urefBytes = new StaticArray<u8>(UREF_SERIALIZED_LENGTH);
         externals.new_uref(
-            urefBytes.dataStart,
+            changetype<usize>(urefBytes),
             valueBytes.dataStart,
             valueBytes.length
         );
@@ -139,7 +139,7 @@ export class Key {
     }
 
     /** Deserializes a `Key` from an array of bytes. */
-    static fromBytes(bytes: Uint8Array): Result<Key> {
+    static fromBytes(bytes: StaticArray<u8>): Result<Key> {
         if (bytes.length < 1) {
             return new Result<Key>(null, BytesreprError.EarlyEndOfStream, 0);
         }
@@ -147,16 +147,16 @@ export class Key {
         let currentPos = 1;
 
         if (tag == KeyVariant.HASH_ID) {
-            var hashBytes = bytes.subarray(1, 32 + 1);
+            var hashBytes = bytes.slice(1, 32 + 1);
             currentPos += 32;
 
-            let key = Key.fromHash(hashBytes);
+            let key = Key.fromHash(StaticArray.fromArray(hashBytes));
             let ref = new Ref<Key>(key);
             return new Result<Key>(ref, BytesreprError.Ok, currentPos);
         }
         else if (tag == KeyVariant.UREF_ID) {
-            var urefBytes = bytes.subarray(1);
-            var urefResult = URef.fromBytes(urefBytes);
+            var urefBytes = bytes.slice(1);
+            var urefResult = URef.fromBytes(StaticArray.fromArray(urefBytes));
             if (urefResult.error != BytesreprError.Ok) {
                 return new Result<Key>(null, urefResult.error, 0);
             }
@@ -165,7 +165,7 @@ export class Key {
             return new Result<Key>(ref, BytesreprError.Ok, currentPos + urefResult.position);
         }
         else if (tag == KeyVariant.ACCOUNT_ID) {
-            let accountHashBytes = bytes.subarray(1);
+            let accountHashBytes = bytes.slice(1);
             let accountHashResult = AccountHash.fromBytes(accountHashBytes);
             if (accountHashResult.hasError()) {
                 return new Result<Key>(null, accountHashResult.error, currentPos);
@@ -189,7 +189,7 @@ export class Key {
             return bytes;
         }
         else if (this.variant == KeyVariant.HASH_ID) {
-            var hashBytes = <Uint8Array>this.hash;
+            var hashBytes = <StaticArray<u8>>this.hash;
             let bytes = new Array<u8>(1 + hashBytes.length);
             bytes[0] = <u8>this.variant;
             for (let i = 0; i < hashBytes.length; i++) {
@@ -218,7 +218,7 @@ export class Key {
     }
 
     /** Reads the data stored under this `Key`. */
-    read(): Uint8Array | null {
+    read(): StaticArray<u8> | null {
         const keyBytes = this.toBytes();
         let valueSize = new Uint8Array(1);
         const ret = externals.read_value(keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
@@ -272,8 +272,7 @@ export class Key {
         }
         else if (this.variant == KeyVariant.HASH_ID) {
             if (other.variant == KeyVariant.HASH_ID) {
-                return checkTypedArrayEqual(<Uint8Array>this.hash, <Uint8Array>other.hash);
-
+                return checkArraysEqual<u8, StaticArray<u8>>(<StaticArray<u8>>this.hash, <StaticArray<u8>>other.hash);
             }
             else {
                 return false;
