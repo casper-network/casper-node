@@ -114,7 +114,7 @@ request_state_interval = '20sec'
 
 # Log inactive or faulty validators periodically, with this interval.
 # '0sec' means it is disabled and we never print the log message.
-log_participation_interval = '1min'
+log_participation_interval = '15sec'
 
 # Log the synchronizer state periodically, with this interval.
 # '0sec' means it is disabled and we never print the log message.

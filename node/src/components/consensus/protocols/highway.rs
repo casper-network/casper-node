@@ -544,6 +544,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             Vertex::Ping(ping) => trace!(?ping, "received ping"),
         }
     }
+
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
     /// Avoids multiple validation of the same vertex.
     fn pre_validate_vertex(
@@ -876,18 +877,16 @@ where
                 let next_time = timestamp + self.config.pending_vertex_timeout;
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
-            TIMER_ID_LOG_PARTICIPATION => {
-                self.log_participation();
-                match self.config.log_participation_interval {
-                    Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
-                        vec![ProtocolOutcome::ScheduleTimer(
-                            timestamp + interval,
-                            timer_id,
-                        )]
-                    }
-                    _ => vec![],
+            TIMER_ID_LOG_PARTICIPATION => match self.config.log_participation_interval {
+                Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
+                    self.log_participation();
+                    vec![ProtocolOutcome::ScheduleTimer(
+                        timestamp + interval,
+                        timer_id,
+                    )]
                 }
-            }
+                _ => vec![],
+            },
             TIMER_ID_REQUEST_STATE => self.handle_request_state_timer(timestamp),
             TIMER_ID_SYNCHRONIZER_LOG => {
                 self.synchronizer.log_len();
