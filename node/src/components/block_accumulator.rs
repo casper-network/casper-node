@@ -212,11 +212,6 @@ impl BlockAccumulator {
         }
     }
 
-    /// Gets local tip block_height if available.
-    pub(crate) fn local_tip(&self) -> Option<u64> {
-        self.local_tip.map(|lti| lti.height)
-    }
-
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
     pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
