@@ -149,7 +149,7 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         };
 
         if let Err(err) = item.validate(validation_metadata) {
-            debug!(%peer, %err, ?item, "peer sent invalid item, banning peer");
+            debug!(%peer, %err, ?item, "peer sent invalid item");
             effect_builder
                 .announce_block_peer_with_justification(
                     peer,

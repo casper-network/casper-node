@@ -38,8 +38,8 @@ pub(crate) enum SyncLeapValidationError {
     BlockWithMetadata(BlockHeaderWithMetadataValidationError),
     #[error("Too many switch blocks: leaping across that many eras is not allowed.")]
     TooManySwitchBlocks,
-    #[error("Too many trusted ancestor headers: no more than one era's worth is needed.")]
-    TooManyTrustedAncestors,
+    #[error("Too many trusted ancestor headers ({actual}): no more than one era's worth ({max}) is needed.")]
+    TooManyTrustedAncestors { actual: u64, max: u64 },
     #[error("Signed block headers present despite trusted_ancestor_only flag.")]
     UnexpectedSignedBlockHeaders,
 }
@@ -200,7 +200,10 @@ impl FetcherItem for SyncLeap {
             return Err(SyncLeapValidationError::TooManySwitchBlocks);
         }
         if self.trusted_ancestor_headers.len() as u64 > chainspec.max_blocks_per_era() {
-            return Err(SyncLeapValidationError::TooManyTrustedAncestors);
+            return Err(SyncLeapValidationError::TooManyTrustedAncestors {
+                actual: self.trusted_ancestor_headers.len() as u64,
+                max: chainspec.max_blocks_per_era(),
+            });
         }
         if self.trusted_ancestor_only && !self.signed_block_headers.is_empty() {
             return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
