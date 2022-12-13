@@ -9,7 +9,8 @@ pub(super) mod debug;
 mod era;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    cmp,
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     fs, io,
@@ -27,7 +28,7 @@ use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp, U512};
+use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -39,20 +40,20 @@ use crate::{
             },
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
-            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
-            ReactorEventT, ResolveValidity, TimerId,
+            ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
+            Event, HighwayProtocol, NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
         },
         network::blocklist::BlocklistJustification,
     },
     effect::{
         announcements::FatalAnnouncement,
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
-    fatal,
+    fatal, protocol,
     types::{
-        BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployOrTransferHash,
-        FinalizedApprovals, FinalizedBlock, NodeId,
+        chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
+        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, NodeId,
     },
     NodeRng,
 };
@@ -63,6 +64,8 @@ use crate::components::consensus::error::CreateNewEraError;
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
+/// A warning is printed if a timer is delayed by more than this.
+const TIMER_DELAY_WARNING_MILLIS: u64 = 1000;
 
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
@@ -72,23 +75,6 @@ pub(super) const PAST_EVIDENCE_ERAS: u64 = 1;
 /// The more recent half of these is active: it contains units and can still accept further units.
 /// The older half is in evidence-only state, and only used to validate cited evidence.
 pub(super) const PAST_OPEN_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
-
-type ConsensusConstructor = dyn Fn(
-        Digest,                    // the era's unique instance ID
-        BTreeMap<PublicKey, U512>, // validator weights
-        &HashSet<PublicKey>,       /* faulty validators that are banned in
-                                    * this era */
-        &HashSet<PublicKey>, // inactive validators that can't be leaders
-        &Chainspec,          // the network's chainspec
-        &Config,             // The consensus part of the node config.
-        Option<&dyn ConsensusProtocol<ClContext>>, // previous era's consensus instance
-        Timestamp,           // start time for this era
-        u64,                 // random seed
-        Timestamp,           // now timestamp
-    ) -> (
-        Box<dyn ConsensusProtocol<ClContext>>,
-        Vec<ProtocolOutcome<ClContext>>,
-    ) + Send;
 
 #[derive(DataSize)]
 pub struct EraSupervisor {
@@ -108,8 +94,6 @@ pub struct EraSupervisor {
     public_signing_key: PublicKey,
     chainspec: Arc<Chainspec>,
     config: Config,
-    #[data_size(skip)] // Negligible for most closures, zero for functions.
-    new_consensus: Box<ConsensusConstructor>,
     /// The height of the next block to be finalized.
     /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
     /// finalized when we request a new block. This way the Block Proposer can know whether it's up
@@ -143,9 +127,9 @@ impl EraSupervisor {
         config: Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
-        new_consensus: Box<ConsensusConstructor>,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
+        std::fs::create_dir_all(&unit_files_folder)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 
@@ -155,7 +139,6 @@ impl EraSupervisor {
             public_signing_key,
             chainspec,
             config,
-            new_consensus,
             next_block_height: 0,
             metrics,
             unit_files_folder,
@@ -301,25 +284,21 @@ impl EraSupervisor {
         (era_id.value()..=era_id.value().saturating_add(num_eras)).map(EraId::from)
     }
 
-    /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
-    /// block execution has caught up with finalization.
-    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-    fn executed_block(&mut self, block_header: &BlockHeader) {
-        self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
-        self.next_block_height = self.next_block_height.max(self.next_executed_height);
-        self.update_consensus_pause();
-    }
-
     /// Pauses or unpauses consensus: Whenever the last executed block is too far behind the last
     /// finalized block, we suspend consensus.
-    fn update_consensus_pause(&mut self) {
+    fn update_consensus_pause<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+    ) -> Effects<Event> {
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
-            > self.config.highway.max_execution_delay;
-        if let Some(era) = self.open_eras.values_mut().last() {
-            era.set_paused(paused)
-        }
+            > self.config.max_execution_delay;
+        self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
+            consensus.set_paused(paused, Timestamp::now())
+        })
     }
 
     /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
@@ -453,18 +432,34 @@ impl EraSupervisor {
             .collect();
 
         // Create and insert the new era instance.
-        let (consensus, mut outcomes) = (self.new_consensus)(
-            instance_id,
-            validators.clone(),
-            &faulty,
-            &inactive,
-            self.chainspec.as_ref(),
-            &self.config,
-            maybe_prev_era.map(|prev_era| &*prev_era.consensus),
-            start_time,
-            seed,
-            now,
-        );
+        let (consensus, mut outcomes) = match self.chainspec.core_config.consensus_protocol {
+            ConsensusProtocolName::Highway => HighwayProtocol::new_boxed(
+                instance_id,
+                validators.clone(),
+                &faulty,
+                &inactive,
+                self.chainspec.as_ref(),
+                &self.config,
+                maybe_prev_era.map(|era| &*era.consensus),
+                start_time,
+                seed,
+                now,
+            ),
+            ConsensusProtocolName::Zug => Zug::new_boxed(
+                instance_id,
+                validators.clone(),
+                &faulty,
+                &inactive,
+                self.chainspec.as_ref(),
+                &self.config,
+                maybe_prev_era.map(|era| &*era.consensus),
+                start_time,
+                seed,
+                now,
+                self.unit_file(&instance_id),
+            ),
+        };
+
         let era = Era::new(
             consensus,
             start_time,
@@ -583,16 +578,26 @@ impl EraSupervisor {
     {
         match self.open_eras.get_mut(&era_id) {
             None => {
-                debug!(
-                    era = era_id.value(),
-                    "received message for uninitialized era"
-                );
+                self.log_missing_era(era_id);
                 Effects::new()
             }
             Some(era) => {
                 let outcomes = f(&mut *era.consensus, rng);
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
+        }
+    }
+
+    fn log_missing_era(&self, era_id: EraId) {
+        let era = era_id.value();
+        if let Some(current_era_id) = self.current_era() {
+            match era_id.cmp(&current_era_id) {
+                cmp::Ordering::Greater => info!(era, "received message for future era"),
+                cmp::Ordering::Equal => error!(era, "missing current era"),
+                cmp::Ordering::Less => info!(era, "received message for obsolete era"),
+            }
+        } else {
+            info!(era, "received message, but no era initialized");
         }
     }
 
@@ -604,8 +609,16 @@ impl EraSupervisor {
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event> {
-        self.delegate_to_era(effect_builder, rng, era_id, move |consensus, _| {
-            consensus.handle_timer(timestamp, timer_id)
+        let now = Timestamp::now();
+        let delay = now.saturating_diff(timestamp).millis();
+        if delay > TIMER_DELAY_WARNING_MILLIS {
+            warn!(
+                era = era_id.value(), timer_id = timer_id.0, %delay,
+                "timer called with long delay"
+            );
+        }
+        self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
+            consensus.handle_timer(timestamp, now, timer_id, rng)
         })
     }
 
@@ -630,8 +643,6 @@ impl EraSupervisor {
     ) -> Effects<Event> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
-                // If the era is already unbonded, only accept new evidence, because still-bonded
-                // eras could depend on that.
                 trace!(era = era_id.value(), "received a consensus message");
                 self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
                     consensus.handle_message(rng, sender, payload, Timestamp::now())
@@ -655,6 +666,41 @@ impl EraSupervisor {
                         .collect()
                 }
             },
+        }
+    }
+
+    pub(super) fn handle_demand<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        request: ConsensusRequestMessage,
+        auto_closing_responder: AutoClosingResponder<protocol::Message>,
+    ) -> Effects<Event> {
+        let ConsensusRequestMessage { era_id, payload } = request;
+        trace!(era = era_id.value(), "received a consensus request");
+        match self.open_eras.get_mut(&era_id) {
+            None => {
+                self.log_missing_era(era_id);
+                auto_closing_responder.respond_none().ignore()
+            }
+            Some(era) => {
+                let (outcomes, response) =
+                    era.consensus
+                        .handle_request_message(rng, sender, payload, Timestamp::now());
+                let mut effects =
+                    self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes);
+                if let Some(payload) = response {
+                    effects.extend(
+                        auto_closing_responder
+                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
+                            .ignore(),
+                    );
+                } else {
+                    effects.extend(auto_closing_responder.respond_none().ignore());
+                }
+                effects
+            }
         }
     }
 
@@ -692,13 +738,14 @@ impl EraSupervisor {
     pub(super) fn handle_block_added<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
         block_header: BlockHeader,
     ) -> Effects<Event> {
+        self.next_executed_height = self
+            .next_executed_height
+            .max(block_header.height().saturating_add(1));
         let era_id = block_header.era_id();
-        self.executed_block(&block_header);
-        self.last_progress = Timestamp::now();
-
-        let mut effects = Effects::new();
+        let mut effects = self.update_consensus_pause(effect_builder, rng, era_id);
 
         if self
             .current_era()
@@ -844,12 +891,6 @@ impl EraSupervisor {
             }
         };
         match consensus_result {
-            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => effect_builder
-                .announce_block_peer_with_justification(
-                    sender,
-                    BlocklistJustification::SentInvalidConsensusMessage { error },
-                )
-                .ignore(),
             ProtocolOutcome::Disconnect(sender) => {
                 warn!(
                     %sender,
@@ -872,10 +913,25 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder.send_message(to, message.into()).ignore()
+                effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
+                async move {
+                    let peers = effect_builder.get_fully_connected_peers(1).await;
+                    if let Some(to) = peers.into_iter().next() {
+                        effect_builder.enqueue_message(to, message.into()).await;
+                    }
+                }
+                .ignore()
+            }
+            ProtocolOutcome::CreatedTargetedRequest(payload, to) => {
+                let message = ConsensusRequestMessage { era_id, payload };
+                effect_builder.enqueue_message(to, message.into()).ignore()
+            }
+            ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
+                let message = ConsensusRequestMessage { era_id, payload };
 
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
@@ -963,9 +1019,9 @@ impl EraSupervisor {
                     proposer,
                 );
                 info!(
-                    era_id = ?finalized_block.era_id(),
-                    height = ?finalized_block.height(),
-                    timestamp = ?finalized_block.timestamp(),
+                    era_id = finalized_block.era_id().value(),
+                    height = finalized_block.height(),
+                    timestamp = %finalized_block.timestamp(),
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
@@ -979,7 +1035,9 @@ impl EraSupervisor {
                     execute_finalized_block(effect_builder, finalized_approvals, finalized_block)
                         .ignore(),
                 );
-                self.update_consensus_pause();
+                let effects_from_updating_pause =
+                    self.update_consensus_pause(effect_builder, rng, era_id);
+                effects.extend(effects_from_updating_pause);
                 effects
             }
             ProtocolOutcome::ValidateConsensusValue {

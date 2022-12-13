@@ -37,10 +37,15 @@ use casper_types::{
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
 pub use self::error::Error;
 pub(crate) use self::{
-    accounts_config::AccountsConfig, activation_point::ActivationPoint,
-    chainspec_raw_bytes::ChainspecRawBytes, core_config::CoreConfig, deploy_config::DeployConfig,
-    global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
-    network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig,
+    activation_point::ActivationPoint,
+    chainspec_raw_bytes::ChainspecRawBytes,
+    core_config::{ConsensusProtocolName, CoreConfig},
+    deploy_config::DeployConfig,
+    global_state_update::GlobalStateUpdate,
+    highway_config::HighwayConfig,
+    network_config::NetworkConfig,
+    protocol_config::ProtocolConfig,
 };
 use crate::utils::Loadable;
 
@@ -80,10 +85,37 @@ impl Chainspec {
             );
         }
 
-        let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
-        self.core_config.is_valid(min_era_ms)
-            && self.protocol_config.is_valid()
-            && self.highway_config.is_valid()
+        if self.core_config.unbonding_delay <= self.core_config.auction_delay {
+            warn!(
+                "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
+                self.core_config.unbonding_delay, self.core_config.auction_delay);
+            return false;
+        }
+
+        // If the era duration is set to zero, we will treat it as explicitly stating that eras
+        // should be defined by height only.
+        if self.core_config.era_duration.millis() > 0
+            && self.core_config.era_duration
+                < self.core_config.minimum_block_time * self.core_config.minimum_era_height
+        {
+            warn!("era duration is less than minimum era height * block time!");
+        }
+
+        if self.core_config.consensus_protocol == ConsensusProtocolName::Highway {
+            if self.core_config.minimum_block_time > self.highway_config.maximum_round_length {
+                error!(
+                    minimum_block_time = %self.core_config.minimum_block_time,
+                    maximum_round_length = %self.highway_config.maximum_round_length,
+                    "minimum_block_time must be less or equal than maximum_round_length",
+                );
+                return false;
+            }
+            if !self.highway_config.is_valid() {
+                return false;
+            }
+        }
+
+        self.protocol_config.is_valid() && self.core_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -145,7 +177,7 @@ impl Chainspec {
     /// height.
     pub(crate) fn max_blocks_per_era(&self) -> u64 {
         let era_millis = self.core_config.era_duration.millis();
-        let round_millis = self.highway_config.min_round_length().millis();
+        let round_millis = self.core_config.minimum_block_time.millis();
         // If the last block was above minimum era height, its predecessor's timestamp must have
         // been less than era_millis, if the era start was at 0.
         let latest_timestamp = era_millis.saturating_add(round_millis).saturating_sub(1);
@@ -429,11 +461,13 @@ mod tests {
         assert_eq!(spec.core_config.era_duration, TimeDiff::from(180000));
         assert_eq!(spec.core_config.minimum_era_height, 9);
         assert_eq!(
-            spec.highway_config.finality_threshold_fraction,
+            spec.core_config.finality_threshold_fraction,
             Ratio::new(2, 25)
         );
-        assert_eq!(spec.highway_config.minimum_round_exponent, 14);
-        assert_eq!(spec.highway_config.maximum_round_exponent, 19);
+        assert_eq!(
+            spec.highway_config.maximum_round_length,
+            TimeDiff::from(525000)
+        );
         assert_eq!(
             spec.highway_config.reduced_reward_multiplier,
             Ratio::new(1, 5)
@@ -466,6 +500,21 @@ mod tests {
         let mut rng = crate::new_rng();
         let chainspec = Chainspec::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&chainspec);
+    }
+
+    #[test]
+    fn should_validate_round_length() {
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        // Minimum block time greater than maximum round length.
+        chainspec.core_config.consensus_protocol = ConsensusProtocolName::Highway;
+        chainspec.core_config.minimum_block_time = TimeDiff::from(8);
+        chainspec.highway_config.maximum_round_length = TimeDiff::from(7);
+        assert!(!chainspec.is_valid());
+
+        chainspec.core_config.minimum_block_time = TimeDiff::from(7);
+        chainspec.highway_config.maximum_round_length = TimeDiff::from(7);
+        assert!(chainspec.is_valid());
     }
 
     #[ignore = "We probably need to reconsider our approach here"]
@@ -505,7 +554,7 @@ mod tests {
         chainspec.core_config.era_duration = TimeDiff::from(3);
         chainspec.core_config.minimum_era_height = 3;
         // Round length 4.
-        chainspec.highway_config.minimum_round_exponent = 2;
+        chainspec.core_config.minimum_block_time = TimeDiff::from(4);
         // Minimum height is the limiting factor: Three rounds don't fit in 3 ms.
         assert_eq!(3, chainspec.max_blocks_per_era());
 

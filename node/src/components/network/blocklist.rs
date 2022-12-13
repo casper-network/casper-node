@@ -47,13 +47,6 @@ pub(crate) enum BlocklistJustification {
         /// The era for which the invalid value was destined.
         era: EraId,
     },
-    /// An invalid consensus message was received.
-    SentInvalidConsensusMessage {
-        /// Actual validation error.
-        #[serde(skip_serializing)]
-        #[data_size(skip)]
-        error: anyhow::Error,
-    },
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
     /// Peer is on the wrong network.
@@ -93,9 +86,6 @@ impl Display for BlocklistJustification {
             }
             BlocklistJustification::SentInvalidConsensusValue { era } => {
                 write!(f, "sent an invalid consensus value in {}", era)
-            }
-            BlocklistJustification::SentInvalidConsensusMessage { error } => {
-                write!(f, "sent an invalid consensus message: {}", error)
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")

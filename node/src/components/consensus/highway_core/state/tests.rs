@@ -7,7 +7,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use rand::{Rng, RngCore};
 
 use super::*;
 use crate::components::consensus::{
@@ -33,9 +32,9 @@ pub(crate) const HANNA: ValidatorIndex = ValidatorIndex(7);
 pub(crate) const N: Observation<TestContext> = Observation::None;
 pub(crate) const F: Observation<TestContext> = Observation::Faulty;
 
-const TEST_MIN_ROUND_EXP: u8 = 4;
-const TEST_MAX_ROUND_EXP: u8 = 19;
-const TEST_INIT_ROUND_EXP: u8 = 4;
+const TEST_MIN_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 4);
+const TEST_MAX_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 19);
+const TEST_INIT_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 4);
 const TEST_ERA_HEIGHT: u64 = 5;
 
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -124,9 +123,9 @@ pub(crate) fn test_params(seed: u64) -> Params {
         seed,
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
-        TEST_MIN_ROUND_EXP,
-        TEST_MAX_ROUND_EXP,
-        TEST_INIT_ROUND_EXP,
+        TEST_MIN_ROUND_LEN,
+        TEST_MAX_ROUND_LEN,
+        TEST_INIT_ROUND_LEN,
         TEST_ERA_HEIGHT,
         Timestamp::from(0),
         Timestamp::from(0),
@@ -171,9 +170,9 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     //          \  /
     // Carol:    c0
     let a0 = add_unit!(state, ALICE, 0xA; N, N, N)?;
-    let b0 = add_unit!(state, BOB, 48, 4u8, 0xB; N, N, N)?;
-    let c0 = add_unit!(state, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_unit!(state, BOB, 49, 4u8, None; N, b0, c0)?;
+    let b0 = add_unit!(state, BOB, 48, 0u8, 0xB; N, N, N)?;
+    let c0 = add_unit!(state, CAROL, 49, 0u8, None; N, b0, N)?;
+    let b1 = add_unit!(state, BOB, 49, 0u8, None; N, b0, c0)?;
     let _a1 = add_unit!(state, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
@@ -184,7 +183,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         value: None,
         seq_number: 3,
         timestamp: 51.into(),
-        round_exp: 4u8,
+        round_exp: 0u8,
         endorsed: BTreeSet::new(),
     };
     let unit = SignedWireUnit::new(wunit.clone().into_hashed(), &BOB_SEC);
@@ -199,18 +198,18 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     // Inconsistent panorama: If you see b1, you have to see c0, too.
     let maybe_err = add_unit!(state, CAROL, None; N, b1, N).err().map(unit_err);
     assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), maybe_err);
-    // And you can't make the round exponent too small
-    let maybe_err = add_unit!(state, CAROL, 50, 5u8, None; N, b1, c0)
+    // You can't change the round length within a round.
+    let maybe_err = add_unit!(state, CAROL, 50, 1u8, None; N, b1, c0)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), maybe_err);
-    // And you can't make the round exponent too big
-    let maybe_err = add_unit!(state, CAROL, 50, 40u8, None; N, b1, c0)
+    assert_eq!(Some(UnitError::RoundLengthChangedWithinRound), maybe_err);
+    // And you can't make the round length too big
+    let maybe_err = add_unit!(state, CAROL, 50, 36u8, None; N, b1, c0)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), maybe_err);
+    assert_eq!(Some(UnitError::RoundLengthGreaterThanMaximum), maybe_err);
     // After the round from 48 to 64 has ended, the exponent can change.
-    let c1 = add_unit!(state, CAROL, 65, 5u8, None; N, b1, c0)?;
+    let c1 = add_unit!(state, CAROL, 65, 1u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
@@ -242,9 +241,9 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         0,
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
-        4,
-        19,
-        4,
+        TimeDiff::from(1 << 4),
+        TimeDiff::from(1 << 19),
+        TimeDiff::from(1 << 4),
         u64::MAX,
         Timestamp::zero(),
         Timestamp::from(u64::MAX),
@@ -901,41 +900,4 @@ fn test_leader() {
             .map(|r_id| state.leader(r_id.into()).0)
             .collect_vec()
     );
-}
-
-#[test]
-fn test_leader_prng() {
-    let mut rng = crate::new_rng();
-
-    // Repeat a few times to make it likely that the inner loop runs more than once.
-    for _ in 0..10 {
-        let upper = rng.gen_range(1..u64::MAX);
-        let seed = rng.next_u64();
-
-        // This tests that the rand crate's gen_range implementation, which is used in
-        // leader_prng, doesn't change, and uses this algorithm:
-        // https://github.com/rust-random/rand/blob/73befa480c58dd0461da5f4469d5e04c564d4de3/src/distributions/uniform.rs#L515
-        let mut prng = ChaCha8Rng::seed_from_u64(seed);
-        let zone = upper << upper.leading_zeros(); // A multiple of upper that fits into a u64.
-        let expected = loop {
-            // Multiply a random u64 by upper. This is between 0 and u64::MAX * upper.
-            let prod = (prng.next_u64() as u128) * (upper as u128);
-            // So prod >> 64 is between 0 and upper - 1. Each interval from (N << 64) to
-            // (N << 64) + zone contains the same number of such values.
-            // If the value is in such an interval, return N + 1; otherwise retry.
-            if (prod as u64) < zone {
-                break (prod >> 64) as u64 + 1;
-            }
-        };
-
-        assert_eq!(expected, leader_prng(upper, seed));
-    }
-}
-
-#[test]
-fn test_leader_prng_values() {
-    // Test a few concrete values, to detect if the ChaCha8Rng impl changes.
-    assert_eq!(12578764544318200737, leader_prng(u64::MAX, 42));
-    assert_eq!(12358540700710939054, leader_prng(u64::MAX, 1337));
-    assert_eq!(4134160578770126600, leader_prng(u64::MAX, 0x1020304050607));
 }
