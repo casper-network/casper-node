@@ -4,7 +4,6 @@ mod panorama;
 mod params;
 mod tallies;
 mod unit;
-mod weight;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -12,7 +11,6 @@ pub(crate) mod tests;
 pub(crate) use params::Params;
 use quanta::Clock;
 use serde::{Deserialize, Serialize};
-pub(crate) use weight::Weight;
 
 pub(crate) use index_panorama::{IndexObservation, IndexPanorama};
 pub(crate) use panorama::{Observation, Panorama};
@@ -26,8 +24,6 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::{error, info, trace, warn};
 
@@ -39,10 +35,11 @@ use crate::{
             endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
             highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
-            validators::{ValidatorIndex, ValidatorMap},
             ENABLE_ENDORSEMENTS,
         },
         traits::Context,
+        utils::{ValidatorIndex, ValidatorMap, Weight},
+        LeaderSequence,
     },
     utils::ds,
 };
@@ -59,7 +56,7 @@ pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 /// from them.
 const PING_TIMEOUT: u64 = 3;
 
-#[derive(Debug, Error, PartialEq, Clone)]
+#[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub(crate) enum UnitError {
     #[error("The unit is a ballot but doesn't cite any block.")]
     MissingBlock,
@@ -81,12 +78,10 @@ pub(crate) enum UnitError {
     InstanceId,
     #[error("The signature is invalid.")]
     Signature,
-    #[error("The round length exponent has somehow changed within a round.")]
-    RoundLengthExpChangedWithinRound,
-    #[error("The round length exponent is less than the minimum allowed by the chain-spec.")]
-    RoundLengthExpLessThanMinimum,
-    #[error("The round length exponent is greater than the maximum allowed by the chain-spec.")]
-    RoundLengthExpGreaterThanMaximum,
+    #[error("The round length has somehow changed within a round.")]
+    RoundLengthChangedWithinRound,
+    #[error("The round length is greater than the maximum allowed by the chainspec.")]
+    RoundLengthGreaterThanMaximum,
     #[error("This would be the third unit in that round. Only two are allowed.")]
     ThreeUnitsInRound,
     #[error(
@@ -152,11 +147,8 @@ where
     params: Params,
     /// The validator's voting weights.
     weights: ValidatorMap<Weight>,
-    /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
-    /// through `i`.
-    cumulative_w: ValidatorMap<Weight>,
-    /// Cumulative validator weights, but with the weight of banned validators set to `0`.
-    cumulative_w_leaders: ValidatorMap<Weight>,
+    /// The pseudorandom sequence of round leaders.
+    leader_sequence: LeaderSequence,
     /// All units imported so far, by hash.
     /// This is a downward closed set: A unit must only be added here once all of its dependencies
     /// have been added as well, and it has been fully validated.
@@ -170,9 +162,6 @@ where
     /// Every validator that has an equivocation in `units` must have an entry here, but there can
     /// be additional entries for other kinds of faults.
     faults: HashMap<ValidatorIndex, Fault<C>>,
-    /// A map with `true` for all validators that should be assign slots as leaders, and are
-    /// allowed to propose blocks.
-    can_propose: ValidatorMap<bool>,
     /// The full panorama, corresponding to the complete protocol state.
     /// This points to the latest unit of every honest validator.
     panorama: Panorama<C>,
@@ -212,25 +201,7 @@ impl<C: Context> State<C> {
             weights.len() > 0,
             "cannot initialize Highway with no validators"
         );
-        let sums = |mut sums: Vec<Weight>, w: Weight| {
-            let sum = sums.last().copied().unwrap_or(Weight(0));
-            sums.push(sum.checked_add(w).expect("total weight must be < 2^64"));
-            sums
-        };
-        let cumulative_w = ValidatorMap::from(weights.iter().copied().fold(vec![], sums));
-        assert!(
-            *cumulative_w.as_ref().last().unwrap() > Weight(0),
-            "total weight must not be zero"
-        );
         let mut panorama = Panorama::new(weights.len());
-        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
-        for idx in cannot_propose {
-            assert!(
-                idx.0 < weights.len() as u32,
-                "invalid validator index for exclusion from leader sequence"
-            );
-            can_propose[idx] = false;
-        }
         let faults: HashMap<_, _> = banned.into_iter().map(|idx| (idx, Fault::Banned)).collect();
         for idx in faults.keys() {
             assert!(
@@ -239,23 +210,25 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
-        let cumulative_w_leaders = weights
-            .enumerate()
-            .map(|(idx, weight)| can_propose[idx].then(|| *weight).unwrap_or(Weight(0)))
-            .fold(vec![], sums)
-            .into();
+        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
+        for idx in cannot_propose {
+            assert!(
+                idx.0 < weights.len() as u32,
+                "invalid validator index for exclusion from leader sequence"
+            );
+            can_propose[idx] = false;
+        }
+        let leader_sequence = LeaderSequence::new(params.seed(), &weights, can_propose);
         let pings = iter::repeat(params.start_timestamp())
             .take(weights.len())
             .collect();
         State {
             params,
             weights,
-            cumulative_w,
-            cumulative_w_leaders,
+            leader_sequence,
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
-            can_propose,
             panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
@@ -301,11 +274,7 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self
-            .cumulative_w
-            .as_ref()
-            .last()
-            .expect("weight list cannot be empty")
+        self.leader_sequence.total_weight()
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -426,37 +395,7 @@ impl<C: Context> State<C> {
     /// validators' slots never get reassigned to someone else, even if after the fact someone is
     /// excluded as a leader.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
-        // The binary search cannot return None; if it does, it's a programming error. In that case,
-        // we want the tests to panic but production to pick a default.
-        let panic_or_0 = || {
-            if cfg!(test) {
-                panic!("random number out of range");
-            } else {
-                error!("random number out of range");
-                ValidatorIndex(0)
-            }
-        };
-        let seed = self.params.seed().wrapping_add(timestamp.millis());
-        // We select a random one out of the `total_weight` weight units, starting numbering at 1.
-        let r = Weight(leader_prng(self.total_weight().0, seed));
-        // The weight units are subdivided into intervals that belong to some validator.
-        // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
-        // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
-        // who owns the randomly selected weight unit.
-        let leader_index = self
-            .cumulative_w
-            .binary_search(&r)
-            .unwrap_or_else(panic_or_0);
-        if self.can_propose[leader_index] {
-            return leader_index;
-        }
-        // If the selected leader is excluded, we reassign the slot to someone else. This time we
-        // consider only the non-banned validators.
-        let total_w_leaders = *self.cumulative_w_leaders.as_ref().last().unwrap();
-        let r = Weight(leader_prng(total_w_leaders.0, seed.wrapping_add(1)));
-        self.cumulative_w_leaders
-            .binary_search(&r)
-            .unwrap_or_else(panic_or_0)
+        self.leader_sequence.leader(timestamp.millis())
     }
 
     /// Adds the unit to the protocol state.
@@ -686,6 +625,8 @@ impl<C: Context> State<C> {
         let maybe_block = self.maybe_block(hash);
         let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
+        let round_exp =
+            (unit.round_len() / self.params().min_round_length()).trailing_zeros() as u8;
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
             creator: unit.creator,
@@ -693,7 +634,7 @@ impl<C: Context> State<C> {
             value,
             seq_number: unit.seq_number,
             timestamp: unit.timestamp,
-            round_exp: unit.round_exp,
+            round_exp,
             endorsed,
         };
         Some(SignedWireUnit {
@@ -768,11 +709,12 @@ impl<C: Context> State<C> {
         if Some(&Fault::Banned) == self.faults.get(&creator) {
             return Err(UnitError::Banned);
         }
-        if wunit.round_exp < self.params.min_round_exp() {
-            return Err(UnitError::RoundLengthExpLessThanMinimum);
-        }
-        if wunit.round_exp > self.params.max_round_exp() {
-            return Err(UnitError::RoundLengthExpGreaterThanMaximum);
+        let rl_millis = self.params.min_round_length().millis();
+        #[allow(clippy::integer_arithmetic)] // We check for overflow before the left shift.
+        if wunit.round_exp as u32 > rl_millis.leading_zeros()
+            || rl_millis << wunit.round_exp > self.params.max_round_length().millis()
+        {
+            return Err(UnitError::RoundLengthGreaterThanMaximum);
         }
         if wunit.value.is_none() && !wunit.panorama.has_correct() {
             return Err(UnitError::MissingBlock);
@@ -802,15 +744,20 @@ impl<C: Context> State<C> {
         if wunit.seq_number != panorama.next_seq_num(self, creator) {
             return Err(UnitError::SequenceNumber);
         }
-        let r_id = round_id(timestamp, wunit.round_exp);
+        #[allow(clippy::integer_arithmetic)] // We checked for overflow in pre_validate_unit.
+        let round_len = TimeDiff::from(self.params.min_round_length().millis() << wunit.round_exp);
+        let r_id = round_id(timestamp, round_len);
         let maybe_prev_unit = wunit.previous().map(|vh| self.unit(vh));
         if let Some(prev_unit) = maybe_prev_unit {
-            if prev_unit.round_exp != wunit.round_exp {
-                // The round exponent must not change within a round: Even with respect to the
-                // greater of the two exponents, a round boundary must be between the units.
-                let max_re = prev_unit.round_exp.max(wunit.round_exp);
-                if prev_unit.timestamp >> max_re == timestamp >> max_re {
-                    return Err(UnitError::RoundLengthExpChangedWithinRound);
+            if prev_unit.round_len() != round_len {
+                // The round length must not change within a round: Even with respect to the
+                // greater of the two lengths, a round boundary must be between the units.
+                let max_rl = prev_unit.round_len().max(round_len);
+                #[allow(clippy::integer_arithmetic)] // max_rl is always greater than 0.
+                if prev_unit.timestamp.millis() / max_rl.millis()
+                    == timestamp.millis() / max_rl.millis()
+                {
+                    return Err(UnitError::RoundLengthChangedWithinRound);
                 }
             }
             // There can be at most two units per round: proposal/confirmation and witness.
@@ -874,7 +821,7 @@ impl<C: Context> State<C> {
     pub(super) fn is_correct_proposal(&self, unit: &Unit<C>) -> bool {
         !self.is_faulty(unit.creator)
             && self.leader(unit.timestamp) == unit.creator
-            && unit.timestamp == round_id(unit.timestamp, unit.round_exp)
+            && unit.timestamp == round_id(unit.timestamp, unit.round_len)
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
@@ -927,11 +874,6 @@ impl<C: Context> State<C> {
             next = self.block(current).parent();
             Some(current)
         })
-    }
-
-    /// Returns `true` if the state contains no units.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.units.is_empty()
     }
 
     /// Returns the number of units received.
@@ -1181,20 +1123,18 @@ impl<C: Context> State<C> {
     }
 }
 
-/// Returns the round length, given the round exponent.
-pub(crate) fn round_len(round_exp: u8) -> TimeDiff {
-    TimeDiff::from(1_u64.checked_shl(round_exp.into()).unwrap_or(u64::MAX))
-}
-
-/// Returns the time at which the round with the given timestamp and round exponent began.
+/// Returns the time at which the round with the given timestamp and round length began.
 ///
-/// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
+/// The boundaries of rounds with length `l` are multiples of that length, in
 /// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
-/// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(crate) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
-    // The greatest multiple less or equal to the timestamp is the timestamp with the last
-    // `round_exp` bits set to zero.
-    (timestamp >> round_exp) << round_exp
+/// of `l` that is less or equal to `timestamp`.
+pub(crate) fn round_id(timestamp: Timestamp, round_len: TimeDiff) -> Timestamp {
+    if round_len.millis() == 0 {
+        error!("called round_id with round_len 0.");
+        return timestamp;
+    }
+    #[allow(clippy::integer_arithmetic)] // Checked for division by 0 above.
+    Timestamp::from((timestamp.millis() / round_len.millis()) * round_len.millis())
 }
 
 /// Returns the base-2 logarithm of `x`, rounded down, i.e. the greatest `i` such that
@@ -1207,11 +1147,4 @@ fn log2(x: u64) -> u32 {
         .unwrap_or(0)
         .trailing_zeros()
         .saturating_sub(1)
-}
-
-/// Returns a pseudorandom `u64` between `1` and `upper` (inclusive).
-fn leader_prng(upper: u64, seed: u64) -> u64 {
-    ChaCha8Rng::seed_from_u64(seed)
-        .gen_range(0..upper)
-        .saturating_add(1)
 }

@@ -247,7 +247,7 @@ impl FetcherItem for SyncLeap {
                         for sigs in era_sigs {
                             if let Err(err) = utils::check_sufficient_block_signatures(
                                 validator_weights,
-                                chainspec.highway_config.finality_threshold_fraction,
+                                chainspec.core_config.finality_threshold_fraction,
                                 Some(sigs),
                             ) {
                                 return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(

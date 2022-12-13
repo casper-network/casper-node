@@ -12,7 +12,7 @@ use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{
@@ -106,8 +106,8 @@ impl TestChain {
         let delegators = vec![];
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
-        // Make the genesis timestamp 10 seconds from now, to allow for all validators to start up.
-        let genesis_time = Timestamp::now() + 10000.into();
+        // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
+        let genesis_time = Timestamp::now() + TimeDiff::from_seconds(60);
         info!(
             "creating test chain configuration, genesis: {}",
             genesis_time
@@ -115,7 +115,7 @@ impl TestChain {
         chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
 
         chainspec.core_config.minimum_era_height = 1;
-        chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.core_config.finality_threshold_fraction = Ratio::new(34, 100);
         chainspec.core_config.era_duration = 10.into();
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
@@ -218,10 +218,11 @@ fn is_ping(event: &MainEvent) -> bool {
         ..
     }) = event
     {
-        let msg = bincode::deserialize(payload).unwrap();
         return matches!(
-            msg,
-            HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(_))
+            payload.clone().try_into_highway(),
+            Ok(HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(
+                _
+            )))
         );
     }
     false
@@ -317,14 +318,14 @@ async fn run_network() {
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(1)),
-        Duration::from_secs(300),
+        Duration::from_secs(1000),
     )
     .await;
 
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(2)),
-        Duration::from_secs(300),
+        Duration::from_secs(1001),
     )
     .await;
 }
@@ -337,15 +338,22 @@ async fn run_equivocator_network() {
 
     let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
     let alice_public_key = PublicKey::from(&*alice_secret_key);
-    let size: usize = 2;
-    let mut keys: Vec<Arc<SecretKey>> = (1..size)
+    let bob_secret_key = Arc::new(SecretKey::random(&mut rng));
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    let size: usize = 3;
+    // Leave two free slots for Alice and Bob.
+    let mut keys: Vec<Arc<SecretKey>> = (2..size)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
         .collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100000u64)))
         .collect();
-    stakes.insert(PublicKey::from(&*alice_secret_key), U512::from(1u64));
+    stakes.insert(PublicKey::from(&*alice_secret_key), U512::from(1));
+    stakes.insert(PublicKey::from(&*bob_secret_key), U512::from(1));
+
+    // Here's where things go wrong: Bob doesn't run a node at all, and Alice runs two!
     keys.push(alice_secret_key.clone());
     keys.push(alice_secret_key);
 
@@ -353,13 +361,15 @@ async fn run_equivocator_network() {
     // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 10;
+    chain.chainspec_mut().highway_config.maximum_round_length =
+        chain.chainspec.core_config.minimum_block_time * 2;
     chain.chainspec_mut().core_config.validator_slots = size as u32;
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let min_round_len = chain.chainspec.highway_config.min_round_length();
+    let min_round_len = chain.chainspec.core_config.minimum_block_time;
     let mut maybe_first_message_time = None;
 
     let mut alice_reactors = net
@@ -432,7 +442,6 @@ async fn run_equivocator_network() {
         switch_blocks.equivocators(1 + offset),
         [alice_public_key.clone()]
     );
-    assert_eq!(switch_blocks.inactive_validators(1 + offset), []);
     assert!(bids[1 + offset as usize][&alice_public_key].inactive());
     assert!(switch_blocks
         .next_era_validators(1 + offset)
@@ -441,7 +450,6 @@ async fn run_equivocator_network() {
     // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
     assert_eq!(switch_blocks.equivocators(2 + offset), []);
-    assert_eq!(switch_blocks.inactive_validators(2 + offset), []);
     assert!(bids[2 + offset as usize][&alice_public_key].inactive());
     assert!(!switch_blocks
         .next_era_validators(2 + offset)
@@ -450,12 +458,21 @@ async fn run_equivocator_network() {
     // In era 3 she is not a validator anymore and her bid remains deactivated.
     if offset == 0 {
         assert_eq!(switch_blocks.equivocators(3), []);
-        assert_eq!(switch_blocks.inactive_validators(3), []);
         assert!(bids[3][&alice_public_key].inactive());
         assert!(!switch_blocks
             .next_era_validators(3)
             .contains_key(&alice_public_key));
     }
+
+    // Bob is inactive.
+    assert_eq!(
+        switch_blocks.inactive_validators(1),
+        [bob_public_key.clone()]
+    );
+    assert_eq!(
+        switch_blocks.inactive_validators(2),
+        [bob_public_key.clone()]
+    );
 
     // We don't slash, so the stakes are never reduced.
     for (public_key, stake) in &stakes {
@@ -476,7 +493,7 @@ async fn dont_upgrade_without_switch_block() {
     let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
-    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -522,7 +539,7 @@ async fn dont_upgrade_without_switch_block() {
     }
 
     // Run until the nodes shut down for the upgrade.
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(90);
     net.settle_on_exit(&mut rng, ExitCode::Success, timeout)
         .await;
 
@@ -561,7 +578,7 @@ async fn should_store_finalized_approvals() {
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = 0.into();
-    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
     chain.chainspec_mut().core_config.validator_slots = 1;
 
     let mut net = chain
@@ -573,7 +590,7 @@ async fn should_store_finalized_approvals() {
     net.settle_on(
         &mut rng,
         has_completed_era(EraId::from(0)),
-        Duration::from_secs(30),
+        Duration::from_secs(90),
     )
     .await;
 
@@ -651,7 +668,7 @@ async fn should_store_finalized_approvals() {
     }
 
     // Run until the deploy gets executed.
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(90);
     net.settle_on(
         &mut rng,
         |nodes| {
@@ -717,8 +734,8 @@ async fn empty_block_validation_regression() {
 
     // We make the first validator always accuse everyone else.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    chain.chainspec_mut().highway_config.minimum_round_exponent = 10; // 1 second
-    chain.chainspec_mut().highway_config.maximum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+    chain.chainspec_mut().highway_config.maximum_round_length = "1second".parse().unwrap();
     chain.chainspec_mut().core_config.minimum_era_height = 15;
     let mut net = chain
         .create_initialized_network(&mut rng)

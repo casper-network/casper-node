@@ -7,9 +7,9 @@ use crate::{
         highway_core::{
             highway::Highway,
             state::{Fault, State},
-            validators::ValidatorIndex,
         },
         traits::Context,
+        utils::ValidatorIndex,
     },
     utils::div_round,
 };

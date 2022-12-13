@@ -3,6 +3,7 @@
 use std::{collections::HashMap, mem};
 
 use datasize::DataSize;
+use either::Either;
 use once_cell::sync::OnceCell;
 use rand::{
     rngs::StdRng,
@@ -88,6 +89,18 @@ where
     T: DataSize,
 {
     cell.get().map_or(0, |value| value.estimate_heap_size())
+}
+
+pub(crate) fn maybe_either<T, U>(either: &Option<Either<T, U>>) -> usize
+where
+    T: DataSize,
+    U: DataSize,
+{
+    match either {
+        None => 0,
+        Some(Either::Left(left)) => left.estimate_heap_size(),
+        Some(Either::Right(right)) => right.estimate_heap_size(),
+    }
 }
 
 #[cfg(test)]

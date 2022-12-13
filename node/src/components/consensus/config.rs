@@ -7,7 +7,8 @@ use casper_types::{PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{
-        era_supervisor::PAST_EVIDENCE_ERAS, protocols::highway::config::Config as HighwayConfig,
+        era_supervisor::PAST_EVIDENCE_ERAS,
+        protocols::{highway::config::Config as HighwayConfig, zug::config::Config as ZugConfig},
         EraId,
     },
     types::Chainspec,
@@ -21,26 +22,36 @@ use crate::{
 pub(crate) struct Config {
     /// Path to secret key file.
     pub(crate) secret_key_path: External,
+    /// The maximum number of blocks by which execution is allowed to lag behind finalization.
+    /// If it is more than that, consensus will pause, and resume once the executor has caught up.
+    pub max_execution_delay: u64,
     /// Highway-specific node configuration.
+    #[serde(default)]
     pub(crate) highway: HighwayConfig,
+    /// Zug-specific node configuration.
+    #[serde(default)]
+    pub(crate) zug: ZugConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
             secret_key_path: External::Missing,
+            max_execution_delay: 3,
             highway: HighwayConfig::default(),
+            zug: ZugConfig::default(),
         }
     }
 }
 
+type LoadKeyError = LoadError<<Arc<SecretKey> as Loadable>::Error>;
+
 impl Config {
     /// Loads the secret key from the configuration file and derives the public key.
-    #[allow(clippy::type_complexity)]
     pub(crate) fn load_keys<P: AsRef<Path>>(
         &self,
         root: P,
-    ) -> Result<(Arc<SecretKey>, PublicKey), LoadError<<Arc<SecretKey> as Loadable>::Error>> {
+    ) -> Result<(Arc<SecretKey>, PublicKey), LoadKeyError> {
         let secret_signing_key: Arc<SecretKey> = self.secret_key_path.clone().load(root)?;
         let public_key: PublicKey = PublicKey::from(secret_signing_key.as_ref());
         Ok((secret_signing_key, public_key))

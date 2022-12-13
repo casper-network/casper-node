@@ -13,7 +13,7 @@ impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send
 
 /// The consensus value type, e.g. a list of transactions.
 pub trait ConsensusValueT:
-    Eq + Clone + Debug + Hash + Serialize + DeserializeOwned + Send + DataSize
+    Eq + Clone + Debug + Display + Hash + Serialize + DeserializeOwned + Send + DataSize
 {
     /// Returns whether the consensus value needs validation.
     fn needs_validation(&self) -> bool;

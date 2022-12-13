@@ -79,7 +79,7 @@ where
     pub(crate) async fn add_node<'a, 'b: 'a>(
         &'a mut self,
         rng: &'b mut TestRng,
-    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &'_ mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 

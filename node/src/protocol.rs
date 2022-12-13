@@ -20,9 +20,9 @@ use crate::{
     },
     effect::{
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
-            TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand,
+            TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
         AutoClosingResponder, EffectBuilder,
     },
@@ -35,6 +35,9 @@ pub(crate) enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
+    /// Consensus component demand.
+    #[from]
+    ConsensusRequest(consensus::ConsensusRequestMessage),
     /// Block gossiper component message.
     #[from]
     BlockGossiper(gossiper::Message<Block>),
@@ -70,9 +73,9 @@ impl Payload for Message {
     fn message_kind(&self) -> MessageKind {
         match self {
             Message::Consensus(_) => MessageKind::Consensus,
+            Message::ConsensusRequest(_) => MessageKind::Consensus,
             Message::BlockGossiper(_) => MessageKind::BlockGossip,
             Message::DeployGossiper(_) => MessageKind::DeployGossip,
-            Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy | Tag::LegacyDeploy => MessageKind::DeployTransfer,
@@ -85,6 +88,7 @@ impl Payload for Message {
                 Tag::BlockExecutionResults => MessageKind::BlockTransfer,
             },
             Message::FinalitySignature(_) => MessageKind::Consensus,
+            Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
         }
     }
 
@@ -93,6 +97,7 @@ impl Payload for Message {
         // during fast sync.
         match self {
             Message::Consensus(_) => false,
+            Message::ConsensusRequest(_) => false,
             Message::DeployGossiper(_) => false,
             Message::BlockGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
@@ -108,6 +113,7 @@ impl Payload for Message {
     fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Consensus(_) => weights.consensus,
+            Message::ConsensusRequest(_) => weights.consensus,
             Message::BlockGossiper(_) => weights.gossip,
             Message::DeployGossiper(_) => weights.gossip,
             Message::FinalitySignatureGossiper(_) => weights.gossip,
@@ -139,6 +145,7 @@ impl Payload for Message {
     fn is_unsafe_for_syncing_peers(&self) -> bool {
         match self {
             Message::Consensus(_) => false,
+            Message::ConsensusRequest(_) => false,
             Message::BlockGossiper(_) => false,
             Message::DeployGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
@@ -182,6 +189,7 @@ impl Debug for Message {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
+            Message::ConsensusRequest(c) => f.debug_tuple("ConsensusRequest").field(&c).finish(),
             Message::BlockGossiper(dg) => f.debug_tuple("BlockGossiper").field(&dg).finish(),
             Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
             Message::FinalitySignatureGossiper(sig) => f
@@ -213,6 +221,7 @@ impl Display for Message {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
+            Message::ConsensusRequest(consensus) => write!(f, "ConsensusRequest({})", consensus),
             Message::BlockGossiper(deploy) => write!(f, "BlockGossiper::{}", deploy),
             Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
             Message::FinalitySignatureGossiper(sig) => {
@@ -238,6 +247,7 @@ impl Display for Message {
 impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
+        + From<ConsensusDemand>
         + From<GossiperIncoming<Block>>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<FinalitySignature>>
@@ -252,6 +262,10 @@ where
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
+            Message::ConsensusRequest(_message) => {
+                // TODO: Remove this once from_incoming and try_demand_from_incoming are unified.
+                unreachable!("called from_incoming with a consensus request")
+            }
             Message::BlockGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
             Message::FinalitySignatureGossiper(message) => {
@@ -376,6 +390,16 @@ where
                     request_msg: TrieRequest(serialized_id),
                     auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                 });
+
+                Ok((ev, fut.boxed()))
+            }
+            Message::ConsensusRequest(request_msg) => {
+                let (ev, fut) =
+                    effect_builder.create_request_parts(move |responder| ConsensusDemand {
+                        sender,
+                        request_msg,
+                        auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                    });
 
                 Ok((ev, fut.boxed()))
             }
