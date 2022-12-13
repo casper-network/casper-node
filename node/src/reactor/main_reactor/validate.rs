@@ -103,13 +103,10 @@ impl MainReactor {
             return Ok(None);
         }
 
-        // use local tip if it is higher than highest switch block, otherwise highest switch block
-        let from_height = match self.block_accumulator.local_tip() {
-            Some(tip) => highest_switch_block_header.height().max(tip),
-            None => highest_switch_block_header.height(),
-        };
-
-        if self.deploy_buffer.have_full_ttl_of_deploys(from_height) {
+        if self
+            .deploy_buffer
+            .have_full_ttl_of_deploys(highest_switch_block_header)
+        {
             debug!("Validate: sufficient deploy TTL awareness to safely participate in consensus");
         } else {
             info!("Validate: insufficient deploy TTL awareness to safely participate in consensus");
