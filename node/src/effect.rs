@@ -1833,7 +1833,7 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<PeerBehaviorAnnouncement>,
     {
-        warn!(%offender, %justification, "peer will be blocked");
+        warn!(%offender, %justification, "banning peer");
         self.event_queue
             .schedule(
                 PeerBehaviorAnnouncement::OffenseCommitted {
