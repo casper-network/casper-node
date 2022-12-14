@@ -642,7 +642,9 @@ fn put_block_to_storage_and_mark_complete(
         async move {
             let block_height = block.height();
             let result = effect_builder.put_block_to_storage(block).await;
-            effect_builder.mark_block_completed(block_height).await;
+            effect_builder
+                .mark_block_completed_in_storage(block_height)
+                .await;
             result_sender
                 .send(result)
                 .expect("receiver should not be dropped yet");

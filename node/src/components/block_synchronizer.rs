@@ -590,7 +590,7 @@ impl BlockSynchronizer {
                         builder.set_in_flight_latch();
                         results.extend(
                             effect_builder
-                                .mark_block_completed(block_height)
+                                .mark_block_completed_in_storage(block_height)
                                 .event(move |_| Event::MarkBlockCompleted(block_hash)),
                         )
                     }

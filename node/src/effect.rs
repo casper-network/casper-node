@@ -923,7 +923,7 @@ impl<REv> EffectBuilder<REv> {
     /// Completion means that the block itself (along with its header) and all of its deploys have
     /// been persisted to storage and its global state root hash is missing no dependencies in the
     /// global state.
-    pub(crate) async fn mark_block_completed(self, block_height: u64)
+    pub(crate) async fn mark_block_completed_in_storage(self, block_height: u64)
     where
         REv: From<BlockCompleteConfirmationRequest>,
     {

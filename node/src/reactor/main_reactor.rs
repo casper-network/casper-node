@@ -25,6 +25,7 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{TimeDiff, Timestamp};
+use futures::FutureExt;
 
 use crate::{
     components::{
@@ -976,15 +977,26 @@ impl reactor::Reactor for MainReactor {
                     .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
                     .collect();
 
-                effects.extend(
-                    effect_builder
-                        .put_executed_block_to_storage(
-                            block.clone(),
-                            approvals_hashes,
-                            execution_results_map,
-                        )
-                        .ignore(),
-                );
+                {
+                    let block_height = block.header().height();
+                    let block = block.clone();
+                    effects.extend(
+                        effect_builder
+                            .put_executed_block_to_storage(
+                                block.clone(),
+                                approvals_hashes,
+                                execution_results_map,
+                            )
+                            .then(move |_| {
+                                effect_builder.mark_block_completed_in_storage(block_height)
+                            })
+                            .event(move |_| {
+                                MainEvent::MainReactorAnnouncement(
+                                    ReactorAnnouncement::CompletedBlock { block },
+                                )
+                            }),
+                    );
+                }
 
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
@@ -1014,14 +1026,6 @@ impl reactor::Reactor for MainReactor {
                     ));
                 }
 
-                effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock {
-                        block: block.clone(),
-                    }),
-                ));
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator.handle_event(
