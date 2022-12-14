@@ -12,8 +12,10 @@ use thiserror::Error;
 /// Failures that occur when trying to parse an incoming client message.
 #[derive(Debug, Error)]
 pub(super) enum Error {
+    /// Error processing a line using the shell-like lexer.
     #[error("failed to split line using shell lexing rules")]
     ShlexFailure,
+    /// Not a valid command input.
     #[error(transparent)]
     Invalid(#[from] structopt::clap::Error),
 }
