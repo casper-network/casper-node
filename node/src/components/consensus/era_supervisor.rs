@@ -488,7 +488,9 @@ impl EraSupervisor {
                 era.consensus.set_evidence_only();
             }
         } else {
-            self.metrics.current_era.set(era_id.value() as i64);
+            self.metrics
+                .consensus_current_era
+                .set(era_id.value() as i64);
             self.next_block_height = self.next_block_height.max(start_height);
             outcomes.extend(self.era_mut(era_id).consensus.handle_is_current(now));
             if !self.era(era_id).validators().contains_key(&our_id) {

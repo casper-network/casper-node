@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.  The format
 
 * Log messages for blocked nodes have been unified and reasons for blocking peers are better tracked.
 * `chain_height` metric is now deprecated and will be removed in the future. Please use `highest_available_block_height` instead.
+* Renamed `current_era` metric to `consensus_current_era`.
 
 ## [Unreleased]
 
