@@ -24,7 +24,10 @@ use super::{
 };
 use crate::{
     components::fetcher::FetchResponse,
-    effect::{requests::StorageRequest, Multiple},
+    effect::{
+        requests::{BlockCompleteConfirmationRequest, StorageRequest},
+        Multiple,
+    },
     storage::lmdb_ext::{deserialize_internal, serialize_internal},
     testing::{ComponentHarness, UnitTestEvent},
     types::{
@@ -378,15 +381,25 @@ fn get_highest_complete_block_header(
     response
 }
 
-/// Stores a block in a storage component.
+/// Stores a block in a storage component and mark it as complete.
 fn put_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block: Box<Block>,
 ) -> bool {
+    let block_height = block.height();
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutCompleteBlock { block, responder }.into()
+        StorageRequest::PutBlock { block, responder }.into()
     });
+    if response == true {
+        harness.send_request(storage, move |responder| {
+            BlockCompleteConfirmationRequest {
+                block_height,
+                responder,
+            }
+            .into()
+        });
+    }
     assert!(harness.is_idle());
     response
 }

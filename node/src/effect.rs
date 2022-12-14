@@ -1113,18 +1113,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given complete block into the linear block store.
-    pub(crate) async fn put_complete_block_to_storage(self, block: Box<Block>) -> bool
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::PutCompleteBlock { block, responder },
-            QueueKind::ToStorage,
-        )
-        .await
-    }
-
     /// Puts the given approvals hashes into the linear block store.
     pub(crate) async fn put_approvals_hashes_to_storage(
         self,

@@ -715,13 +715,6 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&*block)?).ignore()
             }
-            StorageRequest::PutCompleteBlock { block, responder } => {
-                let wrote = self.write_block(&*block)?;
-                if wrote {
-                    self.mark_block_complete(block.height())?;
-                }
-                responder.respond(wrote).ignore()
-            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
