@@ -385,7 +385,7 @@ impl MainReactor {
         match self.chainspec.ee_upgrade_config(
             *previous_block_header.state_root_hash(),
             previous_block_header.protocol_version(),
-            previous_block_header.era_id(),
+            self.chainspec.protocol_config.activation_point.era_id(),
             self.chainspec_raw_bytes.clone(),
         ) {
             Ok(cfg) => match self.contract_runtime.commit_upgrade(cfg) {
