@@ -286,6 +286,9 @@ impl Session {
                         let insights = effect_builder.get_network_insights().await;
                         self.send_to_client(writer, &insights).await?;
                     }
+                    Action::Stop { .. } => {
+                        todo!("not implemented yet");
+                    }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))
                             .await?;
