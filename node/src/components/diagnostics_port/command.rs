@@ -93,9 +93,11 @@ pub(super) enum Action {
     NetInfo,
     /// Stop the node at a certain condition.
     Stop {
-        /// When to stop the node. Supports `block:12345` for block height, `era:123` for eras,
-        /// `block:next` / `era:next` to stop on an upcoming block or eta, or `now` to stop
-        /// immediately. Defaults to `block:next`."
+        /// When to stop the node.
+        ///
+        /// Supports `block:12345` for block height, `era:123` for eras, `block:next` / `era:next`
+        /// to stop on an upcoming block or eta, or `now` to stop immediately. Defaults to
+        /// `block:next`."
         #[structopt(short, long, default_value)]
         at: StopAtSpec,
         /// Ignore all further options to stop and clear any currently scheduled stops.
