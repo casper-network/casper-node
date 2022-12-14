@@ -42,7 +42,19 @@ impl FromStr for StopAtSpec {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        return Err("not implemented yet".to_string());
+        match s {
+            "block:next" => Ok(StopAtSpec::NextBlock),
+            "era:next" => Ok(StopAtSpec::NextEra),
+            "now" => Ok(StopAtSpec::Immediately),
+            val if val.starts_with("block:") => u64::from_str(&val[6..])
+                .map_err(|err| format!("could not parse block height: {}", err))
+                .map(StopAtSpec::BlockHeight),
+            val if val.starts_with("era:") => u64::from_str(&val[4..])
+                .map_err(|err| format!("could not parse era id: {}", err))
+                .map(EraId::new)
+                .map(StopAtSpec::EraId),
+            _ => Err("invalid stop-at specification".to_string()),
+        }
     }
 }
 
@@ -77,5 +89,35 @@ mod tests {
             assert_eq!(stop_at, parsed);
         }
 
+        #[test]
+        fn string_fuzz_stop_at_spec(input in ".*") {
+            let outcome = StopAtSpec::from_str(&input);
+            println!("{:?}", outcome);
+        }
+
+        #[test]
+        fn prefixed_examples(input in "(era|block):.*") {
+            let outcome = StopAtSpec::from_str(&input);
+            println!("{:?}", outcome);
+            // Ensuring it does not crash from parsing.
+        }
+    }
+
+    #[test]
+    fn known_good_examples() {
+        assert_eq!(
+            Ok(StopAtSpec::NextBlock),
+            StopAtSpec::from_str("block:next")
+        );
+        assert_eq!(Ok(StopAtSpec::NextEra), StopAtSpec::from_str("era:next"));
+        assert_eq!(Ok(StopAtSpec::Immediately), StopAtSpec::from_str("now"));
+        assert_eq!(
+            Ok(StopAtSpec::BlockHeight(123)),
+            StopAtSpec::from_str("block:123")
+        );
+        assert_eq!(
+            Ok(StopAtSpec::EraId(EraId::new(123))),
+            StopAtSpec::from_str("era:123")
+        );
     }
 }
