@@ -381,7 +381,7 @@ fn get_highest_complete_block_header(
     response
 }
 
-/// Stores a block in a storage component and mark it as complete.
+/// Stores a block in a storage component and marks it as complete.
 fn put_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
