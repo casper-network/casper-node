@@ -266,12 +266,12 @@ function assert_eject_count() {
     GLOBAL_DIVIDER='0'
     for i in $(seq 1 "$(get_count_of_nodes)"); do
         COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null \
-                | jq '.fields.finalized_block | select( . != null )' \
-                | grep 'EraReport' \
-                | grep -o 'inactive_validators: \[PublicKey.*\})' \
+                | jq '.fields.participation | select( . != null )' \
+                | grep -o 'inactive_validators: \[.*PublicKey.*Inactive)]' \
+                | sort \
                 | uniq \
-                | sed  's/,/\n/g' \
                 | wc -l)
+
         if [ "$COUNT" != "0" ]; then
             GLOBAL_DIVIDER=$((GLOBAL_DIVIDER + 1))
         fi
