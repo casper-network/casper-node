@@ -4,6 +4,7 @@
 //! deep debug access to a running node via special commands.
 
 mod command;
+mod stop_at;
 mod tasks;
 mod util;
 
@@ -29,6 +30,7 @@ use crate::{
     utils::umask,
     WithDir,
 };
+pub(crate) use stop_at::StopAtSpec;
 pub use tasks::FileSerializer;
 use util::ShowUnixAddr;
 
