@@ -404,11 +404,9 @@ impl BlockAccumulator {
         };
 
         match acceptor.register_finality_signature(finality_signature, sender) {
-            Ok(Some(finality_signature)) => self.store_block_and_finality_signatures(
-                effect_builder,
-                ShouldStore::SingleSignature(finality_signature),
-                None,
-            ),
+            Ok(Some(finality_signature)) => {
+                Self::store_finality_signature(effect_builder, finality_signature)
+            }
             Ok(None) => match self.validator_matrix.validator_weights(era_id) {
                 Some(evw) => {
                     let (should_store, faulty_senders) = acceptor.should_store_block(&evw);
@@ -609,6 +607,22 @@ impl BlockAccumulator {
             .set(self.block_children.len().try_into().unwrap_or(i64::MIN));
     }
 
+    fn store_finality_signature<REv>(
+        effect_builder: EffectBuilder<REv>,
+        signature: FinalitySignature,
+    ) -> Effects<Event>
+    where
+        REv: From<StorageRequest> + Send,
+    {
+        debug!(%signature, "storing finality signature");
+        effect_builder
+            .put_finality_signature_to_storage(signature.clone())
+            .event(move |_| Event::Stored {
+                block: None,
+                finality_signatures: vec![signature],
+            })
+    }
+
     fn store_block_and_finality_signatures<REv, I>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -648,15 +662,6 @@ impl BlockAccumulator {
                     .event(move |_| Event::Stored {
                         block: Some(Box::new(block)),
                         finality_signatures: signatures,
-                    })
-            }
-            ShouldStore::SingleSignature(signature) => {
-                debug!(%signature, "storing finality signature");
-                effect_builder
-                    .put_finality_signature_to_storage(signature.clone())
-                    .event(move |_| Event::Stored {
-                        block: None,
-                        finality_signatures: vec![signature],
                     })
             }
             ShouldStore::Nothing => {

@@ -32,7 +32,6 @@ pub(super) enum ShouldStore {
         block: Block,
         signatures: Vec<FinalitySignature>,
     },
-    SingleSignature(FinalitySignature),
     Nothing,
 }
 
