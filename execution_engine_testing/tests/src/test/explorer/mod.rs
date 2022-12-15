@@ -12,7 +12,6 @@ pub const FAUCET_ID: u64 = 1337;
 pub const INSTALLER_ACCOUNT: AccountHash = AccountHash::new([1u8; 32]);
 pub const FAUCET_FUND_AMOUNT: u64 = 500_000u64;
 pub const FAUCET_TIME_INTERVAL: u64 = 10_000;
-pub const FAUCET_CALL_DEFAULT_PAYMENT: u64 = 3_000_000_000;
 
 // contract args and entry points.
 pub const ARG_TARGET: &str = "target";

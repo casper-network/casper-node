@@ -29,7 +29,7 @@
   "scripts": {
     "test": "npm run asbuild:test && npx ava -v --serial",
     "asbuild:untouched": "asc assembly/index.ts -b build/untouched.wasm -t build/untouched.wat --sourceMap  --debug --use abort=",
-    "asbuild:optimized": "asc assembly/index.ts -b build/optimized.wasm -t build/optimized.wat --sourceMap  --disable bulk-memory --optimize --use abort=",
+    "asbuild:optimized": "asc assembly/index.ts -b build/optimized.wasm -t build/optimized.wat --sourceMap  --disable bulk-memory --optimize  --optimizeLevel 3 --converge  --noAssert  --use abort=",
     "asbuild:test:bytesrepr": "asc tests/assembly/bytesrepr.spec.as.ts -b build/bytesrepr.spec.as.wasm -t build/bytesrepr.spec.as.wat --sourceMap  --optimize",
     "asbuild:test:bignum": "asc tests/assembly/bignum.spec.as.ts -b build/bignum.spec.as.wasm -t build/bignum.spec.as.wat --sourceMap  --optimize",
     "asbuild:test:utils": "asc tests/assembly/utils.spec.as.ts -b build/utils.spec.as.wasm -t build/utils.spec.as.wat --sourceMap  --optimize",

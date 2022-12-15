@@ -15,11 +15,11 @@ const DO_NOTHING_PACKAGE_HASH_KEY_NAME = "do_nothing_package_hash";
 const DO_NOTHING_ACCESS_KEY_NAME = "do_nothing_access";
 
 export function delegate(): void {
-  let hashBytes = new Uint8Array(32);
+  let key = new StaticArray<u8>(32);
   for (var i = 0; i < 32; i++) {
-    hashBytes[i] = 1;
+    key[i] = 1;
   }
-  CL.putKey("called_do_nothing_ver_2", Key.fromHash(hashBytes));
+  CL.putKey("called_do_nothing_ver_2", Key.fromHash(key));
   CreatePurse01.delegate();
 }
 
@@ -49,7 +49,7 @@ export function call(): void {
   }
 
   const result = CL.addContractVersion(
-    <Uint8Array>doNothingPackageHash.hash,
+    <StaticArray<u8>>doNothingPackageHash.hash,
     entryPoints,
     new Array<Pair<String, Key>>(),
   );
