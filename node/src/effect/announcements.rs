@@ -9,6 +9,7 @@ use std::{
     fs::File,
 };
 
+use datasize::DataSize;
 use itertools::Itertools;
 use serde::Serialize;
 
@@ -110,7 +111,7 @@ impl Display for FatalAnnouncement {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(DataSize, Serialize, Debug)]
 #[must_use]
 pub(crate) enum ReactorAnnouncement {
     CompletedBlock { block: Box<Block> },

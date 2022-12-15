@@ -4,9 +4,11 @@ use std::{
 };
 
 use casper_types::EraId;
+use datasize::DataSize;
+use serde::Serialize;
 
 /// A specification for a stopping point.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub(crate) enum StopAtSpec {
     /// Stop after completion of the current block.
