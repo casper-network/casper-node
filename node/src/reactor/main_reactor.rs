@@ -42,6 +42,7 @@ use crate::{
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
+        shutdown_trigger::ShutdownTrigger,
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
@@ -89,6 +90,7 @@ pub(crate) struct MainReactor {
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
+    shutdown_trigger: ShutdownTrigger,
     net: Network<MainEvent, Message>,
     consensus: EraSupervisor,
 
@@ -231,6 +233,7 @@ impl reactor::Reactor for MainReactor {
         );
         let diagnostics_port =
             DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
+        let shutdown_trigger = ShutdownTrigger::new();
 
         // local / remote data management
         let sync_leaper = SyncLeaper::new(chainspec.clone(), registry)?;
@@ -312,6 +315,7 @@ impl reactor::Reactor for MainReactor {
             block_accumulator,
             block_synchronizer,
             diagnostics_port,
+            shutdown_trigger,
 
             metrics,
             memory_metrics,

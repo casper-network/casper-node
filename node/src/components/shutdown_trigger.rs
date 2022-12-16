@@ -21,7 +21,8 @@ use crate::{
 use super::{diagnostics_port::StopAtSpec, Component};
 
 //// Shutdown trigger component.
-struct ShutdownTrigger {
+#[derive(DataSize, Debug)]
+pub(crate) struct ShutdownTrigger {
     /// The currently active spec for shutdown triggers.
     active_spec: Option<StopAtSpec>,
     /// The highest block height seen, if any.
@@ -33,13 +34,23 @@ struct ShutdownTrigger {
 
 /// The shutdown trigger component's event.
 #[derive(DataSize, Debug, From, Serialize)]
-enum Event {
+pub(crate) enum Event {
     /// A reactor announcement (usually checked for block completion).
     #[from]
     ReactorAnnouncement(ReactorAnnouncement),
     /// A request to trigger a shutdown.
     #[from]
     TriggerShutdownRequest(TriggerShutdownRequest),
+}
+
+impl ShutdownTrigger {
+    /// Creates a new instance of the shutdown trigger component.
+    pub(crate) fn new() -> Self {
+        Self {
+            active_spec: None,
+            highest_block_height_seen: None,
+        }
+    }
 }
 
 impl<REv> Component<REv> for ShutdownTrigger
@@ -51,7 +62,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
+        _: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

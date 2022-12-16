@@ -2076,11 +2076,12 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ControlAnnouncement>,
     {
-        self.make_request(
-            |responder| ControlAnnouncement::ShutdownDueToUserRequest,
-            QueueKind::Control,
-        )
-        .await
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ShutdownDueToUserRequest,
+                QueueKind::Control,
+            )
+            .await;
     }
 
     /// Get the bytes for the chainspec file and genesis_accounts
