@@ -86,7 +86,10 @@ where
                 let should_shutdown = match active_spec {
                     StopAtSpec::BlockHeight(trigger_height) => block.height() >= trigger_height,
                     StopAtSpec::EraId(trigger_era_id) => block.header().era_id() >= trigger_era_id,
-                    StopAtSpec::Immediately => true,
+                    StopAtSpec::Immediately => {
+                        // Immediate stops are handled when the event is received.
+                        false
+                    }
                     StopAtSpec::NextBlock => {
                         // Any block that is newer than one we already saw is a "next" block.
                         block.height() > prev_height
@@ -123,7 +126,17 @@ where
                 responder,
             }) => {
                 mem::swap(&mut self.active_spec, &mut stop_at);
-                responder.respond(stop_at).ignore()
+
+                let mut effects = Effects::new();
+                effects.extend(responder.respond(stop_at).ignore());
+
+                // If we received an immediate shutdown request, send out the control announcement
+                // directly, instead of waiting for another block.
+                if matches!(self.active_spec, Some(StopAtSpec::Immediately)) {
+                    effects.extend(effect_builder.announce_user_shutdown_request().ignore());
+                }
+
+                effects
             }
         }
     }
