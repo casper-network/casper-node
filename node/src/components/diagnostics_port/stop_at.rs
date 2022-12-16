@@ -67,11 +67,7 @@ mod tests {
 
     use super::StopAtSpec;
     use casper_types::EraId;
-    use proptest::{
-        prelude::any,
-        prop_oneof, proptest,
-        strategy::{Just, Strategy},
-    };
+    use proptest::proptest;
 
     proptest! {
         #[test]
