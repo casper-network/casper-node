@@ -386,7 +386,9 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }) => {
+            MainEvent::MainReactorAnnouncement(
+                ref ann @ ReactorAnnouncement::CompletedBlock { ref block },
+            ) => {
                 let mut effects = Effects::new();
                 effects.extend(self.dispatch_event(
                     effect_builder,
@@ -407,6 +409,11 @@ impl reactor::Reactor for MainReactor {
                         header: Box::new(block.header().clone()),
                         header_hash: *block.hash(),
                     }),
+                ));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::ShutdownTrigger,
+                    self.shutdown_trigger
+                        .handle_event(effect_builder, rng, ann.clone().into()),
                 ));
                 effects
             }

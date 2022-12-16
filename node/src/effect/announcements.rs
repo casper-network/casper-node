@@ -118,7 +118,7 @@ impl Display for FatalAnnouncement {
     }
 }
 
-#[derive(DataSize, Serialize, Debug)]
+#[derive(Clone, DataSize, Serialize, Debug)]
 #[must_use]
 pub(crate) enum ReactorAnnouncement {
     CompletedBlock { block: Box<Block> },
