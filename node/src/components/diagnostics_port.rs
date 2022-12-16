@@ -23,8 +23,10 @@ use tracing::{debug, warn};
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
     effect::{
-        announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
-        requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement,
+        diagnostics_port::DumpConsensusStateRequest,
+        requests::{NetworkInfoRequest, SetNodeStopRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     types::NodeRng,
     utils::umask,
@@ -102,6 +104,7 @@ where
         + From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     type Event = Event;
@@ -131,6 +134,7 @@ where
         + From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     fn status(&self) -> ComponentStatus {
@@ -148,6 +152,7 @@ where
         + From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     type Error = Error;

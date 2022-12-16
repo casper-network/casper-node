@@ -356,6 +356,11 @@ impl reactor::Reactor for MainReactor {
                 error!("unhandled control announcement: {}", ctrl_ann);
                 Effects::new()
             }
+            MainEvent::SetNodeStopRequest(req) => reactor::wrap_effects(
+                MainEvent::ShutdownTrigger,
+                self.shutdown_trigger
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
 
             MainEvent::FatalAnnouncement(fatal_ann) => {
                 if self.consensus.is_active_validator() {
@@ -456,6 +461,11 @@ impl reactor::Reactor for MainReactor {
             MainEvent::EventStreamServer(event) => reactor::wrap_effects(
                 MainEvent::EventStreamServer,
                 self.event_stream_server
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::ShutdownTrigger(event) => reactor::wrap_effects(
+                MainEvent::ShutdownTrigger,
+                self.shutdown_trigger
                     .handle_event(effect_builder, rng, event),
             ),
             MainEvent::DiagnosticsPort(event) => reactor::wrap_effects(

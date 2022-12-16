@@ -4,6 +4,8 @@
 //! detects a specific spec has been triggered. If so, it instructs the system to shut down through
 //!  a [`ControlAnnouncement`].
 
+use std::{fmt::Display, mem};
+
 use datasize::DataSize;
 use derive_more::From;
 use serde::Serialize;
@@ -12,7 +14,7 @@ use tracing::{info, trace};
 use crate::{
     effect::{
         announcements::{ControlAnnouncement, ReactorAnnouncement},
-        requests::TriggerShutdownRequest,
+        requests::SetNodeStopRequest,
         EffectBuilder, EffectExt, Effects,
     },
     types::NodeRng,
@@ -40,7 +42,7 @@ pub(crate) enum Event {
     ReactorAnnouncement(ReactorAnnouncement),
     /// A request to trigger a shutdown.
     #[from]
-    TriggerShutdownRequest(TriggerShutdownRequest),
+    SetNodeStopRequest(SetNodeStopRequest),
 }
 
 impl ShutdownTrigger {
@@ -116,10 +118,25 @@ where
                 }
             }
 
-            Event::TriggerShutdownRequest(TriggerShutdownRequest { stop_at, responder }) => {
-                responder
-                    .respond(self.active_spec.replace(stop_at))
-                    .ignore()
+            Event::SetNodeStopRequest(SetNodeStopRequest {
+                mut stop_at,
+                responder,
+            }) => {
+                mem::swap(&mut self.active_spec, &mut stop_at);
+                responder.respond(stop_at).ignore()
+            }
+        }
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::ReactorAnnouncement(inner) => {
+                write!(f, "reactor announcement: {}", inner)
+            }
+            Event::SetNodeStopRequest(inner) => {
+                write!(f, "set node stop request: {}", inner)
             }
         }
     }

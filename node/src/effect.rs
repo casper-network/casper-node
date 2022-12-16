@@ -137,6 +137,7 @@ use crate::{
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
+        diagnostics_port::StopAtSpec,
         fetcher::FetchResult,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
@@ -168,7 +169,9 @@ use requests::{
     StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
-use self::requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest};
+use self::requests::{
+    ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest,
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -2169,6 +2172,20 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
+    /// Set a new stopping point for the node.
+    ///
+    /// Returns a potentially previously set stop-at spec.
+    pub(crate) async fn set_node_stop_at(self, stop_at: Option<StopAtSpec>) -> Option<StopAtSpec>
+    where
+        REv: From<SetNodeStopRequest>,
+    {
+        self.make_request(
+            |responder| SetNodeStopRequest { stop_at, responder },
+            QueueKind::Control,
         )
         .await
     }
