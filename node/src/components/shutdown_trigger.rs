@@ -116,7 +116,11 @@ where
                 }
             }
 
-            Event::TriggerShutdownRequest(_) => todo!(),
+            Event::TriggerShutdownRequest(TriggerShutdownRequest { stop_at, responder }) => {
+                responder
+                    .respond(self.active_spec.replace(stop_at))
+                    .ignore()
+            }
         }
     }
 }

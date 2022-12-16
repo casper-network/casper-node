@@ -1198,7 +1198,7 @@ impl Display for BlockSynchronizerRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct TriggerShutdownRequest {
     /// The specific stop-at spec.
-    stop_at: StopAtSpec,
+    pub(crate) stop_at: StopAtSpec,
     /// Responder to send the previously set stop-at spec to, if any.
-    responder: Responder<Option<StopAtSpec>>,
+    pub(crate) responder: Responder<Option<StopAtSpec>>,
 }
