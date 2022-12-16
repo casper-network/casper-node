@@ -9,6 +9,7 @@ mod types;
 use std::{
     cmp::Ordering,
     collections::BTreeMap,
+    convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
     sync::{Arc, Mutex},
@@ -238,7 +239,12 @@ where
 impl ContractRuntime {
     /// How many blocks are backed up in the queue
     pub(crate) fn queue_depth(&self) -> usize {
-        self.exec_queue.lock().unwrap().len()
+        self.exec_queue
+            .lock()
+            .expect(
+                "components::contract_runtime: couldn't get execution queue size; mutex poisoned",
+            )
+            .len()
     }
 
     /// Handles an incoming request to get a trie.
@@ -480,10 +486,13 @@ impl ContractRuntime {
                         );
                         exec_queue
                             .lock()
-                            .unwrap()
+                            .expect("components::contract_runtime: couldn't enqueue block for execution; mutex poisoned")
                             .insert(finalized_block_height, (finalized_block, deploys));
                     }
                 }
+                self.metrics
+                    .exec_queue_size
+                    .set(self.queue_depth().try_into().unwrap_or(i64::MIN));
                 effects
             }
             ContractRuntimeRequest::GetBids {
@@ -659,8 +668,17 @@ impl ContractRuntime {
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
-        let mut exec_queue = self.exec_queue.lock().unwrap();
-        *exec_queue = exec_queue.split_off(&execution_pre_state.next_block_height);
+        {
+            let mut exec_queue = self.exec_queue
+                .lock()
+                .expect(
+                    "components::contract_runtime: couldn't initialize contract runtime block execution queue; mutex poisoned"
+                );
+            *exec_queue = exec_queue.split_off(&execution_pre_state.next_block_height);
+            self.metrics
+                .exec_queue_size
+                .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
+        }
 
         // Initialize the system contract registry.
         //
@@ -703,6 +721,7 @@ impl ContractRuntime {
     {
         debug!("ContractRuntime: execute_finalized_block_or_requeue");
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
+        let contract_runtime_metrics = metrics.clone();
         let BlockAndExecutionResults {
             block,
             approvals_hashes,
@@ -712,7 +731,7 @@ impl ContractRuntime {
             debug!("ContractRuntime: execute_finalized_block");
             execute_finalized_block(
                 engine_state.as_ref(),
-                Some(metrics),
+                Some(contract_runtime_metrics),
                 protocol_version,
                 current_execution_pre_state,
                 finalized_block,
@@ -767,10 +786,13 @@ impl ContractRuntime {
         // If the child is already finalized, start execution.
         let next_block = {
             // needed to help this async block impl Send (the MutexGuard lives too long)
-            let queue = &mut *exec_queue.lock().expect("mutex poisoned");
+            let queue = &mut *exec_queue
+                .lock()
+                .expect("components::contract_runtime: couldn't get next block for execution; mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
         if let Some((finalized_block, deploys)) = next_block {
+            metrics.exec_queue_size.dec();
             debug!("ContractRuntime: next block enqueue_block_for_execution");
             effect_builder
                 .enqueue_block_for_execution(finalized_block, deploys)

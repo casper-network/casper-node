@@ -3,7 +3,7 @@ mod event;
 mod metrics;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     iter::FromIterator,
     mem,
@@ -327,13 +327,13 @@ impl DeployBuffer {
     /// Returns a right-sized payload of deploys that can be proposed.
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
-        let mut holds = vec![];
+        let mut holds = HashSet::new();
         for (with_approvals, footprint) in self.proposable() {
             let deploy_hash = *with_approvals.deploy_hash();
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     debug!(%deploy_hash, "DeployBuffer: proposing deploy");
-                    holds.push(deploy_hash);
+                    holds.insert(deploy_hash);
                 }
                 Err(error) => {
                     match error {
@@ -376,7 +376,14 @@ impl DeployBuffer {
         }
 
         // put a hold on all proposed deploys / transfers and update metrics
-        self.hold.insert(timestamp, holds.iter().copied().collect());
+        match self.hold.entry(timestamp) {
+            btree_map::Entry::Vacant(entry) => {
+                entry.insert(holds);
+            }
+            btree_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().extend(holds);
+            }
+        }
         self.update_all_metrics();
         ret
     }

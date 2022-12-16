@@ -1248,10 +1248,50 @@ impl<C: Context + 'static> Zug<C> {
                     }
                     Entry::Proposal(next_proposal, corresponding_round_id) => {
                         if self
+                            .round(corresponding_round_id)
+                            .and_then(Round::proposal)
+                            .map(HashedProposal::inner)
+                            == Some(&next_proposal)
+                        {
+                            warn!("Proposal from WAL is duplicated.");
+                            continue;
+                        }
+                        let mut ancestor_values = vec![];
+                        if let Some(mut round_id) = next_proposal.maybe_parent_round_id {
+                            loop {
+                                let proposal = if let Some(proposal) =
+                                    self.round(round_id).and_then(Round::proposal)
+                                {
+                                    proposal
+                                } else {
+                                    error!("Proposal from WAL is missing ancestors.");
+                                    return outcomes;
+                                };
+                                if self.round(round_id).and_then(Round::quorum_echoes)
+                                    != Some(*proposal.hash())
+                                {
+                                    error!("Proposal from WAL has unaccepted ancestor.");
+                                    return outcomes;
+                                }
+                                ancestor_values.extend(proposal.maybe_block().cloned());
+                                match proposal.maybe_parent_round_id() {
+                                    None => break,
+                                    Some(parent_round_id) => round_id = parent_round_id,
+                                }
+                            }
+                        }
+                        if self
                             .round_mut(corresponding_round_id)
-                            .insert_proposal(HashedProposal::new(next_proposal))
+                            .insert_proposal(HashedProposal::new(next_proposal.clone()))
                         {
                             self.mark_dirty(corresponding_round_id);
+                            if let Some(block) = next_proposal.maybe_block {
+                                let block_context =
+                                    BlockContext::new(next_proposal.timestamp, ancestor_values);
+                                let proposed_block = ProposedBlock::new(block, block_context);
+                                outcomes
+                                    .push(ProtocolOutcome::HandledProposedBlock(proposed_block));
+                            }
                         }
                     }
                     Entry::Evidence(
@@ -1589,13 +1629,13 @@ impl<C: Context + 'static> Zug<C> {
                 }
             }
         }
+        let block_context = BlockContext::new(proposal.timestamp(), ancestor_values);
         if let Some(block) = proposal
             .maybe_block()
+            .filter(|value| value.needs_validation())
             .cloned()
-            .filter(ConsensusValueT::needs_validation)
         {
             self.log_proposal(&proposal, round_id, "requesting proposal validation");
-            let block_context = BlockContext::new(proposal.timestamp(), ancestor_values);
             let proposed_block = ProposedBlock::new(block, block_context);
             if self
                 .proposals_waiting_for_validation
@@ -1603,22 +1643,24 @@ impl<C: Context + 'static> Zug<C> {
                 .or_default()
                 .insert((round_id, proposal, sender))
             {
-                vec![ProtocolOutcome::ValidateConsensusValue {
+                return vec![ProtocolOutcome::ValidateConsensusValue {
                     sender,
                     proposed_block,
-                }]
-            } else {
-                vec![] // Proposal was already known.
+                }];
             }
         } else {
             self.log_proposal(&proposal, round_id, "proposal does not need validation");
             if self.round_mut(round_id).insert_proposal(proposal.clone()) {
-                self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
+                self.record_entry(&Entry::Proposal(proposal.inner().clone(), round_id));
                 self.progress_detected = true;
                 self.mark_dirty(round_id);
+                if let Some(block) = proposal.maybe_block().cloned() {
+                    let proposed_block = ProposedBlock::new(block, block_context);
+                    return vec![ProtocolOutcome::HandledProposedBlock(proposed_block)];
+                }
             }
-            vec![]
         }
+        vec![] // Proposal was already known.
     }
 
     /// Finalizes the round, notifying the rest of the node of the finalized block
@@ -2075,6 +2117,9 @@ where
                     self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
+                    outcomes.push(ProtocolOutcome::HandledProposedBlock(
+                        proposed_block.clone(),
+                    ));
                 }
             }
             outcomes.extend(self.update(now));

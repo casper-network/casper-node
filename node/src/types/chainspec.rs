@@ -173,23 +173,6 @@ impl Chainspec {
         ))
     }
 
-    /// The maximum number of blocks per era, based on minimum block time, era duration and era
-    /// height.
-    pub(crate) fn max_blocks_per_era(&self) -> u64 {
-        let era_millis = self.core_config.era_duration.millis();
-        let round_millis = self.core_config.minimum_block_time.millis();
-        // If the last block was above minimum era height, its predecessor's timestamp must have
-        // been less than era_millis, if the era start was at 0.
-        let latest_timestamp = era_millis.saturating_add(round_millis).saturating_sub(1);
-        // Its timestamp determines the maximum number of rounds.
-        let max_blocks_by_time = latest_timestamp
-            .saturating_div(round_millis)
-            .saturating_add(1); // Avoid the fencepost error! First block could be at 0.
-
-        // We produce at least minimum_era_height blocks, even after era_duration has passed.
-        max_blocks_by_time.max(self.core_config.minimum_era_height)
-    }
-
     /// Returns `Some` if the validator set is being modified by the upgrade (otherwise `None`)
     /// and `true` if the provided public key is a member of the new set, otherwise `false`.
     #[allow(unused)] // check w/ Fraser...seems odd that we don't care about this anywhere else
@@ -545,27 +528,5 @@ mod tests {
 
         // With equal hashes
         assert_eq!(chainspec.hash(), chainspec_unordered.hash());
-    }
-
-    #[test]
-    fn should_compute_max_blocks_per_era() {
-        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-
-        chainspec.core_config.era_duration = TimeDiff::from(3);
-        chainspec.core_config.minimum_era_height = 3;
-        // Round length 4.
-        chainspec.core_config.minimum_block_time = TimeDiff::from(4);
-        // Minimum height is the limiting factor: Three rounds don't fit in 3 ms.
-        assert_eq!(3, chainspec.max_blocks_per_era());
-
-        chainspec.core_config.era_duration = TimeDiff::from(12);
-        // The block timestamps could be 0, 4, 8, 12. The fourth would be the last one, since it
-        // is exactly at the minimum era duration.
-        assert_eq!(4, chainspec.max_blocks_per_era());
-
-        chainspec.core_config.era_duration = TimeDiff::from(13);
-        // The block timestamps could be 0, 4, 8, 12, 16. The fifth would be the last one, since
-        // it is the first to exceed the minimum era duration.
-        assert_eq!(5, chainspec.max_blocks_per_era());
     }
 }
