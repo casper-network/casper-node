@@ -1750,8 +1750,9 @@ impl Storage {
             for idx in (low..=hi).rev() {
                 match self.get_block_by_height(txn, idx) {
                     Ok(Some(block)) => {
+                        let should_continue = predicate(&block);
                         blocks.push(block);
-                        if false == predicate(&block) {
+                        if false == should_continue {
                             return Ok(blocks);
                         }
                     }
