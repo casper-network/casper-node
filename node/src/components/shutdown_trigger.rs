@@ -94,7 +94,7 @@ where
                         // Any block that is newer than one we already saw is a "next" block.
                         block.height() > prev_height
                     }
-                    StopAtSpec::NextEra => {
+                    StopAtSpec::EndOfCurrentEra => {
                         // We require that the block we just finished is a switch block.
                         block.height() > prev_height && block.header().is_switch_block()
                     }

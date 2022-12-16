@@ -96,8 +96,8 @@ pub(super) enum Action {
     Stop {
         /// When to stop the node.
         ///
-        /// Supports `block:12345` for block height, `era:123` for eras, `block:next` / `era:next`
-        /// to stop on an upcoming block or eta, or `now` to stop immediately. Defaults to
+        /// Supports `block:12345` for block height, `era:123` for eras, `block:next` / `era:end`
+        /// to stop on an upcoming block or switch block, or `now` to stop immediately. Defaults to
         /// `block:next`."
         ///
         /// Returns the previouslys set stopping point, if any.

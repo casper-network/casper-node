@@ -14,7 +14,7 @@ pub(crate) enum StopAtSpec {
     /// Stop after completion of the current block.
     NextBlock,
     /// Stop after the completion of the next switch block.
-    NextEra,
+    EndOfCurrentEra,
     /// Stop immediately.
     Immediately,
     /// Stop at a given block height.
@@ -33,7 +33,7 @@ impl Display for StopAtSpec {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StopAtSpec::NextBlock => f.write_str("block:next"),
-            StopAtSpec::NextEra => f.write_str("era:next"),
+            StopAtSpec::EndOfCurrentEra => f.write_str("era:end"),
             StopAtSpec::Immediately => f.write_str("now"),
             StopAtSpec::BlockHeight(height) => write!(f, "block:{}", height),
             StopAtSpec::EraId(era_id) => write!(f, "era:{}", era_id.value()),
@@ -47,7 +47,7 @@ impl FromStr for StopAtSpec {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "block:next" => Ok(StopAtSpec::NextBlock),
-            "era:next" => Ok(StopAtSpec::NextEra),
+            "era:end" => Ok(StopAtSpec::EndOfCurrentEra),
             "now" => Ok(StopAtSpec::Immediately),
             val if val.starts_with("block:") => u64::from_str(&val[6..])
                 .map_err(|err| format!("could not parse block height: {}", err))
@@ -96,7 +96,10 @@ mod tests {
             Ok(StopAtSpec::NextBlock),
             StopAtSpec::from_str("block:next")
         );
-        assert_eq!(Ok(StopAtSpec::NextEra), StopAtSpec::from_str("era:next"));
+        assert_eq!(
+            Ok(StopAtSpec::EndOfCurrentEra),
+            StopAtSpec::from_str("era:end")
+        );
         assert_eq!(Ok(StopAtSpec::Immediately), StopAtSpec::from_str("now"));
         assert_eq!(
             Ok(StopAtSpec::BlockHeight(123)),
