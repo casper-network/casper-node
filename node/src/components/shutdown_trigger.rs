@@ -7,11 +7,13 @@
 use datasize::DataSize;
 use derive_more::From;
 use serde::Serialize;
+use tracing::{info, trace};
 
 use crate::{
     effect::{
-        announcements::ReactorAnnouncement, requests::TriggerShutdownRequest, EffectBuilder,
-        Effects,
+        announcements::{ControlAnnouncement, ReactorAnnouncement},
+        requests::TriggerShutdownRequest,
+        EffectBuilder, EffectExt, Effects,
     },
     types::NodeRng,
 };
@@ -40,7 +42,10 @@ enum Event {
     TriggerShutdownRequest(TriggerShutdownRequest),
 }
 
-impl<REv> Component<REv> for ShutdownTrigger {
+impl<REv> Component<REv> for ShutdownTrigger
+where
+    REv: Send + From<ControlAnnouncement>,
+{
     type Event = Event;
 
     fn handle_event(
@@ -49,6 +54,58 @@ impl<REv> Component<REv> for ShutdownTrigger {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        todo!()
+        match event {
+            Event::ReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }) => {
+                // We ignore every block that is older than one we already possess.
+                let prev_height = self.highest_block_height_seen.unwrap_or_default();
+                if block.height() > prev_height {
+                    self.highest_block_height_seen = Some(block.height());
+                }
+
+                // Once the updating is done, check if we need to emit shutdown announcements.
+                let active_spec = if let Some(spec) = self.active_spec {
+                    spec
+                } else {
+                    trace!("received block, but no active stop-at spec, ignoring");
+                    return Effects::new();
+                };
+
+                let should_shutdown = match active_spec {
+                    StopAtSpec::BlockHeight(trigger_height) => block.height() >= trigger_height,
+                    StopAtSpec::EraId(trigger_era_id) => block.header().era_id() >= trigger_era_id,
+                    StopAtSpec::Immediately => true,
+                    StopAtSpec::NextBlock => {
+                        // Any block that is newer than one we already saw is a "next" block.
+                        block.height() > prev_height
+                    }
+                    StopAtSpec::NextEra => {
+                        // We require that the block we just finished is a switch block.
+                        block.height() > prev_height && block.header().is_switch_block()
+                    }
+                };
+
+                if should_shutdown {
+                    info!(
+                        block_height = block.height(),
+                        block_era = block.header().era_id().value(),
+                        is_switch_block = block.header().is_switch_block(),
+                        %active_spec,
+                        "shutdown triggered due to fulfilled stop-at spec"
+                    );
+                    effect_builder.announce_user_shutdown_request().ignore()
+                } else {
+                    trace!(
+                        block_height = block.height(),
+                        block_era = block.header().era_id().value(),
+                        is_switch_block = block.header().is_switch_block(),
+                        %active_spec,
+                        "not shutting down"
+                    );
+                    Effects::new()
+                }
+            }
+
+            Event::TriggerShutdownRequest(_) => todo!(),
+        }
     }
 }

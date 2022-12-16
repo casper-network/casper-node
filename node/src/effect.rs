@@ -2071,6 +2071,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Announce that the node be shut down due to a request from a user.
+    pub(crate) async fn announce_user_shutdown_request(self)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.make_request(
+            |responder| ControlAnnouncement::ShutdownDueToUserRequest,
+            QueueKind::Control,
+        )
+        .await
+    }
+
     /// Get the bytes for the chainspec file and genesis_accounts
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>

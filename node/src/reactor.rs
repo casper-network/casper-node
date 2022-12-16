@@ -588,6 +588,11 @@ where
                     // We ignore the event.
                     (Effects::new(), None, QueueKind::Control)
                 }
+                Some(ControlAnnouncement::ShutdownDueToUserRequest) => {
+                    // TODO: Do we need a new exit code here, so that the launcher does not restart
+                    //       the node immediately?
+                    (Effects::new(), Some(ExitCode::Success), QueueKind::Control)
+                }
                 Some(ControlAnnouncement::ShutdownForUpgrade) => {
                     (Effects::new(), Some(ExitCode::Success), QueueKind::Control)
                 }
