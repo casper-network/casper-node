@@ -1,4 +1,4 @@
-use prometheus::{self, Gauge, Histogram, Registry};
+use prometheus::{self, Gauge, Histogram, IntGauge, Registry};
 
 use crate::{unregister_metric, utils};
 
@@ -51,6 +51,10 @@ const EXEC_BLOCK_HELP: &str = "time in seconds to execute all deploys in a block
 const LATEST_COMMIT_STEP_NAME: &str = "contract_runtime_latest_commit_step";
 const LATEST_COMMIT_STEP_HELP: &str = "duration in seconds of latest commit step at era end";
 
+const EXEC_QUEUE_SIZE_NAME: &str = "execution_queue_size";
+const EXEC_QUEUE_SIZE_HELP: &str =
+    "number of blocks that are currently enqueued and waiting for execution";
+
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
@@ -66,6 +70,7 @@ pub struct Metrics {
     pub(super) get_trie: Histogram,
     pub(super) exec_block: Histogram,
     pub(super) latest_commit_step: Gauge,
+    pub(super) exec_queue_size: IntGauge,
     registry: Registry,
 }
 
@@ -86,6 +91,9 @@ impl Metrics {
 
         let latest_commit_step = Gauge::new(LATEST_COMMIT_STEP_NAME, LATEST_COMMIT_STEP_HELP)?;
         registry.register(Box::new(latest_commit_step.clone()))?;
+
+        let exec_queue_size = IntGauge::new(EXEC_QUEUE_SIZE_NAME, EXEC_QUEUE_SIZE_HELP)?;
+        registry.register(Box::new(exec_queue_size.clone()))?;
 
         Ok(Metrics {
             run_execute: utils::register_histogram_metric(
@@ -155,6 +163,7 @@ impl Metrics {
                 common_buckets,
             )?,
             latest_commit_step,
+            exec_queue_size,
             registry: registry.clone(),
         })
     }
@@ -174,5 +183,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.exec_block);
         unregister_metric!(self.registry, self.latest_commit_step);
+        unregister_metric!(self.registry, self.exec_queue_size);
     }
 }

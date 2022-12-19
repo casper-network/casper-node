@@ -34,8 +34,9 @@ use crate::{
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming,
-            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         Responder,
     },
@@ -104,6 +105,7 @@ impl<T: Unhandled> From<T> for Event {
     }
 }
 
+impl Unhandled for ConsensusDemand {}
 impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}

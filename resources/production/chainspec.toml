@@ -28,8 +28,15 @@ era_duration = '120min'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
 minimum_era_height = 20
+# Minimum difference between a block's and its child's timestamp.
+minimum_block_time = '32768ms'
 # Number of slots available in validator auction.
 validator_slots = 100
+# A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
+# It is the fraction of validators that would need to equivocate to make two honest nodes see two conflicting blocks as
+# finalized: A higher value F makes it safer to rely on finalized blocks.  It also makes it more difficult to finalize
+# blocks, however, and requires strictly more than (F + 1)/2 validators to be working correctly.
+finality_threshold_fraction = [1, 3]
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
 auction_delay = 1
@@ -42,7 +49,7 @@ unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 8%
-# Minimum round exponent: 15
+# Minimum block time: 2^15 milliseconds
 # Ticks per year: 31536000000
 #
 # (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below
@@ -60,20 +67,12 @@ minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
 # Number of simultaneous peer requests.
 simultaneous_peer_requests = 5
+# The consensus protocol to use. Options are "Zug" and "Highway".
+consensus_protocol = 'Highway'
 
 [highway]
-# A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
-# It is the fraction of validators that would need to equivocate to make two honest nodes see two conflicting blocks as
-# finalized: A higher value F makes it safer to rely on finalized blocks.  It also makes it more difficult to finalize
-# blocks, however, and requires strictly more than (F + 1)/2 validators to be working correctly.
-finality_threshold_fraction = [1, 3]
-# Integer between 0 and 255.  The power of two that is the number of milliseconds in the minimum round length, and
-# therefore the minimum delay between a block and its child.  E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
-minimum_round_exponent = 15
-# Integer between 0 and 255.  Must be greater than `minimum_round_exponent`.  The power of two that is the number of
-# milliseconds in the maximum round length, and therefore the maximum delay between a block and its child.  E.g. 19
-# means 2^19 milliseconds, i.e. about 8.7 minutes.
-maximum_round_exponent = 17
+# Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
+maximum_round_length = '132seconds'
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]

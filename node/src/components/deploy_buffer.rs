@@ -3,7 +3,7 @@ mod event;
 mod metrics;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     iter::FromIterator,
     mem,
@@ -28,8 +28,8 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Approval, Block, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId,
-        FinalizedBlock,
+        Approval, Block, BlockHeader, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals,
+        DeployId, FinalizedBlock,
     },
     NodeRng,
 };
@@ -92,10 +92,28 @@ impl DeployBuffer {
         })
     }
 
-    /// True if we have full TTL worth of deploy awareness, else false.
-    pub(crate) fn have_full_ttl_of_deploys(&self, from_height: u64) -> bool {
-        debug!(?self.chain_index, "DeployBuffer: chain_index check from_height: {}", from_height);
-        let ttl = self.deploy_config.max_ttl;
+    /// Returns `true` if we have enough information to participate in consensus in the era after
+    /// the `switch block`.
+    ///
+    /// To validate and propose blocks we need to be able to avoid and detect deploy replays.
+    /// Each block in the new era E will have a timestamp greater or equal to E's start time T,
+    /// which is the switch block's timestamp. A deploy D in a block B cannot have timed out as of
+    /// B's timestamp, so it cannot be older than T - ttl, where ttl is the maximum deploy
+    /// time-to-live. So if D were also in an earlier block C, then C's timestamp would be at
+    /// least T - ttl. Thus to prevent replays, we need all blocks with a timestamp between
+    /// T - ttl and T.
+    ///
+    /// Note that we don't need to already have any blocks from E itself, since the consensus
+    /// protocol will announce all proposed and finalized blocks in E anyway.
+    pub(crate) fn have_full_ttl_of_deploys(&self, switch_block: &BlockHeader) -> bool {
+        let from_height = switch_block.height();
+        let earliest_needed = switch_block
+            .timestamp()
+            .saturating_sub(self.deploy_config.max_ttl);
+        debug!(
+            ?self.chain_index, %earliest_needed,
+            "DeployBuffer: chain_index check from_height: {}", from_height
+        );
         let mut current = match self.chain_index.get(&from_height) {
             None => {
                 debug!("DeployBuffer: not in chain_index: {}", from_height);
@@ -117,7 +135,7 @@ impl DeployBuffer {
         for (height, timestamp) in self.chain_index.range(..from_height).rev() {
             // if we've reached genesis via an unbroken sequence, we're good
             // if we've seen a full ttl period of blocks, we're good
-            if *height == 0 || timestamp.elapsed() > ttl {
+            if *height == 0 || *timestamp < earliest_needed {
                 return true;
             }
             // gap detection; any gaps in the chain index means we do not have full ttl awareness
@@ -309,13 +327,13 @@ impl DeployBuffer {
     /// Returns a right-sized payload of deploys that can be proposed.
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
-        let mut holds = vec![];
+        let mut holds = HashSet::new();
         for (with_approvals, footprint) in self.proposable() {
             let deploy_hash = *with_approvals.deploy_hash();
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     debug!(%deploy_hash, "DeployBuffer: proposing deploy");
-                    holds.push(deploy_hash);
+                    holds.insert(deploy_hash);
                 }
                 Err(error) => {
                     match error {
@@ -358,7 +376,14 @@ impl DeployBuffer {
         }
 
         // put a hold on all proposed deploys / transfers and update metrics
-        self.hold.insert(timestamp, holds.iter().copied().collect());
+        match self.hold.entry(timestamp) {
+            btree_map::Entry::Vacant(entry) => {
+                entry.insert(holds);
+            }
+            btree_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().extend(holds);
+            }
+        }
         self.update_all_metrics();
         ret
     }

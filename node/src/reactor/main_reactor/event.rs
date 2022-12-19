@@ -22,7 +22,7 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
@@ -109,6 +109,8 @@ pub(crate) enum MainEvent {
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
+    #[from]
+    ConsensusDemand(ConsensusDemand),
     #[from]
     ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     #[from]
@@ -299,6 +301,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::DeployBufferAnnouncement(_) => "DeployBufferAnnouncement",
             MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
+            MainEvent::ConsensusDemand(_) => "ConsensusDemand",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
@@ -482,6 +485,7 @@ impl Display for MainEvent {
                 write!(f, "blocklist announcement: {}", ann)
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
             MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),

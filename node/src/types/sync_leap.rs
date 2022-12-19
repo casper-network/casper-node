@@ -6,6 +6,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use itertools::Itertools;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -38,8 +39,12 @@ pub(crate) enum SyncLeapValidationError {
     BlockWithMetadata(BlockHeaderWithMetadataValidationError),
     #[error("Too many switch blocks: leaping across that many eras is not allowed.")]
     TooManySwitchBlocks,
-    #[error("Too many trusted ancestor headers: no more than one era's worth is needed.")]
-    TooManyTrustedAncestors,
+    #[error("Trusted ancestor headers must be in reverse chronological order.")]
+    TrustedAncestorsNotSorted,
+    #[error("Last trusted ancestor is not a switch block.")]
+    MissingAncestorSwitchBlock,
+    #[error("Only the last trusted ancestor is allowed to be a switch block.")]
+    UnexpectedAncestorSwitchBlock,
     #[error("Signed block headers present despite trusted_ancestor_only flag.")]
     UnexpectedSignedBlockHeaders,
 }
@@ -199,8 +204,22 @@ impl FetcherItem for SyncLeap {
         {
             return Err(SyncLeapValidationError::TooManySwitchBlocks);
         }
-        if self.trusted_ancestor_headers.len() as u64 > chainspec.max_blocks_per_era() {
-            return Err(SyncLeapValidationError::TooManyTrustedAncestors);
+        if self
+            .trusted_ancestor_headers
+            .iter()
+            .tuple_windows()
+            .any(|(child, parent)| *child.parent_hash() != parent.block_hash())
+        {
+            return Err(SyncLeapValidationError::TrustedAncestorsNotSorted);
+        }
+        let mut trusted_ancestor_iter = self.trusted_ancestor_headers.iter().rev();
+        if let Some(last_ancestor) = trusted_ancestor_iter.next() {
+            if !last_ancestor.is_switch_block() {
+                return Err(SyncLeapValidationError::MissingAncestorSwitchBlock);
+            }
+        }
+        if trusted_ancestor_iter.any(BlockHeader::is_switch_block) {
+            return Err(SyncLeapValidationError::UnexpectedAncestorSwitchBlock);
         }
         if self.trusted_ancestor_only && !self.signed_block_headers.is_empty() {
             return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
@@ -247,7 +266,7 @@ impl FetcherItem for SyncLeap {
                         for sigs in era_sigs {
                             if let Err(err) = utils::check_sufficient_block_signatures(
                                 validator_weights,
-                                chainspec.highway_config.finality_threshold_fraction,
+                                chainspec.core_config.finality_threshold_fraction,
                                 Some(sigs),
                             ) {
                                 return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(

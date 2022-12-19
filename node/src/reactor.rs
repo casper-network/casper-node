@@ -952,7 +952,7 @@ where
                         warn!(
                             %sender,
                             %deploy_id,
-                            "peer refused to provide deploy, banning peer"
+                            "peer refused to provide deploy"
                         );
                         return effect_builder
                             .announce_block_peer_with_justification(
@@ -965,7 +965,7 @@ where
                         warn!(
                             %sender,
                             %error,
-                            "received a deploy item we couldn't parse, banning peer",
+                            "received a deploy item we couldn't parse",
                         );
                         return effect_builder
                             .announce_block_peer_with_justification(

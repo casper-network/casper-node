@@ -16,6 +16,7 @@ use casper_types::testing::TestRng;
 use super::*;
 use crate::{
     components::{
+        consensus::ConsensusRequestMessage,
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         network::{GossipedAddress, Identity as NetworkIdentity},
@@ -27,7 +28,7 @@ use crate::{
             RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
@@ -132,6 +133,8 @@ enum Event {
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
+    #[from]
+    ConsensusDemandIncoming(DemandIncoming<ConsensusRequestMessage>),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -243,6 +246,7 @@ impl ReactorTrait for Reactor {
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)
+            | Event::ConsensusDemandIncoming(_)
             | Event::FinalitySignatureIncoming(_)
             | Event::ControlAnnouncement(_)
             | Event::FatalAnnouncement(_) => panic!("unexpected: {}", event),
@@ -262,7 +266,7 @@ impl ReactorTrait for Reactor {
 
         let storage = Storage::new(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             chainspec.hard_reset_to_start_of_era(),
             chainspec.protocol_config.version,
             &chainspec.network_config.name,

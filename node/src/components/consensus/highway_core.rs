@@ -37,14 +37,13 @@ pub(crate) mod finality_detector;
 pub(crate) mod highway;
 pub(crate) mod state;
 pub(super) mod synchronizer;
-pub(crate) mod validators;
 
 mod endorsement;
 mod evidence;
 #[cfg(test)]
 pub(crate) mod highway_testing;
 
-pub(crate) use state::{State, Weight};
+pub(crate) use state::State;
 
 // Enables the endorsement mechanism.
 const ENABLE_ENDORSEMENTS: bool = false;

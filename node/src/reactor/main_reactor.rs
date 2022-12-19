@@ -31,7 +31,7 @@ use crate::{
         block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        consensus::{self, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraSupervisor},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
@@ -165,7 +165,7 @@ impl reactor::Reactor for MainReactor {
         let (root_dir, config) = config.into_parts();
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let validator_matrix = ValidatorMatrix::new(
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             our_secret_key.clone(),
             our_public_key.clone(),
             chainspec.core_config.auction_delay,
@@ -176,7 +176,7 @@ impl reactor::Reactor for MainReactor {
         let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
         let storage = Storage::new(
             &storage_config,
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             hard_reset_to_start_of_era,
             protocol_version,
             &chainspec.network_config.name,
@@ -265,7 +265,6 @@ impl reactor::Reactor for MainReactor {
             config.consensus,
             chainspec.clone(),
             registry,
-            Box::new(HighwayProtocol::new_boxed),
         )?;
 
         // chain / deploy management
@@ -274,7 +273,7 @@ impl reactor::Reactor for MainReactor {
             config.block_accumulator,
             validator_matrix.clone(),
             chainspec.core_config.unbonding_delay,
-            chainspec.highway_config.min_round_length(),
+            chainspec.core_config.minimum_block_time,
             registry,
         )?;
         let block_synchronizer = BlockSynchronizer::new(
@@ -547,6 +546,11 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Consensus,
                 self.consensus
                     .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            MainEvent::ConsensusDemand(demand) => reactor::wrap_effects(
+                MainEvent::Consensus,
+                self.consensus
+                    .handle_event(effect_builder, rng, demand.into()),
             ),
             MainEvent::ConsensusAnnouncement(consensus_announcement) => {
                 match consensus_announcement {
