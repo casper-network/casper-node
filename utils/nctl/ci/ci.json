@@ -10,6 +10,6 @@
         }
     },
     "nctl_upgrade_tests": {
-        "protocol_1": "1.4.6"
+        "protocol_1": "1.4.8"
     }
 }
