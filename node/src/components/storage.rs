@@ -1733,8 +1733,8 @@ impl Storage {
         self.get_single_block(txn, highest_complete_block_hash)
     }
 
-    /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
-    /// the ancestry chain.
+    /// Returns a vector of blocks that satisfy the predicate, and one that doesn't (if one
+    /// exists), starting from the latest one and following the ancestry chain.
     fn get_blocks_while<F, Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1750,10 +1750,11 @@ impl Storage {
             for idx in (low..=hi).rev() {
                 match self.get_block_by_height(txn, idx) {
                     Ok(Some(block)) => {
-                        if false == predicate(&block) {
+                        let should_continue = predicate(&block);
+                        blocks.push(block);
+                        if false == should_continue {
                             return Ok(blocks);
                         }
-                        blocks.push(block);
                     }
                     Ok(None) => {
                         continue;
