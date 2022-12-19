@@ -1159,29 +1159,6 @@ impl Storage {
     fn mark_block_complete(&mut self, block_height: u64) -> Result<(), FatalStorageError> {
         self.completed_blocks.insert(block_height);
         self.persist_completed_blocks()?;
-        if self
-            .completed_blocks
-            .highest_sequence()
-            .map(|seq| {
-                seq.low() == 0
-                    // This next bit might not be necessary actually because
-                    // the highest sequence starting with 0 means we have
-                    // complete blocks starting from genesis with no gaps, and
-                    // the actual height of the tip might not give us any
-                    // relevant information, as it's constantly changing with
-                    // the chain progressing.
-                    && seq.high()
-                        == self
-                            .block_height_index
-                            .keys()
-                            .last()
-                            .copied()
-                            .unwrap_or_default()
-            })
-            .unwrap_or_default()
-        {
-            // Notify resync is complete.
-        }
         info!(
             "Storage: marked block {} complete: {}",
             block_height,
