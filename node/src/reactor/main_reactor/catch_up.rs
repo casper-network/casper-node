@@ -1,6 +1,6 @@
 use either::Either;
 use std::time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use casper_types::{TimeDiff, Timestamp};
 
@@ -269,13 +269,7 @@ impl MainReactor {
             self.chainspec.core_config.simultaneous_peer_requests,
         );
         let leap_status = self.sync_leaper.leap_status();
-        info!(
-            ?block_hash,
-            ?leap_status,
-            "CatchUp: {} {}",
-            block_hash,
-            leap_status
-        );
+        info!("CatchUp: status for {} is {}", block_hash, leap_status);
         match leap_status {
             LeapStatus::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
             LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
@@ -301,7 +295,7 @@ impl MainReactor {
         error: LeapActivityError,
     ) -> CatchUpInstruction {
         self.attempts += 1;
-        error!(
+        warn!(
             %error,
             "CatchUp: failed leap, remaining attempts: {}",
             self.max_attempts.saturating_sub(self.attempts)
@@ -316,10 +310,17 @@ impl MainReactor {
         block_hash: BlockHash,
     ) -> CatchUpInstruction {
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-        let peers_to_ask = self.net.fully_connected_peers_random(
-            rng,
-            self.chainspec.core_config.simultaneous_peer_requests as usize,
-        );
+        let peers_to_ask_count = self.chainspec.core_config.simultaneous_peer_requests as usize;
+        let peers_to_ask = self
+            .net
+            .fully_connected_peers_random(rng, peers_to_ask_count);
+        if peers_to_ask.len() < peers_to_ask_count {
+            warn!(
+                "CatchUp: attmepting to Leap with less connected peers ({}) than required ({})",
+                peers_to_ask.len(),
+                peers_to_ask_count
+            );
+        }
         let effects = effect_builder.immediately().event(move |_| {
             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
                 sync_leap_identifier,

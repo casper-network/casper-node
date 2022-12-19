@@ -3,7 +3,7 @@ use std::{
     fmt::{Display, Formatter},
     time::Duration,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, Timestamp};
 
@@ -293,13 +293,7 @@ impl MainReactor {
         // signatures against. we use the leaper to gain awareness of the necessary
         // trusted ancestors to our earliest contiguous block to do necessary validation.
         let leap_status = self.sync_leaper.leap_status();
-        info!(
-            ?parent_hash,
-            ?leap_status,
-            "Historical: {} {}",
-            parent_hash,
-            leap_status
-        );
+        info!("Historical status for {} is {}", parent_hash, leap_status);
         match leap_status {
             LeapStatus::Idle => self.sync_back_leaper_idle(effect_builder, rng, parent_hash),
             LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(
@@ -325,7 +319,7 @@ impl MainReactor {
         error: LeapActivityError,
     ) -> KeepUpInstruction {
         self.attempts += 1;
-        error!(
+        warn!(
             %error,
             "Historical: failed leap, remaining attempts: {}",
             self.max_attempts.saturating_sub(self.attempts)
