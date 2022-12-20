@@ -139,6 +139,7 @@ use crate::{
         deploy_acceptor,
         fetcher::FetchResult,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        sync_leaper::SyncLeapAttemptCancelReason,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -168,7 +169,10 @@ use requests::{
     StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
-use self::requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest};
+use self::{
+    announcements::SyncLeaperAnnouncement,
+    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest},
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -801,6 +805,25 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 DeployBufferAnnouncement::DeploysExpired(hashes),
                 QueueKind::Validation,
+            )
+            .await;
+    }
+
+    /// Announces the sync leap has failed.
+    pub(crate) async fn announce_sync_leap_failed(
+        self,
+        crank_delay: Duration,
+        reason: SyncLeapAttemptCancelReason,
+    ) where
+        REv: From<SyncLeaperAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                SyncLeaperAnnouncement::SyncLeapFailed {
+                    crank_delay,
+                    reason,
+                },
+                QueueKind::Regular,
             )
             .await;
     }

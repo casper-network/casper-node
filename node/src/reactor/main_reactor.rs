@@ -17,7 +17,11 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
@@ -52,7 +56,8 @@ use crate::{
             BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             DeployBufferAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement,
-            ReactorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            ReactorAnnouncement, RpcServerAnnouncement, SyncLeaperAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -132,6 +137,7 @@ pub(crate) struct MainReactor {
 
     last_progress: Timestamp,
     attempts: usize,
+    delay_before_next_crank: Option<Duration>,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
     sync_to_genesis: bool,
@@ -327,6 +333,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix,
             switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
+            delay_before_next_crank: None,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -463,6 +470,22 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Consensus,
                 self.consensus.handle_event(effect_builder, rng, req.into()),
             ),
+
+            // SYNC LEAP
+            MainEvent::SyncLeaperAnnouncement(ann) => match ann {
+                SyncLeaperAnnouncement::SyncLeapFailed {
+                    crank_delay,
+                    reason,
+                } => {
+                    // This could happen in normal operation, hence `info!`
+                    info!(
+                        "sync leaper announced failed leap: reason={:?}, requested delay={:?}",
+                        reason, crank_delay
+                    );
+                    self.delay_before_next_crank = Some(crank_delay);
+                    Effects::new()
+                }
+            },
 
             // NETWORK CONNECTION AND ORIENTATION
             MainEvent::Network(event) => reactor::wrap_effects(
