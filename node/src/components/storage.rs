@@ -1269,6 +1269,10 @@ impl Storage {
                 {
                     continue;
                 }
+                // This should be unreachable as the `BlockSynchronizer` should ensure we have the
+                // correct approvals before it then calls this method.  By returning `Ok(None)` the
+                // node would be stalled at this block, but should eventually sync leap due to lack
+                // of progress.  It would then backfill this block without executing it.
                 error!(
                     ?block_hash,
                     "Storage: deploy with incorrect approvals for  {}", block_hash
