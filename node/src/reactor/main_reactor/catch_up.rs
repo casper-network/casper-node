@@ -42,16 +42,16 @@ impl MainReactor {
         };
         debug!(
             ?sync_identifier,
-            "CatchUp: sync identifier {}",
-            sync_identifier.block_hash()
+            block_hash = ?sync_identifier.block_hash(),
+            "CatchUp: sync identifier"
         );
         // we check with the block accumulator before doing sync work as it may be aware of one or
         // more blocks that are higher than our current highest block
         let sync_instruction = self.block_accumulator.sync_instruction(sync_identifier);
         debug!(
             ?sync_instruction,
-            "CatchUp: sync_instruction {}",
-            sync_instruction.block_hash()
+            block_hash = ?sync_instruction.block_hash(),
+            "CatchUp: sync_instruction"
         );
         if let Some(catch_up_instruction) =
             self.catch_up_sync_instruction(effect_builder, rng, sync_instruction)
@@ -212,7 +212,7 @@ impl MainReactor {
     ) -> Either<SyncIdentifier, CatchUpInstruction> {
         // if any progress has been made, reset attempts
         if last_progress > self.last_progress {
-            debug!("CatchUp: syncing last_progress: {}", last_progress);
+            debug!(%last_progress, "CatchUp: syncing");
             self.last_progress = last_progress;
             self.attempts = 0;
         }
@@ -223,9 +223,9 @@ impl MainReactor {
         if idleness > self.idle_tolerance {
             self.attempts += 1;
             warn!(
-                "CatchUp: idleness detected last_progress: {} attempts remaining: {}",
-                last_progress,
-                self.max_attempts.saturating_sub(self.attempts)
+                %last_progress,
+                remaining_attempts = self.max_attempts.saturating_sub(self.attempts),
+                "CatchUp: idleness detected"
             );
         }
         match maybe_block_height {
@@ -269,7 +269,7 @@ impl MainReactor {
             self.chainspec.core_config.simultaneous_peer_requests,
         );
         let leap_status = self.sync_leaper.leap_status();
-        info!("CatchUp: status for {} is {}", block_hash, leap_status);
+        info!(?block_hash, ?leap_status, "CatchUp: status");
         match leap_status {
             LeapStatus::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
             LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
@@ -297,8 +297,8 @@ impl MainReactor {
         self.attempts += 1;
         warn!(
             %error,
-            "CatchUp: failed leap, remaining attempts: {}",
-            self.max_attempts.saturating_sub(self.attempts)
+            remaining_attempts = self.max_attempts.saturating_sub(self.attempts),
+            "CatchUp: failed leap",
         );
         self.catch_up_leaper_idle(effect_builder, rng, block_hash)
     }
@@ -310,15 +310,13 @@ impl MainReactor {
         block_hash: BlockHash,
     ) -> CatchUpInstruction {
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-        let peers_to_ask_count = self.chainspec.core_config.simultaneous_peer_requests as usize;
-        let peers_to_ask = self
-            .net
-            .fully_connected_peers_random(rng, peers_to_ask_count);
-        if peers_to_ask.len() < peers_to_ask_count {
+        let peers_wanted = self.chainspec.core_config.simultaneous_peer_requests as usize;
+        let peers_to_ask = self.net.fully_connected_peers_random(rng, peers_wanted);
+        if peers_to_ask.len() < peers_wanted {
             warn!(
-                "CatchUp: attempting to Leap with less connected peers ({}) than wanted ({})",
-                peers_to_ask.len(),
-                peers_to_ask_count
+                peers_available = peers_to_ask.len(),
+                %peers_wanted,
+                "CatchUp: attempting to Leap with less connected peers than wanted"
             );
         }
         let effects = effect_builder.immediately().event(move |_| {
@@ -339,7 +337,11 @@ impl MainReactor {
         let block_hash = best_available.highest_block_hash();
         let block_height = best_available.highest_block_height();
         info!(
-            %best_available,"CatchUp: leap received({}) {}", block_height, block_hash);
+            ?best_available,
+            ?block_height,
+            ?block_hash,
+            "CatchUp: leap received"
+        );
 
         if let Err(msg) = self.update_highest_switch_block() {
             return CatchUpInstruction::Fatal(msg);
