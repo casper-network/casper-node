@@ -293,7 +293,7 @@ impl MainReactor {
         // signatures against. we use the leaper to gain awareness of the necessary
         // trusted ancestors to our earliest contiguous block to do necessary validation.
         let leap_status = self.sync_leaper.leap_status();
-        info!("Historical status for {} is {}", parent_hash, leap_status);
+        info!("historical status for {} is {}", parent_hash, leap_status);
         match leap_status {
             LeapStatus::Idle => self.sync_back_leaper_idle(effect_builder, rng, parent_hash),
             LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(

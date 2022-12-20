@@ -316,7 +316,7 @@ impl MainReactor {
             .fully_connected_peers_random(rng, peers_to_ask_count);
         if peers_to_ask.len() < peers_to_ask_count {
             warn!(
-                "CatchUp: attmepting to Leap with less connected peers ({}) than required ({})",
+                "CatchUp: attempting to Leap with less connected peers ({}) than wanted ({})",
                 peers_to_ask.len(),
                 peers_to_ask_count
             );
