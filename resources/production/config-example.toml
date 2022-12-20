@@ -38,6 +38,9 @@ max_attempts = 3
 # Default delay for the control events that have no dedicated delay requirements.
 control_logic_default_delay = '1sec'
 
+# Flag which forces the node to resync all of the blocks.
+force_resync = false
+
 # =================================
 # Configuration options for logging
 # =================================
