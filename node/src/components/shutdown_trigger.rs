@@ -1,8 +1,8 @@
 //! Shutdown trigger control.
 //!
-//! A component that can be primed with a [`StopAtSpec`] and will monitor to the node, until it
+//! A component that can be primed with a [`StopAtSpec`] and will monitor the node, until it
 //! detects a specific spec has been triggered. If so, it instructs the system to shut down through
-//!  a [`ControlAnnouncement`].
+//! a [`ControlAnnouncement`].
 
 use std::{fmt::Display, mem};
 
@@ -87,7 +87,7 @@ where
                     StopAtSpec::BlockHeight(trigger_height) => block.height() >= trigger_height,
                     StopAtSpec::EraId(trigger_era_id) => block.header().era_id() >= trigger_era_id,
                     StopAtSpec::Immediately => {
-                        // Immediate stops are handled when the event is received.
+                        // Immediate stops are handled when the request is received.
                         false
                     }
                     StopAtSpec::NextBlock => {
@@ -127,8 +127,7 @@ where
             }) => {
                 mem::swap(&mut self.active_spec, &mut stop_at);
 
-                let mut effects = Effects::new();
-                effects.extend(responder.respond(stop_at).ignore());
+                let mut effects = responder.respond(stop_at).ignore();
 
                 // If we received an immediate shutdown request, send out the control announcement
                 // directly, instead of waiting for another block.

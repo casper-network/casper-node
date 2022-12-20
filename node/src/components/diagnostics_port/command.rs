@@ -100,7 +100,7 @@ pub(super) enum Action {
         /// to stop on an upcoming block or switch block, or `now` to stop immediately. Defaults to
         /// `block:next`."
         ///
-        /// Returns the previouslys set stopping point, if any.
+        /// Returns the previously set stopping point, if any.
         #[structopt(short, long, default_value)]
         at: StopAtSpec,
         /// Ignore all further options to stop and clear any currently scheduled stops.
