@@ -484,9 +484,6 @@ impl reactor::Reactor for MainReactor {
                         offender,
                         justification: _,
                     } => {
-                        // todo!() - instead of ignoring, should we pass `justification` down to the
-                        // "peer rating" system? Probably, because it'll allow us to add additional
-                        // info to `BlocklistJustification::DishonestPeer` variant.
                         let event = MainEvent::BlockSynchronizer(
                             block_synchronizer::Event::DisconnectFromPeer(**offender),
                         );

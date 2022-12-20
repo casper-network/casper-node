@@ -761,7 +761,6 @@ async fn empty_block_validation_regression() {
                 responder,
             }) => {
                 info!("Accusing everyone else!");
-                // todo!: Accuse everyone else!
                 Either::Right(MainEvent::DeployBufferRequest(
                     DeployBufferRequest::GetAppendableBlock {
                         timestamp,

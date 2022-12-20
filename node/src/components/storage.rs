@@ -1269,8 +1269,6 @@ impl Storage {
                 {
                     continue;
                 }
-                // todo!() - right deploy with incorrect approvals found in DB, download and
-                // store deploy with correct approvals
                 error!(
                     ?block_hash,
                     "Storage: deploy with incorrect approvals for  {}", block_hash
@@ -2314,9 +2312,6 @@ impl Storage {
                 .cloned()
                 .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
-            // todo! - protocol version check - should return NotProvided if:
-            //       * signed_block_headers is empty & trusted header is not last before upgrade, or
-            //       * any signed block header is not from current PV
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: false,
                 trusted_block_header,
