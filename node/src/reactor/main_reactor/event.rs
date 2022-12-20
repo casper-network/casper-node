@@ -18,7 +18,7 @@ use crate::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             DeployBufferAnnouncement, FatalAnnouncement, GossiperAnnouncement,
             PeerBehaviorAnnouncement, ReactorAnnouncement, RpcServerAnnouncement,
-            SyncLeaperAnnouncement, UpgradeWatcherAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -105,8 +105,6 @@ pub(crate) enum MainEvent {
     SyncLeapFetcher(#[serde(skip_serializing)] fetcher::Event<SyncLeap>),
     #[from]
     SyncLeapFetcherRequest(#[serde(skip_serializing)] FetcherRequest<SyncLeap>),
-    #[from]
-    SyncLeaperAnnouncement(SyncLeaperAnnouncement),
     #[from]
     Consensus(#[serde(skip_serializing)] consensus::Event),
     #[from]
@@ -331,7 +329,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
             MainEvent::MainReactorAnnouncement(_) => "MainReactorAnnouncement",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
-            MainEvent::SyncLeaperAnnouncement(_) => "SyncLeaperAnnouncement",
         }
     }
 }
@@ -486,9 +483,6 @@ impl Display for MainEvent {
             }
             MainEvent::NetworkPeerBehaviorAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
-            }
-            MainEvent::SyncLeaperAnnouncement(ann) => {
-                write!(f, "sync leaper announcement: {}", ann)
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),

@@ -7,7 +7,6 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
-    time::Duration,
 };
 
 use itertools::Itertools;
@@ -21,7 +20,6 @@ use crate::{
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
         network::blocklist::BlocklistJustification,
-        sync_leaper::SyncLeapAttemptCancelReason,
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
@@ -225,33 +223,6 @@ impl Display for DeployBufferAnnouncement {
             DeployBufferAnnouncement::DeploysExpired(hashes) => {
                 write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) enum SyncLeaperAnnouncement {
-    SyncLeapFailed {
-        /// For how long the processing should stop upon receiving this announcement.
-        /// Expressed explicitly, because each reason can potentially have a different request for
-        /// crank delay.
-        crank_delay: Duration,
-        /// Reason of the failed sync leap.
-        reason: SyncLeapAttemptCancelReason,
-    },
-}
-
-impl Display for SyncLeaperAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SyncLeaperAnnouncement::SyncLeapFailed {
-                crank_delay,
-                reason,
-            } => write!(
-                f,
-                "sync leap failed: {:?} - requested delay: {:?}",
-                reason, crank_delay
-            ),
         }
     }
 }

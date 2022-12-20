@@ -40,16 +40,7 @@ impl MainReactor {
         if self.attempts > self.max_attempts {
             return fatal!(effect_builder, "exceeded reattempt tolerance").ignore();
         }
-        let (mut delay, mut effects) = self.do_crank(effect_builder, rng);
-
-        // Check if there was some delay requested by other components. If yes,
-        // pick the largest delay, apply it to next crank and reset to None.
-        if let Some(requested_delay) = self.delay_before_next_crank {
-            if requested_delay > delay {
-                delay = requested_delay;
-            }
-            self.delay_before_next_crank = None;
-        }
+        let (delay, mut effects) = self.do_crank(effect_builder, rng);
         effects.extend(
             async move {
                 if !delay.is_zero() {

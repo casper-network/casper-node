@@ -13,7 +13,6 @@ use std::{
 
 use datasize::DataSize;
 use prometheus::Registry;
-use serde::Serialize;
 use tracing::{error, info, warn};
 
 use crate::{
@@ -21,10 +20,7 @@ use crate::{
         fetcher::{self, FetchResult, FetchedData},
         Component,
     },
-    effect::{
-        announcements::SyncLeaperAnnouncement, requests::FetcherRequest, EffectBuilder, EffectExt,
-        Effects,
-    },
+    effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
     types::{Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
@@ -39,12 +35,6 @@ enum PeerState {
     Rejected,
     CouldntFetch,
     Fetched(Box<SyncLeap>),
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) enum SyncLeapAttemptCancelReason {
-    NoPeers,
-    SyncLeapInProgres(SyncLeapIdentifier),
 }
 
 #[derive(Debug, DataSize)]
@@ -271,19 +261,11 @@ impl SyncLeaper {
         peers_to_ask: Vec<NodeId>,
     ) -> Effects<Event>
     where
-        REv: From<FetcherRequest<SyncLeap>> + From<SyncLeaperAnnouncement> + Send,
+        REv: From<FetcherRequest<SyncLeap>> + Send,
     {
         let mut effects = Effects::new();
         if peers_to_ask.is_empty() {
             error!("tried to start fetching a sync leap without peers to ask");
-            effects.extend(
-                effect_builder
-                    .announce_sync_leap_failed(
-                        self.chainspec.core_config.minimum_block_time.into(),
-                        SyncLeapAttemptCancelReason::NoPeers,
-                    )
-                    .ignore(),
-            );
             return effects;
         }
         if let Some(leap_activity) = self.leap_activity.as_mut() {
@@ -292,14 +274,6 @@ impl SyncLeaper {
                     current_sync_leap_identifier = %leap_activity.sync_leap_identifier,
                     requested_sync_leap_identifier = %sync_leap_identifier,
                     "tried to start fetching a sync leap for a different sync_leap_identifier"
-                );
-                effects.extend(
-                    effect_builder
-                        .announce_sync_leap_failed(
-                            self.chainspec.core_config.minimum_block_time.into(),
-                            SyncLeapAttemptCancelReason::SyncLeapInProgres(sync_leap_identifier),
-                        )
-                        .ignore(),
                 );
                 return effects;
             }
@@ -425,7 +399,7 @@ impl SyncLeaper {
 
 impl<REv> Component<REv> for SyncLeaper
 where
-    REv: From<FetcherRequest<SyncLeap>> + From<SyncLeaperAnnouncement> + Send,
+    REv: From<FetcherRequest<SyncLeap>> + Send,
 {
     type Event = Event;
 
