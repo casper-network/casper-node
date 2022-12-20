@@ -4,6 +4,7 @@
 //! deep debug access to a running node via special commands.
 
 mod command;
+mod stop_at;
 mod tasks;
 mod util;
 
@@ -22,13 +23,16 @@ use tracing::{debug, warn};
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
     effect::{
-        announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
-        requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement,
+        diagnostics_port::DumpConsensusStateRequest,
+        requests::{NetworkInfoRequest, SetNodeStopRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     types::NodeRng,
     utils::umask,
     WithDir,
 };
+pub(crate) use stop_at::StopAtSpec;
 pub use tasks::FileSerializer;
 use util::ShowUnixAddr;
 
@@ -100,6 +104,7 @@ where
         + From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     type Event = Event;
@@ -129,6 +134,7 @@ where
         + From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     fn status(&self) -> ComponentStatus {
@@ -146,6 +152,7 @@ where
         + From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     type Error = Error;

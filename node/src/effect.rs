@@ -137,6 +137,7 @@ use crate::{
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
+        diagnostics_port::StopAtSpec,
         fetcher::FetchResult,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
@@ -168,7 +169,9 @@ use requests::{
     StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
-use self::requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest};
+use self::requests::{
+    ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest,
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -2071,6 +2074,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Announce that the node be shut down due to a request from a user.
+    pub(crate) async fn announce_user_shutdown_request(self)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ShutdownDueToUserRequest,
+                QueueKind::Control,
+            )
+            .await;
+    }
+
     /// Get the bytes for the chainspec file and genesis_accounts
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
@@ -2156,6 +2172,20 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
+    /// Set a new stopping point for the node.
+    ///
+    /// Returns a potentially previously set stop-at spec.
+    pub(crate) async fn set_node_stop_at(self, stop_at: Option<StopAtSpec>) -> Option<StopAtSpec>
+    where
+        REv: From<SetNodeStopRequest>,
+    {
+        self.make_request(
+            |responder| SetNodeStopRequest { stop_at, responder },
+            QueueKind::Control,
         )
         .await
     }

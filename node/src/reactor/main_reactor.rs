@@ -42,6 +42,7 @@ use crate::{
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
+        shutdown_trigger::ShutdownTrigger,
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
@@ -89,6 +90,7 @@ pub(crate) struct MainReactor {
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
+    shutdown_trigger: ShutdownTrigger,
     net: Network<MainEvent, Message>,
     consensus: EraSupervisor,
 
@@ -232,6 +234,7 @@ impl reactor::Reactor for MainReactor {
         );
         let diagnostics_port =
             DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
+        let shutdown_trigger = ShutdownTrigger::new();
 
         // local / remote data management
         let sync_leaper = SyncLeaper::new(chainspec.clone(), registry)?;
@@ -313,6 +316,7 @@ impl reactor::Reactor for MainReactor {
             block_accumulator,
             block_synchronizer,
             diagnostics_port,
+            shutdown_trigger,
 
             metrics,
             memory_metrics,
@@ -353,6 +357,11 @@ impl reactor::Reactor for MainReactor {
                 error!("unhandled control announcement: {}", ctrl_ann);
                 Effects::new()
             }
+            MainEvent::SetNodeStopRequest(req) => reactor::wrap_effects(
+                MainEvent::ShutdownTrigger,
+                self.shutdown_trigger
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
 
             MainEvent::FatalAnnouncement(fatal_ann) => {
                 if self.consensus.is_active_validator() {
@@ -378,7 +387,9 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }) => {
+            MainEvent::MainReactorAnnouncement(
+                ref ann @ ReactorAnnouncement::CompletedBlock { ref block },
+            ) => {
                 let mut effects = Effects::new();
                 effects.extend(self.dispatch_event(
                     effect_builder,
@@ -399,6 +410,11 @@ impl reactor::Reactor for MainReactor {
                         header: Box::new(block.header().clone()),
                         header_hash: *block.hash(),
                     }),
+                ));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::ShutdownTrigger,
+                    self.shutdown_trigger
+                        .handle_event(effect_builder, rng, ann.clone().into()),
                 ));
                 effects
             }
@@ -453,6 +469,11 @@ impl reactor::Reactor for MainReactor {
             MainEvent::EventStreamServer(event) => reactor::wrap_effects(
                 MainEvent::EventStreamServer,
                 self.event_stream_server
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::ShutdownTrigger(event) => reactor::wrap_effects(
+                MainEvent::ShutdownTrigger,
+                self.shutdown_trigger
                     .handle_event(effect_builder, rng, event),
             ),
             MainEvent::DiagnosticsPort(event) => reactor::wrap_effects(

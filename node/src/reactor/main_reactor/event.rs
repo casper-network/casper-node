@@ -10,7 +10,7 @@ use crate::{
         block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
         diagnostics_port, event_stream_server, fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server, rpc_server, storage, sync_leaper, upgrade_watcher,
+        rest_server, rpc_server, shutdown_trigger, storage, sync_leaper, upgrade_watcher,
     },
     effect::{
         announcements::{
@@ -31,8 +31,8 @@ use crate::{
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            ReactorStatusRequest, RestRequest, RpcRequest, StorageRequest, SyncGlobalStateRequest,
-            TrieAccumulatorRequest, UpgradeWatcherRequest,
+            ReactorStatusRequest, RestRequest, RpcRequest, SetNodeStopRequest, StorageRequest,
+            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -75,6 +75,8 @@ pub(crate) enum MainEvent {
     ChainspecRawBytesRequest(#[serde(skip_serializing)] ChainspecRawBytesRequest),
     #[from]
     EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
+    #[from]
+    ShutdownTrigger(shutdown_trigger::Event),
     #[from]
     DiagnosticsPort(diagnostics_port::Event),
     #[from]
@@ -220,6 +222,8 @@ pub(crate) enum MainEvent {
     #[from]
     StorageRequest(#[serde(skip_serializing)] StorageRequest),
     #[from]
+    SetNodeStopRequest(SetNodeStopRequest),
+    #[from]
     MainReactorRequest(#[serde(skip_serializing)] ReactorStatusRequest),
     #[from]
     MainReactorAnnouncement(#[serde(skip_serializing)] ReactorAnnouncement),
@@ -267,6 +271,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::FinalitySignatureFetcher(_) => "FinalitySignatureFetcher",
             MainEvent::SyncLeapFetcher(_) => "SyncLeapFetcher",
             MainEvent::ApprovalsHashesFetcher(_) => "ApprovalsHashesFetcher",
+            MainEvent::ShutdownTrigger(_) => "ShutdownTrigger",
             MainEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             MainEvent::NetworkRequest(_) => "NetworkRequest",
             MainEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -326,6 +331,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockGossiperAnnouncement(_) => "BlockGossiperAnnouncement",
             MainEvent::BlockFetcher(_) => "BlockFetcher",
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
+            MainEvent::SetNodeStopRequest(_) => "SetNodeStopRequest",
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
             MainEvent::MainReactorAnnouncement(_) => "MainReactorAnnouncement",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
@@ -396,6 +402,7 @@ impl Display for MainEvent {
             MainEvent::BlockSynchronizerAnnouncement(ann) => {
                 write!(f, "block synchronizer announcement: {}", ann)
             }
+            MainEvent::ShutdownTrigger(event) => write!(f, "shutdown trigger: {}", event),
             MainEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             MainEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             MainEvent::NetworkInfoRequest(req) => {
@@ -501,6 +508,7 @@ impl Display for MainEvent {
             MainEvent::BlockGossiperAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcher(inner) => Display::fmt(inner, f),
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
+            MainEvent::SetNodeStopRequest(inner) => Display::fmt(inner, f),
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
             MainEvent::MainReactorAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),

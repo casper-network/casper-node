@@ -7,13 +7,17 @@ use serde::Serialize;
 use structopt::StructOpt;
 use thiserror::Error;
 
+use super::StopAtSpec;
+
 /// Command processing error.
 ///
 /// Failures that occur when trying to parse an incoming client message.
 #[derive(Debug, Error)]
 pub(super) enum Error {
+    /// Error processing a line using the shell-like lexer.
     #[error("failed to split line using shell lexing rules")]
     ShlexFailure,
+    /// Not a valid command input.
     #[error(transparent)]
     Invalid(#[from] structopt::clap::Error),
 }
@@ -88,6 +92,21 @@ pub(super) enum Action {
     DumpQueues,
     /// Get detailed networking insights.
     NetInfo,
+    /// Stop the node at a certain condition.
+    Stop {
+        /// When to stop the node.
+        ///
+        /// Supports `block:12345` for block height, `era:123` for eras, `block:next` / `era:end`
+        /// to stop on an upcoming block or switch block, or `now` to stop immediately. Defaults to
+        /// `block:next`."
+        ///
+        /// Returns the previously set stopping point, if any.
+        #[structopt(short, long, default_value)]
+        at: StopAtSpec,
+        /// Ignore all further options to stop and clear any currently scheduled stops.
+        #[structopt(short, long)]
+        clear: bool,
+    },
     /// Close connection server-side.
     Quit,
 }

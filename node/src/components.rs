@@ -62,6 +62,7 @@ pub(crate) mod metrics;
 pub(crate) mod network;
 pub(crate) mod rest_server;
 pub mod rpc_server;
+pub(crate) mod shutdown_trigger;
 pub mod storage;
 pub(crate) mod sync_leaper;
 pub(crate) mod upgrade_watcher;
