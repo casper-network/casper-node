@@ -5,19 +5,15 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::TimeDiff;
 
-const DEFAULT_TIMEOUT: &str = "10mins";
 const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
 const DEFAULT_PEER_REFRESH_INTERVAL: &str = "90sec";
+const DEFAULT_NEED_NEXT_INTERVAL: &str = "1sec";
 const DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL: &str = "10sec";
-const NEED_NEXT_INTERVAL: &str = "1s";
+const DEFAULT_RANDOM_PEER_COUNT_FOR_HISTORICAL_SYNC: u16 = 5;
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
-    /// Idleness timeout tolerance (if the block synchronizer is enabled but has not
-    /// made progress in this specified time the node will register a failed attempt to catch up
-    /// and then either try again if any reattempts remain or shut down).
-    timeout: TimeDiff,
     /// Maximum number of trie nodes to fetch in parallel.
     max_parallel_trie_fetches: u32,
     /// Time interval for the node to ask for refreshed peers.
@@ -26,13 +22,11 @@ pub struct Config {
     need_next_interval: TimeDiff,
     /// Time interval for recurring disconnection of dishonest peers.
     disconnect_dishonest_peers_interval: TimeDiff,
+    /// Number of random peers to use for historical sync.
+    random_peer_count_for_historical_sync: u16,
 }
 
 impl Config {
-    pub(crate) fn timeout(&self) -> TimeDiff {
-        self.timeout
-    }
-
     pub(crate) fn max_parallel_trie_fetches(&self) -> u32 {
         self.max_parallel_trie_fetches
     }
@@ -48,19 +42,23 @@ impl Config {
     pub(crate) fn disconnect_dishonest_peers_interval(&self) -> TimeDiff {
         self.disconnect_dishonest_peers_interval
     }
+
+    pub(crate) fn random_peer_count_for_historical_sync(&self) -> u16 {
+        self.random_peer_count_for_historical_sync
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            timeout: TimeDiff::from_str(DEFAULT_TIMEOUT).unwrap(),
             max_parallel_trie_fetches: DEFAULT_MAX_PARALLEL_TRIE_FETCHES,
             peer_refresh_interval: TimeDiff::from_str(DEFAULT_PEER_REFRESH_INTERVAL).unwrap(),
-            need_next_interval: TimeDiff::from_str(NEED_NEXT_INTERVAL).unwrap(),
+            need_next_interval: TimeDiff::from_str(DEFAULT_NEED_NEXT_INTERVAL).unwrap(),
             disconnect_dishonest_peers_interval: TimeDiff::from_str(
                 DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL,
             )
             .unwrap(),
+            random_peer_count_for_historical_sync: DEFAULT_RANDOM_PEER_COUNT_FOR_HISTORICAL_SYNC,
         }
     }
 }
