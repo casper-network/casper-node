@@ -301,9 +301,12 @@ impl MainReactor {
             leap_status
         );
         match leap_status {
-            LeapStatus::Idle => {
-                self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
-            }
+            LeapStatus::Idle => self.sync_back_leaper_idle(
+                effect_builder,
+                rng,
+                parent_hash,
+                self.control_logic_default_delay.into(),
+            ),
             LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(
                 "historical sync leaper is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
