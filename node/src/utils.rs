@@ -7,7 +7,6 @@ pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
 pub(crate) mod opt_display;
-pub(crate) mod pid_file;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
 pub(crate) mod umask;

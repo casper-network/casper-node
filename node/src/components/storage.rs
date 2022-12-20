@@ -45,7 +45,9 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
-    fs, mem,
+    fs::{self, OpenOptions},
+    io::ErrorKind,
+    mem,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -95,7 +97,7 @@ use crate::{
         FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
         SyncLeapIdentifier, ValueOrChunk,
     },
-    utils::{self, display_error, pid_file::PidFile, WithDir},
+    utils::{self, display_error, WithDir},
     NodeRng,
 };
 use disjoint_sequences::{DisjointSequences, Sequence};
@@ -127,8 +129,8 @@ const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 const MAX_DB_COUNT: u32 = 9;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
-/// Key under which completed blocks are to be stored.
-const FORCE_RESYNC_PID_FILE_NAME: &str = "force_resync.pid";
+/// Name of the file created when initializing a force resync.
+const FORCE_RESYNC_FILE_NAME: &str = "force_resync";
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -210,8 +212,6 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: TimeDiff,
-    #[data_size(skip)]
-    force_resync_pid_file: Option<PidFile>,
 }
 
 /// A storage component event.
@@ -478,42 +478,38 @@ impl Storage {
             fault_tolerance_fraction,
             max_ttl,
             metrics,
-            force_resync_pid_file: None,
         };
 
         if force_resync {
+            let force_resync_file_path = component.root_path().join(FORCE_RESYNC_FILE_NAME);
             // Check if resync is already in progress. Force resync will kick
-            // in only when the pid file was cleanly initialized and acquired
-            // (i.e. it didn't exist before).
-            match PidFile::acquire(component.root_path().join(FORCE_RESYNC_PID_FILE_NAME)) {
-                utils::pid_file::PidFileOutcome::Clean(pid_file) => {
-                    // When no pid file was detected, initialize force resync.
-                    info!("Initializing force resync.");
+            // in only when the marker file didn't exist before.
+            // Use `OpenOptions::create_new` to atomically check for the file
+            // presence and create it if necessary.
+            match OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&force_resync_file_path)
+            {
+                Ok(_file) => {
+                    // When the force resync marker file was not present and
+                    // is now created, initialize force resync.
+                    info!("initializing force resync");
                     // Default `storage.completed_blocks`.
                     component.completed_blocks = Default::default();
                     component.persist_completed_blocks()?;
-                    component.force_resync_pid_file = Some(pid_file);
                     // Exit the initialization function early.
                     return Ok(component);
                 }
-                utils::pid_file::PidFileOutcome::AnotherNodeRunning(pid_file_error) => {
+                Err(io_err) if io_err.kind() == ErrorKind::AlreadyExists => {
+                    info!("skipping force resync as marker file exists");
+                }
+                Err(io_err) => {
                     warn!(
-                        "Another node is using the force resync pid file: {}",
-                        pid_file_error
+                        "couldn't operate on the force resync marker file at path {}: {}",
+                        force_resync_file_path.to_string_lossy(),
+                        io_err
                     );
-                    info!("Skipping force resync as pid file exists.");
-                }
-                utils::pid_file::PidFileOutcome::Existing(pid_file) => {
-                    info!("Skipping force resync as pid file exists.");
-                    component.force_resync_pid_file = Some(pid_file);
-                }
-                utils::pid_file::PidFileOutcome::NonNumericContents(pid_file) => {
-                    info!("Skipping force resync as pid file exists.");
-                    warn!("Force resync pid file has non-numeric, possibly corrupt content.");
-                    component.force_resync_pid_file = Some(pid_file);
-                }
-                utils::pid_file::PidFileOutcome::PidFileError(pid_file_error) => {
-                    warn!("Error checking force resync pid file: {}", pid_file_error);
                 }
             }
         }
