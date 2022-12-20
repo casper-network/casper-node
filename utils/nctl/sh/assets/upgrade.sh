@@ -144,6 +144,12 @@ function _emergency_upgrade_node() {
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
+
+    # remove stored state of the launcher - this will make the launcher start from the highest
+    # available version instead of from the previously executed one
+    if [ -e "$PATH_TO_NODE"/config/casper-node-launcher-state.toml ]; then
+        rm "$PATH_TO_NODE"/config/casper-node-launcher-state.toml
+    fi
 }
 
 #######################################
@@ -230,4 +236,10 @@ function _emergency_upgrade_node_balances() {
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
+
+    # remove stored state of the launcher - this will make the launcher start from the highest
+    # available version instead of from the previously executed one
+    if [ -e "$PATH_TO_NODE"/config/casper-node-launcher-state.toml ]; then
+        rm "$PATH_TO_NODE"/config/casper-node-launcher-state.toml
+    fi
 }
