@@ -301,12 +301,9 @@ impl MainReactor {
             leap_status
         );
         match leap_status {
-            LeapStatus::Idle => self.sync_back_leaper_idle(
-                effect_builder,
-                rng,
-                parent_hash,
-                self.control_logic_default_delay.into(),
-            ),
+            LeapStatus::Idle => {
+                self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
+            }
             LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(
                 "historical sync leaper is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
@@ -356,7 +353,10 @@ impl MainReactor {
             self.chainspec.core_config.simultaneous_peer_requests as usize,
         );
         if peers_to_ask.is_empty() {
-            return KeepUpInstruction::CheckLater("no peers".to_string(), offset);
+            return KeepUpInstruction::CheckLater(
+                "no peers".to_string(),
+                self.control_logic_default_delay.into(),
+            );
         }
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
         let effects = effect_builder.immediately().event(move |_| {
