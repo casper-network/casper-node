@@ -3,6 +3,8 @@ use core::fmt::Debug;
 #[cfg(not(any(feature = "std", test)))]
 use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use ed25519_dalek::ed25519::Error as SignatureError;
 #[cfg(any(feature = "std", test))]
 use pem::PemError;
@@ -13,7 +15,8 @@ use thiserror::Error;
 use crate::file_utils::{ReadFileError, WriteFileError};
 
 /// Cryptographic errors.
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "std", test), derive(Error))]
 #[non_exhaustive]
 pub enum Error {
@@ -22,16 +25,18 @@ pub enum Error {
     AsymmetricKey(String),
 
     /// Error resulting when decoding a type from a hex-encoded representation.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     #[cfg_attr(any(feature = "std", test), error("parsing from hex: {0}"))]
     FromHex(base16::DecodeError),
 
     /// Error resulting when decoding a type from a base64 representation.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     #[cfg_attr(any(feature = "std", test), error("decoding error: {0}"))]
     FromBase64(base64::DecodeError),
 
     /// Signature error.
     #[cfg_attr(any(feature = "std", test), error("error in signature"))]
-    SignatureError(SignatureError),
+    SignatureError,
 
     /// Error trying to manipulate the system key.
     #[cfg_attr(
@@ -55,8 +60,8 @@ impl From<base16::DecodeError> for Error {
 }
 
 impl From<SignatureError> for Error {
-    fn from(error: SignatureError) -> Self {
-        Error::SignatureError(error)
+    fn from(_error: SignatureError) -> Self {
+        Error::SignatureError
     }
 }
 

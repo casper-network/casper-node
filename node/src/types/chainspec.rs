@@ -13,7 +13,7 @@ mod network_config;
 mod parse_toml;
 mod protocol_config;
 
-use std::{fmt::Debug, path::Path};
+use std::{fmt::Debug, path::Path, sync::Arc};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -22,7 +22,7 @@ use serde::Serialize;
 use tracing::{error, warn};
 
 use casper_execution_engine::{
-    core::engine_state::genesis::ExecConfig,
+    core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::{ChunkWithProof, Digest};
@@ -30,17 +30,22 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ProtocolVersion,
+    EraId, ProtocolVersion, PublicKey,
 };
 
 #[cfg(test)]
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
 pub use self::error::Error;
 pub(crate) use self::{
-    accounts_config::AccountsConfig, activation_point::ActivationPoint,
-    chainspec_raw_bytes::ChainspecRawBytes, core_config::CoreConfig, deploy_config::DeployConfig,
-    global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
-    network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig,
+    activation_point::ActivationPoint,
+    chainspec_raw_bytes::ChainspecRawBytes,
+    core_config::{ConsensusProtocolName, CoreConfig},
+    deploy_config::DeployConfig,
+    global_state_update::GlobalStateUpdate,
+    highway_config::HighwayConfig,
+    network_config::NetworkConfig,
+    protocol_config::ProtocolConfig,
 };
 use crate::utils::Loadable;
 
@@ -80,8 +85,6 @@ impl Chainspec {
             );
         }
 
-        let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
-
         if self.core_config.unbonding_delay <= self.core_config.auction_delay {
             warn!(
                 "unbonding delay is set to {} but it should be greater than the auction delay (currently set to {})",
@@ -92,13 +95,27 @@ impl Chainspec {
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
         if self.core_config.era_duration.millis() > 0
-            && self.core_config.era_duration.millis()
-                < self.core_config.minimum_era_height * min_era_ms
+            && self.core_config.era_duration
+                < self.core_config.minimum_block_time * self.core_config.minimum_era_height
         {
-            warn!("era duration is less than minimum era height * round length!");
+            warn!("era duration is less than minimum era height * block time!");
         }
 
-        self.protocol_config.is_valid() && self.highway_config.is_valid()
+        if self.core_config.consensus_protocol == ConsensusProtocolName::Highway {
+            if self.core_config.minimum_block_time > self.highway_config.maximum_round_length {
+                error!(
+                    minimum_block_time = %self.core_config.minimum_block_time,
+                    maximum_round_length = %self.highway_config.maximum_round_length,
+                    "minimum_block_time must be less or equal than maximum_round_length",
+                );
+                return false;
+            }
+            if !self.highway_config.is_valid() {
+                return false;
+            }
+        }
+
+        self.protocol_config.is_valid() && self.core_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -110,14 +127,65 @@ impl Chainspec {
         Digest::hash(&serialized_chainspec)
     }
 
-    /// Returns true if this chainspec has an activation_point specifying era ID 0.
-    pub(crate) fn is_genesis(&self) -> bool {
-        self.protocol_config.activation_point.is_genesis()
-    }
-
     /// Returns the protocol version of the chainspec.
     pub(crate) fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_config.version
+    }
+
+    /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
+    /// subsequent eras are deleted from storage.
+    pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
+        self.protocol_config
+            .hard_reset
+            .then(|| self.protocol_config.activation_point.era_id())
+    }
+
+    pub(crate) fn ee_upgrade_config(
+        &self,
+        pre_state_hash: Digest,
+        current_protocol_version: ProtocolVersion,
+        era_id: EraId,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    ) -> Result<UpgradeConfig, String> {
+        let chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes.maybe_global_state_bytes(),
+        );
+        let global_state_update = match self.protocol_config.get_update_mapping() {
+            Ok(global_state_update) => global_state_update,
+            Err(err) => {
+                return Err(format!("failed to generate global state update: {}", err));
+            }
+        };
+
+        Ok(UpgradeConfig::new(
+            pre_state_hash,
+            current_protocol_version,
+            self.protocol_config.version,
+            Some(era_id),
+            Some(self.core_config.validator_slots),
+            Some(self.core_config.auction_delay),
+            Some(self.core_config.locked_funds_period.millis()),
+            Some(self.core_config.round_seigniorage_rate),
+            Some(self.core_config.unbonding_delay),
+            global_state_update,
+            chainspec_registry,
+        ))
+    }
+
+    /// Returns `Some` if the validator set is being modified by the upgrade (otherwise `None`)
+    /// and `true` if the provided public key is a member of the new set, otherwise `false`.
+    #[allow(unused)] // check w/ Fraser...seems odd that we don't care about this anywhere else
+    pub(crate) fn is_in_modified_validator_set(&self, public_key: &PublicKey) -> Option<bool> {
+        self.protocol_config
+            .global_state_update
+            .as_ref()
+            .and_then(|global_state_update| {
+                if global_state_update.validators.is_empty() {
+                    return None;
+                }
+                Some(global_state_update.validators.contains(public_key))
+            })
     }
 }
 
@@ -353,7 +421,20 @@ mod tests {
             );
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
-            for value in spec.protocol_config.global_state_update.unwrap().0.values() {
+            assert!(!spec
+                .protocol_config
+                .global_state_update
+                .as_ref()
+                .unwrap()
+                .validators
+                .is_empty());
+            for value in spec
+                .protocol_config
+                .global_state_update
+                .unwrap()
+                .entries
+                .values()
+            {
                 assert!(StoredValue::from_bytes(value).is_ok());
             }
         }
@@ -363,11 +444,13 @@ mod tests {
         assert_eq!(spec.core_config.era_duration, TimeDiff::from(180000));
         assert_eq!(spec.core_config.minimum_era_height, 9);
         assert_eq!(
-            spec.highway_config.finality_threshold_fraction,
+            spec.core_config.finality_threshold_fraction,
             Ratio::new(2, 25)
         );
-        assert_eq!(spec.highway_config.minimum_round_exponent, 14);
-        assert_eq!(spec.highway_config.maximum_round_exponent, 19);
+        assert_eq!(
+            spec.highway_config.maximum_round_length,
+            TimeDiff::from(525000)
+        );
         assert_eq!(
             spec.highway_config.reduced_reward_multiplier,
             Ratio::new(1, 5)
@@ -400,6 +483,21 @@ mod tests {
         let mut rng = crate::new_rng();
         let chainspec = Chainspec::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&chainspec);
+    }
+
+    #[test]
+    fn should_validate_round_length() {
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        // Minimum block time greater than maximum round length.
+        chainspec.core_config.consensus_protocol = ConsensusProtocolName::Highway;
+        chainspec.core_config.minimum_block_time = TimeDiff::from(8);
+        chainspec.highway_config.maximum_round_length = TimeDiff::from(7);
+        assert!(!chainspec.is_valid());
+
+        chainspec.core_config.minimum_block_time = TimeDiff::from(7);
+        chainspec.highway_config.maximum_round_length = TimeDiff::from(7);
+        assert!(chainspec.is_valid());
     }
 
     #[ignore = "We probably need to reconsider our approach here"]

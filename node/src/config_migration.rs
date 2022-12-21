@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{reactor::participating::Config, utils::WithDir};
+use crate::{reactor::main_reactor::Config, utils::WithDir};
 
 // This will be changed in favour of an actual old config type when the migration is not a no-op.
 type OldConfig = Config;

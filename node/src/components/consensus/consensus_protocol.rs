@@ -5,7 +5,6 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +12,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
-    components::consensus::{traits::Context, ActionId, TimerId},
+    components::consensus::{traits::Context, ActionId, EraMessage, EraRequest, TimerId},
     types::NodeId,
     NodeRng,
 };
@@ -25,6 +24,8 @@ where
     C: Context,
 {
     timestamp: Timestamp,
+    /// The ancestors of the new block, in reverse chronological order, i.e. the first entry is the
+    /// new block's parent.
     ancestor_values: Vec<C::ConsensusValue>,
 }
 
@@ -43,6 +44,7 @@ impl<C: Context> BlockContext<C> {
     }
 
     /// The block's relative height, i.e. the number of ancestors in the current era.
+    #[cfg(test)]
     pub(crate) fn height(&self) -> u64 {
         self.ancestor_values.len() as u64
     }
@@ -81,10 +83,7 @@ impl<C: Context> ProposedBlock<C> {
     }
 }
 
-impl<C: Context> Display for ProposedBlock<C>
-where
-    C::ConsensusValue: Display,
-{
+impl<C: Context> Display for ProposedBlock<C> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
@@ -190,13 +189,13 @@ pub(crate) struct FinalizedBlock<C: Context> {
 
 pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
-// TODO: get rid of anyhow::Error; use variant and derive Clone and PartialEq. This is for testing.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
-    CreatedGossipMessage(Vec<u8>),
-    CreatedTargetedMessage(Vec<u8>, NodeId),
-    CreatedMessageToRandomPeer(Vec<u8>),
-    InvalidIncomingMessage(Vec<u8>, NodeId, Error),
+    CreatedGossipMessage(EraMessage<C>),
+    CreatedTargetedMessage(EraMessage<C>, NodeId),
+    CreatedMessageToRandomPeer(EraMessage<C>),
+    CreatedTargetedRequest(EraRequest<C>, NodeId),
+    CreatedRequestToRandomPeer(EraRequest<C>),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -224,10 +223,13 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     /// Too many faulty validators. The protocol's fault tolerance threshold has been exceeded and
     /// consensus cannot continue.
     FttExceeded,
-    /// No progress has been made recently.
-    StandstillAlert,
     /// We want to disconnect from a sender of invalid data.
     Disconnect(NodeId),
+    /// We added a proposed block to the protocol state.
+    ///
+    /// This is used to inform the deploy buffer, so we don't propose the same deploys again.
+    /// Does not need to be raised for proposals this node created itself.
+    HandledProposedBlock(ProposedBlock<C>),
 }
 
 /// An API for a single instance of the consensus.
@@ -242,15 +244,30 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: EraMessage<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
+
+    /// Handles an incoming request message and returns an optional response.
+    fn handle_request_message(
+        &mut self,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        msg: EraRequest<C>,
+        now: Timestamp,
+    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C>;
+    fn handle_timer(
+        &mut self,
+        timestamp: Timestamp,
+        now: Timestamp,
+        timer_id: TimerId,
+        rng: &mut NodeRng,
+    ) -> ProtocolOutcomes<C>;
 
     /// Triggers a queued action.
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<C>;
@@ -292,13 +309,10 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     fn request_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C>;
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
-    fn set_paused(&mut self, paused: bool);
+    fn set_paused(&mut self, paused: bool, now: Timestamp) -> ProtocolOutcomes<C>;
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;
-
-    /// Returns true if the protocol has received some messages since initialization.
-    fn has_received_messages(&self) -> bool;
 
     /// Returns whether this instance of a protocol is an active validator.
     fn is_active(&self) -> bool;

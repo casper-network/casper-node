@@ -34,7 +34,7 @@ pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
         1bcbcee522649d2b135fe510fe3")
 });
 
-/// Runs a global state query and returns a tuple of the JSON-compatible stored value and merkle
+/// Runs a global state query and returns a tuple of the JSON-compatible stored value and Merkle
 /// proof of the value.
 ///
 /// The proof is bytesrepr-encoded, and then hex-encoded.

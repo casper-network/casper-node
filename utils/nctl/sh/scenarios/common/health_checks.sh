@@ -11,7 +11,7 @@ function main() {
     log "------------------------------------------------------------"
 
     log "... Stopping nodes to freeze logs"
-    nctl-stop
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all > /dev/null 2>&1
 
     # Check allowed vs found counts
     assert_error_count
@@ -73,7 +73,7 @@ function assert_error_count() {
     fi
 
     log "SUCCESS: ALLOWED: $ERRORS_ALLOWED = TOTAL: $TOTAL"
-} 
+}
 
 ##########################################################
 # Function: assert_equivocator_count
@@ -252,7 +252,7 @@ function assert_doppel_count() {
 #       by the number of nodes it's found on. This is
 #       so we don't confuse ourselves when we expect
 #       1 but each node has the message and thus the
-#       TOTAL would print 5. 
+#       TOTAL would print 5.
 ##########################################################
 
 function assert_eject_count() {

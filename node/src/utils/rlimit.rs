@@ -37,10 +37,6 @@ impl LimitKind for OpenFiles {
     const LIBC_RESOURCE: LimitResourceId = libc::RLIMIT_NOFILE;
 }
 
-/// Infinite resource, i.e. no limit.
-#[allow(dead_code)]
-const INFINITE: Limit = libc::RLIM_INFINITY;
-
 /// Wrapper around libc resource limit type.
 #[derive(Copy, Clone)]
 pub struct ResourceLimit<T> {

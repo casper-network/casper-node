@@ -163,12 +163,32 @@ impl StateReader for MockStateReader {
 fn should_transfer_funds() {
     let mut rng = TestRng::new();
 
-    let account1: AccountHash = rng.gen();
-    let account2: AccountHash = rng.gen();
+    let public_key1 = PublicKey::random(&mut rng);
+    let public_key2 = PublicKey::random(&mut rng);
+    let account1 = public_key1.to_account_hash();
+    let account2 = public_key2.to_account_hash();
 
-    let mut reader = MockStateReader::new()
-        .with_account(account1, U512::from(1_000_000_000), &mut rng)
-        .with_account(account2, U512::zero(), &mut rng);
+    let mut reader = MockStateReader::new().with_validators(
+        vec![
+            (
+                public_key1.clone(),
+                U512::from(1_000_000_000),
+                ValidatorConfig {
+                    bonded_amount: U512::from(1),
+                    ..Default::default()
+                },
+            ),
+            (
+                public_key2.clone(),
+                U512::zero(),
+                ValidatorConfig {
+                    bonded_amount: U512::zero(),
+                    ..Default::default()
+                },
+            ),
+        ],
+        &mut rng,
+    );
 
     let config = Config {
         transfers: vec![Transfer {
@@ -181,6 +201,9 @@ fn should_transfer_funds() {
 
     let update = get_update(&mut reader, config);
 
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&public_key1, &public_key2]);
+
     // should write decreased balance to the first purse
     let account1 = reader.get_account(account1).expect("should have account");
     update.assert_written_balance(account1.main_purse(), 700_000_000);
@@ -191,7 +214,7 @@ fn should_transfer_funds() {
 
     // total supply is written on every purse balance change, so we'll have a write to this key
     // even though the changes cancel each other out
-    update.assert_total_supply(&mut reader, 1_000_000_000);
+    update.assert_total_supply(&mut reader, 1_000_000_001);
 
     // 3 keys should be written:
     // - balance of account 1
@@ -204,11 +227,22 @@ fn should_transfer_funds() {
 fn should_create_account_when_transferring_funds() {
     let mut rng = TestRng::new();
 
-    let account1: AccountHash = rng.gen();
-    let account2: AccountHash = rng.gen();
+    let public_key1 = PublicKey::random(&mut rng);
+    let public_key2 = PublicKey::random(&mut rng);
+    let account1 = public_key1.to_account_hash();
+    let account2 = public_key2.to_account_hash();
 
-    let mut reader =
-        MockStateReader::new().with_account(account1, U512::from(1_000_000_000), &mut rng);
+    let mut reader = MockStateReader::new().with_validators(
+        vec![(
+            public_key1.clone(),
+            U512::from(1_000_000_000),
+            ValidatorConfig {
+                bonded_amount: U512::from(1),
+                ..Default::default()
+            },
+        )],
+        &mut rng,
+    );
 
     let config = Config {
         transfers: vec![Transfer {
@@ -220,6 +254,9 @@ fn should_create_account_when_transferring_funds() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&public_key1]);
 
     let account1 = reader.get_account(account1).expect("should have account");
     // account2 shouldn't exist in the reader itself, only the update should be creating it
@@ -235,7 +272,7 @@ fn should_create_account_when_transferring_funds() {
 
     // total supply is written on every purse balance change, so we'll have a write to this key
     // even though the changes cancel each other out
-    update.assert_total_supply(&mut reader, 1_000_000_000);
+    update.assert_total_supply(&mut reader, 1_000_000_001);
 
     // 5 keys should be written:
     // - balance of account 1
@@ -257,7 +294,7 @@ fn should_change_one_validator() {
     let mut reader = MockStateReader::new().with_validators(
         vec![
             (
-                validator1,
+                validator1.clone(),
                 U512::from(101),
                 ValidatorConfig {
                     bonded_amount: U512::from(101),
@@ -265,7 +302,7 @@ fn should_change_one_validator() {
                 },
             ),
             (
-                validator2,
+                validator2.clone(),
                 U512::from(102),
                 ValidatorConfig {
                     bonded_amount: U512::from(102),
@@ -299,6 +336,9 @@ fn should_change_one_validator() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1, &validator2, &validator3]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 610);
@@ -341,7 +381,7 @@ fn should_change_only_stake_of_one_validator() {
     let mut reader = MockStateReader::new().with_validators(
         vec![
             (
-                validator1,
+                validator1.clone(),
                 U512::from(101),
                 ValidatorConfig {
                     bonded_amount: U512::from(101),
@@ -349,7 +389,7 @@ fn should_change_only_stake_of_one_validator() {
                 },
             ),
             (
-                validator2,
+                validator2.clone(),
                 U512::from(102),
                 ValidatorConfig {
                     bonded_amount: U512::from(102),
@@ -383,6 +423,9 @@ fn should_change_only_stake_of_one_validator() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1, &validator2, &validator3]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 613);
@@ -421,7 +464,7 @@ fn should_change_only_balance_of_one_validator() {
     let mut reader = MockStateReader::new().with_validators(
         vec![
             (
-                validator1,
+                validator1.clone(),
                 U512::from(101),
                 ValidatorConfig {
                     bonded_amount: U512::from(101),
@@ -429,7 +472,7 @@ fn should_change_only_balance_of_one_validator() {
                 },
             ),
             (
-                validator2,
+                validator2.clone(),
                 U512::from(102),
                 ValidatorConfig {
                     bonded_amount: U512::from(102),
@@ -459,6 +502,9 @@ fn should_change_only_balance_of_one_validator() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1, &validator2, &validator3]);
 
     update.assert_total_supply(&mut reader, 609);
 
@@ -512,6 +558,9 @@ fn should_replace_one_validator() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator2]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 305);
@@ -606,6 +655,9 @@ fn should_replace_one_validator_with_unbonding() {
 
     let update = get_update(&mut reader, config);
 
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator2]);
+
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 406);
 
@@ -679,7 +731,7 @@ fn should_add_one_validator() {
     let mut reader = MockStateReader::new().with_validators(
         vec![
             (
-                validator1,
+                validator1.clone(),
                 U512::from(101),
                 ValidatorConfig {
                     bonded_amount: U512::from(101),
@@ -687,7 +739,7 @@ fn should_add_one_validator() {
                 },
             ),
             (
-                validator2,
+                validator2.clone(),
                 U512::from(102),
                 ValidatorConfig {
                     bonded_amount: U512::from(102),
@@ -695,7 +747,7 @@ fn should_add_one_validator() {
                 },
             ),
             (
-                validator3,
+                validator3.clone(),
                 U512::from(103),
                 ValidatorConfig {
                     bonded_amount: U512::from(103),
@@ -722,6 +774,9 @@ fn should_add_one_validator() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1, &validator2, &validator3, &validator4]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 816);
@@ -771,7 +826,7 @@ fn should_add_one_validator_with_delegators() {
 
     let mut reader = MockStateReader::new().with_validators(
         vec![(
-            validator1,
+            validator1.clone(),
             U512::from(101),
             ValidatorConfig {
                 bonded_amount: U512::from(101),
@@ -800,6 +855,9 @@ fn should_add_one_validator_with_delegators() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1, &validator2]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 417);
@@ -897,6 +955,9 @@ fn should_replace_a_delegator() {
 
     let update = get_update(&mut reader, config);
 
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1]);
+
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 216);
 
@@ -991,6 +1052,9 @@ fn should_replace_a_delegator_with_unbonding() {
 
     let update = get_update(&mut reader, config);
 
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1]);
+
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 229);
 
@@ -1083,6 +1147,9 @@ fn should_not_change_the_delegator() {
 
     let update = get_update(&mut reader, config);
 
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1]);
+
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 225);
 
@@ -1149,6 +1216,9 @@ fn should_remove_the_delegator() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 212);
@@ -1231,6 +1301,9 @@ fn should_remove_the_delegator_with_unbonding() {
     };
 
     let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[&validator1]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 225);

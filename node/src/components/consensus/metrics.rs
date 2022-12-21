@@ -15,9 +15,9 @@ pub(super) struct Metrics {
     time_of_last_proposed_block: IntGauge,
     /// Timestamp of the most recently finalized block.
     time_of_last_finalized_block: IntGauge,
-    /// The Current era.
-    pub(super) current_era: IntGauge,
-    /// registry component.
+    /// The current era.
+    pub(super) consensus_current_era: IntGauge,
+    /// Registry component.
     registry: Registry,
 }
 
@@ -37,10 +37,11 @@ impl Metrics {
             "time_of_last_finalized_block",
             "timestamp of the most recently finalized block",
         )?;
-        let current_era = IntGauge::new("current_era", "the current era")?;
+        let consensus_current_era =
+            IntGauge::new("consensus_current_era", "the current era in consensus")?;
         registry.register(Box::new(finalization_time.clone()))?;
         registry.register(Box::new(finalized_block_count.clone()))?;
-        registry.register(Box::new(current_era.clone()))?;
+        registry.register(Box::new(consensus_current_era.clone()))?;
         registry.register(Box::new(time_of_last_proposed_block.clone()))?;
         registry.register(Box::new(time_of_last_finalized_block.clone()))?;
         Ok(Metrics {
@@ -48,7 +49,7 @@ impl Metrics {
             finalized_block_count,
             time_of_last_proposed_block,
             time_of_last_finalized_block,
-            current_era,
+            consensus_current_era,
             registry: registry.clone(),
         })
     }
@@ -74,7 +75,7 @@ impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.finalization_time);
         unregister_metric!(self.registry, self.finalized_block_count);
-        unregister_metric!(self.registry, self.current_era);
+        unregister_metric!(self.registry, self.consensus_current_era);
         unregister_metric!(self.registry, self.time_of_last_finalized_block);
         unregister_metric!(self.registry, self.time_of_last_proposed_block);
     }

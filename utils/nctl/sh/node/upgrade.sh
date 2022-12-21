@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 
-source "$NCTL"/sh/utils/main.sh
-source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 source "$NCTL"/sh/assets/upgrade.sh
 
-unset LOG_LEVEL
 unset NODE_ID
 unset PROTOCOL_VERSION
 unset ACTIVATE_ERA
@@ -15,21 +12,15 @@ for ARGUMENT in "$@"; do
     case "$KEY" in
         version) PROTOCOL_VERSION=${VALUE} ;;
         era) ACTIVATE_ERA=${VALUE} ;;
-        loglevel) LOG_LEVEL=${VALUE} ;;
         *) echo "Unknown argument '${KEY}'. Use 'version', 'era' or 'loglevel'." && exit 1 ;;
     esac
 done
 
-LOG_LEVEL=${LOG_LEVEL:-$RUST_LOG}
-LOG_LEVEL=${LOG_LEVEL:-debug}
-export RUST_LOG=$LOG_LEVEL
-
 function do_upgrade() {
-    local PROTOCOL_VERSION=${1}
+    local PROTOCOL_VERSION=${1:-"2_0_0"}
     local ACTIVATE_ERA=${2}
-    local NODE_COUNT=${3:-5}
 
-    for NODE_ID in $(seq 1 $((NODE_COUNT * 2))); do
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
         _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
     done
 }
@@ -38,6 +29,8 @@ function do_upgrade() {
 # Upgrades all nodes in the network to a specified protocol version.
 # Does not modify the chainspec file in any way that has an influence on the network,
 # except for setting required entries for the upgrade to take place.
+#
+# `version` arg should use underscores, e.g. `2_0_0`
 #######################################
 
 #

@@ -28,11 +28,11 @@ pub enum ActivationPoint {
 }
 
 impl ActivationPoint {
-    /// Returns whether we should upgrade the node due to the next era being at or after the upgrade
-    /// activation point.
+    /// Returns whether we should upgrade the node due to the next era being the upgrade activation
+    /// point.
     pub(crate) fn should_upgrade(&self, era_being_deactivated: &EraId) -> bool {
         match self {
-            ActivationPoint::EraId(era_id) => era_being_deactivated.successor() >= *era_id,
+            ActivationPoint::EraId(era_id) => era_being_deactivated.successor() == *era_id,
             ActivationPoint::Genesis(_) => false,
         }
     }
@@ -50,14 +50,6 @@ impl ActivationPoint {
         match self {
             ActivationPoint::EraId(_) => None,
             ActivationPoint::Genesis(timestamp) => Some(*timestamp),
-        }
-    }
-
-    /// Returns true if `self` is `Genesis`.
-    pub(crate) fn is_genesis(&self) -> bool {
-        match self {
-            ActivationPoint::EraId(_) => false,
-            ActivationPoint::Genesis(_) => true,
         }
     }
 }

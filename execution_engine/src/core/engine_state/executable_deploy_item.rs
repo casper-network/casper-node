@@ -23,8 +23,8 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, NamedKeys, DEFAULT_ENTRY_POINT_NAME},
     system::mint::ARG_AMOUNT,
-    CLValue, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, Key, Phase,
-    ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    CLValue, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, Gas, Key,
+    Motes, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::{
@@ -300,6 +300,14 @@ impl ExecutableDeployItem {
             | ExecutableDeployItem::StoredVersionedContractByHash { args, .. }
             | ExecutableDeployItem::StoredVersionedContractByName { args, .. }
             | ExecutableDeployItem::Transfer { args } => args,
+        }
+    }
+
+    /// Returns the amount from args (if any) as Gas.
+    pub fn payment_amount(&self, conv_rate: u64) -> Option<Gas> {
+        match self.args().get(ARG_AMOUNT) {
+            Some(val) => Gas::from_motes(Motes::new(val.clone().into_t::<U512>().ok()?), conv_rate),
+            None => None,
         }
     }
 
