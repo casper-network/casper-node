@@ -263,6 +263,7 @@ impl SyncLeaper {
     where
         REv: From<FetcherRequest<SyncLeap>> + Send,
     {
+        info!(%sync_leap_identifier, "registering leap attempt");
         let mut effects = Effects::new();
         if peers_to_ask.is_empty() {
             error!("tried to start fetching a sync leap without peers to ask");

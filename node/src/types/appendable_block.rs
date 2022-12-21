@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+};
 
 use casper_types::{Gas, PublicKey, Timestamp};
 use datasize::DataSize;
@@ -188,5 +191,33 @@ impl AppendableBlock {
             + self.deploy_config.block_max_deploy_count as usize
             - self.deploys.len();
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
+    }
+}
+
+impl Display for AppendableBlock {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        let deploy_approvals_count = self
+            .deploys
+            .iter()
+            .map(|deploy_hash_with_approvals| deploy_hash_with_approvals.approvals().len())
+            .sum::<usize>();
+        let transfer_approvals_count = self
+            .transfers
+            .iter()
+            .map(|deploy_hash_with_approvals| deploy_hash_with_approvals.approvals().len())
+            .sum::<usize>();
+        write!(
+            formatter,
+            "AppendableBlock({} non-transfers with {} approvals, {} transfers with {} approvals, \
+            total of {} deploys with {} approvals, total gas {}, total size {})",
+            self.deploys.len(),
+            deploy_approvals_count,
+            self.transfers.len(),
+            transfer_approvals_count,
+            self.deploy_and_transfer_set.len(),
+            self.total_approvals,
+            self.total_gas,
+            self.total_size,
+        )
     }
 }

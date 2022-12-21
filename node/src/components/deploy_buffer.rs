@@ -362,7 +362,7 @@ impl DeployBuffer {
                         | AddError::ApprovalCount
                         | AddError::GasLimit
                         | AddError::BlockSize => {
-                            debug!(
+                            info!(
                                 ?deploy_hash,
                                 %error,
                                 "DeployBuffer: a block limit has been reached"
@@ -385,6 +385,18 @@ impl DeployBuffer {
             }
         }
         self.update_all_metrics();
+
+        info!(
+            "produced {}, buffer has {} held, {} dead, {} total",
+            ret,
+            self.hold
+                .values()
+                .map(|deploys| deploys.len())
+                .sum::<usize>(),
+            self.dead.len(),
+            self.buffer.len()
+        );
+
         ret
     }
 
