@@ -45,7 +45,9 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
-    fs, mem,
+    fs::{self, OpenOptions},
+    io::ErrorKind,
+    mem,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -127,6 +129,8 @@ const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 const MAX_DB_COUNT: u32 = 9;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
+/// Name of the file created when initializing a force resync.
+const FORCE_RESYNC_FILE_NAME: &str = "force_resync";
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -322,6 +326,7 @@ impl Storage {
         max_ttl: TimeDiff,
         recent_era_count: u64,
         registry: Option<&Registry>,
+        force_resync: bool,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -474,6 +479,40 @@ impl Storage {
             max_ttl,
             metrics,
         };
+
+        if force_resync {
+            let force_resync_file_path = component.root_path().join(FORCE_RESYNC_FILE_NAME);
+            // Check if resync is already in progress. Force resync will kick
+            // in only when the marker file didn't exist before.
+            // Use `OpenOptions::create_new` to atomically check for the file
+            // presence and create it if necessary.
+            match OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&force_resync_file_path)
+            {
+                Ok(_file) => {
+                    // When the force resync marker file was not present and
+                    // is now created, initialize force resync.
+                    info!("initializing force resync");
+                    // Default `storage.completed_blocks`.
+                    component.completed_blocks = Default::default();
+                    component.persist_completed_blocks()?;
+                    // Exit the initialization function early.
+                    return Ok(component);
+                }
+                Err(io_err) if io_err.kind() == ErrorKind::AlreadyExists => {
+                    info!("skipping force resync as marker file exists");
+                }
+                Err(io_err) => {
+                    warn!(
+                        "couldn't operate on the force resync marker file at path {}: {}",
+                        force_resync_file_path.to_string_lossy(),
+                        io_err
+                    );
+                }
+            }
+        }
 
         match component.read_state_store(&Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))? {
             Some(raw) => {

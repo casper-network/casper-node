@@ -30,6 +30,7 @@ use crate::{
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "testing", derive(proptest_derive::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct EraId(u64);
 

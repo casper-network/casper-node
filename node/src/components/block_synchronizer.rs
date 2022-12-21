@@ -595,6 +595,7 @@ impl BlockSynchronizer {
                     if builder.should_fetch_execution_state() {
                         // the accumulator may or may not have peers for an older block,
                         // so we're going to also get a random sampling from networking
+                        // todo!("insinuate chainspec.core_config.simultaneous_peer_requests here")
                         results.extend(
                             effect_builder
                                 .get_fully_connected_peers(random_peer_count)

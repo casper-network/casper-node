@@ -4,12 +4,29 @@
 
 use std::fmt::{Display, Formatter, Result};
 
+use serde::Serialize;
+
 /// Wrapper around `Option` that implements `Display`.
+///
+/// For convenience, it also includes a `Serialize` implementation that works identical to the
+/// underlying `Option<T>` serialization.
 pub struct OptDisplay<'a, T> {
     /// The actual `Option` being displayed.
     inner: Option<T>,
     /// Value to substitute if `inner` is `None`.
     empty_display: &'a str,
+}
+
+impl<'a, T> Serialize for OptDisplay<'a, T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
 }
 
 impl<'a, T: Display> OptDisplay<'a, T> {
