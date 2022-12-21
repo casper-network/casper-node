@@ -36,7 +36,7 @@ use crate::{
         block_synchronizer::{
             BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
         },
-        consensus::{BlockContext, ClContext, ProposedBlock, ValidatorChange},
+        consensus::{ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         diagnostics_port::StopAtSpec,
@@ -51,8 +51,8 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockPayload, BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash,
-        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
         FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
         NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
@@ -646,24 +646,6 @@ impl Display for BlockCompleteConfirmationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "block completed: height {}", self.block_height)
     }
-}
-
-/// Details of a request for a list of deploys to propose in a new block.
-#[derive(DataSize, Debug)]
-pub(crate) struct BlockPayloadRequest {
-    /// The context in which the new block will be proposed.
-    pub(crate) context: BlockContext<ClContext>,
-    /// The height of the next block to be finalized at the point the request was made.
-    /// This is _only_ a way of expressing how many blocks have been finalized at the moment the
-    /// request was made. Block Proposer uses this in order to determine if there might be any
-    /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
-    pub(crate) next_finalized: u64,
-    /// A list of validators reported as malicious in this block.
-    pub(crate) accusations: Vec<PublicKey>,
-    /// Random bit with which to construct the `BlockPayload` requested.
-    pub(crate) random_bit: bool,
-    /// Responder to call with the result.
-    pub(crate) responder: Responder<Arc<BlockPayload>>,
 }
 
 #[derive(DataSize, Debug, Serialize)]
