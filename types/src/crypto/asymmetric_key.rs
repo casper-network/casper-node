@@ -495,6 +495,11 @@ impl PublicKey {
         AccountHash::from(self)
     }
 
+    /// Returns `true` if this public key is of the `System` variant.
+    pub fn is_system(&self) -> bool {
+        matches!(self, PublicKey::System)
+    }
+
     fn variant_name(&self) -> &str {
         match self {
             PublicKey::System => SYSTEM,

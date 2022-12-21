@@ -26,9 +26,20 @@ max_sync_fetch_attempts = 5000
 # How often between sync attempts to redeem a bad node.
 sync_peer_redemption_interval = 0
 
-# Whether to synchronize all data back to genesis when joining.
+# Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
 sync_to_genesis = true
 
+# Idle time after which the syncing process is considered stalled.
+idle_tolerance = '20min'
+
+# When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
+max_attempts = 3
+
+# Default delay for the control events that have no dedicated delay requirements.
+control_logic_default_delay = '1sec'
+
+# Flag which forces the node to resync all of the blocks.
+force_resync = false
 
 # =================================
 # Configuration options for logging
@@ -54,6 +65,43 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+# The maximum number of blocks by which execution is allowed to lag behind finalization.
+# If it is more than that, consensus will pause, and resume once the executor has caught up.
+max_execution_delay = 3
+
+
+# ==========================================
+# Configuration options for Zug
+# ==========================================
+[consensus.zug]
+
+# Request the latest protocol state from a random peer periodically, with this interval.
+# '0sec' means it is disabled and we never request the protocol state from a peer.
+sync_state_interval = '1sec'
+
+# Log inactive or faulty validators periodically, with this interval.
+# '0sec' means it is disabled and we never print the log message.
+log_participation_interval = '1min'
+
+# The minimal proposal timeout. Validators wait this long for a proposal to receive a quorum of
+# echo messages, before they vote to make the round skippable and move on to the next proposer.
+proposal_timeout = '10sec'
+
+# The additional proposal delay that is still considered fast enough, in percent. This should
+# take into account variables like empty vs. full blocks, network traffic etc.
+# E.g. if proposing a full block while under heavy load takes 50% longer than an empty one
+# while idle this should be at least 50, meaning that the timeout is 50% longer than
+# necessary for a quorum of recent proposals, approximately.
+proposal_grace_period = 200
+
+# The average number of rounds after which the proposal timeout adapts by a factor of 2.
+# Note: It goes up faster than it goes down: it takes fewer rounds to double than to halve.
+proposal_timeout_inertia = 10
+
+# The maximum difference between validators' clocks we expect. Incoming proposals whose timestamp
+# lies in the future by more than that are rejected.
+clock_tolerance = '1sec'
+
 
 # ===========================================
 # Configuration options for Highway consensus
@@ -63,24 +111,20 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
 pending_vertex_timeout = '30min'
 
-# If the current era's protocol state has not progressed for this long, shut down.
-standstill_timeout = '30min'
-
 # Request the latest protocol state from a random peer periodically, with this interval.
+# '0sec' means it is disabled and we never request the protocol state from a peer.
 request_state_interval = '20sec'
 
 # Log inactive or faulty validators periodically, with this interval.
+# '0sec' means it is disabled and we never print the log message.
 log_participation_interval = '1min'
 
 # Log the synchronizer state periodically, with this interval.
+# '0sec' means it is disabled and we never print the log message.
 log_synchronizer_interval = '5sec'
 
 # Log the size of every incoming and outgoing serialized unit.
 log_unit_sizes = false
-
-# The maximum number of blocks by which execution is allowed to lag behind finalization.
-# If it is more than that, consensus will pause, and resume once the executor has caught up.
-max_execution_delay = 3
 
 # The maximum number of peers we request the same vertex from in parallel.
 max_requests_for_vertex = 5
@@ -95,14 +139,14 @@ max_request_batch_size = 20
 num_rounds_to_consider = 40
 
 # The number of successful rounds that triggers us to slow down: With this many or fewer
-# successes per `num_rounds_to_consider`, we increase our round exponent.
+# successes per `num_rounds_to_consider`, we increase our round length.
 num_rounds_slowdown = 10
 
 # The number of successful rounds that triggers us to speed up: With this many or more successes
-# per `num_rounds_to_consider`, we decrease our round exponent.
+# per `num_rounds_to_consider`, we decrease our round length.
 num_rounds_speedup = 32
 
-# We will try to accelerate (decrease our round exponent) every `acceleration_parameter` rounds if
+# We will try to accelerate (decrease our round length) every `acceleration_parameter` rounds if
 # we have few enough failures.
 acceleration_parameter = 40
 
@@ -137,6 +181,9 @@ bind_address = '0.0.0.0:35000'
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
 known_addresses = ['168.119.137.143:35000','47.251.14.254:35000','47.242.53.164:35000','46.101.61.107:35000','47.88.87.63:35000','35.152.42.229:35000','206.189.47.102:35000','134.209.243.124:35000','148.251.190.103:35000','167.172.32.44:35000','165.22.252.48:35000','18.219.70.138:35000','3.225.191.9:35000','3.221.194.62:35000','101.36.120.117:35000','54.151.24.120:35000','148.251.135.60:35000','18.188.103.230:35000','54.215.53.35:35000','88.99.95.7:35000','99.81.225.72:35000','52.207.122.179:35000','3.135.134.105:35000','62.171.135.101:35000','139.162.132.144:35000','63.33.251.206:35000','135.181.165.110:35000','135.181.134.57:35000','94.130.107.198:35000','54.180.220.20:35000','188.40.83.254:35000','157.90.131.121:35000','134.209.110.11:35000','168.119.69.6:35000','45.76.251.225:35000','168.119.209.31:35000','31.7.207.16:35000','209.145.60.74:35000','54.252.66.23:35000','134.209.16.172:35000','178.238.235.196:35000','18.217.20.213:35000','3.14.161.135:35000','3.12.207.193:35000','3.12.207.193:35000']
+
+# Minimum number of fully-connected peers to consider network component initialized.
+min_peers_for_initialization = 3
 
 # The interval between each fresh round of gossiping the node's public address.
 gossip_interval = '120sec'
@@ -217,8 +264,6 @@ block_requests = 1
 block_responses = 0
 trie_requests = 1
 trie_responses = 0
-finalized_approvals_requests = 1
-finalized_approvals_responses = 0
 
 
 # ==================================================
@@ -400,6 +445,42 @@ gossip_request_timeout = '30sec'
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout = '5sec'
 
+# ================================================
+# Configuration options for the block accumulator
+# ================================================
+[block_accumulator]
+
+# Block height difference threshold for starting to execute the blocks.
+attempt_execution_threshold = 3
+
+# Accepted time interval for inactivity in block accumulator.
+dead_air_interval = '180sec'
+
+# Time after which the block acceptors are considered old and can be purged.
+purge_interval = '1min'
+
+# ================================================
+# Configuration options for the block synchronizer
+# ================================================
+[block_synchronizer]
+
+# Idleness timeout tolerance (if the block synchronizer is enabled but has not
+# made progress in this specified time the node will register a failed attempt to catch up
+# and then either try again if any reattempts remain or shut down).
+timeout = '10min'
+
+# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+max_parallel_trie_fetches = 5000
+
+# Time interval for the node to ask for refreshed peers.
+peer_refresh_interval = '90sec'
+
+# Time interval for the node to check what the block synchronizer needs to acquire next.
+need_next_interval = '30ms'
+
+# Time interval for recurring disconnection of dishonest peers.
+disconnect_dishonest_peers_interval = '10sec'
+
 
 # =================================
 # Configuration options for fetcher
@@ -435,15 +516,13 @@ max_global_state_size = 2_089_072_132_096
 #enable_manual_sync = true
 
 
-# ====================================================================
-# Configuration options for selecting deploys to propose in new blocks
-# ====================================================================
-[block_proposer]
+# ===========================================
+# Configuration options for the deploy buffer
+# ===========================================
+[deploy_buffer]
 
-# Deploys are only proposed in a new block if they have been received at least this long ago.
-# A longer delay makes it more likely that many proposed deploys are already known by the
-# other nodes, and don't have to be requested from the proposer afterwards.
-deploy_delay = '15sec'
+# The interval of checking for expired deploys.
+expiry_check_interval = '1min'
 
 
 # ==============================================
@@ -461,3 +540,12 @@ socket_path = "debug.socket"
 # socket to be only accessible by the user the node runs as. A more relaxed variant is `0o007`,
 # which allows for group access as well.
 socket_umask = 0o077
+
+
+# =============================================
+# Configuration options for the upgrade watcher
+# =============================================
+[upgrade_watcher]
+
+# How often to scan file system for available upgrades.
+upgrade_check_interval = '30sec'

@@ -132,33 +132,6 @@ pub mod execution_engine {
     });
 }
 
-pub mod node_macros {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-                DependentFile::new(
-                    "node/Cargo.toml",
-                    Regex::new(r#"(?m)(^casper-node-macros = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                    replacement,
-                ),
-                DependentFile::new(
-                    "node_macros/Cargo.toml",
-                    MANIFEST_VERSION_REGEX.clone(),
-                    replacement,
-                ),
-                DependentFile::new(
-                    "node_macros/src/lib.rs",
-                    Regex::new(
-                        r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-node-macros)/(?:[^"]+)"#,
-                    )
-                    .unwrap(),
-                    replacement_with_slash,
-                ),
-            ]
-    });
-}
-
 pub mod json_rpc {
     use super::*;
 

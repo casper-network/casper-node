@@ -9,22 +9,24 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
-use anyhow::{self, Context};
+use anyhow::{self, bail, Context};
 use prometheus::Registry;
 use regex::Regex;
 use stats_alloc::{StatsAlloc, INSTRUMENTED_SYSTEM};
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
+    components::network::Identity as NetworkIdentity,
     logging,
-    reactor::{initializer, joiner, participating, ReactorExit, Runner},
+    reactor::{main_reactor, ReactorExit, Runner},
     setup_signal_hooks,
-    types::ExitCode,
-    utils::WithDir,
+    types::{Chainspec, ChainspecRawBytes, ExitCode},
+    utils::{Loadable, WithDir},
 };
 
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
@@ -37,11 +39,12 @@ static ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 #[structopt(version = crate::VERSION_STRING_COLOR.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
-    /// Run the validator node.
+    /// Run the node in standard mode.
     ///
     /// Loads the configuration values from the given configuration file or uses defaults if not
     /// given, then runs the reactor.
-    Validator {
+    #[structopt(alias = "validator")]
+    Standard {
         /// Path to configuration file.
         config: PathBuf,
 
@@ -141,7 +144,7 @@ impl Cli {
     /// Executes selected CLI command.
     pub async fn run(self) -> anyhow::Result<i32> {
         match self {
-            Cli::Validator { config, config_ext } => {
+            Cli::Standard { config, config_ext } => {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();
 
@@ -154,50 +157,33 @@ impl Cli {
                 // performance reasons.
                 let mut rng = crate::new_rng();
 
-                // The metrics are shared across all reactors.
                 let registry = Registry::new();
 
-                let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
+                let (chainspec, chainspec_raw_bytes) =
+                    <(Chainspec, ChainspecRawBytes)>::from_path(validator_config.dir())?;
+
+                if !chainspec.is_valid() {
+                    bail!("invalid chainspec");
+                }
+
+                let network_identity = NetworkIdentity::from_config(WithDir::new(
+                    validator_config.dir(),
+                    validator_config.value().network.clone(),
+                ))
+                .context("failed to create a network identity")?;
+
+                let mut main_runner = Runner::<main_reactor::MainReactor>::with_metrics(
                     validator_config,
+                    Arc::new(chainspec),
+                    Arc::new(chainspec_raw_bytes),
+                    network_identity,
                     &mut rng,
                     &registry,
                 )
                 .await?;
 
-                match initializer_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
-                    ReactorExit::ProcessShouldContinue => info!("finished initialization"),
-                }
-
-                let initializer = initializer_runner.drain_into_inner().await;
-                let root = config
-                    .parent()
-                    .map(|path| path.to_owned())
-                    .unwrap_or_else(|| "/".into());
-                let mut joiner_runner = Runner::<joiner::Reactor>::with_metrics(
-                    WithDir::new(root, initializer),
-                    &mut rng,
-                    &registry,
-                )
-                .await?;
-                match joiner_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(exit_code) => return Ok(exit_code as i32),
-                    ReactorExit::ProcessShouldContinue => info!("finished joining"),
-                }
-
-                let joiner_reactor = joiner_runner.drain_into_inner().await;
-                let config = joiner_reactor.into_participating_config().await?;
-
-                let mut participating_runner =
-                    Runner::<participating::Reactor>::with_metrics(config, &mut rng, &registry)
-                        .await?;
-
-                match participating_runner.run(&mut rng).await {
+                match main_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
-                    reactor_exit => {
-                        error!("validator should not exit with {:?}", reactor_exit);
-                        Ok(ExitCode::Abort as i32)
-                    }
                 }
             }
             Cli::MigrateConfig {
@@ -251,7 +237,7 @@ impl Cli {
     fn init(
         config: &Path,
         config_ext: Vec<ConfigExt>,
-    ) -> anyhow::Result<WithDir<participating::Config>> {
+    ) -> anyhow::Result<WithDir<main_reactor::Config>> {
         // Determine the parent directory of the configuration file, if any.
         // Otherwise, we default to `/`.
         let root = config
@@ -273,10 +259,10 @@ impl Cli {
             item.update_toml_table(&mut config_table)?;
         }
 
-        // Create participating config, including any overridden values.
-        let participating_config: participating::Config = config_table.try_into()?;
-        logging::init_with_config(&participating_config.logging)?;
+        // Create main config, including any overridden values.
+        let main_config: main_reactor::Config = config_table.try_into()?;
+        logging::init_with_config(&main_config.logging)?;
 
-        Ok(WithDir::new(root, participating_config))
+        Ok(WithDir::new(root, main_config))
     }
 }

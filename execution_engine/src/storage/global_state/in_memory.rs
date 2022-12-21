@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
-use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use casper_hashing::Digest;
+use casper_types::{Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -16,13 +16,12 @@ use crate::{
             Transaction, TransactionSource,
         },
         trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
-            TrieOrChunkId,
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw,
         },
         trie_store::{
             in_memory::InMemoryTrieStore,
             operations::{
-                self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof,
+                self, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
                 ReadResult, WriteResult,
             },
         },
@@ -240,41 +239,15 @@ impl StateProvider for InMemoryGlobalState {
         self.empty_root_hash
     }
 
-    fn get_trie(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Self::Error> {
-        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
-        let maybe_trie_or_chunk = bytes.map_or_else(
-            || Ok(None),
-            |bytes| {
-                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes)))
-                } else {
-                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
-                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
-                }
-            },
-        );
-        txn.commit()?;
-        maybe_trie_or_chunk
-    }
-
     fn get_trie_full(
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
+        let ret: Option<TrieRaw> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(TrieRaw::new);
         txn.commit()?;
         Ok(ret)
     }
@@ -292,26 +265,21 @@ impl StateProvider for InMemoryGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values.
-    fn missing_trie_keys(
+    /// Finds all of the keys of missing directly descendant `Trie<Key,StoredValue>` values.
+    fn missing_children(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Digest>,
+        trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants = missing_trie_keys::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            trie_keys,
-            &Default::default(),
-        )?;
+        let missing_descendants =
+            missing_children::<
+                Key,
+                StoredValue,
+                InMemoryReadTransaction,
+                InMemoryTrieStore,
+                Self::Error,
+            >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
     }

@@ -16,6 +16,7 @@ casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "
 datasize = "0.2.9"
 hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 hex-buffer-serde = "0.3.0"
+hex_fmt = "0.3.0"
 itertools = "0.10.1"
 once_cell = "1"
 schemars = { version = "=0.8.5", features = ["preserve_order"] }

@@ -250,6 +250,7 @@ impl Distribution<ExecutionResult> for Standard {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for ExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -361,6 +362,7 @@ impl ExecutionEffect {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for ExecutionEffect {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -398,6 +400,7 @@ pub struct Operation {
     pub kind: OpKind,
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for Operation {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -447,6 +450,7 @@ impl OpKind {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for OpKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
@@ -482,6 +486,7 @@ pub struct TransformEntry {
     pub transform: Transform,
 }
 
+// TODO[goral09]: Add `write_bytes`.
 impl ToBytes for TransformEntry {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -573,6 +578,7 @@ impl Transform {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for Transform {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
