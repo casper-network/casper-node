@@ -21,10 +21,10 @@ use super::{
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
     ARG_TIME_INTERVAL, AUTHORIZED_ACCOUNT_NAMED_KEY, AVAILABLE_AMOUNT_NAMED_KEY,
     DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY, ENTRY_POINT_FAUCET, ENTRY_POINT_SET_VARIABLES,
-    FAUCET_CALL_DEFAULT_PAYMENT, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
-    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, FAUCET_TIME_INTERVAL, INSTALLER_ACCOUNT,
-    INSTALLER_FUND_AMOUNT, INSTALLER_NAMED_KEY, LAST_DISTRIBUTION_TIME_NAMED_KEY,
-    REMAINING_REQUESTS_NAMED_KEY, TIME_INTERVAL_NAMED_KEY, TWO_HOURS_AS_MILLIS,
+    FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID, FAUCET_INSTALLER_SESSION,
+    FAUCET_PURSE_NAMED_KEY, FAUCET_TIME_INTERVAL, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
+    INSTALLER_NAMED_KEY, LAST_DISTRIBUTION_TIME_NAMED_KEY, REMAINING_REQUESTS_NAMED_KEY,
+    TIME_INTERVAL_NAMED_KEY, TWO_HOURS_AS_MILLIS,
 };
 
 /// User error variant defined in the faucet contract.
@@ -303,7 +303,7 @@ fn should_fund_existing_account() {
         .expect_success()
         .commit();
 
-    let user_account_initial_balance = U512::from(5_000_000_000u64);
+    let user_account_initial_balance = U512::from(15_000_000_000u64);
 
     let fund_user_request = FundAccountRequestBuilder::new()
         .with_target_account(user_account)
@@ -332,6 +332,7 @@ fn should_fund_existing_account() {
             helper
                 .new_faucet_fund_request_builder()
                 .with_user_account(user_account)
+                .with_payment_amount(user_account_initial_balance)
                 .build(),
         )
         .expect_success()
@@ -346,7 +347,7 @@ fn should_fund_existing_account() {
 
     assert_eq!(
         user_purse_balance_after,
-        user_purse_balance_before + one_distribution - FAUCET_CALL_DEFAULT_PAYMENT
+        user_purse_balance_before + one_distribution - user_account_initial_balance
     );
 }
 
@@ -408,6 +409,7 @@ fn should_not_fund_once_exhausted() {
     let user_fund_amount = U512::from(3_000_000_000u64);
     let num_funds = 4;
 
+    let payment_amount = 10_000_000_000u64;
     let faucet_call_by_installer = helper
         .new_faucet_fund_request_builder()
         .with_installer_account(helper.installer_account())
@@ -420,33 +422,44 @@ fn should_not_fund_once_exhausted() {
         .expect_success()
         .commit();
 
+    let user_main_purse_balance_before =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+
     for i in 0..num_funds {
         let faucet_call_by_user = helper
             .new_faucet_fund_request_builder()
             .with_user_account(user_account)
             .with_arg_fund_amount(user_fund_amount)
             .with_block_time(1000 + i as u64)
+            .with_payment_amount(U512::from(payment_amount))
             .build();
 
         builder.exec(faucet_call_by_user).expect_success().commit();
     }
 
+    let user_main_purse_balance_after =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+
     let remaining_requests = get_remaining_requests(&builder, faucet_contract_hash);
     assert_eq!(remaining_requests, U512::zero());
 
-    let one_distribution = half_of_faucet_fund_amount / assigned_distributions_per_interval;
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let one_distribution =
+        half_of_faucet_fund_amount / U512::from(assigned_distributions_per_interval);
+
     assert_eq!(
-        user_main_purse_balance_after,
-        one_distribution * num_funds,
-        "users main purse balance must match expected amount after user faucet calls"
+        user_main_purse_balance_after - user_main_purse_balance_before,
+        one_distribution * num_funds - (payment_amount * num_funds),
+        "users main purse balance must match expected amount after user faucet calls ({} != {}*{} [{}])", user_main_purse_balance_after, one_distribution, num_funds, one_distribution * num_funds,
     );
+
+    let user_main_purse_balance_before =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
 
     let faucet_call_by_user = helper
         .new_faucet_fund_request_builder()
         .with_user_account(user_account)
         .with_arg_fund_amount(user_fund_amount)
+        .with_payment_amount(U512::from(payment_amount))
         .with_block_time(1010)
         .build();
 
@@ -455,9 +468,9 @@ fn should_not_fund_once_exhausted() {
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
     assert_eq!(
-        user_main_purse_balance_after,
-        one_distribution * num_funds - user_fund_amount,
-        "users main purse balance must match expected amount after all user faucet calls"
+        user_main_purse_balance_before - user_main_purse_balance_after,
+        U512::from(payment_amount),
+        "no funds are distributed after faucet"
     );
 
     // faucet may resume distributions once block time is > last_distribution_time + time_interval.
@@ -468,14 +481,22 @@ fn should_not_fund_once_exhausted() {
     );
     assert_eq!(last_distribution_time, 0);
 
+    let user_main_purse_balance_before =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+
     let faucet_call_by_user = helper
         .new_faucet_fund_request_builder()
         .with_user_account(user_account)
         .with_arg_fund_amount(user_fund_amount)
         .with_block_time(11_011u64)
+        .with_payment_amount(U512::from(payment_amount))
         .build();
 
     builder.exec(faucet_call_by_user).expect_success().commit();
+
+    let user_main_purse_balance_after =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+
     let last_distribution_time = query_stored_value::<u64>(
         &mut builder,
         faucet_contract_hash.into(),
@@ -495,12 +516,11 @@ fn should_not_fund_once_exhausted() {
         U512::from(assigned_distributions_per_interval - 1)
     );
 
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-
     assert_eq!(
-        user_main_purse_balance_after,
-        one_distribution * (num_funds + 1) - user_fund_amount * 2
+        user_main_purse_balance_after - user_main_purse_balance_before + payment_amount,
+        // one_distribution * (num_funds + 1), // - user_fund_amount * 2
+        // user_fund_amount,
+        one_distribution,
     );
 }
 
@@ -751,7 +771,7 @@ fn should_allow_funding_by_an_authorized_account() {
         Some(authorized_account_public_key.clone())
     );
 
-    let authorized_account_fund_amount = U512::from(3_000_000_000u64);
+    let authorized_account_fund_amount = U512::from(10_000_000_000u64);
     let faucet_fund_authorized_account_by_installer_request = helper
         .new_faucet_fund_request_builder()
         .with_arg_fund_amount(authorized_account_fund_amount)
@@ -763,12 +783,13 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect_success()
         .commit();
 
-    let user_fund_amount = U512::from(3_000_000_000u64);
+    let user_fund_amount = U512::from(10_000_000_000u64);
     let faucet_fund_user_by_authorized_account_request = helper
         .new_faucet_fund_request_builder()
         .with_authorized_account(authorized_account)
         .with_arg_fund_amount(user_fund_amount)
         .with_arg_target(user_account)
+        .with_payment_amount(user_fund_amount)
         .build();
 
     builder
@@ -784,6 +805,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let faucet_fund_by_user_request = helper
         .new_faucet_fund_request_builder()
         .with_user_account(user_account)
+        .with_payment_amount(user_fund_amount)
         .build();
 
     builder
@@ -800,12 +822,17 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect("an exec result must exist")
         .clone();
 
-    assert!(matches!(
-        exec_result.as_error().unwrap(),
-        engine_state::Error::Exec(execution::Error::Revert(ApiError::User(
-            FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET
-        )))
-    ));
+    let error = exec_result.as_error().unwrap();
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::Exec(execution::Error::Revert(ApiError::User(
+                FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET
+            )))
+        ),
+        "{:?}",
+        error,
+    );
 }
 
 #[ignore]
@@ -814,10 +841,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 70_394_501_890;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 47_352_710;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_584_395_930;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_531_248_540;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 77_924_962_810;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 1_649_988_470;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 4_128_188_320;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 5_096_960_260;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
@@ -892,7 +919,7 @@ fn faucet_costs() {
         EXPECTED_FAUCET_SET_VARIABLES_COST
     );
 
-    let user_fund_amount = U512::from(3_000_000_000u64);
+    let user_fund_amount = U512::from(10_000_000_000u64);
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -902,7 +929,7 @@ fn faucet_costs() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
             .with_deploy_hash([4; 32])
             .build();
 

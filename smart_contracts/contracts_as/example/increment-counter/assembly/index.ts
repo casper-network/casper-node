@@ -13,12 +13,18 @@ const COUNTER_GET = "counter_get";
 const COUNTER_KEY = "counter";
 const CONTRACT_VERSION_KEY = "version";
 
-function counterGet(contractHash: Uint8Array): i32 {
+function counterGet(contractHash: StaticArray<u8>): i32 {
   let bytes = CL.callContract(contractHash, COUNTER_GET, new RuntimeArgs());
-  return fromBytesI32(bytes).unwrap();
+  if (bytes !== null) {
+    return fromBytesI32(bytes).unwrap();
+  }
+  else {
+    Error.fromErrorCode(ErrorCode.Formatting).revert();
+    return <i32>unreachable();
+  }
 }
 
-function counterInc(contractHash: Uint8Array): void {
+function counterInc(contractHash: StaticArray<u8>): void {
   CL.callContract(contractHash, COUNTER_INC, new RuntimeArgs());
 }
 

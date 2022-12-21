@@ -1,12 +1,10 @@
 //! Tests whether transforms produced by contracts appear ordered in the transform journal.
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::transform::Transform;
-use casper_types::{
-    runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef, U512,
-};
+use casper_types::{runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef};
 use core::convert::TryInto;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
@@ -30,7 +28,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
                 DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
                     .with_empty_payment_bytes(runtime_args! {
-                        standard_payment::ARG_AMOUNT => U512::from(30_000_000_000_u64)
+                        standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
                     })
                     .with_session_code("ordered-transforms.wasm", runtime_args! { "n" => N_UREFS })
                     .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -73,7 +71,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
                 DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
                     .with_empty_payment_bytes(runtime_args! {
-                        standard_payment::ARG_AMOUNT => U512::from(10_000_000_000_u64),
+                        standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
                     })
                     .with_stored_session_hash(
                         contract_hash,
