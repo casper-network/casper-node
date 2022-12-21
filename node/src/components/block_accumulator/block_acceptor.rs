@@ -19,7 +19,6 @@ pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     block: Option<Block>,
     signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
-    // todo!() - Consider a ubound.
     peers: BTreeSet<NodeId>,
     has_sufficient_finality: bool,
     last_progress: Timestamp,

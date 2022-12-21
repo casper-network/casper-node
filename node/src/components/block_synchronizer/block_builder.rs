@@ -13,7 +13,7 @@ use casper_types::{EraId, TimeDiff, Timestamp};
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},
     block_acquisition_action::BlockAcquisitionAction,
-    execution_results_acquisition::ExecutionResultsChecksum,
+    execution_results_acquisition::{self, ExecutionResultsChecksum},
     peer_list::{PeerList, PeersStatus},
     signature_acquisition::SignatureAcquisition,
     BlockAcquisitionError,
@@ -416,14 +416,49 @@ impl BlockBuilder {
                 self.promote_peer(maybe_peer);
                 Ok(maybe)
             }
+            Err(BlockAcquisitionError::ExecutionResults(error)) => {
+                match error {
+                    // late response - not considered an error
+                    execution_results_acquisition::Error::AttemptToApplyDataAfterCompleted { .. } => {
+                        debug!(%error, "late block_execution_results_or_chunk response");
+                        return Ok(None);
+                    }
+                    // programmer error
+                    execution_results_acquisition::Error::BlockHashMismatch { .. }
+                    | execution_results_acquisition::Error::InvalidAttemptToApplyChecksum { .. }
+                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. } => {},
+                    // malicious peer if checksum is available.
+                    execution_results_acquisition::Error::ChunkCountMismatch { .. } => {
+                        let is_checkable = match &self.acquisition_state {
+                            BlockAcquisitionState::HaveGlobalState(
+                                _,
+                                _,
+                                _,
+                                execution_results_acquisition,
+                            ) => execution_results_acquisition.is_checkable(),
+                            _ => false,
+                        };
+                        if is_checkable {
+                            self.disqualify_peer(maybe_peer);
+                        }
+                    }
+                    // malicious peer
+                    execution_results_acquisition::Error::InvalidChunkCount { .. }
+                    | execution_results_acquisition::Error::ChecksumMismatch { .. }
+                    | execution_results_acquisition::Error::FailedToDeserialize { .. }
+                    | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
+                        self.disqualify_peer(maybe_peer);
+                    }
+                    // checksum unavailable, so unknown if this peer is malicious
+                    execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {}
+                }
+                Err(Error::BlockAcquisition(
+                    BlockAcquisitionError::ExecutionResults(error),
+                ))
+            }
             Err(error) => {
-                // todo! - how to proceed when we receive incorrect chunks (for example,
-                // `ChunksWithDifferentChecksum` for legacy blocks)? we probably
-                // shouldn't disconnect from the peer, but logic to be discussed
-                // Answer: If we know the correct checksum, disconnect.
-                // If we don't (`Uncheckable`), don't disconnect.
-                self.disqualify_peer(maybe_peer);
-                Err(Error::BlockAcquisition(error))
+                error!(%error, "unexpected error");
+                Ok(None)
             }
         }
     }

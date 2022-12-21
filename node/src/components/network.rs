@@ -691,8 +691,6 @@ where
                         .into_iter(),
                 );
 
-                // todo! - should remove from self.connected_validators?
-
                 self.process_dial_requests(requests)
             }
             OutgoingConnection::Loopback { peer_addr } => {

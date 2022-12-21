@@ -3,7 +3,7 @@ use std::{
     fmt::{Display, Formatter},
     time::Duration,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, Timestamp};
 
@@ -219,16 +219,11 @@ impl MainReactor {
             }
             SyncInstruction::BlockSync { block_hash } => {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
-                if self.block_synchronizer.register_block_by_hash(
-                    block_hash,
-                    false,
-                    true,
-                    self.chainspec.core_config.simultaneous_peer_requests,
-                ) {
-                    info!(
-                        ?block_hash,
-                        "KeepUp: BlockSync: registered block by hash {}", block_hash
-                    );
+                if self
+                    .block_synchronizer
+                    .register_block_by_hash(block_hash, false, true)
+                {
+                    info!(%block_hash, "KeepUp: BlockSync: registered block by hash");
                     Some(KeepUpInstruction::Do(
                         Duration::ZERO,
                         effect_builder.immediately().event(|_| {
@@ -293,13 +288,7 @@ impl MainReactor {
         // signatures against. we use the leaper to gain awareness of the necessary
         // trusted ancestors to our earliest contiguous block to do necessary validation.
         let leap_status = self.sync_leaper.leap_status();
-        info!(
-            ?parent_hash,
-            ?leap_status,
-            "Historical: {} {}",
-            parent_hash,
-            leap_status
-        );
+        info!(%parent_hash, %leap_status, "historical status");
         match leap_status {
             LeapStatus::Idle => {
                 self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
@@ -327,10 +316,10 @@ impl MainReactor {
         error: LeapActivityError,
     ) -> KeepUpInstruction {
         self.attempts += 1;
-        error!(
+        warn!(
             %error,
-            "Historical: failed leap, remaining attempts: {}",
-            self.max_attempts.saturating_sub(self.attempts)
+            remaining_attempts = %self.max_attempts.saturating_sub(self.attempts),
+            "historical: failed leap",
         );
         self.sync_back_leaper_idle(
             effect_builder,
@@ -379,16 +368,16 @@ impl MainReactor {
         let block_hash = best_available.highest_block_hash();
         let block_height = best_available.highest_block_height();
         info!(
-            %best_available,"Historical: leap received({}) {}", block_height, block_hash);
+            %best_available, %block_height, %block_hash, "historical: leap received");
 
         let era_validator_weights =
             best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             if self.validator_matrix.register_era_validator_weights(evw) {
-                info!("Historical: got era: {}", era_id);
+                info!(%era_id, "historical: got era");
             } else {
-                debug!("Historical: already had era: {}", era_id);
+                debug!(%era_id, "historical: already had era");
             }
         }
         KeepUpInstruction::CheckLater("historical sync leap received".to_string(), Duration::ZERO)
@@ -400,12 +389,10 @@ impl MainReactor {
         rng: &mut NodeRng,
         parent_hash: BlockHash,
     ) -> KeepUpInstruction {
-        if self.block_synchronizer.register_block_by_hash(
-            parent_hash,
-            true,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        ) {
+        if self
+            .block_synchronizer
+            .register_block_by_hash(parent_hash, true, true)
+        {
             // sync the parent_hash block; we get a random sampling of peers to ask.
             // it is possible that we may get a random sampling that do not have the data
             // we need, but the synchronizer should (eventually) detect that and ask for
@@ -415,7 +402,7 @@ impl MainReactor {
                 self.chainspec.core_config.simultaneous_peer_requests as usize,
             );
             debug!(
-                "Historical: register_block_by_hash: {} peers count: {:?}",
+                "historical: register_block_by_hash: {} peers count: {:?}",
                 parent_hash,
                 peers_to_ask.len()
             );

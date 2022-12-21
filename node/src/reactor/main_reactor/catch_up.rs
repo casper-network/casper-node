@@ -1,6 +1,6 @@
 use either::Either;
 use std::time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use casper_types::{TimeDiff, Timestamp};
 
@@ -42,16 +42,16 @@ impl MainReactor {
         };
         debug!(
             ?sync_identifier,
-            "CatchUp: sync identifier {}",
-            sync_identifier.block_hash()
+            block_hash = %sync_identifier.block_hash(),
+            "CatchUp: sync identifier"
         );
         // we check with the block accumulator before doing sync work as it may be aware of one or
         // more blocks that are higher than our current highest block
         let sync_instruction = self.block_accumulator.sync_instruction(sync_identifier);
         debug!(
             ?sync_instruction,
-            "CatchUp: sync_instruction {}",
-            sync_instruction.block_hash()
+            block_hash = %sync_instruction.block_hash(),
+            "CatchUp: sync_instruction"
         );
         if let Some(catch_up_instruction) =
             self.catch_up_sync_instruction(effect_builder, rng, sync_instruction)
@@ -212,7 +212,7 @@ impl MainReactor {
     ) -> Either<SyncIdentifier, CatchUpInstruction> {
         // if any progress has been made, reset attempts
         if last_progress > self.last_progress {
-            debug!("CatchUp: syncing last_progress: {}", last_progress);
+            debug!(%last_progress, "CatchUp: syncing");
             self.last_progress = last_progress;
             self.attempts = 0;
         }
@@ -223,9 +223,9 @@ impl MainReactor {
         if idleness > self.idle_tolerance {
             self.attempts += 1;
             warn!(
-                "CatchUp: idleness detected last_progress: {} attempts remaining: {}",
-                last_progress,
-                self.max_attempts.saturating_sub(self.attempts)
+                %last_progress,
+                remaining_attempts = self.max_attempts.saturating_sub(self.attempts),
+                "CatchUp: idleness detected"
             );
         }
         match maybe_block_height {
@@ -262,20 +262,10 @@ impl MainReactor {
         // register block builder so that control logic can tell that block is Syncing,
         // otherwise block_synchronizer detects as Idle which can cause unnecessary churn
         // on subsequent cranks while leaper is awaiting responses.
-        self.block_synchronizer.register_block_by_hash(
-            block_hash,
-            true,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        );
+        self.block_synchronizer
+            .register_block_by_hash(block_hash, true, true);
         let leap_status = self.sync_leaper.leap_status();
-        info!(
-            ?block_hash,
-            ?leap_status,
-            "CatchUp: {} {}",
-            block_hash,
-            leap_status
-        );
+        info!(%block_hash, %leap_status, "CatchUp: status");
         match leap_status {
             LeapStatus::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
             LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
@@ -301,10 +291,10 @@ impl MainReactor {
         error: LeapActivityError,
     ) -> CatchUpInstruction {
         self.attempts += 1;
-        error!(
+        warn!(
             %error,
-            "CatchUp: failed leap, remaining attempts: {}",
-            self.max_attempts.saturating_sub(self.attempts)
+            remaining_attempts = %self.max_attempts.saturating_sub(self.attempts),
+            "CatchUp: failed leap",
         );
         self.catch_up_leaper_idle(effect_builder, rng, block_hash)
     }
@@ -345,7 +335,11 @@ impl MainReactor {
         let block_hash = best_available.highest_block_hash();
         let block_height = best_available.highest_block_height();
         info!(
-            %best_available,"CatchUp: leap received({}) {}", block_height, block_hash);
+            %best_available,
+            %block_height,
+            %block_hash,
+            "CatchUp: leap received"
+        );
 
         if let Err(msg) = self.update_highest_switch_block() {
             return CatchUpInstruction::Fatal(msg);
@@ -358,12 +352,8 @@ impl MainReactor {
                 .register_era_validator_weights(validator_weights);
         }
 
-        self.block_synchronizer.register_sync_leap(
-            &*best_available,
-            from_peers,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        );
+        self.block_synchronizer
+            .register_sync_leap(&*best_available, from_peers, true);
         self.block_accumulator.handle_validators(effect_builder);
         let effects = effect_builder
             .immediately()
@@ -376,12 +366,10 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         block_hash: BlockHash,
     ) -> CatchUpInstruction {
-        if self.block_synchronizer.register_block_by_hash(
-            block_hash,
-            true,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        ) {
+        if self
+            .block_synchronizer
+            .register_block_by_hash(block_hash, true, true)
+        {
             // NeedNext will self perpetuate until nothing is needed for this block
             let mut effects = Effects::new();
             effects.extend(effect_builder.immediately().event(|_| {
