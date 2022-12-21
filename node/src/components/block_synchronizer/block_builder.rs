@@ -418,6 +418,11 @@ impl BlockBuilder {
             }
             Err(BlockAcquisitionError::ExecutionResults(error)) => {
                 match error {
+                    // late response - not considered an error
+                    execution_results_acquisition::Error::AttemptToApplyDataAfterCompleted { .. } => {
+                        debug!(%error, "late block_execution_results_or_chunk response");
+                        return Ok(None);
+                    }
                     // programmer error
                     execution_results_acquisition::Error::BlockHashMismatch { .. }
                     | execution_results_acquisition::Error::InvalidAttemptToApplyChecksum { .. }
@@ -444,8 +449,6 @@ impl BlockBuilder {
                     | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
                         self.disqualify_peer(maybe_peer);
                     }
-                    // late response
-                    execution_results_acquisition::Error::AttemptToApplyDataAfterCompleted { .. } => {}
                     // checksum unavailable, so unknown if this peer is malicious
                     execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {}
                 }
