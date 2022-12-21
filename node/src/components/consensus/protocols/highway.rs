@@ -110,7 +110,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let minimum_round_length = chainspec
             .core_config
             .minimum_block_time
-            .max(TimeDiff::from(1));
+            .max(TimeDiff::from_millis(1));
         // The maximum round exponent x is such that 2^x * m is at most M, where m and M are min
         // and max round length. So x is the floor of log_2(M / m). Thus the ceiling of
         // log_2(M / m + 1) is always x + 1.
@@ -122,7 +122,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // Doesn't overflow since it's at most highway_config.maximum_round_length.
         #[allow(clippy::integer_arithmetic)]
         let maximum_round_length =
-            TimeDiff::from(minimum_round_length.millis() << maximum_round_exponent);
+            TimeDiff::from_millis(minimum_round_length.millis() << maximum_round_exponent);
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
@@ -148,10 +148,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting faulty.;
-        let min_rounds_per_era = chainspec
-            .core_config
-            .minimum_era_height
-            .max((TimeDiff::from(1) + chainspec.core_config.era_duration) / minimum_round_length);
+        let min_rounds_per_era = chainspec.core_config.minimum_era_height.max(
+            (TimeDiff::from_millis(1) + chainspec.core_config.era_duration) / minimum_round_length,
+        );
         let endorsement_evidence_limit = min_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);

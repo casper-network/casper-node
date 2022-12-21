@@ -213,7 +213,7 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping once per maximum-length round, to show that
         // we're online.
         let one_max_round_ago = timestamp.saturating_sub(state.params().max_round_length());
-        if !state.has_ping(self.vidx, one_max_round_ago + 1.into()) {
+        if !state.has_ping(self.vidx, one_max_round_ago + TimeDiff::from_millis(1)) {
             warn!(%timestamp, "too many validators offline, sending ping");
             effects.push(self.send_ping(timestamp, instance_id));
         }
@@ -801,7 +801,7 @@ mod tests {
             self.state.add_unit(proposal_wunit.clone()).unwrap();
             let effects = validator.on_new_unit(
                 &prop_hash,
-                proposal_timestamp + 1.into(),
+                proposal_timestamp + TimeDiff::from_millis(1),
                 &self.state,
                 self.instance_id,
             );
@@ -818,7 +818,7 @@ mod tests {
             uhash: &<TestContext as Context>::Hash,
         ) -> Vec<Effect<TestContext>> {
             let validator = &mut self.active_validators[vidx];
-            let delivery_timestamp = self.state.unit(uhash).timestamp + 1.into();
+            let delivery_timestamp = self.state.unit(uhash).timestamp + TimeDiff::from_millis(1);
             let effects =
                 validator.on_new_unit(uhash, delivery_timestamp, &self.state, self.instance_id);
             self.schedule_timer(vidx, &effects);

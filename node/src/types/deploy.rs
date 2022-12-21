@@ -90,7 +90,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let header = DeployHeader::new(
         PublicKey::from(secret_key),
         *Timestamp::doc_example(),
-        TimeDiff::from(3_600_000),
+        TimeDiff::from_seconds(3_600),
         1,
         body_hash,
         vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))],
@@ -659,7 +659,7 @@ impl Deploy {
     /// Returns a random deploy.
     pub fn random(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
-        let ttl = TimeDiff::from(rng.gen_range(60_000..300_000));
+        let ttl = TimeDiff::from_seconds(rng.gen_range(60..300));
         Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 

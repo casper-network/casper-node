@@ -40,7 +40,7 @@ impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let max_payment_cost = Motes::new(U512::from(rng.gen_range(1_000_000..1_000_000_000)));
-        let max_ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        let max_ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let max_deploy_size = rng.gen_range(100_000..1_000_000);

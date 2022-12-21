@@ -85,7 +85,7 @@ impl<C: Context> Unit<C> {
         }
         #[allow(clippy::integer_arithmetic)] // Only called with valid units.
         let round_len =
-            TimeDiff::from(state.params().min_round_length().millis() << wunit.round_exp);
+            TimeDiff::from_millis(state.params().min_round_length().millis() << wunit.round_exp);
         let unit = Unit {
             panorama: wunit.panorama,
             seq_number: wunit.seq_number,

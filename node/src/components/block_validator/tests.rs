@@ -231,7 +231,7 @@ async fn ttl() {
     // The ttl is 200, and our deploys and transfers have timestamps 900 and 1000. So the block
     // timestamp must be at least 1000 and at most 1100.
     let mut rng = TestRng::new();
-    let ttl = TimeDiff::from(200);
+    let ttl = TimeDiff::from_millis(200);
     let deploys = vec![
         new_deploy(&mut rng, 1000.into(), ttl),
         new_deploy(&mut rng, 900.into(), ttl),
@@ -261,7 +261,7 @@ async fn ttl() {
 #[tokio::test]
 async fn transfer_deploy_mixup_and_replay() {
     let mut rng = TestRng::new();
-    let ttl = TimeDiff::from(200);
+    let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
     let deploy1 = new_deploy(&mut rng, timestamp, ttl);
     let deploy2 = new_deploy(&mut rng, timestamp, ttl);

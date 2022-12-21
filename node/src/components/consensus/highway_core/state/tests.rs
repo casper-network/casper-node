@@ -237,9 +237,9 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
 fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
     let params = Params::new(
         0,
-        TimeDiff::from(1 << 4),
-        TimeDiff::from(1 << 19),
-        TimeDiff::from(1 << 4),
+        TimeDiff::from_millis(1 << 4),
+        TimeDiff::from_millis(1 << 19),
+        TimeDiff::from_millis(1 << 4),
         u64::MAX,
         Timestamp::zero(),
         Timestamp::from(u64::MAX),

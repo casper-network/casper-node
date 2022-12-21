@@ -294,7 +294,7 @@ mod tests {
             if current_round_index % ACCELERATION_PARAMETER == 0 {
                 break;
             };
-            round_success_meter.current_round_id += TimeDiff::from(1);
+            round_success_meter.current_round_id += TimeDiff::from_millis(1);
         }
         assert_eq!(round_success_meter.new_length(), TEST_ROUND_LEN / 2);
     }
@@ -321,7 +321,7 @@ mod tests {
             if current_round_index % ACCELERATION_PARAMETER == 0 {
                 break;
             };
-            round_success_meter.current_round_id += TimeDiff::from(1);
+            round_success_meter.current_round_id += TimeDiff::from_millis(1);
         }
         assert_eq!(round_success_meter.new_length(), TEST_MIN_ROUND_LEN);
     }
