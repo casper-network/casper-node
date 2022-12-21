@@ -23,7 +23,7 @@ use tracing::info;
 use crate::{
     components::network::Identity as NetworkIdentity,
     logging,
-    reactor::{main_reactor, ReactorExit, Runner},
+    reactor::{main_reactor, Runner},
     setup_signal_hooks,
     types::{Chainspec, ChainspecRawBytes, ExitCode},
     utils::{Loadable, WithDir},
@@ -182,9 +182,8 @@ impl Cli {
                 )
                 .await?;
 
-                match main_runner.run(&mut rng).await {
-                    ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
-                }
+                let exit_code = main_runner.run(&mut rng).await;
+                Ok(exit_code as i32)
             }
             Cli::MigrateConfig {
                 old_config,

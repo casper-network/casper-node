@@ -141,15 +141,6 @@ fn adjust_open_files_limit() {
     }
 }
 
-/// The value returned by a reactor on completion of the `run()` loop.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
-pub(crate) enum ReactorExit {
-    /// The process should exit with the given exit code to allow the launcher to react
-    /// accordingly.
-    /// todo! why do we need a enum to wrap exit code enum?
-    ProcessShouldExit(ExitCode),
-}
-
 /// Event scheduler
 ///
 /// The scheduler is a combination of multiple event queues that are polled in a specific order. It
@@ -714,26 +705,26 @@ where
 
     /// Runs the reactor until `self.crank` returns `Some` or we get interrupted by a termination
     /// signal.
-    pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
+    pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ExitCode {
         loop {
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(exit_code) = self.crank(rng).await {
                         self.is_shutting_down.set();
-                        break ReactorExit::ProcessShouldExit(exit_code);
+                        break exit_code;
                     }
                 }
                 SIGINT => {
                     self.is_shutting_down.set();
-                    break ReactorExit::ProcessShouldExit(ExitCode::SigInt);
+                    break ExitCode::SigInt;
                 }
                 SIGQUIT => {
                     self.is_shutting_down.set();
-                    break ReactorExit::ProcessShouldExit(ExitCode::SigQuit);
+                    break ExitCode::SigQuit;
                 }
                 SIGTERM => {
                     self.is_shutting_down.set();
-                    break ReactorExit::ProcessShouldExit(ExitCode::SigTerm);
+                    break ExitCode::SigTerm;
                 }
                 _ => error!("should be unreachable - bug in signal handler"),
             }

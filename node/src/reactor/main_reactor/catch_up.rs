@@ -262,12 +262,8 @@ impl MainReactor {
         // register block builder so that control logic can tell that block is Syncing,
         // otherwise block_synchronizer detects as Idle which can cause unnecessary churn
         // on subsequent cranks while leaper is awaiting responses.
-        self.block_synchronizer.register_block_by_hash(
-            block_hash,
-            true,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        );
+        self.block_synchronizer
+            .register_block_by_hash(block_hash, true, true);
         let leap_status = self.sync_leaper.leap_status();
         info!(%block_hash, %leap_status, "CatchUp: status");
         match leap_status {
@@ -356,12 +352,8 @@ impl MainReactor {
                 .register_era_validator_weights(validator_weights);
         }
 
-        self.block_synchronizer.register_sync_leap(
-            &*best_available,
-            from_peers,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        );
+        self.block_synchronizer
+            .register_sync_leap(&*best_available, from_peers, true);
         self.block_accumulator.handle_validators(effect_builder);
         let effects = effect_builder
             .immediately()
@@ -374,12 +366,10 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         block_hash: BlockHash,
     ) -> CatchUpInstruction {
-        if self.block_synchronizer.register_block_by_hash(
-            block_hash,
-            true,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        ) {
+        if self
+            .block_synchronizer
+            .register_block_by_hash(block_hash, true, true)
+        {
             // NeedNext will self perpetuate until nothing is needed for this block
             let mut effects = Effects::new();
             effects.extend(effect_builder.immediately().event(|_| {

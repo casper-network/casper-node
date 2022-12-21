@@ -712,7 +712,7 @@ impl BlockAcquisitionState {
                     },
                     Err(error) => {
                         warn!(%error, "failed to apply execution results");
-                        return Ok(None);
+                        return Err(BlockAcquisitionError::ExecutionResults(error));
                     }
                 }
             }

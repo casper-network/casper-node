@@ -333,6 +333,17 @@ impl ExecutionResultsAcquisition {
         })
     }
 
+    pub(super) fn is_checkable(&self) -> bool {
+        match self {
+            ExecutionResultsAcquisition::Needed { .. } => false,
+            ExecutionResultsAcquisition::Pending { checksum, .. }
+            | ExecutionResultsAcquisition::Acquiring { checksum, .. }
+            | ExecutionResultsAcquisition::Complete { checksum, .. } => {
+                matches!(checksum, ExecutionResultsChecksum::Checkable(_))
+            }
+        }
+    }
+
     fn block_hash(&self) -> BlockHash {
         match self {
             ExecutionResultsAcquisition::Needed { block_hash }

@@ -22,7 +22,7 @@ pub(crate) enum Event {
     Initialize,
     #[from]
     Request(BlockSynchronizerRequest),
-    DisconnectFromPeer(NodeId), // todo!() [RC] - Should we add `justification` here?
+    DisconnectFromPeer(NodeId),
     #[from]
     MadeFinalizedBlock {
         block_hash: BlockHash,

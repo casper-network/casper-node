@@ -24,7 +24,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::Timestamp;
 
 use super::network::blocklist::BlocklistJustification;
 use crate::{
@@ -183,11 +183,9 @@ impl DocExample for BlockSynchronizerStatus {
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     status: ComponentStatus,
+    config: Config,
+    max_simultaneous_peers: u32,
     validator_matrix: ValidatorMatrix,
-    timeout: TimeDiff,
-    peer_refresh_interval: TimeDiff,
-    need_next_interval: TimeDiff,
-    disconnect_dishonest_peers_interval: TimeDiff,
 
     // execute forward block (do not get global state or execution effects)
     forward: Option<BlockBuilder>,
@@ -202,16 +200,15 @@ pub(crate) struct BlockSynchronizer {
 impl BlockSynchronizer {
     pub(crate) fn new(
         config: Config,
+        max_simultaneous_peers: u32,
         validator_matrix: ValidatorMatrix,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(BlockSynchronizer {
             status: ComponentStatus::Uninitialized,
+            config,
+            max_simultaneous_peers,
             validator_matrix,
-            timeout: config.timeout(),
-            peer_refresh_interval: config.peer_refresh_interval(),
-            need_next_interval: config.need_next_interval(),
-            disconnect_dishonest_peers_interval: config.disconnect_dishonest_peers_interval(),
             forward: None,
             historical: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
@@ -260,7 +257,6 @@ impl BlockSynchronizer {
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
         requires_strict_finality: bool,
-        max_simultaneous_peers: u32,
     ) -> bool {
         if let (true, Some(builder), _) | (false, _, Some(builder)) = (
             should_fetch_execution_state,
@@ -275,8 +271,8 @@ impl BlockSynchronizer {
             block_hash,
             should_fetch_execution_state,
             requires_strict_finality,
-            max_simultaneous_peers,
-            self.peer_refresh_interval,
+            self.max_simultaneous_peers,
+            self.config.peer_refresh_interval(),
         );
         if should_fetch_execution_state {
             self.historical.replace(builder);
@@ -292,7 +288,6 @@ impl BlockSynchronizer {
         sync_leap: &SyncLeap,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
-        max_simultaneous_peers: u32,
     ) {
         fn apply_sigs(builder: &mut BlockBuilder, maybe_sigs: Option<&BlockSignatures>) {
             if let Some(signatures) = maybe_sigs {
@@ -323,8 +318,8 @@ impl BlockSynchronizer {
                         validator_weights,
                         peers,
                         should_fetch_execution_state,
-                        max_simultaneous_peers,
-                        self.peer_refresh_interval,
+                        self.max_simultaneous_peers,
+                        self.config.peer_refresh_interval(),
                     );
                     apply_sigs(&mut builder, maybe_sigs);
                     if should_fetch_execution_state {
@@ -455,8 +450,9 @@ impl BlockSynchronizer {
     where
         REv: ReactorEvent + From<FetcherRequest<Block>> + From<BlockCompleteConfirmationRequest>,
     {
-        let need_next_interval = self.need_next_interval.into();
+        let need_next_interval = self.config.need_next_interval().into();
         let mut results = Effects::new();
+        let max_simultaneous_peers = self.max_simultaneous_peers as usize;
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             if builder.in_flight_latch().is_some() || builder.is_finished() {
                 return;
@@ -600,11 +596,9 @@ impl BlockSynchronizer {
                     if builder.should_fetch_execution_state() {
                         // the accumulator may or may not have peers for an older block,
                         // so we're going to also get a random sampling from networking
-                        // todo!("insinuate chainspec.core_config.simultaneous_peer_requests here")
-                        let historical_peers_from_network = 5;
                         results.extend(
                             effect_builder
-                                .get_fully_connected_peers(historical_peers_from_network)
+                                .get_fully_connected_peers(max_simultaneous_peers)
                                 .event(move |peers| Event::NetworkPeers(block_hash, peers)),
                         )
                     }
@@ -1058,7 +1052,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.status = ComponentStatus::Initialized;
                     // start dishonest peer management on initialization
                     effect_builder
-                        .set_timeout(self.disconnect_dishonest_peers_interval.into())
+                        .set_timeout(self.config.disconnect_dishonest_peers_interval().into())
                         .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
                 } else {
                     warn!("BlockSynchronizer: should not handle this event when component is uninitialized");
@@ -1095,7 +1089,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.flush_dishonest_peers();
                     effects.extend(
                         effect_builder
-                            .set_timeout(self.disconnect_dishonest_peers_interval.into())
+                            .set_timeout(self.config.disconnect_dishonest_peers_interval().into())
                             .event(move |_| {
                                 Event::Request(BlockSynchronizerRequest::DishonestPeers)
                             }),
