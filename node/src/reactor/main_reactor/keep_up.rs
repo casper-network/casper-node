@@ -219,12 +219,10 @@ impl MainReactor {
             }
             SyncInstruction::BlockSync { block_hash } => {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
-                if self.block_synchronizer.register_block_by_hash(
-                    block_hash,
-                    false,
-                    true,
-                    self.chainspec.core_config.simultaneous_peer_requests,
-                ) {
+                if self
+                    .block_synchronizer
+                    .register_block_by_hash(block_hash, false, true)
+                {
                     info!(
                         ?block_hash,
                         "KeepUp: BlockSync: registered block by hash {}", block_hash
@@ -400,12 +398,10 @@ impl MainReactor {
         rng: &mut NodeRng,
         parent_hash: BlockHash,
     ) -> KeepUpInstruction {
-        if self.block_synchronizer.register_block_by_hash(
-            parent_hash,
-            true,
-            true,
-            self.chainspec.core_config.simultaneous_peer_requests,
-        ) {
+        if self
+            .block_synchronizer
+            .register_block_by_hash(parent_hash, true, true)
+        {
             // sync the parent_hash block; we get a random sampling of peers to ask.
             // it is possible that we may get a random sampling that do not have the data
             // we need, but the synchronizer should (eventually) detect that and ask for

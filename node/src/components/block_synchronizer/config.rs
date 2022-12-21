@@ -9,7 +9,6 @@ const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
 const DEFAULT_PEER_REFRESH_INTERVAL: &str = "90sec";
 const DEFAULT_NEED_NEXT_INTERVAL: &str = "1sec";
 const DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL: &str = "10sec";
-const DEFAULT_RANDOM_PEER_COUNT_FOR_HISTORICAL_SYNC: u16 = 5;
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -22,8 +21,6 @@ pub struct Config {
     need_next_interval: TimeDiff,
     /// Time interval for recurring disconnection of dishonest peers.
     disconnect_dishonest_peers_interval: TimeDiff,
-    /// Number of random peers to use for historical sync.
-    random_peer_count_for_historical_sync: u16,
 }
 
 impl Config {
@@ -42,10 +39,6 @@ impl Config {
     pub(crate) fn disconnect_dishonest_peers_interval(&self) -> TimeDiff {
         self.disconnect_dishonest_peers_interval
     }
-
-    pub(crate) fn random_peer_count_for_historical_sync(&self) -> u16 {
-        self.random_peer_count_for_historical_sync
-    }
 }
 
 impl Default for Config {
@@ -58,7 +51,6 @@ impl Default for Config {
                 DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL,
             )
             .unwrap(),
-            random_peer_count_for_historical_sync: DEFAULT_RANDOM_PEER_COUNT_FOR_HISTORICAL_SYNC,
         }
     }
 }

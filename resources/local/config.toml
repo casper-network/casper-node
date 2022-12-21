@@ -478,9 +478,6 @@ need_next_interval = '1sec'
 # Time interval for recurring disconnection of dishonest peers.
 disconnect_dishonest_peers_interval = '10sec'
 
-# The number of random peers to use for historical sync.
-random_peer_count_for_historical_sync = 5
-
 
 # ==================================
 # Configuration options for fetchers

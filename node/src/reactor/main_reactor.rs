@@ -281,6 +281,7 @@ impl reactor::Reactor for MainReactor {
         )?;
         let block_synchronizer = BlockSynchronizer::new(
             config.block_synchronizer,
+            chainspec.core_config.simultaneous_peer_requests,
             validator_matrix.clone(),
             registry,
         )?;

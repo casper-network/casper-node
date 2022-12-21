@@ -183,8 +183,9 @@ impl DocExample for BlockSynchronizerStatus {
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
     status: ComponentStatus,
-    validator_matrix: ValidatorMatrix,
     config: Config,
+    max_simultaneous_peers: u32,
+    validator_matrix: ValidatorMatrix,
 
     // execute forward block (do not get global state or execution effects)
     forward: Option<BlockBuilder>,
@@ -199,13 +200,15 @@ pub(crate) struct BlockSynchronizer {
 impl BlockSynchronizer {
     pub(crate) fn new(
         config: Config,
+        max_simultaneous_peers: u32,
         validator_matrix: ValidatorMatrix,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(BlockSynchronizer {
             status: ComponentStatus::Uninitialized,
-            validator_matrix,
             config,
+            max_simultaneous_peers,
+            validator_matrix,
             forward: None,
             historical: None,
             global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
@@ -254,7 +257,6 @@ impl BlockSynchronizer {
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
         requires_strict_finality: bool,
-        max_simultaneous_peers: u32,
     ) -> bool {
         if let (true, Some(builder), _) | (false, _, Some(builder)) = (
             should_fetch_execution_state,
@@ -269,7 +271,7 @@ impl BlockSynchronizer {
             block_hash,
             should_fetch_execution_state,
             requires_strict_finality,
-            max_simultaneous_peers,
+            self.max_simultaneous_peers,
             self.config.peer_refresh_interval(),
         );
         if should_fetch_execution_state {
@@ -286,7 +288,6 @@ impl BlockSynchronizer {
         sync_leap: &SyncLeap,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
-        max_simultaneous_peers: u32,
     ) {
         fn apply_sigs(builder: &mut BlockBuilder, maybe_sigs: Option<&BlockSignatures>) {
             if let Some(signatures) = maybe_sigs {
@@ -317,7 +318,7 @@ impl BlockSynchronizer {
                         validator_weights,
                         peers,
                         should_fetch_execution_state,
-                        max_simultaneous_peers,
+                        self.max_simultaneous_peers,
                         self.config.peer_refresh_interval(),
                     );
                     apply_sigs(&mut builder, maybe_sigs);
@@ -451,7 +452,7 @@ impl BlockSynchronizer {
     {
         let need_next_interval = self.config.need_next_interval().into();
         let mut results = Effects::new();
-        let random_peer_count = self.config.random_peer_count_for_historical_sync() as usize;
+        let max_simultaneous_peers = self.max_simultaneous_peers as usize;
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
             if builder.in_flight_latch().is_some() || builder.is_finished() {
                 return;
@@ -595,10 +596,9 @@ impl BlockSynchronizer {
                     if builder.should_fetch_execution_state() {
                         // the accumulator may or may not have peers for an older block,
                         // so we're going to also get a random sampling from networking
-                        // todo!("insinuate chainspec.core_config.simultaneous_peer_requests here")
                         results.extend(
                             effect_builder
-                                .get_fully_connected_peers(random_peer_count)
+                                .get_fully_connected_peers(max_simultaneous_peers)
                                 .event(move |peers| Event::NetworkPeers(block_hash, peers)),
                         )
                     }
