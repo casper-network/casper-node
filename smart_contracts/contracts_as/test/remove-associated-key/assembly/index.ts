@@ -9,13 +9,13 @@ const ARG_ACCOUNT = "account";
 
 export function call(): void {
   let accountBytes = CL.getNamedArg(ARG_ACCOUNT);
-  const accountResult = AccountHash.fromBytes(accountBytes);
+  const accountResult = AccountHash.fromBytes(accountBytes.slice(0));
   if (accountResult.hasError()) {
     Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
     return;
   }
   const account = accountResult.value;
-  
+
   if (removeAssociatedKey(account) != RemoveKeyFailure.Ok) {
     Error.fromUserError(<u16>4464).revert();
     return;

@@ -21,15 +21,15 @@ export function call(): void {
 
   let key42sBytes = new Array<u8>(32);
   key42sBytes.fill(42);
-  let key42s = new AccountHash(arrayToTyped(key42sBytes));
+  let key42s = new AccountHash(key42sBytes);
 
   let key43sBytes = new Array<u8>(32);
   key43sBytes.fill(43);
-  let key43s = new AccountHash(arrayToTyped(key43sBytes));
+  let key43s = new AccountHash(key43sBytes);
 
   let key1sBytes = new Array<u8>(32);
   key1sBytes.fill(1);
-  let key1s = new AccountHash(arrayToTyped(key1sBytes));
+  let key1s = new AccountHash(key1sBytes);
 
   if (stage == "init") {
     if (addAssociatedKey(key42s, 100) != AddKeyFailure.Ok) {
@@ -53,7 +53,7 @@ export function call(): void {
   else if (stage == "test-permission-denied") {
     let key44sBytes = new Array<u8>(32);
     key44sBytes.fill(44);
-    let key44s = new AccountHash(arrayToTyped(key44sBytes));
+    let key44s = new AccountHash(key44sBytes);
     switch (addAssociatedKey(key44s, 1)) {
       case AddKeyFailure.Ok:
         Error.fromUserError(200).revert();
@@ -67,7 +67,7 @@ export function call(): void {
 
     let key43sBytes = new Array<u8>(32);
     key43sBytes.fill(43);
-    let key43s = new AccountHash(arrayToTyped(key43sBytes));
+    let key43s = new AccountHash(key43sBytes);
 
     switch (updateAssociatedKey(key43s, 2)) {
       case UpdateKeyFailure.Ok:
@@ -105,7 +105,7 @@ export function call(): void {
   else if (stage == "test-key-mgmnt-succeed") {
     let key44sBytes = new Array<u8>(32);
     key44sBytes.fill(44);
-    let key44s = new AccountHash(arrayToTyped(key44sBytes));
+    let key44s = new AccountHash(key44sBytes);
 
     // Has to be executed with keys of total weight >= 254
     if (addAssociatedKey(key44s, 1) != AddKeyFailure.Ok) {

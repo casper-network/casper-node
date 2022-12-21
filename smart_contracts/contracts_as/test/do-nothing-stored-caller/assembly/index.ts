@@ -18,7 +18,7 @@ export function call(): void {
   const newPurseNameBytes = CL.getNamedArg(ARG_NEW_PURSE_NAME);
   const newPurseName = fromBytesString(newPurseNameBytes).unwrap();
   const versionNumber = CL.getNamedArg(ARG_VERSION)[0];
-  let contractVersion = new Option(arrayToTyped(toBytesU32(versionNumber)));
+  let contractVersion = new Option(toBytesU32(versionNumber));
   let runtimeArgs = RuntimeArgs.fromArray([
     new Pair(PURSE_NAME_ARG_NAME, CLValue.fromString(newPurseName)),
   ]);

@@ -2598,9 +2598,11 @@ mod payment {
     use rand::Rng;
 
     use casper_engine_test_support::{
-        DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
-    use casper_types::{runtime_args, system::mint, RuntimeArgs};
+    use casper_execution_engine::core::engine_state::{Error as CoreError, ExecError};
+    use casper_types::{runtime_args, system::mint, HashAddr, RuntimeArgs};
+    use get_call_stack_recursive_subcall::Call;
 
     use crate::wasm_utils;
 
@@ -2610,15 +2612,204 @@ mod payment {
     };
 
     // DEPTHS should not contain 1, as it will eliminate the initial element from the subcalls
-    // vector.  Going further than 5 will git the gas limit.
+    // vector.  Going further than 5 will hit the gas limit.
     const DEPTHS: &[usize] = &[0, 2, 5];
+
+    fn execute(builder: &mut InMemoryWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
+        let execute_request = {
+            let mut rng = rand::thread_rng();
+            let deploy_hash = rng.gen();
+            let sender = *DEFAULT_ACCOUNT_ADDR;
+            let args = runtime_args! {
+                ARG_CALLS => subcalls,
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        if call_depth == 0 {
+            builder.exec(execute_request).commit().expect_success();
+        } else {
+            builder.exec(execute_request).commit().expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
+    }
+
+    fn execute_stored_payment_by_package_name(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+    ) {
+        let execute_request = {
+            let mut rng = rand::thread_rng();
+            let deploy_hash = rng.gen();
+
+            let sender = *DEFAULT_ACCOUNT_ADDR;
+
+            let args = runtime_args! {
+                ARG_CALLS => subcalls,
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
+
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_stored_versioned_payment_contract_by_name(
+                    CONTRACT_PACKAGE_NAME,
+                    None,
+                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                    args,
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        if call_depth == 0 {
+            builder.exec(execute_request).commit().expect_success();
+        } else {
+            builder.exec(execute_request).commit().expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
+    }
+
+    fn execute_stored_payment_by_package_hash(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+        current_contract_package_hash: HashAddr,
+    ) {
+        let execute_request = {
+            let mut rng = rand::thread_rng();
+            let deploy_hash = rng.gen();
+            let sender = *DEFAULT_ACCOUNT_ADDR;
+            let args = runtime_args! {
+                ARG_CALLS => subcalls,
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_stored_versioned_payment_contract_by_hash(
+                    current_contract_package_hash,
+                    None,
+                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                    args,
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        if call_depth == 0 {
+            builder.exec(execute_request).expect_success().commit();
+        } else {
+            builder.exec(execute_request).commit().expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
+    }
+
+    fn execute_stored_payment_by_contract_name(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+    ) {
+        let execute_request = {
+            let mut rng = rand::thread_rng();
+            let deploy_hash = rng.gen();
+
+            let sender = *DEFAULT_ACCOUNT_ADDR;
+
+            let args = runtime_args! {
+                ARG_CALLS => subcalls,
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
+
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_stored_payment_named_key(
+                    CONTRACT_NAME,
+                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                    args,
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        if call_depth == 0 {
+            builder.exec(execute_request).commit().expect_success();
+        } else {
+            builder.exec(execute_request).commit().expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
+    }
+
+    fn execute_stored_payment_by_contract_hash(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+        current_contract_hash: HashAddr,
+    ) {
+        let execute_request = {
+            let mut rng = rand::thread_rng();
+            let deploy_hash = rng.gen();
+            let sender = *DEFAULT_ACCOUNT_ADDR;
+            let args = runtime_args! {
+                ARG_CALLS => subcalls,
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_stored_payment_hash(
+                    current_contract_hash.into(),
+                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                    args,
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        if call_depth == 0 {
+            builder.exec(execute_request).commit().expect_success();
+        } else {
+            builder.exec(execute_request).commit().expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
+    }
 
     // Session + recursive subcall
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_versioned_session_to_stored_versioned_contract() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_versioned_session_to_stored_versioned_contract() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -2626,47 +2817,22 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info_module_bytes(
-                &mut builder,
-                subcalls,
-                current_contract_package_hash,
-            );
+            execute(&mut builder, *call_depth, subcalls);
         }
     }
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_versioned_session_to_stored_contract() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_versioned_session_to_stored_contract() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -2675,137 +2841,78 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_contract(current_contract_hash.into()));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info_module_bytes(
-                &mut builder,
-                subcalls,
-                current_contract_package_hash,
-            );
+            execute(&mut builder, *call_depth, subcalls);
         }
     }
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_session_to_stored_versioned_contract() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_session_to_stored_versioned_contract() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_session(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info_module_bytes(
-                &mut builder,
-                subcalls,
-                current_contract_package_hash,
-            );
+            execute(&mut builder, *call_depth, subcalls)
         }
+    }
+
+    // Payment logic is tethered to a low gas amount. It is not forbidden to attempt to do calls
+    // however they are expensive and if you exceed the gas limit it should fail with a
+    // GasLimit error.
+    #[ignore]
+    #[test]
+    fn payment_bytes_to_stored_contract_to_stored_session() {
+        let call_depth = 5usize;
+        let mut builder = super::setup();
+        let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+        let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+
+        let subcalls = vec![
+            super::stored_contract(current_contract_hash.into()),
+            super::stored_session(current_contract_hash.into()),
+        ];
+        execute(&mut builder, call_depth, subcalls)
     }
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_contract_to_stored_session() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+    fn payment_bytes_to_stored_session_to_stored_contract_() {
+        let call_depth = 5usize;
+        let mut builder = super::setup();
+        let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+        let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
-                subcalls.push(super::stored_contract(current_contract_hash.into()));
-            }
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info_module_bytes(
-                &mut builder,
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
+        let subcalls = vec![
+            super::stored_session(current_contract_hash.into()),
+            super::stored_contract(current_contract_hash.into()),
+        ];
+        execute(&mut builder, call_depth, subcalls)
     }
 
     // Session + recursive subcall failure cases
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_versioned_contract_to_stored_versioned_session_should_fail() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_versioned_contract_to_stored_versioned_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -2813,43 +2920,22 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_versioned_contract_to_stored_session_should_fail() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_versioned_contract_to_stored_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -2858,115 +2944,56 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_contract_to_stored_versioned_session_should_fail() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_contract_to_stored_versioned_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn session_bytes_to_stored_contract_to_stored_session_should_fail() {
-        for len in DEPTHS {
+    fn payment_bytes_to_stored_contract_to_stored_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute(&mut builder, *call_depth, subcalls)
         }
     }
 
@@ -2974,725 +3001,301 @@ mod payment {
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_name_to_stored_versioned_session() {
-        for len in DEPTHS {
+    fn stored_versioned_payment_by_name_to_stored_versioned_session() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_contract_by_name(
-                        CONTRACT_PACKAGE_NAME,
-                        None,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
+            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls);
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_hash_to_stored_versioned_session() {
-        for len in DEPTHS {
+    fn stored_versioned_payment_by_hash_to_stored_versioned_session() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_contract_by_hash(
-                        current_contract_package_hash,
-                        None,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
+            execute_stored_payment_by_package_hash(
                 &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
+                *call_depth,
                 subcalls,
                 current_contract_package_hash,
-            );
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_name_to_stored_session() {
-        for len in DEPTHS {
+    fn stored_versioned_payment_by_name_to_stored_session() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+
+            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_versioned_payment_by_hash_to_stored_session() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_contract_by_name(
-                        CONTRACT_PACKAGE_NAME,
-                        None,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
+            execute_stored_payment_by_package_hash(
                 &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
+                *call_depth,
                 subcalls,
                 current_contract_package_hash,
-            );
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_hash_to_stored_session() {
-        for len in DEPTHS {
+    fn stored_payment_by_name_to_stored_versioned_session() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls =
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_contract_by_hash(
-                        current_contract_package_hash,
-                        None,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_name_to_stored_versioned_session() {
-        for len in DEPTHS {
+    fn stored_payment_by_hash_to_stored_versioned_session() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![
+                    super::stored_versioned_session(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
+            execute_stored_payment_by_contract_hash(
                 &mut builder,
-                super::stored_session(current_contract_hash.into()),
+                *call_depth,
                 subcalls,
-                current_contract_package_hash,
-            );
+                current_contract_hash,
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_hash_to_stored_versioned_session() {
-        for len in DEPTHS {
+    fn stored_payment_by_name_to_stored_session() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_payment_by_hash_to_stored_session() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_versioned_payment_by_name_to_stored_versioned_contract() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
+
+            let subcalls =
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
+
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_versioned_payment_by_hash_to_stored_versioned_contract() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
+
+            let subcalls =
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
+
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_versioned_payment_by_name_to_stored_contract() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
+
+            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_versioned_payment_by_hash_to_stored_contract() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
+            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
+
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
+
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_payment_by_name_to_stored_versioned_contract() {
+        for call_depth in DEPTHS {
+            let mut builder = super::setup();
+            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
+
+            let subcalls =
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
+
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn stored_payment_by_hash_to_stored_versioned_contract() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![
+                    super::stored_versioned_contract(current_contract_package_hash.into());
+                    *call_depth
+                ];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_hash(
-                        current_contract_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
+            execute_stored_payment_by_contract_hash(
                 &mut builder,
-                super::stored_session(current_contract_hash.into()),
+                *call_depth,
                 subcalls,
-                current_contract_package_hash,
-            );
+                current_contract_hash,
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_name_to_stored_session() {
-        for len in DEPTHS {
+    fn stored_payment_by_name_to_stored_contract() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_session(current_contract_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_hash_to_stored_session() {
-        for len in DEPTHS {
+    fn stored_payment_by_hash_to_stored_contract() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_hash(
-                        current_contract_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
+            execute_stored_payment_by_contract_hash(
                 &mut builder,
-                super::stored_session(current_contract_hash.into()),
+                *call_depth,
                 subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_versioned_session_by_name_to_stored_versioned_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-
-            let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_named_key(
-                        CONTRACT_PACKAGE_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_versioned_session_by_hash_to_stored_versioned_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-
-            let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_hash(
-                        current_contract_package_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_versioned_session_by_name_to_stored_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
-
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_named_key(
-                        CONTRACT_PACKAGE_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_session(current_contract_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_versioned_session_by_hash_to_stored_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
-
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_hash(
-                        current_contract_package_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_versioned_session(current_contract_package_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_session_by_name_to_stored_versioned_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
-
-            let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_session(current_contract_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_session_by_hash_to_stored_versioned_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
-
-            let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_hash(
-                        current_contract_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_session(current_contract_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_session_by_name_to_stored_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
-
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_session(current_contract_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
-        }
-    }
-
-    #[ignore]
-    #[test]
-    fn stored_session_by_hash_to_stored_contract() {
-        for len in DEPTHS {
-            let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-            let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
-
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
-
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_hash(
-                        current_contract_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-            builder.exec(execute_request).commit().expect_success();
-
-            super::assert_each_context_has_correct_call_stack_info(
-                &mut builder,
-                super::stored_session(current_contract_hash.into()),
-                subcalls,
-                current_contract_package_hash,
-            );
+                current_contract_hash,
+            )
         }
     }
 
@@ -3700,9 +3303,9 @@ mod payment {
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
+    fn stored_versioned_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
-        for len in DEPTHS {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -3710,48 +3313,23 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_named_key(
-                        CONTRACT_PACKAGE_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail()
+    fn stored_versioned_payment_by_hash_to_stored_versioned_contract_to_stored_session_should_fail()
     {
-        for len in DEPTHS {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -3760,137 +3338,76 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_hash(
-                        current_contract_package_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_name_to_stored_contract_to_stored_versioned_session_should_fail()
+    fn stored_versioned_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail()
     {
-        for len in DEPTHS {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_named_key(
-                        CONTRACT_PACKAGE_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_versioned_session_by_hash_to_stored_contract_to_stored_session_should_fail() {
-        for len in DEPTHS {
+    fn stored_versioned_payment_by_hash_to_stored_contract_to_stored_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_versioned_payment_hash(
-                        current_contract_package_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_package_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_package_hash,
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail()
+    fn stored_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail()
     {
-        for len in DEPTHS {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -3898,47 +3415,22 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
-        for len in DEPTHS {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
@@ -3947,127 +3439,61 @@ mod payment {
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    len.saturating_sub(1)
+                    call_depth.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_hash(
-                        current_contract_hash.into(),
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_contract_hash(
+                &mut builder,
+                *call_depth,
+                subcalls,
+                current_contract_hash,
+            )
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
-        for len in DEPTHS {
+    fn stored_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
     }
 
     #[ignore]
     #[test]
-    fn stored_session_by_name_to_stored_contract_to_stored_session_should_fail() {
-        for len in DEPTHS {
+    fn stored_payment_by_name_to_stored_contract_to_stored_session_should_fail() {
+        for call_depth in DEPTHS {
             let mut builder = super::setup();
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let mut subcalls =
-                vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            let mut subcalls = vec![
+                super::stored_contract(current_contract_hash.into());
+                call_depth.saturating_sub(1)
+            ];
+            if *call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            let execute_request = {
-                let mut rng = rand::thread_rng();
-                let deploy_hash = rng.gen();
-                let sender = *DEFAULT_ACCOUNT_ADDR;
-                let args = runtime_args! {
-                    ARG_CALLS => subcalls.clone(),
-                    ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
-                };
-                let deploy = DeployItemBuilder::new()
-                    .with_address(sender)
-                    .with_stored_payment_named_key(
-                        CONTRACT_NAME,
-                        CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                        args,
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                    .with_authorization_keys(&[sender])
-                    .with_deploy_hash(deploy_hash)
-                    .build();
-                ExecuteRequestBuilder::new().push_deploy(deploy).build()
-            };
-
-            builder.exec(execute_request).commit();
-
-            super::assert_invalid_context(&mut builder, *len);
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
         }
     }
 }
