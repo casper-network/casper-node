@@ -25,13 +25,16 @@ use super::{
 use crate::{
     components::fetcher::FetchResponse,
     effect::{requests::StorageRequest, Multiple},
-    storage::lmdb_ext::{deserialize_internal, serialize_internal},
+    storage::{
+        lmdb_ext::{deserialize_internal, serialize_internal},
+        FORCE_RESYNC_FILE_NAME,
+    },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata,
-        BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        LegacyDeploy, SyncLeapIdentifier,
+        AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -180,6 +183,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         MAX_TTL,
         RECENT_ERA_COUNT,
         None,
+        false,
     )
     .expect("could not create storage component fixture")
 }
@@ -210,8 +214,31 @@ fn storage_fixture_from_parts(
         max_ttl.unwrap_or(MAX_TTL),
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
         None,
+        false,
     )
     .expect("could not create storage component fixture from parts")
+}
+
+/// Storage component test fixture with force resync enabled.
+///
+/// Creates a storage component in a given temporary directory.
+///
+/// # Panics
+///
+/// Panics if setting up the storage fixture fails.
+fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
+    Storage::new(
+        cfg,
+        Ratio::new(1, 3),
+        None,
+        ProtocolVersion::from_parts(1, 0, 0),
+        "test",
+        MAX_TTL,
+        RECENT_ERA_COUNT,
+        None,
+        true,
+    )
+    .expect("could not create storage component fixture")
 }
 
 /// Storage component test fixture.
@@ -1201,6 +1228,7 @@ fn should_create_subdir_named_after_network() {
         MAX_TTL,
         RECENT_ERA_COUNT,
         None,
+        false,
     )
     .unwrap();
 
@@ -1633,6 +1661,75 @@ fn should_get_block_header_by_height() {
     let maybe_block_header = get_block_header_by_height(&mut harness, &mut storage, height);
     assert!(maybe_block_header.is_some());
     assert_eq!(expected_header, maybe_block_header.unwrap());
+}
+
+#[test]
+fn check_force_resync_with_marker_file() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+    let cfg = WithDir::new(harness.tmp.path(), new_config(&harness));
+    let force_resync_file_path = storage.root_path().join(FORCE_RESYNC_FILE_NAME);
+    assert!(!force_resync_file_path.exists());
+
+    // Add a couple of blocks into storage.
+    let first_block = Block::random(&mut harness.rng);
+    put_complete_block(&mut harness, &mut storage, Box::new(first_block.clone()));
+    let second_block = Block::random(&mut harness.rng);
+    put_complete_block(&mut harness, &mut storage, Box::new(second_block));
+    // Make sure the completed blocks are not the default anymore.
+    assert_ne!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::RANGE_0_0
+    );
+    storage.persist_completed_blocks().unwrap();
+    drop(storage);
+
+    // The force resync marker file should not exist yet.
+    assert!(!force_resync_file_path.exists());
+    // Reinitialize storage with force resync enabled.
+    let mut storage = storage_fixture_with_force_resync(&cfg);
+    // The marker file should be there now.
+    assert!(force_resync_file_path.exists());
+    // Completed blocks has now been defaulted.
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::RANGE_0_0
+    );
+    let first_block_height = first_block.height();
+    // Add a block into storage.
+    put_complete_block(&mut harness, &mut storage, Box::new(first_block));
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(first_block_height, first_block_height)
+    );
+    storage.persist_completed_blocks().unwrap();
+    drop(storage);
+
+    // We didn't remove the marker file, so it should still be there.
+    assert!(force_resync_file_path.exists());
+    // Reinitialize storage with force resync enabled.
+    let storage = storage_fixture_with_force_resync(&cfg);
+    assert!(force_resync_file_path.exists());
+    // The completed blocks didn't default this time as the marker file was
+    // present.
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(first_block_height, first_block_height)
+    );
+    drop(storage);
+    // Remove the marker file.
+    std::fs::remove_file(&force_resync_file_path).unwrap();
+    assert!(!force_resync_file_path.exists());
+
+    // Reinitialize storage with force resync enabled.
+    let storage = storage_fixture_with_force_resync(&cfg);
+    // The marker file didn't exist, so it was created.
+    assert!(force_resync_file_path.exists());
+    // Completed blocks was defaulted again.
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::RANGE_0_0
+    );
 }
 
 #[test]

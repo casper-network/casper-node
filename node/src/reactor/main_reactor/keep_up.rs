@@ -292,7 +292,9 @@ impl MainReactor {
         let leap_status = self.sync_leaper.leap_status();
         info!(?parent_hash, ?leap_status, "historical status");
         match leap_status {
-            LeapStatus::Idle => self.sync_back_leaper_idle(effect_builder, rng, parent_hash),
+            LeapStatus::Idle => {
+                self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
+            }
             LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(
                 "historical sync leaper is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
@@ -321,7 +323,12 @@ impl MainReactor {
             remaining_attempts = self.max_attempts.saturating_sub(self.attempts),
             "historical: failed leap",
         );
-        self.sync_back_leaper_idle(effect_builder, rng, parent_hash)
+        self.sync_back_leaper_idle(
+            effect_builder,
+            rng,
+            parent_hash,
+            self.control_logic_default_delay.into(),
+        )
     }
 
     fn sync_back_leaper_idle(
@@ -329,12 +336,19 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         parent_hash: BlockHash,
+        offset: Duration,
     ) -> KeepUpInstruction {
         // we get a random sampling of peers to ask.
         let peers_to_ask = self.net.fully_connected_peers_random(
             rng,
             self.chainspec.core_config.simultaneous_peer_requests as usize,
         );
+        if peers_to_ask.is_empty() {
+            return KeepUpInstruction::CheckLater(
+                "no peers".to_string(),
+                self.control_logic_default_delay.into(),
+            );
+        }
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
         let effects = effect_builder.immediately().event(move |_| {
             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
@@ -342,7 +356,7 @@ impl MainReactor {
                 peers_to_ask,
             })
         });
-        KeepUpInstruction::Do(Duration::ZERO, effects)
+        KeepUpInstruction::Do(offset, effects)
     }
 
     fn sync_back_leap_received(&mut self, best_available: Box<SyncLeap>) -> KeepUpInstruction {

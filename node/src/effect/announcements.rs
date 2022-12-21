@@ -9,6 +9,7 @@ use std::{
     fs::File,
 };
 
+use datasize::DataSize;
 use itertools::Itertools;
 use serde::Serialize;
 
@@ -41,6 +42,9 @@ use crate::{
 #[derive(Serialize)]
 #[must_use]
 pub(crate) enum ControlAnnouncement {
+    /// A shutdown has been requested by the user.
+    ShutdownDueToUserRequest,
+
     /// The node should shut down with exit code 0 in readiness for the next binary to start.
     ShutdownForUpgrade,
 
@@ -65,6 +69,7 @@ pub(crate) enum ControlAnnouncement {
 impl Debug for ControlAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ControlAnnouncement::ShutdownDueToUserRequest => write!(f, "ShutdownDueToUserRequest"),
             ControlAnnouncement::ShutdownForUpgrade => write!(f, "ShutdownForUpgrade"),
             ControlAnnouncement::FatalError { file, line, msg } => f
                 .debug_struct("FatalError")
@@ -82,6 +87,9 @@ impl Debug for ControlAnnouncement {
 impl Display for ControlAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ControlAnnouncement::ShutdownDueToUserRequest => {
+                write!(f, "shutdown due to user request")
+            }
             ControlAnnouncement::ShutdownForUpgrade => write!(f, "shutdown for upgrade"),
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
@@ -110,7 +118,7 @@ impl Display for FatalAnnouncement {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Clone, DataSize, Serialize, Debug)]
 #[must_use]
 pub(crate) enum ReactorAnnouncement {
     CompletedBlock { block: Box<Block> },

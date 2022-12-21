@@ -25,8 +25,6 @@ use crate::{
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
-    #[error("The provided headers don't have the current protocol version.")]
-    WrongProtocolVersion,
     #[error("No ancestors of the trusted block provided.")]
     MissingTrustedAncestors,
     #[error("The SyncLeap does not contain proof that all its headers are on the right chain.")]
@@ -235,25 +233,6 @@ impl FetcherItem for SyncLeap {
                 .entry(signed_header.block_signatures.era_id)
                 .or_default()
                 .push(&signed_header.block_signatures);
-        }
-
-        let protocol_version = chainspec.protocol_version();
-        if self.signed_block_headers.is_empty() {
-            if self.trusted_block_header.protocol_version() != protocol_version
-                && !chainspec
-                    .protocol_config
-                    .is_last_block_before_activation(&self.trusted_block_header)
-            {
-                return Err(SyncLeapValidationError::WrongProtocolVersion);
-            }
-        } else if self
-            .signed_block_headers
-            .iter()
-            .any(|header_with_metadata| {
-                header_with_metadata.block_header.protocol_version() != protocol_version
-            })
-        {
-            return Err(SyncLeapValidationError::WrongProtocolVersion);
         }
 
         let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.block_hash()];

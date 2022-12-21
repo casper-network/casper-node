@@ -309,16 +309,18 @@ impl MainReactor {
         rng: &mut NodeRng,
         block_hash: BlockHash,
     ) -> CatchUpInstruction {
-        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-        let peers_wanted = self.chainspec.core_config.simultaneous_peer_requests as usize;
-        let peers_to_ask = self.net.fully_connected_peers_random(rng, peers_wanted);
-        if peers_to_ask.len() < peers_wanted {
-            warn!(
-                peers_available = peers_to_ask.len(),
-                %peers_wanted,
-                "CatchUp: attempting to Leap with less connected peers than wanted"
+        // we get a random sampling of peers to ask.
+        let peers_to_ask = self.net.fully_connected_peers_random(
+            rng,
+            self.chainspec.core_config.simultaneous_peer_requests as usize,
+        );
+        if peers_to_ask.is_empty() {
+            return CatchUpInstruction::CheckLater(
+                "no peers".to_string(),
+                self.chainspec.core_config.minimum_block_time.into(),
             );
         }
+        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
         let effects = effect_builder.immediately().event(move |_| {
             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
                 sync_leap_identifier,

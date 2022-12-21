@@ -39,6 +39,7 @@ use crate::{
         consensus::{BlockContext, ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
+        diagnostics_port::StopAtSpec,
         fetcher::FetchResult,
         network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
@@ -1189,6 +1190,26 @@ impl Display for BlockSynchronizerRequest {
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")
             }
+        }
+    }
+}
+
+/// A request to set the current shutdown trigger.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct SetNodeStopRequest {
+    /// The specific stop-at spec.
+    ///
+    /// If `None`, clears the current stop at setting.
+    pub(crate) stop_at: Option<StopAtSpec>,
+    /// Responder to send the previously set stop-at spec to, if any.
+    pub(crate) responder: Responder<Option<StopAtSpec>>,
+}
+
+impl Display for SetNodeStopRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.stop_at {
+            None => f.write_str("clear node stop"),
+            Some(stop_at) => write!(f, "set node stop to: {}", stop_at),
         }
     }
 }

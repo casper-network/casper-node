@@ -32,10 +32,10 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, QueueDumpFormat},
         diagnostics_port::DumpConsensusStateRequest,
-        requests::NetworkInfoRequest,
+        requests::{NetworkInfoRequest, SetNodeStopRequest},
         EffectBuilder,
     },
-    utils::display_error,
+    utils::{display_error, opt_display::OptDisplay},
 };
 
 /// Success or failure response.
@@ -199,6 +199,7 @@ impl Session {
         REv: From<DumpConsensusStateRequest>
             + From<ControlAnnouncement>
             + From<NetworkInfoRequest>
+            + From<SetNodeStopRequest>
             + Send,
     {
         debug!(%line, "line received");
@@ -285,6 +286,20 @@ impl Session {
                             .await?;
                         let insights = effect_builder.get_network_insights().await;
                         self.send_to_client(writer, &insights).await?;
+                    }
+                    Action::Stop { at, clear } => {
+                        let (msg, stop_at) = if clear {
+                            ("clearing stopping point", None)
+                        } else {
+                            ("setting new stopping point", Some(at))
+                        };
+                        let prev = effect_builder.set_node_stop_at(stop_at).await;
+                        self.send_outcome(writer, &Outcome::success(msg)).await?;
+                        self.send_to_client(
+                            writer,
+                            &OptDisplay::new(prev, "no previous stop-at spec"),
+                        )
+                        .await?;
                     }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))
@@ -409,6 +424,7 @@ where
     REv: From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     debug!("accepted new connection on diagnostics port");
@@ -452,6 +468,7 @@ pub(super) async fn server<REv>(
     REv: From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
         + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
         + Send,
 {
     let handling_shutdown_receiver = shutdown_receiver.clone();
@@ -529,8 +546,10 @@ mod tests {
             Component,
         },
         effect::{
-            announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
-            requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
+            announcements::ControlAnnouncement,
+            diagnostics_port::DumpConsensusStateRequest,
+            requests::{NetworkInfoRequest, SetNodeStopRequest},
+            EffectBuilder, EffectExt, Effects,
         },
         reactor::{
             self, main_reactor::MainEvent, EventQueueHandle, QueueKind, Reactor as ReactorTrait,
@@ -587,6 +606,8 @@ mod tests {
         ControlAnnouncement(ControlAnnouncement),
         #[from]
         NetworkInfoRequest(NetworkInfoRequest),
+        #[from]
+        SetNodeStopRequest(SetNodeStopRequest),
     }
 
     impl Display for Event {
@@ -631,6 +652,7 @@ mod tests {
                         .handle_event(effect_builder, rng, event),
                 ),
                 Event::DumpConsensusStateRequest(_)
+                | Event::SetNodeStopRequest(_)
                 | Event::ControlAnnouncement(_)
                 | Event::NetworkInfoRequest(_) => {
                     panic!("unexpected: {}", event)

@@ -588,6 +588,11 @@ where
                     // We ignore the event.
                     (Effects::new(), None, QueueKind::Control)
                 }
+                Some(ControlAnnouncement::ShutdownDueToUserRequest) => (
+                    Effects::new(),
+                    Some(ExitCode::CleanExitDontRestart),
+                    QueueKind::Control,
+                ),
                 Some(ControlAnnouncement::ShutdownForUpgrade) => {
                     (Effects::new(), Some(ExitCode::Success), QueueKind::Control)
                 }
