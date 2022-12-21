@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
@@ -7,13 +6,9 @@ use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
-        block_synchronizer,
-        block_synchronizer::BlockSynchronizerProgress,
-        consensus::EraReport,
-        contract_runtime::ExecutionPreState,
-        deploy_buffer::{self, DeployBuffer},
-        diagnostics_port, event_stream_server, network, rest_server, rpc_server, upgrade_watcher,
-        InitializedComponent,
+        block_synchronizer, block_synchronizer::BlockSynchronizerProgress, consensus::EraReport,
+        contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
+        rest_server, rpc_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -253,6 +248,14 @@ impl MainReactor {
         // initialize deploy buffer from local storage; on a new node this is nearly a noop
         // but on a restarting node it can be relatively time consuming (depending upon TTL and
         // how many deploys there have been within the TTL)
+        if let Some(effects) = self
+            .deploy_buffer
+            .initialize_component(effect_builder, &self.storage)
+        {
+            return Some(effects);
+        }
+
+        /*
         if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
         {
             let blocks = match self.storage.read_blocks_for_replay_protection() {
@@ -281,6 +284,8 @@ impl MainReactor {
                 return Some(effects);
             }
         }
+        */
+
         // bring up rpc server near-to-last to defer complications (such as put_deploy)
         if let Some(effects) = utils::initialize_component(
             effect_builder,

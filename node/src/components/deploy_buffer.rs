@@ -10,7 +10,10 @@ use std::{
 };
 
 use datasize::DataSize;
+use futures::FutureExt;
+use itertools::Itertools;
 use prometheus::Registry;
+use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::Timestamp;
@@ -25,6 +28,9 @@ use crate::{
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
+    reactor::main_reactor::MainEvent,
+    storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
@@ -90,6 +96,52 @@ impl DeployBuffer {
             chain_index: BTreeMap::new(),
             metrics: Metrics::new(registry)?,
         })
+    }
+
+    pub(crate) fn initialize_component(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+        storage: &Storage,
+    ) -> Option<Effects<MainEvent>> {
+        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            let blocks = match storage.read_blocks_for_replay_protection() {
+                Ok(blocks) => blocks,
+                Err(err) => {
+                    return Some(
+                        fatal!(
+                            effect_builder,
+                            "fatal block store error when attempting to read highest blocks: {}",
+                            err
+                        )
+                        .ignore(),
+                    )
+                }
+            };
+            debug!(
+                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
+                "DeployBuffer: initialization"
+            );
+            info!(
+                "initialized {}",
+                <DeployBuffer as InitializedComponent<MainEvent>>::name(self)
+            );
+            let event = Event::Initialize(blocks);
+            return Some(smallvec![async {
+                smallvec![MainEvent::DeployBuffer(event)]
+            }
+            .boxed()]);
+        }
+        if <DeployBuffer as InitializedComponent<MainEvent>>::is_fatal(self) {
+            return Some(
+                fatal!(
+                    effect_builder,
+                    "{} failed to initialize",
+                    <DeployBuffer as InitializedComponent<MainEvent>>::name(self)
+                )
+                .ignore(),
+            );
+        }
+        None
     }
 
     /// Returns `true` if we have enough information to participate in consensus in the era after
