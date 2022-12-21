@@ -108,9 +108,7 @@ impl Display for BlocklistJustification {
             BlocklistJustification::SentBadBlock { error } => {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)
             }
-            BlocklistJustification::DishonestPeer => {
-                f.write_str("sent handshake without chainspec hash")
-            }
+            BlocklistJustification::DishonestPeer => f.write_str("dishonest peer"),
             BlocklistJustification::PeerDidNotProvideADeploy { deploy_id } => {
                 write!(
                     f,
