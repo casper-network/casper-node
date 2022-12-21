@@ -42,7 +42,7 @@ impl MainReactor {
         };
         debug!(
             ?sync_identifier,
-            block_hash = ?sync_identifier.block_hash(),
+            block_hash = %sync_identifier.block_hash(),
             "CatchUp: sync identifier"
         );
         // we check with the block accumulator before doing sync work as it may be aware of one or
@@ -50,7 +50,7 @@ impl MainReactor {
         let sync_instruction = self.block_accumulator.sync_instruction(sync_identifier);
         debug!(
             ?sync_instruction,
-            block_hash = ?sync_instruction.block_hash(),
+            block_hash = %sync_instruction.block_hash(),
             "CatchUp: sync_instruction"
         );
         if let Some(catch_up_instruction) =
@@ -269,7 +269,7 @@ impl MainReactor {
             self.chainspec.core_config.simultaneous_peer_requests,
         );
         let leap_status = self.sync_leaper.leap_status();
-        info!(?block_hash, ?leap_status, "CatchUp: status");
+        info!(%block_hash, %leap_status, "CatchUp: status");
         match leap_status {
             LeapStatus::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
             LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
@@ -297,7 +297,7 @@ impl MainReactor {
         self.attempts += 1;
         warn!(
             %error,
-            remaining_attempts = self.max_attempts.saturating_sub(self.attempts),
+            remaining_attempts = %self.max_attempts.saturating_sub(self.attempts),
             "CatchUp: failed leap",
         );
         self.catch_up_leaper_idle(effect_builder, rng, block_hash)
@@ -339,9 +339,9 @@ impl MainReactor {
         let block_hash = best_available.highest_block_hash();
         let block_height = best_available.highest_block_height();
         info!(
-            ?best_available,
-            ?block_height,
-            ?block_hash,
+            %best_available,
+            %block_height,
+            %block_hash,
             "CatchUp: leap received"
         );
 
