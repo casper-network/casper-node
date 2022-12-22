@@ -328,8 +328,17 @@ impl DeployBuffer {
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
         let mut holds = HashSet::new();
+        let mut have_hit_transfer_limit = false;
+        let mut have_hit_deploy_limit = false;
         for (with_approvals, footprint) in self.proposable() {
+            if footprint.is_transfer && have_hit_transfer_limit {
+                continue;
+            }
+            if !footprint.is_transfer && have_hit_deploy_limit {
+                continue;
+            }
             let deploy_hash = *with_approvals.deploy_hash();
+            let has_multiple_approvals = with_approvals.approvals().len() > 1;
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
                     debug!(%deploy_hash, "DeployBuffer: proposing deploy");
@@ -345,7 +354,6 @@ impl DeployBuffer {
                                 "DeployBuffer: duplicated deploy in deploy buffer"
                             );
                             self.dead.insert(deploy_hash);
-                            continue;
                         }
                         AddError::InvalidDeploy => {
                             // it should not be possible for an invalid deploy to get buffered
@@ -355,13 +363,31 @@ impl DeployBuffer {
                                 "DeployBuffer: invalid deploy in deploy buffer"
                             );
                             self.dead.insert(deploy_hash);
-                            continue;
                         }
-                        AddError::TransferCount
-                        | AddError::DeployCount
-                        | AddError::ApprovalCount
-                        | AddError::GasLimit
-                        | AddError::BlockSize => {
+                        AddError::TransferCount => {
+                            if have_hit_deploy_limit {
+                                info!(
+                                    ?deploy_hash,
+                                    "DeployBuffer: block filled with transfers and deploys"
+                                );
+                                break;
+                            }
+                            have_hit_transfer_limit = true;
+                        }
+                        AddError::DeployCount => {
+                            if have_hit_transfer_limit {
+                                info!(
+                                    ?deploy_hash,
+                                    "DeployBuffer: block filled with deploys and transfers"
+                                );
+                                break;
+                            }
+                            have_hit_deploy_limit = true;
+                        }
+                        AddError::ApprovalCount if has_multiple_approvals => {
+                            // keep iterating, we can maybe fit in a deploy with fewer approvals
+                        }
+                        AddError::ApprovalCount | AddError::GasLimit | AddError::BlockSize => {
                             info!(
                                 ?deploy_hash,
                                 %error,
