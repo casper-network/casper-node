@@ -15,6 +15,8 @@ use casper_types::{EraId, PublicKey, SecretKey, U512};
 
 use super::{BlockHeader, FinalitySignature};
 
+const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
+
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) enum SignatureWeight {
     /// Too few signatures to make any guarantees about the block's finality.
@@ -77,11 +79,22 @@ impl ValidatorMatrix {
         validators: EraValidatorWeights,
     ) -> bool {
         let era_id = validators.era_id;
-        self.inner
+        let mut guard = self
+            .inner
             .write()
-            .unwrap()
-            .insert(era_id, validators)
-            .is_none()
+            .expect("poisoned lock on validator matrix");
+        let was_present = guard.insert(era_id, validators).is_some();
+        if guard.len() > MAX_VALIDATOR_MATRIX_ENTRIES {
+            // Safe to unwrap because we check above that we have sufficient entries.
+            let median_key = guard
+                .keys()
+                .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
+                .copied()
+                .unwrap();
+            guard.remove(&median_key);
+            return median_key != era_id;
+        }
+        !was_present
     }
 
     pub(crate) fn register_validator_weights(
@@ -277,5 +290,80 @@ impl EraValidatorWeights {
             return SignatureWeight::Weak;
         }
         SignatureWeight::Insufficient
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+
+    use casper_types::EraId;
+    use num_rational::Ratio;
+
+    use crate::{
+        components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
+        types::validator_matrix::MAX_VALIDATOR_MATRIX_ENTRIES,
+    };
+
+    use super::{EraValidatorWeights, ValidatorMatrix};
+
+    fn empty_era_validator_weights(era_id: EraId) -> EraValidatorWeights {
+        EraValidatorWeights::new(
+            era_id,
+            iter::once((ALICE_PUBLIC_KEY.clone(), 100.into())).collect(),
+            Ratio::new(1, 3),
+        )
+    }
+
+    #[test]
+    fn register_validator_weights_pruning() {
+        // Create a validator matrix and saturate it with entries.
+        let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+        let mut era_validator_weights = vec![validator_matrix.validator_weights(0.into()).unwrap()];
+        era_validator_weights.extend(
+            (1..MAX_VALIDATOR_MATRIX_ENTRIES as u64)
+                .into_iter()
+                .map(EraId::from)
+                .map(empty_era_validator_weights),
+        );
+        for evw in era_validator_weights
+            .iter()
+            .take(MAX_VALIDATOR_MATRIX_ENTRIES)
+            .skip(1)
+            .cloned()
+        {
+            assert!(validator_matrix.register_era_validator_weights(evw));
+        }
+
+        // Now that we have 6 entries in the validator matrix, try adding more.
+        // We should have an entry for era 3 (we have eras 0 through 5
+        // inclusive).
+        assert!(validator_matrix.has_era(&(MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2).into()));
+        // Add era 7.
+        era_validator_weights.push(empty_era_validator_weights(
+            (MAX_VALIDATOR_MATRIX_ENTRIES as u64 + 1).into(),
+        ));
+        // Now the entry for era 3 should be dropped and we should be left with
+        // the 3 lowest eras [0, 1, 2] and 3 highest eras [4, 5, 6].
+        assert!(validator_matrix
+            .register_era_validator_weights(era_validator_weights.last().cloned().unwrap()));
+        assert!(!validator_matrix.has_era(&(MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2).into()));
+        assert_eq!(
+            validator_matrix.read_inner().len(),
+            MAX_VALIDATOR_MATRIX_ENTRIES
+        );
+
+        // Adding existing eras shouldn't change the state.
+        let old_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
+        assert!(!validator_matrix
+            .register_era_validator_weights(era_validator_weights.last().cloned().unwrap()));
+        let new_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
+        assert_eq!(old_state, new_state);
+
+        // Adding an entry greater than the 3 lowest ones but less than the 3
+        // highest ones should not change state.
+        assert!(!validator_matrix.register_era_validator_weights(era_validator_weights[3].clone()));
+        let new_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
+        assert_eq!(old_state, new_state);
     }
 }
