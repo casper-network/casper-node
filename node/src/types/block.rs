@@ -30,9 +30,7 @@ use casper_types::{
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use casper_types::{
-    crypto::generate_ed25519_keypair, testing::TestRng,
-};
+use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 use crate::{
     components::{block_synchronizer::ExecutionResultsChecksum, consensus},
