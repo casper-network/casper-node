@@ -10,6 +10,17 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+## [Unreleased (next)]
+
+### Added
+
+* Add metrics `deploy_buffer_total_deploys`, `deploy_buffer_held_deploys`, `deploy_buffer_dead_deploys` to report status of the node deploy buffer, `block_accumulator_block_acceptors`, `block_accumulator_known_child_blocks` to track status of the block accumulator component, `{forward|historical}_block_sync_duration_seconds` histogram metric to track the progress of block synchronization, `lowest_available_block_height` and `highest_available_block_height` to report the highest and lowest height of the blocks that were synchronized and available on the node, `sync_leap_duration_seconds`, `sync_leap_fetched_from_peer_total`, `sync_leap_rejected_by_peer_total`, `sync_leap_cant_fetch_total` to track progress of the sync leaper component, `execution_queue_size` to track the number of blocks waiting for execution.
+
+### Changed
+
+* Log messages for blocked nodes have been unified and reasons for blocking peers are better tracked.
+* `chain_height` metric is now deprecated and will be removed in the future. Please use `highest_available_block_height` instead.
+* Renamed `current_era` metric to `consensus_current_era`.
 
 ## [Unreleased]
 
@@ -42,6 +53,12 @@ All notable changes to this project will be documented in this file.  The format
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
 * The network handshake now contains the hash of the chainspec used and will be successful only if they match.
 * Add an `identity` option to load existing network identity certificates signed by a CA.
+* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
+* Make consensus settings non-optional. A value 0 disables them.
+* Add a `[consensus.zug]` section to `config.toml` for the Zug protocol.
+* Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
+* Move `finality_threshold_fraction` from the `highway` to the `core` section in the chainspec.
+* Move `max_execution_delay` from the `highway` to the `consensus` section in the `config.toml`.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
@@ -300,6 +317,7 @@ All notable changes to this project will be documented in this file.  The format
 * Initialize consensus round success meter with current timestamp.
 * Era Supervisor now accounts for the last emergency restart.
 * Upgrade dependencies, in particular tokio.
+* Use `minimum_block_time` and `maximum_round_length` in Highway, instead of `minimum_round_exponent` and `maximum_round_exponent`. The minimum round length doesn't have to be a power of two in milliseconds anymore.
 
 ### Removed
 * Remove `impl Sub<Timestamp> for Timestamp` to help avoid panicking in non-obvious edge cases.

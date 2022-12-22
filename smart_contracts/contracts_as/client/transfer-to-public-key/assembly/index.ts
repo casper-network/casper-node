@@ -10,7 +10,7 @@ const ARG_AMOUNT = "amount";
 export function call(): void {
     const publicKeyBytes = CL.getNamedArg(ARG_TARGET);
     const publicKey = PublicKey.fromBytes(publicKeyBytes).unwrap();
-  
+
     const amountBytes = CL.getNamedArg(ARG_AMOUNT);
     const amount = U512.fromBytes(amountBytes).unwrap();
 

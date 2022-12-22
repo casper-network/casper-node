@@ -10,7 +10,9 @@ maximum_net_message_size = 23_068_672
 [core]
 era_duration = '3minutes'
 minimum_era_height = 9
+minimum_block_time = '16seconds'
 validator_slots = 5
+finality_threshold_fraction = [2, 25]
 auction_delay = 3
 locked_funds_period = '90days'
 vesting_schedule_period = '13 weeks'
@@ -20,11 +22,11 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
+simultaneous_peer_requests = 5
+consensus_protocol = 'Highway'
 
 [highway]
-finality_threshold_fraction = [2, 25]
-minimum_round_exponent = 14
-maximum_round_exponent = 19
+maximum_round_length = '132seconds'
 reduced_reward_multiplier = [1, 5]
 
 [deploys]
@@ -35,6 +37,7 @@ max_block_size = 12
 max_deploy_size = 1_048_576
 block_max_deploy_count = 125
 block_max_transfer_count = 1000
+block_max_approval_count = 2600
 block_gas_limit = 13
 payment_args_max_length = 1024
 session_args_max_length = 1024
@@ -128,6 +131,7 @@ withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
 activate_bid = 10_000
+redelegate = 10_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000
@@ -136,6 +140,7 @@ create = 2_500_000_000
 balance = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000
+mint_into_existing_purse = 2_500_000_000
 
 [system_costs.handle_payment_costs]
 get_payment_purse = 10_000

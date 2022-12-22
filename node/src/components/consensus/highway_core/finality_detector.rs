@@ -11,10 +11,10 @@ use crate::components::consensus::{
     consensus_protocol::{FinalizedBlock, TerminalBlockData},
     highway_core::{
         highway::Highway,
-        state::{Observation, State, Unit, Weight},
-        validators::ValidatorIndex,
+        state::{Observation, State, Unit},
     },
     traits::Context,
+    utils::{ValidatorIndex, Weight},
 };
 use horizon::Horizon;
 

@@ -13,7 +13,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{trace, warn};
 
-use casper_types::Timestamp;
+use casper_types::{TimeDiff, Timestamp};
 
 use super::{
     active_validator::Effect,
@@ -23,8 +23,6 @@ use super::{
         ValidVertex, Vertex, VertexError,
     },
     state::Fault,
-    validators::Validators,
-    Weight,
 };
 use crate::{
     components::consensus::{
@@ -37,21 +35,29 @@ use crate::{
             queue::QueueEntry,
         },
         traits::{ConsensusValueT, Context, ValidatorSecret},
+        utils::{Validators, Weight},
         BlockContext,
     },
     NodeRng,
 };
 
-type ConsensusValue = Vec<u8>;
+#[derive(Eq, PartialEq, Clone, Debug, Hash, Serialize, Deserialize, DataSize, Default)]
+pub(crate) struct ConsensusValue(Vec<u8>);
 
 impl ConsensusValueT for ConsensusValue {
     fn needs_validation(&self) -> bool {
-        !self.is_empty()
+        !self.0.is_empty()
     }
 }
 
-const TEST_MIN_ROUND_EXP: u8 = 12;
-const TEST_MAX_ROUND_EXP: u8 = 19;
+impl Display for ConsensusValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:10}", HexFmt(&self.0))
+    }
+}
+
+const TEST_MIN_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 12);
+const TEST_MAX_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 19);
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_INSTANCE_ID: u64 = 42;
 pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
@@ -271,7 +277,7 @@ impl HighwayValidator {
                                 let mut wunit2 = swunit.wire_unit().clone();
                                 match wunit2.value.as_mut() {
                                     None => wunit2.timestamp += 1.into(),
-                                    Some(v) => v.push(0),
+                                    Some(v) => v.0.push(0),
                                 }
                                 let secret = TestSecret(wunit2.creator.0.into());
                                 let hwunit2 = wunit2.into_hashed();
@@ -708,9 +714,9 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
 fn test_params() -> Params {
     Params::new(
         0, // random seed
-        TEST_MIN_ROUND_EXP,
-        TEST_MAX_ROUND_EXP,
-        TEST_MIN_ROUND_EXP,
+        TEST_MIN_ROUND_LEN,
+        TEST_MAX_ROUND_LEN,
+        TEST_MIN_ROUND_LEN,
         TEST_END_HEIGHT,
         Timestamp::zero(),
         Timestamp::zero(), // Length depends only on block number.
@@ -835,7 +841,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
 
     fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count)
-            .map(|el| vec![el])
+            .map(|el| ConsensusValue(vec![el]))
             .collect::<VecDeque<ConsensusValue>>();
 
         let instance_id = 0;
@@ -1064,13 +1070,10 @@ mod test_harness {
     use super::{
         crank_until, crank_until_finalized, crank_until_time, test_params, ConsensusValue,
         HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
-        TEST_MIN_ROUND_EXP,
+        TEST_MIN_ROUND_LEN,
     };
     use crate::{
-        components::consensus::{
-            highway_core::state,
-            tests::consensus_des_testing::{Fault as DesFault, ValidatorId},
-        },
+        components::consensus::tests::consensus_des_testing::{Fault as DesFault, ValidatorId},
         logging,
     };
     use logging::{LoggingConfig, LoggingFormat};
@@ -1266,15 +1269,14 @@ mod test_harness {
 
         let mut rng = crate::new_rng();
         let cv_count = 10u8;
-        let max_round_exp = TEST_MIN_ROUND_EXP + 1;
-        let max_round_len = state::round_len(max_round_exp);
+        let max_round_len = TEST_MIN_ROUND_LEN * 2;
 
         let start_mute = Timestamp::zero() + max_round_len * 2;
         let should_start_pause = start_mute + max_round_len * 4;
         let stop_mute = should_start_pause + max_round_len * 3;
 
         let params = test_params()
-            .with_max_round_exp(max_round_exp)
+            .with_max_round_len(max_round_len)
             .with_end_height(cv_count as u64);
         let mut test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)

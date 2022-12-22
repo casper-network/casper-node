@@ -102,7 +102,7 @@ impl RpcWithParams for SpeculativeExec {
         let result = effect_builder
             .make_request(
                 |responder| RpcRequest::SpeculativeDeployExecute {
-                    block_header: block.take_header(),
+                    block_header: Box::new(block.take_header()),
                     deploy: Box::new(deploy),
                     responder,
                 },

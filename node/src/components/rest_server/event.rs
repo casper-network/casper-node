@@ -13,6 +13,7 @@ const_assert!(_REST_EVENT_SIZE < 89);
 
 #[derive(Debug, From)]
 pub(crate) enum Event {
+    Initialize,
     #[from]
     RestRequest(RestRequest),
     GetMetricsResult {
@@ -24,6 +25,7 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Event::Initialize => write!(formatter, "initialize"),
             Event::RestRequest(request) => write!(formatter, "{}", request),
             Event::GetMetricsResult { text, .. } => match text {
                 Some(txt) => write!(formatter, "get metrics ({} bytes)", txt.len()),

@@ -79,7 +79,6 @@ check_python_has_toml
 publish types
 publish hashing
 publish execution_engine
-publish node_macros
 publish node
 publish smart_contracts/contract
 publish execution_engine_testing/test_support

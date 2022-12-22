@@ -2,6 +2,7 @@ use rand::Rng;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
@@ -12,9 +13,9 @@ use casper_types::{
 use super::{
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
     ARG_TIME_INTERVAL, AVAILABLE_AMOUNT_NAMED_KEY, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET,
-    ENTRY_POINT_SET_VARIABLES, FAUCET_CALL_DEFAULT_PAYMENT, FAUCET_CONTRACT_NAMED_KEY,
-    FAUCET_FUND_AMOUNT, FAUCET_ID, FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY,
-    INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT, REMAINING_REQUESTS_NAMED_KEY,
+    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
+    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
+    REMAINING_REQUESTS_NAMED_KEY,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -307,6 +308,11 @@ impl FaucetFundRequestBuilder {
         self
     }
 
+    pub fn with_payment_amount(mut self, payment_amount: U512) -> Self {
+        self.payment_amount = payment_amount;
+        self
+    }
+
     pub fn build(self) -> ExecuteRequest {
         let mut rng = rand::thread_rng();
 
@@ -346,7 +352,7 @@ impl Default for FaucetFundRequestBuilder {
     fn default() -> Self {
         Self {
             arg_fund_amount: None,
-            payment_amount: U512::from(FAUCET_CALL_DEFAULT_PAYMENT),
+            payment_amount: *DEFAULT_PAYMENT,
             faucet_contract_hash: None,
             caller_account: FaucetCallerAccount::Installer(INSTALLER_ACCOUNT),
             arg_target: None,

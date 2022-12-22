@@ -9,7 +9,7 @@ use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
-    reactor::participating::Config,
+    reactor::main_reactor::Config,
     types::{chainspec, Chainspec, ChainspecRawBytes},
     utils::{LoadError, Loadable, WithDir},
 };

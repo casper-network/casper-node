@@ -1,13 +1,16 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+};
 
 use casper_types::{Gas, PublicKey, Timestamp};
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
-use crate::{
-    components::block_proposer::DeployInfo,
-    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals},
+use crate::types::{
+    chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash,
+    DeployHashWithApprovals,
 };
 
 #[derive(Debug, Error)]
@@ -24,18 +27,16 @@ pub(crate) enum AddError {
     BlockSize,
     #[error("duplicate deploy")]
     Duplicate,
-    #[error("payment amount could not be converted to gas")]
-    InvalidGasAmount,
     #[error("deploy is not valid in this context")]
     InvalidDeploy,
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
 #[derive(Clone, DataSize, Debug)]
-pub struct AppendableBlock {
+pub(crate) struct AppendableBlock {
     deploy_config: DeployConfig,
-    deploys: Vec<DeployWithApprovals>,
-    transfers: Vec<DeployWithApprovals>,
+    deploys: Vec<DeployHashWithApprovals>,
+    transfers: Vec<DeployHashWithApprovals>,
     deploy_and_transfer_set: HashSet<DeployHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
@@ -59,9 +60,17 @@ impl AppendableBlock {
         }
     }
 
-    /// Returns the total size of all deploys so far.
-    pub(crate) fn total_size(&self) -> usize {
-        self.total_size
+    /// Attempts to add any kind of deploy (transfer or other kind).
+    pub(crate) fn add(
+        &mut self,
+        deploy_hash_with_approvals: DeployHashWithApprovals,
+        footprint: &DeployFootprint,
+    ) -> Result<(), AddError> {
+        if footprint.is_transfer {
+            self.add_transfer(deploy_hash_with_approvals, footprint)
+        } else {
+            self.add_deploy(deploy_hash_with_approvals, footprint)
+        }
     }
 
     /// Attempts to add a transfer to the block; returns an error if that would violate a validity
@@ -71,8 +80,8 @@ impl AppendableBlock {
     /// actually a transfer.
     pub(crate) fn add_transfer(
         &mut self,
-        transfer: DeployWithApprovals,
-        deploy_info: &DeployInfo,
+        transfer: DeployHashWithApprovals,
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
             .deploy_and_transfer_set
@@ -80,7 +89,7 @@ impl AppendableBlock {
         {
             return Err(AddError::Duplicate);
         }
-        if !deploy_info
+        if !footprint
             .header
             .is_valid(&self.deploy_config, self.timestamp)
         {
@@ -105,13 +114,13 @@ impl AppendableBlock {
     /// is actually not a transfer.
     pub(crate) fn add_deploy(
         &mut self,
-        deploy: DeployWithApprovals,
-        deploy_info: &DeployInfo,
+        deploy: DeployHashWithApprovals,
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {
             return Err(AddError::Duplicate);
         }
-        if !deploy_info
+        if !footprint
             .header
             .is_valid(&self.deploy_config, self.timestamp)
         {
@@ -126,13 +135,14 @@ impl AppendableBlock {
         // Only deploys count towards the size and gas limits.
         let new_total_size = self
             .total_size
-            .checked_add(deploy_info.size)
+            .checked_add(footprint.size_estimate)
             .filter(|size| *size <= self.deploy_config.max_block_size as usize)
             .ok_or(AddError::BlockSize)?;
-        let payment_amount = deploy_info.payment_amount;
-        let gas_price = deploy_info.header.gas_price();
-        let gas = Gas::from_motes(payment_amount, gas_price).ok_or(AddError::InvalidGasAmount)?;
-        let new_total_gas = self.total_gas.checked_add(gas).ok_or(AddError::GasLimit)?;
+        let gas_estimate = footprint.gas_estimate;
+        let new_total_gas = self
+            .total_gas
+            .checked_add(gas_estimate)
+            .ok_or(AddError::GasLimit)?;
         if new_total_gas > Gas::from(self.deploy_config.block_gas_limit) {
             return Err(AddError::GasLimit);
         }
@@ -181,5 +191,33 @@ impl AppendableBlock {
             + self.deploy_config.block_max_deploy_count as usize
             - self.deploys.len();
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
+    }
+}
+
+impl Display for AppendableBlock {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        let deploy_approvals_count = self
+            .deploys
+            .iter()
+            .map(|deploy_hash_with_approvals| deploy_hash_with_approvals.approvals().len())
+            .sum::<usize>();
+        let transfer_approvals_count = self
+            .transfers
+            .iter()
+            .map(|deploy_hash_with_approvals| deploy_hash_with_approvals.approvals().len())
+            .sum::<usize>();
+        write!(
+            formatter,
+            "AppendableBlock({} non-transfers with {} approvals, {} transfers with {} approvals, \
+            total of {} deploys with {} approvals, total gas {}, total size {})",
+            self.deploys.len(),
+            deploy_approvals_count,
+            self.transfers.len(),
+            transfer_approvals_count,
+            self.deploy_and_transfer_set.len(),
+            self.total_approvals,
+            self.total_gas,
+            self.total_size,
+        )
     }
 }

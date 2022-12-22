@@ -1,24 +1,21 @@
 use std::{
-    convert::Infallible,
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display, Formatter},
     hash::Hash,
 };
 
+use datasize::DataSize;
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use thiserror::Error;
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-use casper_hashing::{ChunkWithProofVerificationError, Digest};
-
-use crate::types::{BlockHash, BlockHeader};
+use crate::effect::GossipTarget;
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
 #[derive(
     Clone,
     Copy,
+    DataSize,
     PartialEq,
     Eq,
     PartialOrd,
@@ -31,92 +28,76 @@ use crate::types::{BlockHash, BlockHeader};
 )]
 #[repr(u8)]
 pub enum Tag {
-    /// A deploy.
+    /// A deploy identified by its hash and its approvals hash.
+    #[display(fmt = "deploy")]
     Deploy,
-    /// Finalized approvals for a deploy.
-    FinalizedApprovals,
+    /// A legacy deploy identified by its hash alone.
+    #[display(fmt = "legacy deploy")]
+    LegacyDeploy,
     /// A block.
+    #[display(fmt = "block")]
     Block,
-    /// A gossiped public listening address.
-    GossipedAddress,
-    /// A block requested by its height in the linear chain.
-    BlockAndMetadataByHeight,
-    /// A block header requested by its hash.
-    BlockHeaderByHash,
-    /// A block header and its finality signatures requested by its height in the linear chain.
-    BlockHeaderAndFinalitySignaturesByHeight,
-    /// A trie or chunk from the global Merkle tree in the execution engine.
+    /// A block header.
+    #[display(fmt = "block header")]
+    BlockHeader,
+    /// A trie or chunk of a trie from global state.
+    #[display(fmt = "trie or chunk")]
     TrieOrChunk,
-    /// A full block and its deploys.
-    BlockAndDeploysByHash,
-    /// A batch of block headers requested by their lower and upper height indices.
-    BlockHeaderBatch,
-    /// Finality signatures for a block requested by the block's hash.
-    FinalitySignaturesByHash,
+    /// A finality signature for a block.
+    #[display(fmt = "finality signature")]
+    FinalitySignature,
+    /// Headers and signatures required to prove that if a given trusted block hash is on the
+    /// correct chain, then so is a later header, which should be the most recent one according
+    /// to the sender.
+    #[display(fmt = "sync leap")]
+    SyncLeap,
+    /// The hashes of the finalized deploy approvals sets for a single block.
+    #[display(fmt = "approvals hashes")]
+    ApprovalsHashes,
+    /// The execution results for a single block.
+    #[display(fmt = "block execution results")]
+    BlockExecutionResults,
 }
 
-/// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
-/// furthermore allows generic network messages to include this type due to the provision of the
-/// type-identifying `TAG`.
+/// A trait unifying the common pieces of the `FetcherItem` and `GossiperItem` traits.
 pub(crate) trait Item:
     Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
 {
     /// The type of ID of the item.
-    type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
-    /// The error type returned when validating to get the ID of the item.
-    type ValidationError: std::error::Error + Debug;
-    /// The tag representing the type of the item.
-    const TAG: Tag;
-    /// Whether the item's ID _is_ the complete item or not.
-    const ID_IS_COMPLETE_ITEM: bool;
-
-    /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
+    type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;
 }
 
-/// Error type simply conveying that chunk validation failed.
-#[derive(Debug, Error)]
-#[error("Chunk validation failed")]
-pub(crate) struct ChunkValidationError;
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Debug, DataSize)]
+pub(crate) struct EmptyValidationMetadata;
 
-impl Item for TrieOrChunk {
-    type Id = TrieOrChunkId;
-    type ValidationError = ChunkWithProofVerificationError;
-    const TAG: Tag = Tag::TrieOrChunk;
-    const ID_IS_COMPLETE_ITEM: bool = false;
-
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        match self {
-            TrieOrChunk::Trie(_) => Ok(()),
-            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
-        }
-    }
-
-    fn id(&self) -> Self::Id {
-        match self {
-            TrieOrChunk::Trie(node_bytes) => TrieOrChunkId(0, Digest::hash(&node_bytes)),
-            TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
-                chunked_data.proof().index(),
-                chunked_data.proof().root_hash(),
-            ),
-        }
+impl Display for EmptyValidationMetadata {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(formatter, "no validation metadata")
     }
 }
 
-impl Item for BlockHeader {
-    type Id = BlockHash;
-    type ValidationError = Infallible;
-    const TAG: Tag = Tag::BlockHeaderByHash;
-    const ID_IS_COMPLETE_ITEM: bool = false;
+/// A trait which allows an implementing type to be used by a fetcher component.
+pub(crate) trait FetcherItem: Item {
+    /// The error type returned when validating to get the ID of the item.
+    type ValidationError: std::error::Error + Debug + Display;
+    type ValidationMetadata: Eq + Clone + Serialize + Debug + DataSize + Send;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        Ok(())
-    }
+    /// The tag representing the type of the item.
+    const TAG: Tag;
 
-    fn id(&self) -> Self::Id {
-        self.hash()
-    }
+    /// Checks cryptographic validity of the item, and returns an error if invalid.
+    fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;
+}
+
+/// A trait which allows an implementing type to be used by a gossiper component.
+pub(crate) trait GossiperItem: Item {
+    /// Whether the item's ID _is_ the complete item or not.
+    const ID_IS_COMPLETE_ITEM: bool;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool;
+
+    /// Returns the era ID of the item, if one is relevant to it, e.g. blocks, finality signatures.
+    fn target(&self) -> GossipTarget;
 }

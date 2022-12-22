@@ -1,4 +1,7 @@
-use std::fmt::{self, Debug, Formatter};
+use std::{
+    fmt::{self, Debug, Formatter},
+    sync::Arc,
+};
 
 use either::Either;
 use futures::future::BoxFuture;
@@ -6,9 +9,10 @@ use prometheus::Registry;
 
 use super::network::NetworkedReactor;
 use crate::{
+    components::network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
-    reactor::{EventQueueHandle, Finalize, Reactor, ReactorExit},
-    types::NodeId,
+    reactor::{EventQueueHandle, Finalize, Reactor},
+    types::{Chainspec, ChainspecRawBytes, NodeId},
     NodeRng,
 };
 
@@ -45,11 +49,22 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
 
     fn new(
         config: Self::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
+        let (reactor, effects) = R::new(
+            config,
+            chainspec,
+            chainspec_raw_bytes,
+            network_identity,
+            registry,
+            event_queue,
+            rng,
+        )?;
         let filter = Box::new(Either::Right);
         Ok((Self { reactor, filter }, effects))
     }
@@ -64,10 +79,6 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
             Either::Left(effects) => effects,
             Either::Right(event) => self.reactor.dispatch_event(effect_builder, rng, event),
         }
-    }
-
-    fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.reactor.maybe_exit()
     }
 }
 

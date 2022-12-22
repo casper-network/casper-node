@@ -58,7 +58,7 @@ function main()
                     --output "$PATH_TO_OUTPUT_UNSIGNED" \
                     --chain-name "$CHAIN_NAME" \
                     --payment-amount "$GAS_PAYMENT" \
-                    --ttl "1day" \
+                    --ttl "5minutes" \
                     --secret-key "$CP1_SECRET_KEY" \
                     --session-arg "$(get_cl_arg_u512 'amount' "$AMOUNT")" \
                     --session-arg "$(get_cl_arg_account_hash 'target' "$CP2_ACCOUNT_HASH")" \

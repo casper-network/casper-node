@@ -23,7 +23,7 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{convert::Infallible, fmt::Debug, time::Instant};
+use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -34,16 +34,20 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
-    components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA,
+    components::{
+        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentStatus, InitializedComponent,
+        PortBoundComponent,
+    },
     effect::{
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            NodeStateRequest, RestRequest, StorageRequest,
+            BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest,
+            NetworkInfoRequest, ReactorStatusRequest, RestRequest, StorageRequest,
+            UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::StatusFeed,
+    types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -56,10 +60,12 @@ pub(crate) trait ReactorEventT:
     + From<RestRequest>
     + From<NetworkInfoRequest>
     + From<StorageRequest>
-    + From<ChainspecLoaderRequest>
+    + From<ChainspecRawBytesRequest>
+    + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
-    + From<NodeStateRequest>
+    + From<ReactorStatusRequest>
+    + From<BlockSynchronizerRequest>
     + Send
 {
 }
@@ -69,10 +75,12 @@ impl<REv> ReactorEventT for REv where
         + From<RestRequest>
         + From<NetworkInfoRequest>
         + From<StorageRequest>
-        + From<ChainspecLoaderRequest>
+        + From<ChainspecRawBytesRequest>
+        + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
-        + From<NodeStateRequest>
+        + From<ReactorStatusRequest>
+        + From<BlockSynchronizerRequest>
         + Send
         + 'static
 {
@@ -88,46 +96,37 @@ pub(crate) struct InnerRestServer {
     server_join_handle: Option<JoinHandle<()>>,
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The network name, as specified in the chainspec
+    network_name: String,
 }
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
+    /// The component status.
+    status: ComponentStatus,
+    config: Config,
+    api_version: ProtocolVersion,
+    network_name: String,
+    node_startup_instant: Instant,
     /// Inner server is present only when enabled in the config.
     inner_rest: Option<InnerRestServer>,
 }
 
 impl RestServer {
-    pub(crate) fn new<REv>(
+    pub(crate) fn new(
         config: Config,
-        effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
+        network_name: String,
         node_startup_instant: Instant,
-    ) -> Result<Self, ListeningError>
-    where
-        REv: ReactorEventT,
-    {
-        if !config.enable_server {
-            return Ok(RestServer { inner_rest: None });
-        }
-
-        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-
-        let builder = utils::start_listening(&config.address)?;
-        let server_join_handle = Some(tokio::spawn(http_server::run(
-            builder,
-            effect_builder,
+    ) -> Self {
+        RestServer {
+            status: ComponentStatus::Uninitialized,
+            config,
             api_version,
-            shutdown_receiver,
-            config.qps_limit,
-        )));
-
-        Ok(RestServer {
-            inner_rest: Some(InnerRestServer {
-                shutdown_sender,
-                server_join_handle,
-                node_startup_instant,
-            }),
-        })
+            network_name,
+            node_startup_instant,
+            inner_rest: None,
+        }
     }
 }
 
@@ -136,7 +135,6 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -144,58 +142,144 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let rest_server = match &self.inner_rest {
-            Some(rest_server) => rest_server,
-            None => {
-                return Effects::new();
+        match (self.status.clone(), event) {
+            (ComponentStatus::Fatal(msg), _) => {
+                error!(
+                    msg,
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
             }
-        };
-
-        match event {
-            Event::RestRequest(RestRequest::Status { responder }) => {
-                let node_uptime = rest_server.node_startup_instant.elapsed();
+            (ComponentStatus::Uninitialized, Event::Initialize) => {
+                let (effects, status) = self.bind(self.config.enable_server, effect_builder);
+                self.status = status;
+                effects
+            }
+            (ComponentStatus::Uninitialized, _) => {
+                warn!("should not handle this event when component is uninitialized");
+                Effects::new()
+            }
+            (ComponentStatus::Initialized, Event::Initialize) => {
+                // noop
+                Effects::new()
+            }
+            (
+                ComponentStatus::Initialized,
+                Event::RestRequest(RestRequest::Status { responder }),
+            ) => {
+                let node_uptime = self.node_startup_instant.elapsed();
+                let network_name = self.network_name.clone();
                 async move {
                     let (
                         last_added_block,
                         peers,
-                        chainspec_info,
+                        next_upgrade,
                         consensus_status,
-                        node_state,
+                        (reactor_state, last_progress),
+                        available_block_range,
+                        block_sync,
                     ) = join!(
-                        effect_builder.get_highest_block_from_storage(),
+                        effect_builder.get_highest_complete_block_from_storage(),
                         effect_builder.network_peers(),
-                        effect_builder.get_chainspec_info(),
+                        effect_builder.get_next_upgrade(),
                         effect_builder.consensus_status(),
-                        effect_builder.get_node_state()
+                        effect_builder.get_reactor_status(),
+                        effect_builder.get_available_block_range_from_storage(),
+                        effect_builder.get_block_synchronizer_status(),
                     );
-
+                    let starting_state_root_hash = effect_builder
+                        .get_block_header_at_height_from_storage(available_block_range.low(), true)
+                        .await
+                        .map(|header| *header.state_root_hash());
                     let status_feed = StatusFeed::new(
                         last_added_block,
                         peers,
-                        chainspec_info,
+                        ChainspecInfo::new(network_name, next_upgrade),
                         consensus_status,
                         node_uptime,
-                        node_state,
+                        reactor_state,
+                        last_progress,
+                        available_block_range,
+                        block_sync,
+                        starting_state_root_hash,
                     );
                     responder.respond(status_feed).await;
                 }
             }
             .ignore(),
-            Event::RestRequest(RestRequest::Metrics { responder }) => effect_builder
+            (
+                ComponentStatus::Initialized,
+                Event::RestRequest(RestRequest::Metrics { responder }),
+            ) => effect_builder
                 .get_metrics()
                 .event(move |text| Event::GetMetricsResult {
                     text,
                     main_responder: responder,
                 }),
-            Event::RestRequest(RestRequest::RpcSchema { responder }) => {
+            (
+                ComponentStatus::Initialized,
+                Event::RestRequest(RestRequest::RpcSchema { responder }),
+            ) => {
                 let schema = OPEN_RPC_SCHEMA.clone();
                 responder.respond(schema).ignore()
             }
-            Event::GetMetricsResult {
-                text,
-                main_responder,
-            } => main_responder.respond(text).ignore(),
+            (
+                ComponentStatus::Initialized,
+                Event::GetMetricsResult {
+                    text,
+                    main_responder,
+                },
+            ) => main_responder.respond(text).ignore(),
         }
+    }
+}
+
+impl<REv> InitializedComponent<REv> for RestServer
+where
+    REv: ReactorEventT,
+{
+    fn status(&self) -> ComponentStatus {
+        self.status.clone()
+    }
+
+    fn name(&self) -> &str {
+        "rest_server"
+    }
+}
+
+impl<REv> PortBoundComponent<REv> for RestServer
+where
+    REv: ReactorEventT,
+{
+    type Error = ListeningError;
+    type ComponentEvent = Event;
+
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
+        let cfg = &self.config;
+        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+
+        let builder = utils::start_listening(&cfg.address)?;
+        let server_join_handle = Some(tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            self.api_version,
+            shutdown_receiver,
+            cfg.qps_limit,
+        )));
+
+        let node_startup_instant = self.node_startup_instant;
+        let network_name = self.network_name.clone();
+        self.inner_rest = Some(InnerRestServer {
+            shutdown_sender,
+            server_join_handle,
+            node_startup_instant,
+            network_name,
+        });
+
+        Ok(Effects::new())
     }
 }
 

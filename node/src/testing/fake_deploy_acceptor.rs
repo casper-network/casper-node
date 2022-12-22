@@ -5,8 +5,6 @@
 //! `FakeDeployAcceptor` puts the deploy to storage, and once that has completed, announces the
 //! deploy if the storage result indicates it's a new deploy.
 
-use std::convert::Infallible;
-
 use tracing::debug;
 
 use casper_types::Timestamp;
@@ -15,9 +13,8 @@ pub(crate) use crate::components::deploy_acceptor::{Error, Event};
 use crate::{
     components::{deploy_acceptor::EventMetadata, Component},
     effect::{
-        announcements::DeployAcceptorAnnouncement,
-        requests::{ContractRuntimeRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
+        EffectExt, Effects, Responder,
     },
     types::Deploy,
     utils::Source,
@@ -25,20 +22,12 @@ use crate::{
 };
 
 pub(crate) trait ReactorEventT:
-    From<Event>
-    + From<DeployAcceptorAnnouncement>
-    + From<StorageRequest>
-    + From<ContractRuntimeRequest>
-    + Send
+    From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event>
-        + From<DeployAcceptorAnnouncement>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + Send
+    REv: From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
 {
 }
 
@@ -97,7 +86,6 @@ impl FakeDeployAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -105,7 +93,7 @@ impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        debug!(?event, "FakeDeployAcceptor: handling event");
         match event {
             Event::Accept {
                 deploy,

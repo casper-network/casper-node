@@ -64,6 +64,7 @@ impl<I> QueueState<I> {
     }
 
     /// Remove all events from a queue.
+    #[cfg(test)]
     async fn drain(&self) -> Vec<I> {
         let mut guard = self.queue.lock().await;
         let events: Vec<I> = guard.drain(..).collect();
@@ -263,6 +264,7 @@ where
     }
 
     /// Drains all events from a specific queue.
+    #[cfg(test)]
     pub(crate) async fn drain_queue(&self, queue: K) -> Vec<I> {
         let events = self
             .queues
@@ -282,6 +284,7 @@ where
     }
 
     /// Drains all events from all queues.
+    #[cfg(test)]
     pub async fn drain_queues(&self) -> Vec<I> {
         let mut events = Vec::new();
         let keys: Vec<K> = self.queues.keys().cloned().collect();
@@ -295,6 +298,7 @@ where
     /// Seals the queue, preventing it from accepting any more items.
     ///
     /// Items pushed into the queue via `push` will be dropped immediately.
+    #[cfg(test)]
     pub fn seal(&self) {
         self.sealed.store(true, Ordering::SeqCst);
     }

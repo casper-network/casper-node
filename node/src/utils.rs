@@ -1,6 +1,7 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
+mod block_signatures;
 mod display_error;
 pub(crate) mod ds;
 mod external;
@@ -23,7 +24,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant, SystemTime},
 };
 
 use datasize::DataSize;
@@ -35,14 +36,14 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
+use crate::types::NodeId;
+pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
 pub(crate) use display_error::display_error;
 pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
-
-use crate::types::NodeId;
 
 /// DNS resolution error.
 #[derive(Debug, Error)]
@@ -282,6 +283,8 @@ impl<T> WithDir<T> {
 #[derive(Clone, Debug, Serialize)]
 pub(crate) enum Source {
     /// A peer with the wrapped ID.
+    PeerGossiped(NodeId),
+    /// A peer with the wrapped ID.
     Peer(NodeId),
     /// A client.
     Client,
@@ -298,7 +301,7 @@ impl Source {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
-            Source::Peer(node_id) => Some(*node_id),
+            Source::Peer(node_id) | Source::PeerGossiped(node_id) => Some(*node_id),
             Source::Client | Source::Ourself => None,
         }
     }
@@ -307,6 +310,7 @@ impl Source {
 impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Source::PeerGossiped(node_id) => Display::fmt(node_id, formatter),
             Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
             Source::Ourself => write!(formatter, "ourself"),
@@ -403,6 +407,37 @@ pub(crate) async fn wait_for_arc_drop<T>(
     );
 
     false
+}
+
+/// An anchor for converting an `Instant` into a wall-clock (`SystemTime`) time.
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct TimeAnchor {
+    /// The reference instant used for conversion.
+    now: Instant,
+    /// The reference wall-clock timestamp used for conversion.
+    wall_clock_now: SystemTime,
+}
+
+impl TimeAnchor {
+    /// Creates a new time anchor.
+    ///
+    /// Will take a sample of the monotonic clock and the current time and store it in the anchor.
+    pub(crate) fn now() -> Self {
+        TimeAnchor {
+            now: Instant::now(),
+            wall_clock_now: SystemTime::now(),
+        }
+    }
+
+    /// Converts a point in time from the monotonic clock to wall clock time, using this anchor.
+    #[inline]
+    pub(crate) fn convert(&self, then: Instant) -> SystemTime {
+        if then > self.now {
+            self.wall_clock_now + then.duration_since(self.now)
+        } else {
+            self.wall_clock_now - self.now.duration_since(then)
+        }
+    }
 }
 
 #[cfg(test)]

@@ -280,7 +280,6 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet},
-    convert::Infallible,
     fmt::{self, Display, Formatter},
     sync::{Arc, RwLock},
 };
@@ -300,7 +299,7 @@ use crate::{
     NodeRng,
 };
 
-use super::small_network::FromIncoming;
+use super::network::FromIncoming;
 
 /// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
@@ -525,7 +524,6 @@ where
     P: Display + Clone,
 {
     type Event = Event<P>;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -552,9 +550,10 @@ where
 
                 auto_closing_responder.respond(()).ignore()
             }
-            NetworkRequest::Broadcast {
+            NetworkRequest::ValidatorBroadcast {
                 payload,
                 auto_closing_responder,
+                era_id: _,
             } => {
                 if let Ok(guard) = self.nodes.read() {
                     for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
@@ -571,6 +570,7 @@ where
                 count,
                 exclude,
                 auto_closing_responder,
+                gossip_target: _,
             } => {
                 if let Ok(guard) = self.nodes.read() {
                     let chosen: HashSet<_> = guard

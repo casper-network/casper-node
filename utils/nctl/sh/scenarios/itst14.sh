@@ -17,35 +17,37 @@ function main() {
     log "Starting Scenario: itst14"
     log "------------------------------------------------------------"
 
-    # 0. Verify network is creating blocks
+    # 0. Wait for network start up
+    do_await_genesis_era_to_complete
+    # 1. Verify network is creating blocks
     do_await_n_blocks "5"
-    # 1. Verify network is in sync
+    # 2. Verify network is in sync
     check_network_sync 1 5
-    # 2a. Get era
+    # 3a. Get era
     STOPPED_ERA=$(check_current_era)
-    # 2b. Stop node
+    # 3b. Stop node
     do_stop_node "5"
-    # 3. Let the node go down
+    # 4. Let the node go down
     log_step "Sleeping for 10s before bringing node back online..."
     sleep 10
-    # 4. Restart Node
+    # 5. Restart Node
     do_read_lfb_hash 1
     do_start_node "5" "$LFB_HASH"
-    # 5. Verify all nodes are in sync
+    # 6. Verify all nodes are in sync
     check_network_sync 1 5
-    # 6. Verify network is creating blocks post-restart
+    # 7. Verify network is creating blocks post-restart
     do_await_n_blocks "5"
-    # 7. Verify all nodes are in sync
+    # 8. Verify all nodes are in sync
     check_network_sync 1 5
-    # 8. Verify node proposed a block
+    # 9. Verify node proposed a block
     assert_node_proposed '5' '180'
-    # 9. Verify we are in the same era
+    # 10. Verify we are in the same era
     assert_same_era "$STOPPED_ERA"
-    # 10. Wait an era
+    # 11. Wait an era
     do_await_era_change
-    # 11. Verify all nodes are in sync
+    # 12. Verify all nodes are in sync
     check_network_sync 1 5
-    # 12. Run Health Checks
+    # 13. Run Health Checks
     # ... restarts=1: due to node being stopped and started
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors=0 \

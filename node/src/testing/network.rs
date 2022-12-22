@@ -4,6 +4,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     mem,
+    sync::Arc,
     time::Duration,
 };
 
@@ -18,9 +19,10 @@ use tracing_futures::Instrument;
 use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
-    reactor::{Finalize, Reactor, Runner},
+    reactor::{Finalize, Reactor, Runner, TryCrankOutcome},
     tls::KeyFingerprint,
-    types::NodeId,
+    types::{Chainspec, ChainspecRawBytes, ExitCode, NodeId},
+    utils::Loadable,
     NodeRng,
 };
 
@@ -55,12 +57,12 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// `crank_all`. As an alternative, the `settle` and `settle_all` functions can be used to continue
 /// cranking until a condition has been reached.
 #[derive(Debug, Default)]
-pub(crate) struct Network<R: Reactor + NetworkedReactor> {
+pub(crate) struct TestingNetwork<R: Reactor + NetworkedReactor> {
     /// Current network.
     nodes: HashMap<NodeId, Runner<ConditionCheckReactor<R>>>,
 }
 
-impl<R> Network<R>
+impl<R> TestingNetwork<R>
 where
     R: Reactor + NetworkedReactor,
     R::Config: Default,
@@ -77,7 +79,7 @@ where
     pub(crate) async fn add_node<'a, 'b: 'a>(
         &'a mut self,
         rng: &'b mut TestRng,
-    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &'_ mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
@@ -92,7 +94,7 @@ where
     }
 }
 
-impl<R> Network<R>
+impl<R> TestingNetwork<R>
 where
     R: Reactor + NetworkedReactor,
     R::Event: Serialize,
@@ -100,7 +102,7 @@ where
 {
     /// Creates a new network.
     pub(crate) fn new() -> Self {
-        Network {
+        TestingNetwork {
             nodes: HashMap::new(),
         }
     }
@@ -115,7 +117,31 @@ where
         cfg: R::Config,
         rng: &'b mut NodeRng,
     ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
+        let (chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        self.add_node_with_config_and_chainspec(
+            cfg,
+            Arc::new(chainspec),
+            Arc::new(chainspec_raw_bytes),
+            rng,
+        )
+        .await
+    }
+
+    /// Creates a new networking node on the network.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a duplicate node ID is being inserted.
+    pub(crate) async fn add_node_with_config_and_chainspec<'a, 'b: 'a>(
+        &'a mut self,
+        cfg: R::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        rng: &'b mut NodeRng,
+    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+        let runner: Runner<ConditionCheckReactor<R>> =
+            Runner::new(cfg, chainspec, chainspec_raw_bytes, rng).await?;
 
         let node_id = runner.reactor().node_id();
 
@@ -139,26 +165,21 @@ where
         self.nodes.remove(node_id)
     }
 
-    /// Crank the specified runner once, returning the number of events processed.
-    pub(crate) async fn crank(&mut self, node_id: &NodeId, rng: &mut TestRng) -> usize {
+    /// Crank the specified runner once.
+    async fn crank(&mut self, node_id: &NodeId, rng: &mut TestRng) -> TryCrankOutcome {
         let runner = self.nodes.get_mut(node_id).expect("should find node");
-
         let node_id = runner.reactor().node_id();
-        if runner
+        runner
             .try_crank(rng)
             .instrument(error_span!("crank", node_id = %node_id))
             .await
-            .is_some()
-        {
-            1
-        } else {
-            0
-        }
     }
 
     /// Crank only the specified runner until `condition` is true or until `within` has elapsed.
     ///
     /// Returns `true` if `condition` has been met within the specified timeout.
+    ///
+    /// Panics if cranking causes the node to return an exit code.
     pub(crate) async fn crank_until<F>(
         &mut self,
         node_id: &NodeId,
@@ -181,10 +202,17 @@ where
 
     async fn crank_and_check_indefinitely(&mut self, node_id: &NodeId, rng: &mut TestRng) {
         loop {
-            if self.crank(node_id, rng).await == 0 {
-                Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                time::sleep(POLL_INTERVAL).await;
-                continue;
+            match self.crank(node_id, rng).await {
+                TryCrankOutcome::NoEventsToProcess => {
+                    Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
+                    time::sleep(POLL_INTERVAL).await;
+                    continue;
+                }
+                TryCrankOutcome::ProcessedAnEvent => {}
+                TryCrankOutcome::ShouldExit(exit_code) => {
+                    panic!("should not exit: {:?}", exit_code)
+                }
+                TryCrankOutcome::Exited => unreachable!(),
             }
 
             if self
@@ -201,19 +229,23 @@ where
     }
 
     /// Crank all runners once, returning the number of events processed.
-    pub(crate) async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
+    ///
+    /// Panics if any node returns an exit code.
+    async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            event_count += if node
+            match node
                 .try_crank(rng)
                 .instrument(error_span!("crank", node_id = %node_id))
                 .await
-                .is_some()
             {
-                1
-            } else {
-                0
+                TryCrankOutcome::NoEventsToProcess => (),
+                TryCrankOutcome::ProcessedAnEvent => event_count += 1,
+                TryCrankOutcome::ShouldExit(exit_code) => {
+                    panic!("should not exit: {:?}", exit_code)
+                }
+                TryCrankOutcome::Exited => unreachable!(),
             }
         }
 
@@ -222,9 +254,8 @@ where
 
     /// Process events on all nodes until all event queues are empty for at least `quiet_for`.
     ///
-    /// # Panics
-    ///
-    /// Panics if after `within` the event queues are still not idle.
+    /// Panics if after `within` the event queues are still not idle, or if any node returns an exit
+    /// code.
     pub(crate) async fn settle(
         &mut self,
         rng: &mut TestRng,
@@ -262,9 +293,10 @@ where
 
     /// Runs the main loop of every reactor until `condition` is true.
     ///
-    /// # Panics
+    /// Panics if the `condition` is not reached inside of `within`, or if any node returns an exit
+    /// code.
     ///
-    /// If the `condition` is not reached inside of `within`, panics.
+    /// To settle on an exit code, use `settle_on_exit` instead.
     pub(crate) async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
     where
         F: Fn(&Nodes<R>) -> bool,
@@ -285,6 +317,61 @@ where
             }
 
             if self.crank_all(rng).await == 0 {
+                // No events processed, wait for a bit to avoid 100% cpu usage.
+                Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
+                time::sleep(POLL_INTERVAL).await;
+            }
+        }
+    }
+
+    /// Runs the main loop of every reactor until the nodes return the expected exit code.
+    ///
+    /// Panics if the nodes do not exit inside of `within`, or if any node returns an unexpected
+    /// exit code.
+    pub(crate) async fn settle_on_exit(
+        &mut self,
+        rng: &mut TestRng,
+        expected: ExitCode,
+        within: Duration,
+    ) {
+        time::timeout(within, self.settle_on_exit_indefinitely(rng, expected))
+            .await
+            .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+    }
+
+    async fn settle_on_exit_indefinitely(&mut self, rng: &mut TestRng, expected: ExitCode) {
+        let mut exited_as_expected = 0;
+        loop {
+            if exited_as_expected == self.nodes.len() {
+                debug!(?expected, "all nodes exited with expected code");
+                break;
+            }
+
+            let mut event_count = 0;
+            for node in self.nodes.values_mut() {
+                let node_id = node.reactor().node_id();
+                match node
+                    .try_crank(rng)
+                    .instrument(error_span!("crank", node_id = %node_id))
+                    .await
+                {
+                    TryCrankOutcome::NoEventsToProcess => (),
+                    TryCrankOutcome::ProcessedAnEvent => event_count += 1,
+                    TryCrankOutcome::ShouldExit(exit_code) if exit_code == expected => {
+                        exited_as_expected += 1;
+                        event_count += 1;
+                    }
+                    TryCrankOutcome::ShouldExit(exit_code) => {
+                        panic!(
+                            "unexpected exit: expected {:?}, got {:?}",
+                            expected, exit_code
+                        )
+                    }
+                    TryCrankOutcome::Exited => (),
+                }
+            }
+
+            if event_count == 0 {
                 // No events processed, wait for a bit to avoid 100% cpu usage.
                 Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
                 time::sleep(POLL_INTERVAL).await;
@@ -330,7 +417,7 @@ where
     }
 }
 
-impl<R> Finalize for Network<R>
+impl<R> Finalize for TestingNetwork<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::Event: Serialize + Send + Sync,

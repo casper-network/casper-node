@@ -22,6 +22,7 @@ use tokio::{
 use tracing::{debug, info, info_span, warn, Instrument};
 
 use casper_types::EraId;
+use tracing_subscriber::{filter::ParseError, EnvFilter};
 
 use super::{
     command::{Action, Command, OutputFormat},
@@ -32,9 +33,11 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, QueueDumpFormat},
         diagnostics_port::DumpConsensusStateRequest,
+        requests::{NetworkInfoRequest, SetNodeStopRequest},
         EffectBuilder,
     },
-    utils::display_error,
+    logging,
+    utils::{display_error, opt_display::OptDisplay},
 };
 
 /// Success or failure response.
@@ -195,7 +198,11 @@ impl Session {
         line: &str,
     ) -> io::Result<bool>
     where
-        REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+        REv: From<DumpConsensusStateRequest>
+            + From<ControlAnnouncement>
+            + From<NetworkInfoRequest>
+            + From<SetNodeStopRequest>
+            + Send,
     {
         debug!(%line, "line received");
         match Command::from_line(line) {
@@ -228,6 +235,39 @@ impl Session {
                                 .await?;
                         }
                     }
+                    Action::GetLogFilter => match logging::display_global_env_filter() {
+                        Ok(formatted) => {
+                            self.send_outcome(writer, &Outcome::success("found log filter"))
+                                .await?;
+                            self.send_to_client(writer, &formatted).await?;
+                        }
+                        Err(err) => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::failed(format!("failed to retrieve log filter: {}", err)),
+                            )
+                            .await?;
+                        }
+                    },
+                    Action::SetLogFilter { ref directive } => match set_log_filter(directive) {
+                        Ok(()) => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::success("new logging directive set"),
+                            )
+                            .await?;
+                        }
+                        Err(err) => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::failed(format!(
+                                    "failed to set new logging directive: {}",
+                                    err
+                                )),
+                            )
+                            .await?;
+                        }
+                    },
                     Action::DumpConsensus { era } => {
                         let output = effect_builder
                             .diagnostics_port_dump_consensus_state(
@@ -275,6 +315,26 @@ impl Session {
                                 .await?;
                             }
                         };
+                    }
+                    Action::NetInfo => {
+                        self.send_outcome(writer, &Outcome::success("collecting insights"))
+                            .await?;
+                        let insights = effect_builder.get_network_insights().await;
+                        self.send_to_client(writer, &insights).await?;
+                    }
+                    Action::Stop { at, clear } => {
+                        let (msg, stop_at) = if clear {
+                            ("clearing stopping point", None)
+                        } else {
+                            ("setting new stopping point", Some(at))
+                        };
+                        let prev = effect_builder.set_node_stop_at(stop_at).await;
+                        self.send_outcome(writer, &Outcome::success(msg)).await?;
+                        self.send_to_client(
+                            writer,
+                            &OptDisplay::new(prev, "no previous stop-at spec"),
+                        )
+                        .await?;
                     }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))
@@ -351,8 +411,11 @@ impl Session {
                 writer.write_all(b"\n").await?;
             }
             OutputFormat::Json => {
-                let buf = serde_json::to_string_pretty(response)
-                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                info!("sending json");
+                let buf = serde_json::to_string_pretty(response).map_err(|err| {
+                    warn!(%err, "error outputting JSON string");
+                    io::Error::new(io::ErrorKind::Other, err)
+                })?;
                 writer.write_all(buf.as_bytes()).await?;
                 writer.write_all(b"\n").await?;
             }
@@ -378,6 +441,24 @@ impl Session {
     }
 }
 
+/// Error while trying to set the global log filter.
+#[derive(Debug, Error)]
+enum SetLogFilterError {
+    /// Failed to parse the given directive (the `RUST_LOG=...directive` string).
+    #[error("could not parse filter directive")]
+    ParseError(ParseError),
+    /// Failure setting the correctly parsed filter.
+    #[error("failed to set global filter")]
+    SetFailed(anyhow::Error),
+}
+
+/// Sets the global log using the given new directive.
+fn set_log_filter(filter_str: &str) -> Result<(), SetLogFilterError> {
+    let new_filter = EnvFilter::try_new(filter_str).map_err(SetLogFilterError::ParseError)?;
+
+    logging::reload_global_env_filter(new_filter).map_err(SetLogFilterError::SetFailed)
+}
+
 /// Handler for client connection.
 ///
 /// The core loop for the diagnostics port; reads commands via unix socket and processes them.
@@ -393,7 +474,11 @@ async fn handler<REv>(
     mut shutdown_receiver: watch::Receiver<()>,
 ) -> io::Result<()>
 where
-    REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
+        + Send,
 {
     debug!("accepted new connection on diagnostics port");
 
@@ -433,7 +518,11 @@ pub(super) async fn server<REv>(
     listener: UnixListener,
     mut shutdown_receiver: watch::Receiver<()>,
 ) where
-    REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
+    REv: From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
+        + Send,
 {
     let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;
@@ -486,27 +575,46 @@ pub(super) async fn server<REv>(
 #[cfg(test)]
 mod tests {
     use std::{
+        fmt::{self, Debug, Display, Formatter},
         path::{Path, PathBuf},
         sync::Arc,
         time::Duration,
     };
 
-    use crate::{
-        components::{diagnostics_port::Config as DiagnosticsPortConfig, small_network},
-        reactor::{participating::ParticipatingEvent, QueueKind},
-        testing::{
-            self,
-            network::{Network, NetworkedReactor},
-        },
-        utils::WeightedRoundRobin,
-        WithDir,
-    };
-    use casper_node_macros::reactor;
-    use casper_types::testing::TestRng;
+    use derive_more::From;
+    use prometheus::Registry;
+    use serde::Serialize;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::UnixStream,
         sync::Notify,
+    };
+
+    use casper_types::testing::TestRng;
+
+    use crate::{
+        components::{
+            diagnostics_port::{self, Config as DiagnosticsPortConfig, DiagnosticsPort},
+            network::{self, Identity as NetworkIdentity},
+            Component,
+        },
+        effect::{
+            announcements::ControlAnnouncement,
+            diagnostics_port::DumpConsensusStateRequest,
+            requests::{NetworkInfoRequest, SetNodeStopRequest},
+            EffectBuilder, EffectExt, Effects,
+        },
+        reactor::{
+            self, main_reactor::MainEvent, EventQueueHandle, QueueKind, Reactor as ReactorTrait,
+            ReactorEvent,
+        },
+        testing::{
+            self,
+            network::{NetworkedReactor, TestingNetwork},
+        },
+        types::{Chainspec, ChainspecRawBytes},
+        utils::WeightedRoundRobin,
+        NodeRng, WithDir,
     };
 
     pub struct TestReactorConfig {
@@ -532,29 +640,109 @@ mod tests {
         }
     }
 
-    // For testing we use a tiny reactor that runs nothing but the diagnostics console:
-    reactor!(Reactor {
+    #[derive(Debug)]
+    struct Error;
+
+    impl From<prometheus::Error> for Error {
+        fn from(_: prometheus::Error) -> Self {
+            Self
+        }
+    }
+
+    #[derive(Serialize, Debug, From)]
+    enum Event {
+        #[from]
+        DiagnosticsConsole(diagnostics_port::Event),
+        #[from]
+        DumpConsensusStateRequest(DumpConsensusStateRequest),
+        #[from]
+        ControlAnnouncement(ControlAnnouncement),
+        #[from]
+        NetworkInfoRequest(NetworkInfoRequest),
+        #[from]
+        SetNodeStopRequest(SetNodeStopRequest),
+    }
+
+    impl Display for Event {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            Debug::fmt(self, f)
+        }
+    }
+
+    impl ReactorEvent for Event {
+        fn is_control(&self) -> bool {
+            matches!(self, Event::ControlAnnouncement(_))
+        }
+
+        fn try_into_control(self) -> Option<ControlAnnouncement> {
+            match self {
+                Event::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct Reactor {
+        diagnostics_console: DiagnosticsPort,
+    }
+
+    impl ReactorTrait for Reactor {
+        type Event = Event;
+        type Error = Error;
         type Config = TestReactorConfig;
 
-        components: {
-            diagnostics_console = has_effects DiagnosticsPort(&WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port), event_queue);
+        fn dispatch_event(
+            &mut self,
+            effect_builder: EffectBuilder<Self::Event>,
+            rng: &mut NodeRng,
+            event: Event,
+        ) -> Effects<Event> {
+            match event {
+                Event::DiagnosticsConsole(event) => reactor::wrap_effects(
+                    Event::DiagnosticsConsole,
+                    self.diagnostics_console
+                        .handle_event(effect_builder, rng, event),
+                ),
+                Event::DumpConsensusStateRequest(_)
+                | Event::SetNodeStopRequest(_)
+                | Event::ControlAnnouncement(_)
+                | Event::NetworkInfoRequest(_) => {
+                    panic!("unexpected: {}", event)
+                }
+            }
         }
 
-        events: {}
+        fn new(
+            cfg: TestReactorConfig,
+            _chainspec: Arc<Chainspec>,
+            _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+            _network_identity: NetworkIdentity,
+            _registry: &Registry,
+            _event_queue: EventQueueHandle<Event>,
+            _rng: &mut NodeRng,
+        ) -> Result<(Self, Effects<Event>), Error> {
+            let diagnostics_console =
+                DiagnosticsPort::new(WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port));
+            let reactor = Reactor {
+                diagnostics_console,
+            };
 
-        requests: {
-            DumpConsensusStateRequest -> !;
+            let effects = reactor::wrap_effects(
+                Event::DiagnosticsConsole,
+                async {}.event(|()| diagnostics_port::Event::Initialize),
+            );
+
+            Ok((reactor, effects))
         }
-
-        announcements: {}
-    });
+    }
 
     impl NetworkedReactor for Reactor {}
 
     /// Runs a single mini-node with a diagnostics console and requests a dump of the (empty)
     /// event queue, then returns it.
     async fn run_single_node_console_and_dump_events(dump_format: &'static str) -> String {
-        let mut network = Network::<Reactor>::new();
+        let mut network = TestingNetwork::<Reactor>::new();
         let mut rng = TestRng::new();
 
         let base_dir = tempfile::tempdir().expect("could not create tempdir");
@@ -635,14 +823,14 @@ mod tests {
         let scheduler = WeightedRoundRobin::new(QueueKind::weights());
         scheduler
             .push(
-                ParticipatingEvent::SmallNetwork(small_network::Event::SweepOutgoing),
+                MainEvent::Network(network::Event::SweepOutgoing),
                 QueueKind::Network,
             )
             .await;
         scheduler
             .push(
-                ParticipatingEvent::SmallNetwork(small_network::Event::GossipOurAddress),
-                QueueKind::Regular,
+                MainEvent::Network(network::Event::GossipOurAddress),
+                QueueKind::Gossip,
             )
             .await;
 
