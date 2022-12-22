@@ -18,7 +18,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
+use casper_types::{TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -158,8 +158,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
         let params = Params::new(
             seed,
-            BLOCK_REWARD,
-            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
             minimum_round_length,
             maximum_round_length,
             init_round_len,

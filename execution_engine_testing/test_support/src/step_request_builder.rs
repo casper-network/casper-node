@@ -1,5 +1,5 @@
 use casper_execution_engine::core::engine_state::{
-    step::{EvictItem, RewardItem, SlashItem},
+    step::{EvictItem, SlashItem},
     StepRequest,
 };
 use casper_hashing::Digest;
@@ -11,7 +11,6 @@ pub struct StepRequestBuilder {
     parent_state_hash: Digest,
     protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
-    reward_items: Vec<RewardItem>,
     evict_items: Vec<EvictItem>,
     run_auction: bool,
     next_era_id: EraId,
@@ -39,18 +38,6 @@ impl StepRequestBuilder {
     /// Pushes the given [`SlashItem`] into `slash_items`.
     pub fn with_slash_item(mut self, slash_item: SlashItem) -> Self {
         self.slash_items.push(slash_item);
-        self
-    }
-
-    /// Pushes the given [`RewardItem`] into `reward_items`.
-    pub fn with_reward_item(mut self, reward_item: RewardItem) -> Self {
-        self.reward_items.push(reward_item);
-        self
-    }
-
-    /// Appends the given vector of [`RewardItem`] into `reward_items`.
-    pub fn with_reward_items(mut self, reward_items: impl IntoIterator<Item = RewardItem>) -> Self {
-        self.reward_items.extend(reward_items);
         self
     }
 
@@ -84,7 +71,6 @@ impl StepRequestBuilder {
             self.parent_state_hash,
             self.protocol_version,
             self.slash_items,
-            self.reward_items,
             self.evict_items,
             self.next_era_id,
             self.era_end_timestamp_millis,
@@ -98,7 +84,6 @@ impl Default for StepRequestBuilder {
             parent_state_hash: Default::default(),
             protocol_version: Default::default(),
             slash_items: Default::default(),
-            reward_items: Default::default(),
             evict_items: Default::default(),
             run_auction: true, //<-- run_auction by default
             next_era_id: Default::default(),

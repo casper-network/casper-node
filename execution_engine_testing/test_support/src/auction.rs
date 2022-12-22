@@ -7,7 +7,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount,
         },
         execution,
     },
@@ -150,14 +150,9 @@ pub fn run_blocks_with_transfers_and_step(
         let transfer_root = builder.get_post_state_hash();
         let maybe_auction_root = if run_auction {
             if use_scratch {
-                step_and_run_auction(&mut builder, &validator_keys);
+                step_and_run_auction(&mut builder);
             } else {
-                builder.advance_era(
-                    validator_keys
-                        .iter()
-                        .cloned()
-                        .map(|id| RewardItem::new(id, 1)),
-                );
+                builder.advance_era();
                 builder.commit();
             }
             Some(builder.get_post_state_hash())
@@ -385,14 +380,11 @@ pub fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
 }
 
 /// Build a step request and run the auction.
-pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[PublicKey]) {
-    let mut step_request_builder = StepRequestBuilder::new()
+pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
+    let step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0);
-    for validator in validator_keys {
-        step_request_builder =
-            step_request_builder.with_reward_item(RewardItem::new(validator.clone(), 1));
-    }
+
     let step_request = step_request_builder
         .with_next_era_id(builder.get_era().successor())
         .build();
