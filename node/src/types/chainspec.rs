@@ -181,10 +181,14 @@ impl Chainspec {
             .global_state_update
             .as_ref()
             .and_then(|global_state_update| {
-                if global_state_update.validators.is_empty() {
-                    return None;
+                if let Some(validators) = &global_state_update.validators {
+                    if validators.is_empty() {
+                        return None;
+                    }
+                    Some(validators.contains(public_key))
+                } else {
+                    None
                 }
-                Some(global_state_update.validators.contains(public_key))
             })
     }
 }
@@ -421,13 +425,13 @@ mod tests {
             );
             assert!(spec.network_config.accounts_config.accounts().is_empty());
             assert!(spec.protocol_config.global_state_update.is_some());
-            assert!(!spec
+            assert!(spec
                 .protocol_config
                 .global_state_update
                 .as_ref()
                 .unwrap()
                 .validators
-                .is_empty());
+                .is_some());
             for value in spec
                 .protocol_config
                 .global_state_update

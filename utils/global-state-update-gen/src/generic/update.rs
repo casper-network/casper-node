@@ -17,11 +17,15 @@ use crate::utils::{print_entry, print_validators};
 
 pub(crate) struct Update {
     entries: BTreeMap<Key, StoredValue>,
-    validators: Vec<PublicKey>,
+    // Holds the complete set of validators, only if the validator set changed
+    validators: Option<Vec<PublicKey>>,
 }
 
 impl Update {
-    pub(crate) fn new(entries: BTreeMap<Key, StoredValue>, validators: Vec<PublicKey>) -> Self {
+    pub(crate) fn new(
+        entries: BTreeMap<Key, StoredValue>,
+        validators: Option<Vec<PublicKey>>,
+    ) -> Self {
         Self {
             entries,
             validators,
@@ -29,7 +33,9 @@ impl Update {
     }
 
     pub(crate) fn print(&self) {
-        print_validators(&self.validators);
+        if let Some(validators) = &self.validators {
+            print_validators(validators);
+        }
         for (key, value) in &self.entries {
             print_entry(key, value);
         }
@@ -127,7 +133,7 @@ impl Update {
     }
 
     pub(crate) fn assert_validators(&self, validators: &[&PublicKey]) {
-        let self_set: HashSet<_> = self.validators.iter().collect();
+        let self_set: HashSet<_> = self.validators.as_ref().unwrap().iter().collect();
         let other_set: HashSet<_> = validators.iter().cloned().collect();
         assert_eq!(self_set, other_set);
     }

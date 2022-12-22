@@ -89,13 +89,14 @@ fn update_account_balances<T: StateReader>(
     }
 }
 
-/// Returns the complete set of validators immediately after the upgrade.
+/// Returns the complete set of validators immediately after the upgrade,
+/// if the validator set changed.
 fn update_auction_state<T: StateReader>(
     state: &mut StateTracker<T>,
     accounts: &[AccountConfig],
     only_listed_validators: bool,
     slash: bool,
-) -> Vec<PublicKey> {
+) -> Option<Vec<PublicKey>> {
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = state.read_snapshot();
 
@@ -129,16 +130,25 @@ fn update_auction_state<T: StateReader>(
         );
 
         state.remove_withdraws(&validators_diff.removed);
-    }
 
-    // All entries in the new snapshot contain the same set of validators, just use the first entry.
-    new_snapshot
-        .values()
-        .next()
-        .expect("snapshot should have at least one entry")
-        .keys()
-        .cloned()
-        .collect()
+        if validators_diff.added.is_empty() && validators_diff.removed.is_empty() {
+            None
+        } else {
+            // All entries in the new snapshot contain the same set of validators,
+            // just use the first entry.
+            Some(
+                new_snapshot
+                    .values()
+                    .next()
+                    .expect("snapshot should have at least one entry")
+                    .keys()
+                    .cloned()
+                    .collect(),
+            )
+        }
+    } else {
+        None
+    }
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
