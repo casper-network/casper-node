@@ -47,7 +47,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
         our_public_signing_key: Some(PublicKey::doc_example().clone()),
-        round_length: Some(TimeDiff::from(1 << 16)),
+        round_length: Some(TimeDiff::from_millis(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
         node_uptime: Duration::from_secs(13),
         reactor_state: ReactorState::Initialize,

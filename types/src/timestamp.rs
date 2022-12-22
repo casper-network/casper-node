@@ -392,7 +392,7 @@ pub mod serde_option_time_diff {
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         maybe_td
-            .unwrap_or_else(|| TimeDiff::from(0))
+            .unwrap_or_else(|| TimeDiff::from_millis(0))
             .serialize(serializer)
     }
 
@@ -406,12 +406,6 @@ pub mod serde_option_time_diff {
         } else {
             Ok(Some(td))
         }
-    }
-}
-
-impl From<u64> for TimeDiff {
-    fn from(duration: u64) -> TimeDiff {
-        TimeDiff(duration)
     }
 }
 

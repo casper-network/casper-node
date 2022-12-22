@@ -34,9 +34,9 @@ where
     #[allow(clippy::integer_arithmetic)] // Left shift with small enough constants.
     let params = state::Params::new(
         seed,
-        TimeDiff::from(1 << 14),
-        TimeDiff::from(1 << 19),
-        TimeDiff::from(1 << 14),
+        TimeDiff::from_millis(1 << 14),
+        TimeDiff::from_millis(1 << 19),
+        TimeDiff::from_millis(1 << 14),
         u64::MAX,
         0.into(),
         Timestamp::MAX,

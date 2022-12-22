@@ -14,7 +14,6 @@ mod node_config;
 mod node_id;
 /// Peers map.
 pub mod peers_map;
-mod shared_object;
 mod status_feed;
 mod sync_leap;
 mod validator_matrix;

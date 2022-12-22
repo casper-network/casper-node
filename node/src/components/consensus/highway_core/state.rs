@@ -745,7 +745,8 @@ impl<C: Context> State<C> {
             return Err(UnitError::SequenceNumber);
         }
         #[allow(clippy::integer_arithmetic)] // We checked for overflow in pre_validate_unit.
-        let round_len = TimeDiff::from(self.params.min_round_length().millis() << wunit.round_exp);
+        let round_len =
+            TimeDiff::from_millis(self.params.min_round_length().millis() << wunit.round_exp);
         let r_id = round_id(timestamp, round_len);
         let maybe_prev_unit = wunit.previous().map(|vh| self.unit(vh));
         if let Some(prev_unit) = maybe_prev_unit {

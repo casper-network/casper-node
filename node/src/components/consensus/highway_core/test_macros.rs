@@ -50,13 +50,13 @@ macro_rules! add_unit {
         // And our timestamp must not be less than any justification's.
         let mut timestamp = panorama
             .iter_correct(&$state)
-            .map(|unit| unit.timestamp + TimeDiff::from(1))
+            .map(|unit| unit.timestamp + TimeDiff::from_millis(1))
             .chain(two_units_limit)
             .max()
             .unwrap_or($state.params().start_timestamp());
         // If this is a block: Find the next time we're a leader.
         if value.is_some() {
-            timestamp = state::round_id(timestamp + r_len - TimeDiff::from(1), r_len);
+            timestamp = state::round_id(timestamp + r_len - TimeDiff::from_millis(1), r_len);
             while $state.leader(timestamp) != creator {
                 timestamp += r_len;
             }

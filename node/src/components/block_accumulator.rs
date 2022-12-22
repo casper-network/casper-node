@@ -276,7 +276,7 @@ impl BlockAccumulator {
             }
 
             // Assume a block time of at least 1 millisecond, so we don't divide by zero.
-            let min_block_time = self.min_block_time.max(TimeDiff::from(1));
+            let min_block_time = self.min_block_time.max(TimeDiff::from_millis(1));
             let expected_blocks = (purge_interval / min_block_time) as usize;
             let max_block_count = PEER_RATE_LIMIT_MULTIPLIER.saturating_mul(expected_blocks);
             if block_timestamps.len() >= max_block_count {
