@@ -7,6 +7,8 @@ use super::{TimeDiff, Timestamp};
 #[derive(Debug, DataSize, Clone, Serialize)]
 pub(crate) struct Params {
     seed: u64,
+    block_reward: u64,
+    reduced_block_reward: u64,
     min_round_len: TimeDiff,
     max_round_len: TimeDiff,
     init_round_len: TimeDiff,
@@ -36,6 +38,8 @@ impl Params {
     #[allow(clippy::too_many_arguments)] // FIXME
     pub(crate) fn new(
         seed: u64,
+        block_reward: u64,
+        reduced_block_reward: u64,
         min_round_len: TimeDiff,
         max_round_len: TimeDiff,
         init_round_len: TimeDiff,
@@ -44,9 +48,15 @@ impl Params {
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
     ) -> Params {
+        assert!(
+            reduced_block_reward <= block_reward,
+            "reduced block reward must not be greater than the reward for a finalized block"
+        );
         assert_ne!(min_round_len.millis(), 0); // Highway::new_boxed uses at least 1ms.
         Params {
             seed,
+            block_reward,
+            reduced_block_reward,
             min_round_len,
             max_round_len,
             init_round_len,
@@ -60,6 +70,17 @@ impl Params {
     /// Returns the random seed.
     pub(crate) fn seed(&self) -> u64 {
         self.seed
+    }
+
+    /// Returns the total reward for a finalized block.
+    pub(crate) fn block_reward(&self) -> u64 {
+        self.block_reward
+    }
+
+    /// Returns the reduced block reward that is paid out even if the heaviest summit does not
+    /// exceed half the total weight. This is at most `block_reward`.
+    pub(crate) fn reduced_block_reward(&self) -> u64 {
+        self.reduced_block_reward
     }
 
     /// Returns the minimum round length. This is always greater than 0.

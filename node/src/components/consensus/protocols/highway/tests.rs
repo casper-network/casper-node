@@ -34,6 +34,8 @@ where
     #[allow(clippy::integer_arithmetic)] // Left shift with small enough constants.
     let params = state::Params::new(
         seed,
+        highway_testing::TEST_BLOCK_REWARD,
+        highway_testing::TEST_BLOCK_REWARD / 5,
         TimeDiff::from(1 << 14),
         TimeDiff::from(1 << 19),
         TimeDiff::from(1 << 14),
