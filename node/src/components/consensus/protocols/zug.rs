@@ -1841,7 +1841,7 @@ impl<C: Context + 'static> Zug<C> {
 
     /// Returns the current proposal timeout as a `TimeDiff`.
     fn proposal_timeout(&self) -> TimeDiff {
-        TimeDiff::from(self.proposal_timeout_millis as u64)
+        TimeDiff::from_millis(self.proposal_timeout_millis as u64)
     }
 
     /// Updates our `proposal_timeout` based on the latest measured actual delay from the start of

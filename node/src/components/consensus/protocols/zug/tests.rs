@@ -1007,7 +1007,7 @@ fn update_proposal_timeout() {
         zug.proposal_timeout().millis() as f64
     );
     for _ in 0..success_rounds {
-        zug.update_proposal_timeout(round_start + TimeDiff::from(1));
+        zug.update_proposal_timeout(round_start + TimeDiff::from_millis(1));
     }
     assert_approx!(initial_timeout, zug.proposal_timeout().millis() as f64);
 
@@ -1015,7 +1015,7 @@ fn update_proposal_timeout() {
     // within 2 * inertia rounds.
     let min_delay = (zug.proposal_timeout().millis() as f64 / grace_factor) as u64;
     for _ in 0..10 {
-        let delay = TimeDiff::from(rng.gen_range(min_delay..(min_delay * 2)));
+        let delay = TimeDiff::from_millis(rng.gen_range(min_delay..(min_delay * 2)));
         for _ in 0..(2 * inertia) {
             zug.update_proposal_timeout(round_start + delay);
         }

@@ -116,7 +116,7 @@ impl TestChain {
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.core_config.finality_threshold_fraction = Ratio::new(34, 100);
-        chainspec.core_config.era_duration = 10.into();
+        chainspec.core_config.era_duration = TimeDiff::from_millis(10);
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
 
@@ -492,7 +492,7 @@ async fn dont_upgrade_without_switch_block() {
     const NETWORK_SIZE: usize = 2;
     let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
     chain.chainspec_mut().core_config.minimum_era_height = 2;
-    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
     chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
 
     let mut net = chain
@@ -577,7 +577,7 @@ async fn should_store_finalized_approvals() {
     // Eras have exactly two blocks each, and there is one block per second.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 2;
-    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
     chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
     chain.chainspec_mut().core_config.validator_slots = 1;
 

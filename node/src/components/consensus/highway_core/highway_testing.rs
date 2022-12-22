@@ -278,7 +278,7 @@ impl HighwayValidator {
                                 // strategies.
                                 let mut wunit2 = swunit.wire_unit().clone();
                                 match wunit2.value.as_mut() {
-                                    None => wunit2.timestamp += 1.into(),
+                                    None => wunit2.timestamp += TimeDiff::from_millis(1),
                                     Some(v) => v.0.push(0),
                                 }
                                 let secret = TestSecret(wunit2.creator.0.into());
@@ -780,10 +780,10 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
             HighwayMessage::RequestBlock(bc) => DeliverySchedule::AtInstant(bc.timestamp()),
             HighwayMessage::Timer(t) => DeliverySchedule::AtInstant(*t),
             HighwayMessage::NewVertex(_) => {
-                DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
+                DeliverySchedule::AtInstant(base_delivery_timestamp + TimeDiff::from_millis(1))
             }
             HighwayMessage::WeAreFaulty(_) => {
-                DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
+                DeliverySchedule::AtInstant(base_delivery_timestamp + TimeDiff::from_millis(1))
             }
         }
     }
