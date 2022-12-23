@@ -1,8 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
-    path::Path,
-};
+use std::{collections::BTreeMap, convert::TryFrom, path::Path};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -13,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    file_utils, AsymmetricType, Key, PublicKey,
+    file_utils, AsymmetricType, Key, PublicKey, U512,
 };
 
 use super::error::GlobalStateUpdateLoadError;
@@ -21,17 +17,23 @@ use super::error::GlobalStateUpdateLoadError;
 const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateEntry {
     key: String,
     value: String,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct GlobalStateUpdateValidatorInfo {
+    public_key: String,
+    weight: String,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateConfig {
-    // This must not be an optional field since it would be possible to accidentally provide TOML
-    // where the provided validators were ignored, i.e. if `validators = [...]` was present _below_
-    // the first `[[entries]]` value.
-    validators: Vec<String>,
+    validators: Option<Vec<GlobalStateUpdateValidatorInfo>>,
     entries: Vec<GlobalStateUpdateEntry>,
 }
 
@@ -58,7 +60,7 @@ impl GlobalStateUpdateConfig {
 /// where the validator set is being modified in any way, the full set of post-upgrade validators.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct GlobalStateUpdate {
-    pub(crate) validators: BTreeSet<PublicKey>,
+    pub(crate) validators: Option<BTreeMap<PublicKey, U512>>,
     pub(crate) entries: BTreeMap<Key, Bytes>,
 }
 
@@ -81,7 +83,7 @@ impl ToBytes for GlobalStateUpdate {
 
 impl FromBytes for GlobalStateUpdate {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (validators, remainder) = BTreeSet::<PublicKey>::from_bytes(bytes)?;
+        let (validators, remainder) = Option::<BTreeMap<PublicKey, U512>>::from_bytes(bytes)?;
         let (entries, remainder) = BTreeMap::<Key, Bytes>::from_bytes(remainder)?;
         let global_state_update = GlobalStateUpdate {
             entries,
@@ -95,15 +97,25 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
     type Error = GlobalStateUpdateLoadError;
 
     fn try_from(config: GlobalStateUpdateConfig) -> Result<Self, Self::Error> {
-        let mut validators = BTreeSet::new();
-        for (index, validator) in config.validators.into_iter().enumerate() {
-            let public_key = PublicKey::from_hex(&validator).map_err(|error| {
-                GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
-                    "failed to decode validator public key {}: {}",
-                    index, error
-                ))
-            })?;
-            let _ = validators.insert(public_key);
+        let mut validators: Option<BTreeMap<PublicKey, U512>> = None;
+        if let Some(config_validators) = config.validators {
+            let mut new_validators = BTreeMap::new();
+            for (index, validator) in config_validators.into_iter().enumerate() {
+                let public_key = PublicKey::from_hex(&validator.public_key).map_err(|error| {
+                    GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
+                        "failed to decode validator public key {}: {}",
+                        index, error
+                    ))
+                })?;
+                let weight = U512::from_dec_str(&validator.weight).map_err(|error| {
+                    GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
+                        "failed to decode validator weight {}: {}",
+                        index, error
+                    ))
+                })?;
+                let _ = new_validators.insert(public_key, weight);
+            }
+            validators = Some(new_validators);
         }
 
         let mut entries = BTreeMap::new();
@@ -128,11 +140,11 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
 #[cfg(test)]
 impl GlobalStateUpdate {
     pub fn random(rng: &mut TestRng) -> Self {
-        let mut validators = BTreeSet::new();
+        let mut validators = BTreeMap::new();
         if rng.gen() {
             let count = rng.gen_range(5..10);
             for _ in 0..count {
-                validators.insert(PublicKey::random(rng));
+                validators.insert(PublicKey::random(rng), rng.gen::<U512>());
             }
         }
 
@@ -143,7 +155,7 @@ impl GlobalStateUpdate {
         }
 
         Self {
-            validators,
+            validators: Some(validators),
             entries,
         }
     }

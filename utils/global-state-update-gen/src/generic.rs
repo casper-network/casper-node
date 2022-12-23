@@ -18,7 +18,7 @@ use casper_types::{
 
 use clap::ArgMatches;
 
-use crate::utils::{hash_from_str, validators_diff, ValidatorsDiff};
+use crate::utils::{hash_from_str, validators_diff, ValidatorInfo, ValidatorsDiff};
 
 use self::{
     config::{AccountConfig, Config, Transfer},
@@ -89,13 +89,14 @@ fn update_account_balances<T: StateReader>(
     }
 }
 
-/// Returns the complete set of validators immediately after the upgrade.
+/// Returns the complete set of validators immediately after the upgrade,
+/// if the validator set changed.
 fn update_auction_state<T: StateReader>(
     state: &mut StateTracker<T>,
     accounts: &[AccountConfig],
     only_listed_validators: bool,
     slash: bool,
-) -> Vec<PublicKey> {
+) -> Option<Vec<ValidatorInfo>> {
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = state.read_snapshot();
 
@@ -110,35 +111,44 @@ fn update_auction_state<T: StateReader>(
         gen_snapshot_from_old(old_snapshot.clone(), accounts)
     };
 
-    // take first value of new snapshot to get list of validators
-    if new_snapshot != old_snapshot {
-        // Save the write to the snapshot key.
-        state.write_entry(
-            validators_key,
-            StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
-        );
-
-        let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
-
-        add_and_remove_bids(
-            state,
-            &validators_diff,
-            &new_snapshot,
-            only_listed_validators,
-            slash,
-        );
-
-        state.remove_withdraws(&validators_diff.removed);
+    if new_snapshot == old_snapshot {
+        return None;
     }
 
-    // All entries in the new snapshot contain the same set of validators, just use the first entry.
-    new_snapshot
-        .values()
-        .next()
-        .expect("snapshot should have at least one entry")
-        .keys()
-        .cloned()
-        .collect()
+    // Save the write to the snapshot key.
+    state.write_entry(
+        validators_key,
+        StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
+    );
+
+    let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
+
+    add_and_remove_bids(
+        state,
+        &validators_diff,
+        &new_snapshot,
+        only_listed_validators,
+        slash,
+    );
+
+    state.remove_withdraws(&validators_diff.removed);
+
+    // We need to output the validators for the next era, which are contained in the first entry
+    // in the snapshot.
+    Some(
+        new_snapshot
+            .values()
+            .next()
+            .expect("snapshot should have at least one entry")
+            .iter()
+            .map(|(public_key, seigniorage_recipient)| ValidatorInfo {
+                public_key: public_key.clone(),
+                weight: seigniorage_recipient
+                    .total_stake()
+                    .expect("total validator stake too large"),
+            })
+            .collect(),
+    )
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:

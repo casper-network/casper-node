@@ -6,22 +6,26 @@ use std::collections::HashSet;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::Bid,
-    CLValue, URef, U512,
+    CLValue, PublicKey, URef, U512,
 };
-use casper_types::{Key, PublicKey, StoredValue};
+use casper_types::{Key, StoredValue};
 
 #[cfg(test)]
 use super::state_reader::StateReader;
 
-use crate::utils::{print_entry, print_validators};
+use crate::utils::{print_entry, print_validators, ValidatorInfo};
 
 pub(crate) struct Update {
     entries: BTreeMap<Key, StoredValue>,
-    validators: Vec<PublicKey>,
+    // Holds the complete set of validators, only if the validator set changed
+    validators: Option<Vec<ValidatorInfo>>,
 }
 
 impl Update {
-    pub(crate) fn new(entries: BTreeMap<Key, StoredValue>, validators: Vec<PublicKey>) -> Self {
+    pub(crate) fn new(
+        entries: BTreeMap<Key, StoredValue>,
+        validators: Option<Vec<ValidatorInfo>>,
+    ) -> Self {
         Self {
             entries,
             validators,
@@ -29,7 +33,9 @@ impl Update {
     }
 
     pub(crate) fn print(&self) {
-        print_validators(&self.validators);
+        if let Some(validators) = &self.validators {
+            print_validators(validators);
+        }
         for (key, value) in &self.entries {
             print_entry(key, value);
         }
@@ -126,9 +132,13 @@ impl Update {
         assert!(!self.entries.contains_key(key))
     }
 
-    pub(crate) fn assert_validators(&self, validators: &[&PublicKey]) {
-        let self_set: HashSet<_> = self.validators.iter().collect();
-        let other_set: HashSet<_> = validators.iter().cloned().collect();
+    pub(crate) fn assert_validators(&self, validators: &[ValidatorInfo]) {
+        let self_set: HashSet<_> = self.validators.as_ref().unwrap().iter().collect();
+        let other_set: HashSet<_> = validators.iter().collect();
         assert_eq!(self_set, other_set);
+    }
+
+    pub(crate) fn assert_validators_unchanged(&self) {
+        assert!(self.validators.is_none());
     }
 }
