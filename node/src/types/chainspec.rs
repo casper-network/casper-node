@@ -185,7 +185,7 @@ impl Chainspec {
                     if validators.is_empty() {
                         return None;
                     }
-                    Some(validators.contains(public_key))
+                    Some(validators.contains_key(public_key))
                 } else {
                     None
                 }

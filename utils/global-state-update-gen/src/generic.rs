@@ -18,7 +18,7 @@ use casper_types::{
 
 use clap::ArgMatches;
 
-use crate::utils::{hash_from_str, validators_diff, ValidatorsDiff};
+use crate::utils::{hash_from_str, validators_diff, ValidatorInfo, ValidatorsDiff};
 
 use self::{
     config::{AccountConfig, Config, Transfer},
@@ -96,7 +96,7 @@ fn update_auction_state<T: StateReader>(
     accounts: &[AccountConfig],
     only_listed_validators: bool,
     slash: bool,
-) -> Option<Vec<PublicKey>> {
+) -> Option<Vec<ValidatorInfo>> {
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = state.read_snapshot();
 
@@ -131,21 +131,20 @@ fn update_auction_state<T: StateReader>(
 
         state.remove_withdraws(&validators_diff.removed);
 
-        if validators_diff.added.is_empty() && validators_diff.removed.is_empty() {
-            None
-        } else {
-            // All entries in the new snapshot contain the same set of validators,
-            // just use the first entry.
-            Some(
-                new_snapshot
-                    .values()
-                    .next()
-                    .expect("snapshot should have at least one entry")
-                    .keys()
-                    .cloned()
-                    .collect(),
-            )
-        }
+        // All entries in the new snapshot contain the same set of validators,
+        // just use the first entry.
+        Some(
+            new_snapshot
+                .values()
+                .next()
+                .expect("snapshot should have at least one entry")
+                .iter()
+                .map(|(key, sr)| ValidatorInfo {
+                    key: key.clone(),
+                    weight: sr.total_stake().expect("total validator stake too large"),
+                })
+                .collect(),
+        )
     } else {
         None
     }
