@@ -30,7 +30,9 @@ use casper_types::{
     crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
+use casper_types::{
+    crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
+};
 
 use crate::{
     components::{block_synchronizer::ExecutionResultsChecksum, consensus},
@@ -51,11 +53,14 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let public_key_1 = PublicKey::from(&secret_key_1);
     let equivocators = vec![public_key_1];
 
+    let secret_key_2 = SecretKey::ed25519_from_bytes([1; 32]).unwrap();
+    let public_key_2 = PublicKey::from(&secret_key_2);
+    let mut rewards = BTreeMap::new();
+    rewards.insert(public_key_2, 1000);
+
     let secret_key_3 = SecretKey::ed25519_from_bytes([2; 32]).unwrap();
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
-
-    let rewards = BTreeMap::new();
 
     EraReport {
         equivocators,
@@ -526,7 +531,7 @@ impl FinalizedBlock {
                     let pub_key = PublicKey::from(
                         &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
                     );
-                    let reward = rng.gen_range(1..(1_000_000_000 + 1));
+                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
                     (pub_key, reward)
                 })
                 .take(rewards_count)

@@ -59,6 +59,8 @@ impl Display for ConsensusValue {
 const TEST_MIN_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 12);
 const TEST_MAX_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 19);
 const TEST_END_HEIGHT: u64 = 100000;
+pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
+pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
 pub(crate) const TEST_INSTANCE_ID: u64 = 42;
 pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
 
@@ -516,7 +518,9 @@ where
                 value,
                 relative_height,
             );
-
+            if let Some(t) = terminal_block_data {
+                warn!(?t.rewards, "rewards and inactive validators are not verified yet");
+            }
             recipient.push_finalized(value);
         }
 
@@ -714,6 +718,8 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
 fn test_params() -> Params {
     Params::new(
         0, // random seed
+        TEST_BLOCK_REWARD,
+        TEST_REDUCED_BLOCK_REWARD,
         TEST_MIN_ROUND_LEN,
         TEST_MAX_ROUND_LEN,
         TEST_MIN_ROUND_LEN,

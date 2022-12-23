@@ -35,7 +35,6 @@ impl Weight {
     }
 
     /// Saturating addition. Returns `Weight(u64::MAX)` if overflow would occur.
-    #[allow(dead_code)]
     pub fn saturating_add(self, rhs: Weight) -> Weight {
         Weight(self.0.saturating_add(rhs.0))
     }

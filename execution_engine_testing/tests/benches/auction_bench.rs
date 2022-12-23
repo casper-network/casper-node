@@ -19,7 +19,7 @@ use casper_execution_engine::{
     core::engine_state::{
         engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator,
         run_genesis_request::RunGenesisRequest, EngineConfig, ExecConfig, ExecuteRequest,
-        GenesisAccount,
+        GenesisAccount, RewardItem,
     },
     shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
 };
@@ -189,7 +189,7 @@ fn setup_bench_run_auction(
         |b| {
             b.iter(|| {
                 era_end_timestamp += TIMESTAMP_INCREMENT_MILLIS;
-                step_and_run_auction(&mut builder)
+                step_and_run_auction(&mut builder, &validator_keys)
             })
         },
     );
@@ -233,11 +233,15 @@ fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
     ret
 }
 
-fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
-    let step_request_builder = StepRequestBuilder::new()
+fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[PublicKey]) {
+    let mut step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0);
 
+    for validator in validator_keys {
+        step_request_builder =
+            step_request_builder.with_reward_item(RewardItem::new(validator.clone(), 1));
+    }
     let step_request = step_request_builder
         .with_next_era_id(builder.get_era() + 1)
         .build();
