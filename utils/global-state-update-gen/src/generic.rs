@@ -131,8 +131,8 @@ fn update_auction_state<T: StateReader>(
 
         state.remove_withdraws(&validators_diff.removed);
 
-        // All entries in the new snapshot contain the same set of validators,
-        // just use the first entry.
+        // We need to output the validators for the next era, which are contained in the first entry
+        // in the snapshot.
         Some(
             new_snapshot
                 .values()
