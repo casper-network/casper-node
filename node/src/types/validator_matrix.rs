@@ -120,7 +120,18 @@ impl ValidatorMatrix {
     }
 
     pub(crate) fn validator_weights(&self, era_id: EraId) -> Option<EraValidatorWeights> {
-        self.read_inner().get(&era_id).cloned()
+        if let (true, Some(chainspec_validators)) = (
+            era_id == self.chainspec_activation_era,
+            self.chainspec_validators.as_ref(),
+        ) {
+            Some(EraValidatorWeights::new(
+                era_id,
+                (**chainspec_validators).clone(),
+                self.finality_threshold_fraction,
+            ))
+        } else {
+            self.read_inner().get(&era_id).cloned()
+        }
     }
 
     pub(crate) fn fault_tolerance_threshold(&self) -> Ratio<u64> {
