@@ -432,31 +432,6 @@ function setup_asset_node_configs()
     done
 }
 
-function validator_setup_config_file()
-{
-    local IDX
-    local COUNT_NODES_AT_GENESIS=$(get_count_of_genesis_nodes)
-    local PATH_TO_NET
-    TEMPFILE=$(mktemp)
-
-    echo 'only_listed_validators = true' >> $TEMPFILE
-    PATH_TO_NET="$(get_path_to_net)"
-
-    for IDX in $(seq 1 "$COUNT_NODES_AT_GENESIS")
-    do
-        cat << EOF >> $TEMPFILE
-[[accounts]]
-public_key = "$(cat "$PATH_TO_NET/nodes/node-$IDX/keys/public_key_hex")"
-
-[accounts.validator]
-bonded_amount = "$(get_node_pos_stake_weight "$COUNT_NODES_AT_GENESIS" "$IDX")"
-
-EOF
-    done
-
-    echo $TEMPFILE
-}
-
 function setup_asset_global_state_toml_for_node() {
     local IDX=${1}
     local TARGET_PROTOCOL_VERSION=${2}
@@ -464,26 +439,16 @@ function setup_asset_global_state_toml_for_node() {
     local PATH_TO_NET="$(get_path_to_net)"
     local STORAGE_PATH="$PATH_TO_NET/nodes/node-$IDX/storage"
 
-    VALIDATOR_SETUP_CONFIG="$(validator_setup_config_file)"
-
     STATE_ROOT_HASH=$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')
     log "... state root hash for node $IDX: $STATE_ROOT_HASH"
 
     if [ -f "$STORAGE_PATH/$(get_chain_name)/data.lmdb" ]; then
         GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                 migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$STORAGE_PATH"/"$(get_chain_name)")
-
-        GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                generic -s $STATE_ROOT_HASH -d "$STORAGE_PATH"/"$(get_chain_name)" $VALIDATOR_SETUP_CONFIG) 
     else
         GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
                 migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$STORAGE_PATH")
-
-        GLOBAL_STATE_VALIDATOR_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                generic -s $STATE_ROOT_HASH -d "$STORAGE_PATH" $VALIDATOR_SETUP_CONFIG)
     fi
-
-    rm -f $VALIDATOR_SETUP_CONFIG
 
     echo "$GLOBAL_STATE_VALIDATOR_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
     echo "$GLOBAL_STATE_OUTPUT" >> "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"
