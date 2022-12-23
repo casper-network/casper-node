@@ -19,7 +19,7 @@ pub fn hash_from_str(hex_str: &str) -> Digest {
 pub(crate) fn print_validators(validators: &[ValidatorInfo]) {
     for validator in validators {
         println!("[[validators]]");
-        println!("key = \"{}\"", validator.key.to_hex());
+        println!("public_key = \"{}\"", validator.public_key.to_hex());
         println!("weight = \"{}\"", validator.weight);
         println!();
     }
@@ -36,7 +36,7 @@ pub(crate) fn print_entry(key: &Key, value: &StoredValue) {
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ValidatorInfo {
-    pub key: PublicKey,
+    pub public_key: PublicKey,
     pub weight: U512,
 }
 

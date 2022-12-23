@@ -24,12 +24,14 @@ pub struct GlobalStateUpdateEntry {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateValidatorInfo {
-    key: String,
+    public_key: String,
     weight: String,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateConfig {
     validators: Option<Vec<GlobalStateUpdateValidatorInfo>>,
     entries: Vec<GlobalStateUpdateEntry>,
@@ -99,7 +101,7 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
         if let Some(config_validators) = config.validators {
             let mut new_validators = BTreeMap::new();
             for (index, validator) in config_validators.into_iter().enumerate() {
-                let public_key = PublicKey::from_hex(&validator.key).map_err(|error| {
+                let public_key = PublicKey::from_hex(&validator.public_key).map_err(|error| {
                     GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
                         "failed to decode validator public key {}: {}",
                         index, error
