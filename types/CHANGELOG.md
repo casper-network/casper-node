@@ -15,22 +15,27 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
+* Add new `Key::Unbond` key variant under which the new unbonding information (to support redelegation) is written.
 * Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
-* Add new `Key::BlockEffectsRootHash` key variant under which the Merkle root of the execution results for a given block is written.
-* Add new `Key::DeployApprovalsRootHash` key variant under which the Merkle root of the approvals of all deploys for a given block is written.
+* Add new `Key::ChecksumRegistry` key variant under which a registry of checksums for a given block is written.  There are two checksums in the registry, one for the execution results and the other for the approvals of all deploys in the block.
+* Add new `StoredValue::Unbonding` variant to support redelegating.
 * Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
 * Extend asymmetric key functionality, available via feature "std".
 * Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature "std".
 * Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature "testing".
 
 ### Changed
-* Extend `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
+* Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
-* Fixed some integer casts.
 * Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "contract-package-". Parsing from the old format is still supported.
+* Applied `#[non_exhaustive]` to error enums.
+* Change Debug output of `DeployHash` to hex-encoded string rather than a list of integers.
 
 ### Deprecated
 * Deprecate "gens" feature (used for providing proptest helpers) in favor of new "testing" feature.
+
+### Fixed
+* Fix some integer casts, where failure is now detected and reported via new error variant `NotRepresentable`.
 
 
 

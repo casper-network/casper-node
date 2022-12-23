@@ -6,26 +6,6 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Maximum number of fetch-deploy tasks to run in parallel during chain synchronization.
-max_parallel_deploy_fetches = 5000
-
-# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
-max_parallel_trie_fetches = 5000
-
-# Maximum number of fetch-block tasks to run in parallel during chain synchronization.
-max_parallel_block_fetches = 50
-
-# The duration for which to pause between retry attempts while synchronising during joining.
-retry_interval = '100ms'
-
-# The maximum number of retries of fetch operations during the chain synchronization process. The retry limit is in effect
-# only when the network component reports that enough peers are connected, until that happens, the retries are unbounded.
-# TODO: Temporarily set to a high value, because `has_connected_to_network()` is not implemented yet.
-max_sync_fetch_attempts = 5000
-
-# How often between sync attempts to redeem a bad node.
-sync_peer_redemption_interval = 0
-
 # Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
 sync_to_genesis = true
 
@@ -40,6 +20,7 @@ control_logic_default_delay = '1sec'
 
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
+
 
 # =================================
 # Configuration options for logging
@@ -70,9 +51,9 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 max_execution_delay = 3
 
 
-# ==========================================
-# Configuration options for Zug
-# ==========================================
+# =======================================
+# Configuration options for Zug consensus
+# =======================================
 [consensus.zug]
 
 # Request the latest protocol state from a random peer periodically, with this interval.
@@ -238,7 +219,7 @@ tarpit_duration = '10min'
 # legacy nodes running this software.
 tarpit_chance = 0.2
 
-# How long peers remain blocked after they get blacklisted.
+# How long peers remain blocked after they get blocklisted.
 blocklist_retain_duration = '10min'
 
 # Identity of a node
@@ -466,7 +447,7 @@ purge_interval = '1min'
 # ================================================
 [block_synchronizer]
 
-# Maximum number of fetch-trie tasks to run in parallel during chain synchronization.
+# Maximum number of fetch-trie tasks to run in parallel during block synchronization.
 max_parallel_trie_fetches = 5000
 
 # Time interval for the node to ask for refreshed peers.
