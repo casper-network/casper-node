@@ -1924,8 +1924,6 @@ impl Storage {
         .is_ok()
         {
             result.push(highest_signed_block_header.clone());
-        } else {
-            return Ok(Some(result));
         }
 
         Ok(Some(result))
