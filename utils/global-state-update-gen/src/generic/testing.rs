@@ -162,9 +162,9 @@ impl StateReader for MockStateReader {
 }
 
 impl ValidatorInfo {
-    pub fn new(key: &PublicKey, weight: U512) -> Self {
+    pub fn new(public_key: &PublicKey, weight: U512) -> Self {
         ValidatorInfo {
-            key: key.clone(),
+            public_key: public_key.clone(),
             weight,
         }
     }

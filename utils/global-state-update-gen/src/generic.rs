@@ -111,43 +111,44 @@ fn update_auction_state<T: StateReader>(
         gen_snapshot_from_old(old_snapshot.clone(), accounts)
     };
 
-    // take first value of new snapshot to get list of validators
-    if new_snapshot != old_snapshot {
-        // Save the write to the snapshot key.
-        state.write_entry(
-            validators_key,
-            StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
-        );
-
-        let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
-
-        add_and_remove_bids(
-            state,
-            &validators_diff,
-            &new_snapshot,
-            only_listed_validators,
-            slash,
-        );
-
-        state.remove_withdraws(&validators_diff.removed);
-
-        // We need to output the validators for the next era, which are contained in the first entry
-        // in the snapshot.
-        Some(
-            new_snapshot
-                .values()
-                .next()
-                .expect("snapshot should have at least one entry")
-                .iter()
-                .map(|(key, sr)| ValidatorInfo {
-                    key: key.clone(),
-                    weight: sr.total_stake().expect("total validator stake too large"),
-                })
-                .collect(),
-        )
-    } else {
-        None
+    if new_snapshot == old_snapshot {
+        return None;
     }
+
+    // Save the write to the snapshot key.
+    state.write_entry(
+        validators_key,
+        StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
+    );
+
+    let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
+
+    add_and_remove_bids(
+        state,
+        &validators_diff,
+        &new_snapshot,
+        only_listed_validators,
+        slash,
+    );
+
+    state.remove_withdraws(&validators_diff.removed);
+
+    // We need to output the validators for the next era, which are contained in the first entry
+    // in the snapshot.
+    Some(
+        new_snapshot
+            .values()
+            .next()
+            .expect("snapshot should have at least one entry")
+            .iter()
+            .map(|(public_key, seigniorage_recipient)| ValidatorInfo {
+                public_key: public_key.clone(),
+                weight: seigniorage_recipient
+                    .total_stake()
+                    .expect("total validator stake too large"),
+            })
+            .collect(),
+    )
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
