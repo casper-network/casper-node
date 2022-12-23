@@ -1,6 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
+use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
@@ -31,11 +32,15 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         effect_builder.get_stored_deploy(id).await
     }
 
-    fn put_to_storage<'a, REv>(
-        _effect_builder: EffectBuilder<REv>,
+    fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
+        effect_builder: EffectBuilder<REv>,
         item: Deploy,
     ) -> StoringState<'a, Deploy> {
-        // Incoming deploys are routed to the deploy acceptor for validation before being stored.
-        StoringState::WontStore(item)
+        StoringState::Enqueued(
+            effect_builder
+                .put_deploy_to_storage(Box::new(item))
+                .map(|_| ())
+                .boxed(),
+        )
     }
 }
