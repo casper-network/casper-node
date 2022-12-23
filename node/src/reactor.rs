@@ -59,7 +59,6 @@ use tracing_futures::Instrument;
 use crate::{
     components::{
         block_accumulator, deploy_acceptor, fetcher,
-        fetcher::FetchResponse,
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
     },
     effect::{
@@ -69,14 +68,14 @@ use crate::{
     },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
-        ChainspecRawBytes, Deploy, DeployId, ExitCode, FetcherItem, FinalitySignature,
-        LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
+        ChainspecRawBytes, Deploy, ExitCode, FetcherItem, FinalitySignature, LegacyDeploy, NodeId,
+        SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{
         self,
         rlimit::{Limit, OpenFiles, ResourceLimit},
-        SharedFlag, Source, WeightedRoundRobin,
+        SharedFlag, WeightedRoundRobin,
     },
     NodeRng, TERMINATION_REQUESTED,
 };
