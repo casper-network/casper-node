@@ -6,7 +6,7 @@ use futures::FutureExt;
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{Deploy, DeployId, NodeId},
+    types::{Deploy, DeployId, FinalizedApprovals, NodeId},
 };
 
 #[async_trait]
@@ -37,10 +37,23 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         item: Deploy,
     ) -> StoringState<'a, Deploy> {
         StoringState::Enqueued(
-            effect_builder
-                .put_deploy_to_storage(Box::new(item))
-                .map(|_| ())
-                .boxed(),
+            async move {
+                let is_new = effect_builder
+                    .put_deploy_to_storage(Box::new(item.clone()))
+                    .await;
+                // If `is_new` is `false`, the deploy was previously stored, and the incoming
+                // deploy could have a different set of approvals to the one already stored.
+                // We can treat the incoming approvals as finalized and now try and store them.
+                if !is_new {
+                    effect_builder
+                        .store_finalized_approvals(
+                            *item.hash(),
+                            FinalizedApprovals::new(item.approvals().clone()),
+                        )
+                        .await;
+                }
+            }
+            .boxed(),
         )
     }
 }
