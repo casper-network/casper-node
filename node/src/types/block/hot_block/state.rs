@@ -194,6 +194,11 @@ impl State {
             && self.sufficient_finality
             && self.marked_complete
     }
+
+    #[cfg(test)]
+    pub(crate) fn set_sufficient_finality(&mut self, has_sufficient_finality: bool) {
+        self.sufficient_finality = has_sufficient_finality;
+    }
 }
 
 #[cfg(test)]

@@ -23,7 +23,7 @@ pub(super) struct BlockAcceptor {
     last_progress: Timestamp,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub(super) enum ShouldStore {
     SufficientlySignedBlock {
@@ -387,5 +387,41 @@ impl BlockAcceptor {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
+    }
+}
+
+#[cfg(test)]
+impl BlockAcceptor {
+    pub(super) fn executed(&self) -> bool {
+        self.hot_block
+            .as_ref()
+            .map_or(false, |hot_block| hot_block.state.is_executed())
+    }
+
+    pub(super) fn hot_block(&self) -> Option<HotBlock> {
+        self.hot_block.clone()
+    }
+
+    pub(super) fn set_hot_block(&mut self, hot_block: Option<HotBlock>) {
+        self.hot_block = hot_block;
+    }
+
+    pub(super) fn set_sufficient_finality(&mut self, has_sufficient_finality: bool) {
+        if let Some(hot_block) = self.hot_block.as_mut() {
+            hot_block
+                .state
+                .set_sufficient_finality(has_sufficient_finality);
+        }
+    }
+
+    pub(super) fn signatures(&self) -> &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+        &self.signatures
+    }
+
+    #[allow(unused)]
+    pub(super) fn signatures_mut(
+        &mut self,
+    ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+        &mut self.signatures
     }
 }

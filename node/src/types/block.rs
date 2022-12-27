@@ -1546,6 +1546,26 @@ impl Block {
         )
         .expect("Could not create random block with specifics")
     }
+
+    /// Generates a random invalid instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_invalid(rng: &mut TestRng) -> Self {
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+
+        let mut block = Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+            None,
+        );
+        block.hash = BlockHash::random(rng);
+        assert!(block.verify().is_err());
+        block
+    }
 }
 
 impl DocExample for Block {

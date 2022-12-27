@@ -328,6 +328,9 @@ impl BlockAccumulator {
             .as_ref()
             .map_or(false, |local_tip| block_height < local_tip.height)
         {
+            // If the acceptor exists already (through a previously recorded
+            // signature), we should probably purge it if it's older than
+            // the local tip.
             debug!(%block_hash, "ignoring outdated block");
             return Effects::new();
         }
@@ -808,6 +811,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::ExecutedBlock { hot_block } => {
                 let height = hot_block.block.header().height();
                 let era_id = hot_block.block.header().era_id();
+                // Logically it makes sense to purge the acceptors here or in
+                // `register_local_tip`, but only on the path where a new tip
+                // is accepted.
                 self.register_local_tip(height, era_id);
                 self.register_block(effect_builder, hot_block, None)
             }
