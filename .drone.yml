@@ -361,22 +361,6 @@ steps:
     prerelease:
     - true
 
-- name: as-contract-publish
-  image: plugins/npm
-  settings:
-    username:
-      from_secret: npm_user
-    token:
-      from_secret: npm_token
-    email:
-      from_secret: npm_email
-    folder:
-    - "smart_contracts/contract_as"
-    fail_on_version_conflict:
-    - true
-    access:
-    - "public"
-
 - name: nctl-s3-build
   <<: *buildenv_upload
   commands:
@@ -405,6 +389,22 @@ steps:
       from_secret: crates_io_token
   commands:
   - "./ci/publish_to_crates_io.sh"
+
+- name: as-contract-publish
+  image: plugins/npm
+  settings:
+    username:
+      from_secret: npm_user
+    token:
+      from_secret: npm_token
+    email:
+      from_secret: npm_email
+    folder:
+      - "smart_contracts/contract_as"
+    fail_on_version_conflict:
+      - true
+    access:
+      - "public"
 
 - name: notify
   image: plugins/slack
