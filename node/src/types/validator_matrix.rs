@@ -30,6 +30,8 @@ pub(crate) enum SignatureWeight {
 #[derive(Clone, DataSize)]
 pub(crate) struct ValidatorMatrix {
     inner: Arc<RwLock<BTreeMap<EraId, EraValidatorWeights>>>,
+    chainspec_validators: Option<Arc<BTreeMap<PublicKey, U512>>>,
+    chainspec_activation_era: EraId,
     #[data_size(skip)]
     finality_threshold_fraction: Ratio<u64>,
     secret_signing_key: Arc<SecretKey>,
@@ -40,6 +42,8 @@ pub(crate) struct ValidatorMatrix {
 impl ValidatorMatrix {
     pub(crate) fn new(
         finality_threshold_fraction: Ratio<u64>,
+        chainspec_validators: Option<BTreeMap<PublicKey, U512>>,
+        chainspec_activation_era: EraId,
         secret_signing_key: Arc<SecretKey>,
         public_signing_key: PublicKey,
         auction_delay: u64,
@@ -48,6 +52,8 @@ impl ValidatorMatrix {
         ValidatorMatrix {
             inner,
             finality_threshold_fraction,
+            chainspec_validators: chainspec_validators.map(Arc::new),
+            chainspec_activation_era,
             secret_signing_key,
             public_signing_key,
             auction_delay,
@@ -67,6 +73,8 @@ impl ValidatorMatrix {
         );
         ValidatorMatrix {
             inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
+            chainspec_validators: None,
+            chainspec_activation_era: EraId::from(0),
             finality_threshold_fraction,
             public_signing_key,
             secret_signing_key,
@@ -125,7 +133,18 @@ impl ValidatorMatrix {
     }
 
     pub(crate) fn validator_weights(&self, era_id: EraId) -> Option<EraValidatorWeights> {
-        self.read_inner().get(&era_id).cloned()
+        if let (true, Some(chainspec_validators)) = (
+            era_id == self.chainspec_activation_era,
+            self.chainspec_validators.as_ref(),
+        ) {
+            Some(EraValidatorWeights::new(
+                era_id,
+                (**chainspec_validators).clone(),
+                self.finality_threshold_fraction,
+            ))
+        } else {
+            self.read_inner().get(&era_id).cloned()
+        }
     }
 
     pub(crate) fn fault_tolerance_threshold(&self) -> Ratio<u64> {
@@ -143,9 +162,16 @@ impl ValidatorMatrix {
         era_id: EraId,
         public_key: &PublicKey,
     ) -> Option<bool> {
-        self.read_inner()
-            .get(&era_id)
-            .map(|validator_weights| validator_weights.is_validator(public_key))
+        if let (true, Some(chainspec_validators)) = (
+            era_id == self.chainspec_activation_era,
+            self.chainspec_validators.as_ref(),
+        ) {
+            Some(chainspec_validators.contains_key(public_key))
+        } else {
+            self.read_inner()
+                .get(&era_id)
+                .map(|validator_weights| validator_weights.is_validator(public_key))
+        }
     }
 
     /// Determine if the active validator is in a current or upcoming set of active validators.

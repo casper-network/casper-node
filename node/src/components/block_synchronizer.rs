@@ -814,7 +814,7 @@ impl BlockSynchronizer {
                         if let Err(error) =
                             builder.register_finality_signature(*finality_signature, maybe_peer)
                         {
-                            error!(%error, "BlockSynchronizer: failed to apply finality signature");
+                            warn!(%error, "BlockSynchronizer: failed to apply finality signature");
                         }
                     }
                 }

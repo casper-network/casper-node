@@ -9,10 +9,7 @@ use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::{
-    components::block_accumulator,
-    types::{DeployId, Tag},
-};
+use crate::{components::block_accumulator, types::Tag};
 
 /// Reasons why a peer was blocked.
 #[derive(DataSize, Debug, Serialize)]
@@ -35,13 +32,6 @@ pub(crate) enum BlocklistJustification {
         #[data_size(skip)]
         error: block_accumulator::Error,
     },
-    /// A serialized deploy was received that failed to deserialize.
-    SentBadDeploy {
-        /// The deserialization error.
-        #[serde(skip_serializing)]
-        #[data_size(skip)]
-        error: bincode::Error,
-    },
     /// An invalid consensus value was received.
     SentInvalidConsensusValue {
         /// The era for which the invalid value was destined.
@@ -63,8 +53,6 @@ pub(crate) enum BlocklistJustification {
     MissingChainspecHash,
     /// Peer is considered dishonest.
     DishonestPeer,
-    /// Peer has a deploy but is not providing it.
-    PeerDidNotProvideADeploy { deploy_id: DeployId },
 }
 
 impl Display for BlocklistJustification {
@@ -81,9 +69,6 @@ impl Display for BlocklistJustification {
                 "sent a finality signature that is invalid or unexpected ({})",
                 error
             ),
-            BlocklistJustification::SentBadDeploy { error } => {
-                write!(f, "sent a deploy that could not be deserialized: {}", error)
-            }
             BlocklistJustification::SentInvalidConsensusValue { era } => {
                 write!(f, "sent an invalid consensus value in {}", era)
             }
@@ -109,13 +94,6 @@ impl Display for BlocklistJustification {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)
             }
             BlocklistJustification::DishonestPeer => f.write_str("dishonest peer"),
-            BlocklistJustification::PeerDidNotProvideADeploy { deploy_id } => {
-                write!(
-                    f,
-                    "peer has a deploy but is not providing it ({})",
-                    deploy_id
-                )
-            }
         }
     }
 }
