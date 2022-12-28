@@ -10,7 +10,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
     sync::atomic::Ordering,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use casper_types::{EraId, PublicKey};
@@ -75,6 +75,10 @@ enum OutgoingStateInsight {
     Connected {
         peer_id: NodeId,
         peer_addr: SocketAddr,
+        last_ping_sent: Option<SystemTime>,
+        last_pong_received: Option<SystemTime>,
+        invalid_pong_count: u32,
+        rtt: Option<Duration>,
     },
     Blocked {
         since: SystemTime,
@@ -115,10 +119,30 @@ impl OutgoingStateInsight {
                 error: error.as_ref().map(ToString::to_string),
                 last_failure: anchor.convert(*last_failure),
             },
-            OutgoingState::Connected { peer_id, handle } => OutgoingStateInsight::Connected {
-                peer_id: *peer_id,
-                peer_addr: handle.peer_addr,
-            },
+            OutgoingState::Connected {
+                peer_id,
+                handle,
+                last_ping_sent,
+                last_pong_received,
+                invalid_pong_count,
+            } => {
+                // If we have matching ping/pongs stored, we can calculate a round-trip time.
+                let rtt = match (last_ping_sent, last_pong_received) {
+                    (Some(last_ping), Some(last_pong)) if last_ping.nonce == last_pong.nonce => {
+                        Some(last_pong.timestamp.duration_since(last_ping.timestamp))
+                    }
+                    _ => None,
+                };
+
+                OutgoingStateInsight::Connected {
+                    peer_id: *peer_id,
+                    peer_addr: handle.peer_addr,
+                    last_ping_sent: last_ping_sent.map(|tt| anchor.convert(tt.timestamp)),
+                    last_pong_received: last_pong_received.map(|tt| anchor.convert(tt.timestamp)),
+                    invalid_pong_count: *invalid_pong_count,
+                    rtt,
+                }
+            }
             OutgoingState::Blocked {
                 since,
                 justification,
@@ -153,8 +177,24 @@ impl OutgoingStateInsight {
                 OptDisplay::new(error.as_ref(), "none"),
                 time_delta(now, *last_failure)
             ),
-            OutgoingStateInsight::Connected { peer_id, peer_addr } => {
-                write!(f, "connected -> {} @ {}", peer_id, peer_addr)
+            OutgoingStateInsight::Connected {
+                peer_id,
+                peer_addr,
+                last_ping_sent,
+                last_pong_received,
+                invalid_pong_count,
+                rtt,
+            } => {
+                let rtt_ms = rtt.map(|duration| duration.as_millis());
+
+                // TODO: Display last ping/pong and invalid pong count in a concise, but meaningful manner.
+                write!(
+                    f,
+                    "connected -> {} @ {} (rtt {})",
+                    peer_id,
+                    peer_addr,
+                    OptDisplay::new(rtt_ms, "?")
+                )
             }
             OutgoingStateInsight::Blocked {
                 since,

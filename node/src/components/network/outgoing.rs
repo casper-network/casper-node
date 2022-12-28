@@ -66,9 +66,9 @@
 //! │ ┌───────────┐         │ │  │      │          │          │
 //! │ │           │◄────────┘ │  │      │ Loopback │          │
 //! │ │ Connected │           │  └─────►│          │          │
-//! │ │           │ dropped   │         └──────────┘          │
+//! │ │           │ dropped/  │         └──────────┘          │
 //! │ └─────┬─────┴───────────┘                               │
-//! │       │                                                 │
+//! │       │       timeout                                   │
 //! │       │ block                                           │
 //! └───────┴─────────────────────────────────────────────────┘
 //! ```
@@ -121,6 +121,15 @@ where
     pub(super) state: OutgoingState<H, E>,
 }
 
+/// A timestamp with an associated nonce.
+#[derive(Clone, Copy, DataSize, Debug)]
+pub(crate) struct TaggedTimestamp {
+    /// The nonce of the timestamp.
+    pub nonce: u32,
+    /// The actual timestamp.
+    pub timestamp: Instant,
+}
+
 /// Active state for a connection/address.
 #[derive(DataSize, Debug)]
 pub(crate) enum OutgoingState<H, E>
@@ -154,6 +163,12 @@ where
         ///
         /// Can be a channel to decouple sending, or even a direct connection handle.
         handle: H,
+        /// The last ping that was requested to be sent.
+        last_ping_sent: Option<TaggedTimestamp>,
+        /// The most recent pong received.
+        last_pong_received: Option<TaggedTimestamp>,
+        /// Number of invalid pongs received, reset upon receiving a valid pong.
+        invalid_pong_count: u32,
     },
     /// The address was blocked and will not be retried.
     Blocked {
@@ -798,6 +813,9 @@ where
                         OutgoingState::Connected {
                             peer_id: node_id,
                             handle,
+                            last_ping_sent: None,
+                            last_pong_received: None,
+                            invalid_pong_count: 0,
                         },
                     );
                     None
