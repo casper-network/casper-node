@@ -154,6 +154,12 @@ impl LeapActivity {
                 best_available: Box::new(best_available),
                 from_peers,
             },
+            // `Unobtainable` means we couldn't download it from any peer so far - don't treat it
+            // as a failure if there are still requests in flight
+            Err(LeapActivityError::Unobtainable(_, _)) if in_flight > 0 => LeapStatus::Awaiting {
+                sync_leap_identifier,
+                in_flight,
+            },
             Err(error) => LeapStatus::Failed {
                 sync_leap_identifier,
                 from_peers: vec![],

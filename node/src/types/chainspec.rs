@@ -30,7 +30,7 @@ use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion, PublicKey,
+    EraId, ProtocolVersion,
 };
 
 #[cfg(test)]
@@ -171,25 +171,6 @@ impl Chainspec {
             global_state_update,
             chainspec_registry,
         ))
-    }
-
-    /// Returns `Some` if the validator set is being modified by the upgrade (otherwise `None`)
-    /// and `true` if the provided public key is a member of the new set, otherwise `false`.
-    #[allow(unused)] // check w/ Fraser...seems odd that we don't care about this anywhere else
-    pub(crate) fn is_in_modified_validator_set(&self, public_key: &PublicKey) -> Option<bool> {
-        self.protocol_config
-            .global_state_update
-            .as_ref()
-            .and_then(|global_state_update| {
-                if let Some(validators) = &global_state_update.validators {
-                    if validators.is_empty() {
-                        return None;
-                    }
-                    Some(validators.contains_key(public_key))
-                } else {
-                    None
-                }
-            })
     }
 }
 

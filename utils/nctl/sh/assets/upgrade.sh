@@ -61,6 +61,30 @@ function _upgrade_node() {
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
 }
 
+function _validators_state_update_config()
+{
+    local NODE_COUNT=$1
+    local NODE_ID
+    local PUBKEY
+    TEMPFILE=$(mktemp)
+
+    echo 'only_listed_validators = true' >> $TEMPFILE
+
+    for NODE_ID in $(seq $((NODE_COUNT + 1)) $((NODE_COUNT * 2))); do
+        PUBKEY=`cat $(get_path_to_node $NODE_ID)/keys/public_key_hex`
+        cat << EOF >> $TEMPFILE
+[[accounts]]
+public_key = "$PUBKEY"
+
+[accounts.validator]
+bonded_amount = "$(($NODE_ID + 1000000000000000))"
+
+EOF
+    done
+
+    echo $TEMPFILE
+}
+
 #######################################
 # Generates a global state update for an emergency upgrade
 # Arguments:
@@ -86,25 +110,18 @@ function _generate_global_state_update() {
 
     # Create parameters to the global state update generator.
     # First, we supply the path to the directory of the node whose global state we'll use
-    # and the trusted hash.
-    local PARAMS
-    PARAMS="change-validators -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH}"
-
-    # Add the parameters that define the new validators.
+    # and the trusted hash then we Add the parameters that define the new validators.
     # We're using the reserve validators, from NODE_COUNT+1 to NODE_COUNT*2.
-    local PATH_TO_NODE
-    local PUBKEY
-    for NODE_ID in $(seq $((NODE_COUNT + 1)) $((NODE_COUNT * 2))); do
-        PATH_TO_NODE=$(get_path_to_node $NODE_ID)
-        PUBKEY=`cat "$PATH_TO_NODE"/keys/public_key_hex`
-        PARAMS="${PARAMS} -v ${PUBKEY},$(($NODE_ID + 1000000000000000))"
-    done
+    local PARAMS
+    PARAMS="generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $(_validators_state_update_config $NODE_COUNT)"
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
     # Create the global state update file.
     "$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen $PARAMS \
         > "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml
+
+    rm -f $TEMPFILE
 }
 
 #######################################
@@ -144,6 +161,12 @@ function _emergency_upgrade_node() {
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
+
+    # remove stored state of the launcher - this will make the launcher start from the highest
+    # available version instead of from the previously executed one
+    if [ -e "$PATH_TO_NODE"/config/casper-node-launcher-state.toml ]; then
+        rm "$PATH_TO_NODE"/config/casper-node-launcher-state.toml
+    fi
 }
 
 #######################################
@@ -174,17 +197,28 @@ function _generate_global_state_update_balances() {
 
     local STATE_SOURCE_PATH=$(get_path_to_node $STATE_SOURCE)
 
+    local TEMPFILE=$(mktemp)
+    cat << EOF >> $TEMPFILE
+[[transfers]]
+from = "${SRC_ACC}"
+to = "${TARGET_ACC}"
+amount = "${AMOUNT}"
+
+EOF
+
     # Create parameters to the global state update generator.
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash.
     local PARAMS
-    PARAMS="balances -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} -f ${SRC_ACC} -t ${TARGET_ACC} -a ${AMOUNT}"
+    PARAMS="generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $TEMPFILE"
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
     # Create the global state update file.
     "$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen $PARAMS \
         > "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml
+
+    rm -f $TEMPFILE
 }
 
 #######################################
@@ -230,4 +264,10 @@ function _emergency_upgrade_node_balances() {
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml
+
+    # remove stored state of the launcher - this will make the launcher start from the highest
+    # available version instead of from the previously executed one
+    if [ -e "$PATH_TO_NODE"/config/casper-node-launcher-state.toml ]; then
+        rm "$PATH_TO_NODE"/config/casper-node-launcher-state.toml
+    fi
 }

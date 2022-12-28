@@ -1012,6 +1012,14 @@ impl EraSupervisor {
                         )
                     })
                     .collect();
+                if let Some(era_report) = report.as_ref() {
+                    info!(
+                        inactive = ?era_report.inactive_validators,
+                        faulty = ?era_report.equivocators,
+                        era_id = era_id.value(),
+                        "era end: inactive and faulty validators"
+                    );
+                }
                 let finalized_block = FinalizedBlock::new(
                     proposed_block,
                     report,

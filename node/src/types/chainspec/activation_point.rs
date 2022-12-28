@@ -32,7 +32,7 @@ impl ActivationPoint {
     /// point.
     pub(crate) fn should_upgrade(&self, era_being_deactivated: &EraId) -> bool {
         match self {
-            ActivationPoint::EraId(era_id) => era_being_deactivated.successor() == *era_id,
+            ActivationPoint::EraId(era_id) => era_being_deactivated.successor() >= *era_id,
             ActivationPoint::Genesis(_) => false,
         }
     }

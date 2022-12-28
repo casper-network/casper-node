@@ -293,7 +293,7 @@ struct ConsumerId {
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use casper_types::SecretKey;
+    use casper_types::{EraId, SecretKey};
     use num_rational::Ratio;
     use prometheus::Counter;
     use tokio::time::Instant;
@@ -452,6 +452,8 @@ mod tests {
             wait_metric.clone(),
             ValidatorMatrix::new(
                 Ratio::new(1, 3),
+                None,
+                EraId::from(0),
                 Arc::new(secret_key),
                 consensus_key.clone(),
                 2,

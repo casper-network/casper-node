@@ -1907,10 +1907,24 @@ impl Storage {
                 switch_block = block.block_header.clone();
                 result.push(block);
             } else {
-                return Ok(None);
+                return Ok(Some(result));
             }
         }
-        result.push(highest_signed_block_header.clone());
+
+        let next_era_validator_weights = match switch_block.next_era_validator_weights() {
+            Some(next_era_validator_weights) => next_era_validator_weights,
+            None => return Ok(None),
+        };
+
+        if utils::check_sufficient_block_signatures(
+            next_era_validator_weights,
+            self.fault_tolerance_fraction,
+            Some(&highest_signed_block_header.block_signatures),
+        )
+        .is_ok()
+        {
+            result.push(highest_signed_block_header.clone());
+        }
 
         Ok(Some(result))
     }

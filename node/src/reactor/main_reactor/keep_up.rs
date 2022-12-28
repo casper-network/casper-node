@@ -377,7 +377,7 @@ impl MainReactor {
             if self.validator_matrix.register_era_validator_weights(evw) {
                 info!(%era_id, "historical: got era");
             } else {
-                debug!(%era_id, "historical: already had era");
+                debug!(%era_id, "historical: era already present or is not relevant");
             }
         }
         KeepUpInstruction::CheckLater("historical sync leap received".to_string(), Duration::ZERO)
