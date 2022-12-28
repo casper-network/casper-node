@@ -122,27 +122,17 @@ impl OutgoingStateInsight {
             OutgoingState::Connected {
                 peer_id,
                 handle,
-                last_ping_sent,
-                last_pong_received,
-                invalid_pong_count,
-            } => {
-                // If we have matching ping/pongs stored, we can calculate a round-trip time.
-                let rtt = match (last_ping_sent, last_pong_received) {
-                    (Some(last_ping), Some(last_pong)) if last_ping.nonce == last_pong.nonce => {
-                        Some(last_pong.timestamp.duration_since(last_ping.timestamp))
-                    }
-                    _ => None,
-                };
-
-                OutgoingStateInsight::Connected {
-                    peer_id: *peer_id,
-                    peer_addr: handle.peer_addr,
-                    last_ping_sent: last_ping_sent.map(|tt| anchor.convert(tt.timestamp)),
-                    last_pong_received: last_pong_received.map(|tt| anchor.convert(tt.timestamp)),
-                    invalid_pong_count: *invalid_pong_count,
-                    rtt,
-                }
-            }
+                health,
+            } => OutgoingStateInsight::Connected {
+                peer_id: *peer_id,
+                peer_addr: handle.peer_addr,
+                last_ping_sent: health.last_ping_sent.map(|tt| anchor.convert(tt.timestamp)),
+                last_pong_received: health
+                    .last_pong_received
+                    .map(|tt| anchor.convert(tt.timestamp)),
+                invalid_pong_count: health.invalid_pong_count,
+                rtt: health.calc_rrt(),
+            },
             OutgoingState::Blocked {
                 since,
                 justification,

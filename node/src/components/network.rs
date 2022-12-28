@@ -123,6 +123,15 @@ const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 /// Interval during which to perform outgoing manager housekeeping.
 const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
+/// How often to send a ping down a healthy connection.
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Maximum time for a ping until it connections are severed.
+const PING_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// How many pings to send before giving up and dropping the connection.
+const PING_RETRIES: u16 = 5;
+
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
@@ -241,6 +250,10 @@ where
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
                 unblock_after: cfg.blocklist_retain_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
+                ping_interval: PING_INTERVAL,
+                ping_timeout: PING_TIMEOUT,
+                ping_retries: PING_RETRIES,
+                pong_limit: (1 + PING_RETRIES as u32) * 2,
             },
             net_metrics.create_outgoing_metrics(),
         );

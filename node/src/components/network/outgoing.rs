@@ -130,6 +130,33 @@ pub(crate) struct TaggedTimestamp {
     pub timestamp: Instant,
 }
 
+/// Connection health information.
+///
+/// All data related to the ping/pong functionality.
+#[derive(Clone, Copy, DataSize, Debug, Default)]
+pub(crate) struct ConnectionHealth {
+    /// The last ping that was requested to be sent.
+    pub(crate) last_ping_sent: Option<TaggedTimestamp>,
+    /// The most recent pong received.
+    pub(crate) last_pong_received: Option<TaggedTimestamp>,
+    /// Number of invalid pongs received, reset upon receiving a valid pong.
+    pub(crate) invalid_pong_count: u32,
+    /// Number of pings that timed out.
+    pub(crate) ping_timeouts: u32,
+}
+
+impl ConnectionHealth {
+    /// Calculate the round-trip time, if possible.
+    pub(crate) fn calc_rrt(&self) -> Option<Duration> {
+        match (self.last_ping_sent, self.last_pong_received) {
+            (Some(last_ping), Some(last_pong)) if last_ping.nonce == last_pong.nonce => {
+                Some(last_pong.timestamp.duration_since(last_ping.timestamp))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Active state for a connection/address.
 #[derive(DataSize, Debug)]
 pub(crate) enum OutgoingState<H, E>
@@ -163,12 +190,8 @@ where
         ///
         /// Can be a channel to decouple sending, or even a direct connection handle.
         handle: H,
-        /// The last ping that was requested to be sent.
-        last_ping_sent: Option<TaggedTimestamp>,
-        /// The most recent pong received.
-        last_pong_received: Option<TaggedTimestamp>,
-        /// Number of invalid pongs received, reset upon receiving a valid pong.
-        invalid_pong_count: u32,
+        /// Health of the connection.
+        health: ConnectionHealth,
     },
     /// The address was blocked and will not be retried.
     Blocked {
@@ -288,6 +311,16 @@ pub struct OutgoingConfig {
     pub(crate) unblock_after: Duration,
     /// Safety timeout, after which a connection is no longer expected to finish dialing.
     pub(crate) sweep_timeout: Duration,
+    /// How often to send a ping to ensure a connection is established.
+    ///
+    /// The interval determines how soon after connecting or a successful ping another ping is sent.
+    pub(crate) ping_interval: Duration,
+    /// Duration during which a ping must succeed to be considered successful.
+    pub(crate) ping_timeout: Duration,
+    /// Number of attempts before giving up and disconnecting a peer due to too many failed pings.
+    pub(crate) ping_retries: u16,
+    /// How many spurious pongs to tolerate before banning a peer.
+    pub(crate) pong_limit: u32,
 }
 
 impl OutgoingConfig {
@@ -729,8 +762,16 @@ where
                         to_fail.push((addr, failures_so_far + 1));
                     }
                 }
-
-                OutgoingState::Connected { .. } | OutgoingState::Loopback => {
+                OutgoingState::Connected {
+                    peer_id,
+                    ref health,
+                    ..
+                } => {
+                    // Check if we need to send a ping, or need to give up sending a ping and
+                    // disconnect.
+                    // TODO.
+                }
+                OutgoingState::Loopback => {
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
                     // the `trace` level.
                 }
@@ -813,9 +854,7 @@ where
                         OutgoingState::Connected {
                             peer_id: node_id,
                             handle,
-                            last_ping_sent: None,
-                            last_pong_received: None,
-                            invalid_pong_count: 0,
+                            health: Default::default()
                         },
                     );
                     None
@@ -945,6 +984,10 @@ mod tests {
             base_timeout: Duration::from_secs(1),
             unblock_after: Duration::from_secs(60),
             sweep_timeout: Duration::from_secs(45),
+            ping_interval: Duration::from_secs(5),
+            ping_timeout: Duration::from_secs(2),
+            ping_retries: 3,
+            pong_limit: 6,
         }
     }
 
