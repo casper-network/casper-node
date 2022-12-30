@@ -104,6 +104,7 @@ use std::{
 use datasize::DataSize;
 
 use prometheus::IntGauge;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
 use super::{blocklist::BlocklistJustification, display_error, NodeId};
@@ -125,16 +126,21 @@ where
 #[derive(Clone, Copy, DataSize, Debug)]
 pub(crate) struct TaggedTimestamp {
     /// The nonce of the timestamp.
-    pub nonce: u32,
+    pub nonce: Nonce,
     /// The actual timestamp.
     pub timestamp: Instant,
 }
 
+#[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub(crate) struct Nonce(u32);
+
 /// Connection health information.
 ///
 /// All data related to the ping/pong functionality.
-#[derive(Clone, Copy, DataSize, Debug, Default)]
+#[derive(Clone, Copy, DataSize, Debug)]
 pub(crate) struct ConnectionHealth {
+    /// The moment since the connection was established.
+    pub(crate) connected_since: Instant,
     /// The last ping that was requested to be sent.
     pub(crate) last_ping_sent: Option<TaggedTimestamp>,
     /// The most recent pong received.
@@ -146,6 +152,31 @@ pub(crate) struct ConnectionHealth {
 }
 
 impl ConnectionHealth {
+    /// Creates a new connection health instance, recording when the connection was established.
+    pub(crate) fn new(connected_since: Instant) -> Self {
+        Self {
+            connected_since,
+            last_ping_sent: None,
+            last_pong_received: None,
+            invalid_pong_count: 0,
+            ping_timeouts: 0,
+        }
+    }
+}
+
+/// The outcome of periodic health check.
+#[derive(Clone, Copy, Debug)]
+
+enum HealthCheckOutcome {
+    /// Do nothing, as we recently took action.
+    DoNothing,
+    /// Send a ping with the given nonce.
+    SendPing(Nonce),
+    /// Give up on (i.e. terminate) the connection, as we exceeded the allowable ping limit.
+    GiveUp,
+}
+
+impl ConnectionHealth {
     /// Calculate the round-trip time, if possible.
     pub(crate) fn calc_rrt(&self) -> Option<Duration> {
         match (self.last_ping_sent, self.last_pong_received) {
@@ -154,6 +185,17 @@ impl ConnectionHealth {
             }
             _ => None,
         }
+    }
+
+    // TODO: Make connection health config its own type and move all connection health related
+    //       functionality to its own module.
+    pub(crate) fn check_health(&self, cfg: &OutgoingConfig, now: Instant) -> HealthCheckOutcome {
+        // Our honeymoon period is from first establishment of the connection until we send a ping.
+        if now.duration_since(self.connected_since) < cfg.ping_interval {
+            return HealthCheckOutcome::DoNothing;
+        }
+
+        todo!("remaining health check logic")
     }
 }
 
