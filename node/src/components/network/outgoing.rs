@@ -104,10 +104,14 @@ use std::{
 use datasize::DataSize;
 
 use prometheus::IntGauge;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
-use super::{blocklist::BlocklistJustification, display_error, NodeId};
+use super::{
+    blocklist::BlocklistJustification,
+    display_error,
+    health::{ConnectionHealth, HealthConfig},
+    NodeId,
+};
 
 /// An outgoing connection/address in various states.
 #[derive(DataSize, Debug)]
@@ -120,83 +124,6 @@ where
     pub(super) is_unforgettable: bool,
     /// The current state the connection/address is in.
     pub(super) state: OutgoingState<H, E>,
-}
-
-/// A timestamp with an associated nonce.
-#[derive(Clone, Copy, DataSize, Debug)]
-pub(crate) struct TaggedTimestamp {
-    /// The nonce of the timestamp.
-    pub nonce: Nonce,
-    /// The actual timestamp.
-    pub timestamp: Instant,
-}
-
-#[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub(crate) struct Nonce(u32);
-
-/// Connection health information.
-///
-/// All data related to the ping/pong functionality.
-#[derive(Clone, Copy, DataSize, Debug)]
-pub(crate) struct ConnectionHealth {
-    /// The moment since the connection was established.
-    pub(crate) connected_since: Instant,
-    /// The last ping that was requested to be sent.
-    pub(crate) last_ping_sent: Option<TaggedTimestamp>,
-    /// The most recent pong received.
-    pub(crate) last_pong_received: Option<TaggedTimestamp>,
-    /// Number of invalid pongs received, reset upon receiving a valid pong.
-    pub(crate) invalid_pong_count: u32,
-    /// Number of pings that timed out.
-    pub(crate) ping_timeouts: u32,
-}
-
-impl ConnectionHealth {
-    /// Creates a new connection health instance, recording when the connection was established.
-    pub(crate) fn new(connected_since: Instant) -> Self {
-        Self {
-            connected_since,
-            last_ping_sent: None,
-            last_pong_received: None,
-            invalid_pong_count: 0,
-            ping_timeouts: 0,
-        }
-    }
-}
-
-/// The outcome of periodic health check.
-#[derive(Clone, Copy, Debug)]
-
-enum HealthCheckOutcome {
-    /// Do nothing, as we recently took action.
-    DoNothing,
-    /// Send a ping with the given nonce.
-    SendPing(Nonce),
-    /// Give up on (i.e. terminate) the connection, as we exceeded the allowable ping limit.
-    GiveUp,
-}
-
-impl ConnectionHealth {
-    /// Calculate the round-trip time, if possible.
-    pub(crate) fn calc_rrt(&self) -> Option<Duration> {
-        match (self.last_ping_sent, self.last_pong_received) {
-            (Some(last_ping), Some(last_pong)) if last_ping.nonce == last_pong.nonce => {
-                Some(last_pong.timestamp.duration_since(last_ping.timestamp))
-            }
-            _ => None,
-        }
-    }
-
-    // TODO: Make connection health config its own type and move all connection health related
-    //       functionality to its own module.
-    pub(crate) fn check_health(&self, cfg: &OutgoingConfig, now: Instant) -> HealthCheckOutcome {
-        // Our honeymoon period is from first establishment of the connection until we send a ping.
-        if now.duration_since(self.connected_since) < cfg.ping_interval {
-            return HealthCheckOutcome::DoNothing;
-        }
-
-        todo!("remaining health check logic")
-    }
 }
 
 /// Active state for a connection/address.
@@ -353,16 +280,8 @@ pub struct OutgoingConfig {
     pub(crate) unblock_after: Duration,
     /// Safety timeout, after which a connection is no longer expected to finish dialing.
     pub(crate) sweep_timeout: Duration,
-    /// How often to send a ping to ensure a connection is established.
-    ///
-    /// The interval determines how soon after connecting or a successful ping another ping is sent.
-    pub(crate) ping_interval: Duration,
-    /// Duration during which a ping must succeed to be considered successful.
-    pub(crate) ping_timeout: Duration,
-    /// Number of attempts before giving up and disconnecting a peer due to too many failed pings.
-    pub(crate) ping_retries: u16,
-    /// How many spurious pongs to tolerate before banning a peer.
-    pub(crate) pong_limit: u32,
+    /// Health check configuration.
+    pub(crate) health: HealthConfig,
 }
 
 impl OutgoingConfig {
@@ -896,7 +815,7 @@ where
                         OutgoingState::Connected {
                             peer_id: node_id,
                             handle,
-                            health: Default::default()
+                            health: todo!("update `Successful` to carry timestamp and instantiate health here")
                         },
                     );
                     None
@@ -1006,7 +925,7 @@ mod tests {
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
     use crate::{
-        components::network::blocklist::BlocklistJustification,
+        components::network::{blocklist::BlocklistJustification, health::HealthConfig},
         testing::{init_logging, test_clock::TestClock},
     };
 
@@ -1026,10 +945,12 @@ mod tests {
             base_timeout: Duration::from_secs(1),
             unblock_after: Duration::from_secs(60),
             sweep_timeout: Duration::from_secs(45),
-            ping_interval: Duration::from_secs(5),
-            ping_timeout: Duration::from_secs(2),
-            ping_retries: 3,
-            pong_limit: 6,
+            health: HealthConfig {
+                ping_interval: Duration::from_secs(5),
+                ping_timeout: Duration::from_secs(2),
+                ping_retries: 3,
+                pong_limit: 6,
+            },
         }
     }
 

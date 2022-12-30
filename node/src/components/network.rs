@@ -31,6 +31,7 @@ mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod health;
 mod identity;
 mod insights;
 mod limiter;
@@ -87,6 +88,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    health::HealthConfig,
     limiter::Limiter,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -250,10 +252,12 @@ where
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
                 unblock_after: cfg.blocklist_retain_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
-                ping_interval: PING_INTERVAL,
-                ping_timeout: PING_TIMEOUT,
-                ping_retries: PING_RETRIES,
-                pong_limit: (1 + PING_RETRIES as u32) * 2,
+                health: HealthConfig {
+                    ping_interval: PING_INTERVAL,
+                    ping_timeout: PING_TIMEOUT,
+                    ping_retries: PING_RETRIES,
+                    pong_limit: (1 + PING_RETRIES as u32) * 2,
+                },
             },
             net_metrics.create_outgoing_metrics(),
         );
