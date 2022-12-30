@@ -945,12 +945,7 @@ mod tests {
             base_timeout: Duration::from_secs(1),
             unblock_after: Duration::from_secs(60),
             sweep_timeout: Duration::from_secs(45),
-            health: HealthConfig {
-                ping_interval: Duration::from_secs(5),
-                ping_timeout: Duration::from_secs(2),
-                ping_retries: 3,
-                pong_limit: 6,
-            },
+            health: HealthConfig::test_config(),
         }
     }
 
