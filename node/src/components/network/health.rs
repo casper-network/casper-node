@@ -55,6 +55,13 @@ pub(crate) struct TaggedTimestamp {
 #[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct Nonce(u32);
 
+impl rand::distributions::Distribution<Nonce> for rand::distributions::Standard {
+    #[inline(always)]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Nonce {
+        Nonce(rng.gen())
+    }
+}
+
 impl ConnectionHealth {
     /// Creates a new connection health instance, recording when the connection was established.
     pub(crate) fn new(connected_since: Instant) -> Self {
@@ -118,6 +125,7 @@ mod tests {
     use std::{collections::HashSet, time::Duration};
 
     use assert_matches::assert_matches;
+    use rand::Rng;
 
     use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig};
     use crate::{testing::test_clock::TestClock, types::NodeRng};
@@ -435,21 +443,208 @@ mod tests {
 
     #[test]
     fn ignores_unwanted_pongs() {
-        todo!()
+        let Fixtures {
+            mut clock,
+            cfg,
+            mut rng,
+            mut health,
+        } = fixtures();
+
+        clock.advance(Duration::from_secs(5));
+
+        let nonce_1 = assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(nonce) => nonce
+        );
+
+        // We have received `nonce_1`. Make the `ConnectionHealth` receive some unasked pongs,
+        // without exceeding the unasked pong limit.
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+
+        // The retry delay is 2 seconds (instead of 5 for the next pong after success), so ensure
+        // we retry due to not having received the correct nonce in the pong.
+
+        clock.advance(Duration::from_secs(2));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
     }
 
     #[test]
     fn ensure_excessive_pongs_result_in_ban() {
-        todo!()
-    }
+        let Fixtures {
+            mut clock,
+            cfg,
+            mut rng,
+            mut health,
+        } = fixtures();
 
-    #[test]
-    fn handles_missed_health_checks() {
-        todo!()
+        clock.advance(Duration::from_secs(5));
+
+        let nonce_1 = assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(nonce) => nonce
+        );
+
+        // We have received `nonce_1`. Make the `ConnectionHealth` receive some unasked pongs,
+        // without exceeding the unasked pong limit.
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+        // 6 unasked pongs is still okay.
+
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::DoNothing
+        );
+
+        assert!(health.record_pong(&cfg, clock.now(), rng.gen()));
+        // 7 is too much.
+
+        // For good measure, we expect the health check to also output a disconnect instruction.
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::GiveUp
+        );
     }
 
     #[test]
     fn time_reversal_does_not_crash_but_is_ignored() {
-        todo!()
+        // Usually a pong for a given (or any) nonce should always be received with a timestamp
+        // equal or later than the ping sent out. Due to a programming error or a lucky attacker +
+        // scheduling issue, there is a very minute chance this can actually happen.
+        //
+        // In these cases, the pongs should just be discarded, not crashing due to a underflow in
+        // the comparison.
+        let Fixtures {
+            mut clock,
+            cfg,
+            mut rng,
+            mut health,
+        } = fixtures();
+
+        clock.advance(Duration::from_secs(5));
+
+        let nonce_1 = assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(nonce) => nonce
+        );
+
+        // Ignore the nonce if sent in the past (and also don't crash).
+        clock.rewind(Duration::from_secs(1));
+        assert!(!health.record_pong(&cfg, clock.now(), nonce_1));
+        assert!(!health.record_pong(&cfg, clock.now(), rng.gen()));
+
+        // Another ping should be sent out, since `nonce_1` was ignored.
+        clock.advance(Duration::from_secs(2));
+        let nonce_2 = assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(nonce) => nonce
+        );
+
+        // Nonce 2 will be received seemingly before the connection was even established.
+        clock.rewind(Duration::from_secs(3600));
+        assert!(!health.record_pong(&cfg, clock.now(), nonce_2));
+    }
+
+    #[test]
+    fn handles_missed_health_checks() {
+        let Fixtures {
+            mut clock,
+            cfg,
+            mut rng,
+            mut health,
+        } = fixtures();
+
+        clock.advance(Duration::from_secs(15));
+
+        // We initially exceed our scheduled first ping by 10 seconds. This will cause the ping to
+        // be sent right there and then.
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
+
+        // Going forward 1 second should not change anything.
+        clock.advance(Duration::from_secs(1));
+
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::DoNothing
+        );
+
+        // After another second, two seconds have passed since sending the first ping in total, so
+        // send another once.
+        clock.advance(Duration::from_secs(1));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
+
+        // We have missed two pings total, now wait an hour. This will trigger the third ping.
+        clock.advance(Duration::from_secs(3600));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
+
+        // Fourth right after
+        clock.advance(Duration::from_secs(2));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
+
+        // Followed by a disconnect.
+        clock.advance(Duration::from_secs(2));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::GiveUp
+        );
+    }
+
+    #[test]
+    fn ignores_time_travel() {
+        // Any call of the health update with timestamps that are provably from the past (i.e.
+        // before a recorded timestamp like a previous ping) should be ignored.
+
+        let Fixtures {
+            mut clock,
+            cfg,
+            mut rng,
+            mut health,
+        } = fixtures();
+
+        clock.advance(Duration::from_secs(5));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
+
+        clock.rewind(Duration::from_secs(3));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::DoNothing
+        );
+
+        clock.advance(Duration::from_secs(6));
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::DoNothing
+        );
+        clock.advance(Duration::from_secs(1));
+
+        assert_matches!(
+            health.check_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
     }
 }
