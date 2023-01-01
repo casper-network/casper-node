@@ -137,28 +137,24 @@ impl ConnectionHealth {
 
         let send_ping = match self.last_ping_sent {
             Some(last_ping) => {
-                // There is a previous ping, check if it needs to be timed out.
-                if last_ping.timestamp() + cfg.ping_timeout <= now {
-                    self.ping_timeouts += 1;
-                    // Clear the `last_ping_sent`, schedule another to be sent.
-                    self.last_ping_sent = None;
-                    true
-                } else {
-                    let next_ping = match self.last_pong_received {
-                        Some(prev_pong) if prev_pong.nonce() == last_ping.nonce() => {
-                            // Normal operation. The next ping should be sent in a regular interval
-                            // after receiving the last pong.
-                            prev_pong.timestamp() + cfg.ping_interval
-                        }
+                match self.last_pong_received {
+                    Some(prev_pong) if prev_pong.nonce() == last_ping.nonce() => {
+                        // Normal operation. The next ping should be sent in a regular interval
+                        // after receiving the last pong.
+                        now >= prev_pong.timestamp() + cfg.ping_interval
+                    }
 
-                        _ => {
-                            // We have either never received a pong, or the one received does not
-                            // match the outstanding ping.
-                            last_ping.timestamp() + cfg.ping_timeout
+                    _ => {
+                        // No matching pong on record. Check if we need to timeout the ping.
+                        if now >= last_ping.timestamp() + cfg.ping_timeout {
+                            self.ping_timeouts += 1;
+                            // Clear the `last_ping_sent`, schedule another to be sent.
+                            self.last_ping_sent = None;
+                            true
+                        } else {
+                            false
                         }
-                    };
-
-                    now >= next_ping
+                    }
                 }
             }
             None => true,
