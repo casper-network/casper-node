@@ -87,7 +87,7 @@ impl TaggedTimestamp {
 //
 //       While we do check for consecutive ping nonces being generated, we still like the lower
 //       collision chance for repeated pings being sent.
-#[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub(crate) struct Nonce(u64);
 
 impl rand::distributions::Distribution<Nonce> for rand::distributions::Standard {
@@ -393,25 +393,25 @@ mod tests {
 
         nonce_set.insert(assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
-            HealthCheckOutcome::SendPing(nonce)
+            HealthCheckOutcome::SendPing(nonce) => nonce
         ));
         clock.advance(Duration::from_secs(2));
 
         nonce_set.insert(assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
-            HealthCheckOutcome::SendPing(nonce)
+            HealthCheckOutcome::SendPing(nonce) => nonce
         ));
         clock.advance(Duration::from_secs(2));
 
         nonce_set.insert(assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
-            HealthCheckOutcome::SendPing(nonce)
+            HealthCheckOutcome::SendPing(nonce) => nonce
         ));
         clock.advance(Duration::from_secs(2));
 
         nonce_set.insert(assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
-            HealthCheckOutcome::SendPing(nonce)
+            HealthCheckOutcome::SendPing(nonce) => nonce
         ));
 
         // Since it is a set, we expect less than 4 items if there were any duplicates.
