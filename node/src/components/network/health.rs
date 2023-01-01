@@ -137,26 +137,39 @@ impl ConnectionHealth {
 
         let send_ping = match self.last_ping_sent {
             Some(last_ping) => {
-                let next_ping = match self.last_pong_received {
-                    Some(prev_pong) if prev_pong.nonce() == last_ping.nonce() => {
-                        // Normal operation. The next ping should be sent in a regular interval
-                        // after receiving the last pong.
-                        prev_pong.timestamp() + cfg.ping_interval
-                    }
+                // There is a previous ping, check if it needs to be timed out.
+                if last_ping.timestamp() + cfg.ping_timeout <= now {
+                    self.ping_timeouts += 1;
+                    // Clear the `last_ping_sent`, schedule another to be sent.
+                    self.last_ping_sent = None;
+                    true
+                } else {
+                    let next_ping = match self.last_pong_received {
+                        Some(prev_pong) if prev_pong.nonce() == last_ping.nonce() => {
+                            // Normal operation. The next ping should be sent in a regular interval
+                            // after receiving the last pong.
+                            prev_pong.timestamp() + cfg.ping_interval
+                        }
 
-                    _ => {
-                        // We have either never received a pong, or the one received does not match
-                        // the outstanding ping.
-                        last_ping.timestamp() + cfg.ping_timeout
-                    }
-                };
+                        _ => {
+                            // We have either never received a pong, or the one received does not
+                            // match the outstanding ping.
+                            last_ping.timestamp() + cfg.ping_timeout
+                        }
+                    };
 
-                now >= next_ping
+                    now >= next_ping
+                }
             }
             None => true,
         };
 
         if send_ping {
+            if self.ping_timeouts > cfg.ping_retries as u32 {
+                // We have exceeded the timeouts and will give up as a result.
+                return HealthCheckOutcome::GiveUp;
+            }
+
             let ping = loop {
                 let candidate = TaggedTimestamp::new(rng, now);
 
