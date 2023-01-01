@@ -765,6 +765,23 @@ mod tests {
 
     #[test]
     fn duplicate_pong_immediately_terminates() {
-        todo!()
+        let Fixtures {
+            mut clock,
+            cfg,
+            mut rng,
+            mut health,
+        } = fixtures();
+
+        clock.advance(Duration::from_secs(5));
+        let nonce_1 = assert_matches!(
+            health.update_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(nonce) => nonce
+        );
+
+        clock.advance(Duration::from_secs(1));
+
+        // Recording the pong once is fine, but the second time should result in a ban.
+        assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), nonce_1)));
+        assert!(health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), nonce_1)));
     }
 }
