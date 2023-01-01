@@ -126,10 +126,12 @@ impl OutgoingStateInsight {
             } => OutgoingStateInsight::Connected {
                 peer_id: *peer_id,
                 peer_addr: handle.peer_addr,
-                last_ping_sent: health.last_ping_sent.map(|tt| anchor.convert(tt.timestamp)),
+                last_ping_sent: health
+                    .last_ping_sent
+                    .map(|tt| anchor.convert(tt.timestamp())),
                 last_pong_received: health
                     .last_pong_received
-                    .map(|tt| anchor.convert(tt.timestamp)),
+                    .map(|tt| anchor.convert(tt.timestamp())),
                 invalid_pong_count: health.invalid_pong_count,
                 rtt: health.calc_rrt(),
             },
