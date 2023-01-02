@@ -130,6 +130,11 @@ impl ConnectionHealth {
         cfg: &HealthConfig,
         now: Instant,
     ) -> HealthCheckOutcome {
+        // Having received too many pongs should always result in a disconnect.
+        if self.invalid_pong_count > cfg.pong_limit {
+            return HealthCheckOutcome::GiveUp;
+        }
+
         // Our honeymoon period is from first establishment of the connection until we send a ping.
         if now.duration_since(self.connected_since) < cfg.ping_interval {
             return HealthCheckOutcome::DoNothing;
