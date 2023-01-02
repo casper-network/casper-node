@@ -206,6 +206,8 @@ pub enum DialOutcome<H, E> {
         handle: H,
         /// The remote peer's authenticated node ID.
         node_id: NodeId,
+        /// The moment the connection was established.
+        when: Instant,
     },
     /// The connection attempt failed.
     Failed {
@@ -796,7 +798,7 @@ where
                 addr,
                 handle,
                 node_id,
-                ..
+                when
             } => {
                 info!("established outgoing connection");
 
@@ -815,7 +817,7 @@ where
                         OutgoingState::Connected {
                             peer_id: node_id,
                             handle,
-                            health: todo!("update `Successful` to carry timestamp and instantiate health here")
+                            health: ConnectionHealth::new(when),
                         },
                     );
                     None
@@ -1033,6 +1035,7 @@ mod tests {
                 addr: addr_a,
                 handle: 99,
                 node_id: id_a,
+                when: clock.now(),
             },)
             .is_none());
         assert_eq!(manager.metrics().out_state_connecting.get(), 0);
@@ -1242,6 +1245,7 @@ mod tests {
                 addr: addr_b,
                 handle: 101,
                 node_id: id_b,
+                when: clock.now(),
             },)
             .is_none());
         assert_eq!(manager.get_route(id_b), Some(&101));
@@ -1283,6 +1287,7 @@ mod tests {
                 addr: addr_c,
                 handle: 42,
                 node_id: id_c,
+                when: clock.now(),
             },)
         ));
 
@@ -1308,6 +1313,7 @@ mod tests {
                 addr: addr_b,
                 handle: 77,
                 node_id: id_b,
+                when: clock.now(),
             },)
             .is_none());
         assert!(manager
@@ -1315,6 +1321,7 @@ mod tests {
                 addr: addr_a,
                 handle: 66,
                 node_id: id_a,
+                when: clock.now(),
             },)
             .is_none());
 
@@ -1388,11 +1395,13 @@ mod tests {
             addr: addr_a,
             handle: 22,
             node_id: id_a,
+            when: clock.now(),
         });
         manager.handle_dial_outcome(DialOutcome::Successful {
             addr: addr_b,
             handle: 33,
             node_id: id_b,
+            when: clock.now(),
         });
 
         let mut peer_ids: Vec<_> = manager.connected_peers().collect();
@@ -1440,6 +1449,7 @@ mod tests {
                 addr: addr_a,
                 handle: 2,
                 node_id: id_a,
+                when: clock.now(),
             })
             .is_none());
 
@@ -1453,6 +1463,7 @@ mod tests {
                 addr: addr_a,
                 handle: 1,
                 node_id: id_a,
+                when: clock.now(),
             })
             .is_none());
 
