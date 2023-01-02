@@ -4,7 +4,10 @@
 //! has somewhat complicated logic that is encoded in the `ConnectionHealth` struct, which has
 //! multiple implicit states.
 
-use std::time::{Duration, Instant};
+use std::{
+    fmt::{self, Display, Formatter},
+    time::{Duration, Instant},
+};
 
 use datasize::DataSize;
 use rand::Rng;
@@ -89,6 +92,19 @@ impl TaggedTimestamp {
 //       collision chance for repeated pings being sent.
 #[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub(crate) struct Nonce(u64);
+
+impl Display for Nonce {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:016X}", self.0)
+    }
+}
+
+impl Nonce {
+    /// Convert the nonce into an integer.
+    pub(crate) fn into_inner(self) -> u64 {
+        self.0
+    }
+}
 
 impl rand::distributions::Distribution<Nonce> for rand::distributions::Standard {
     #[inline(always)]
