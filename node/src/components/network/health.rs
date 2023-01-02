@@ -281,9 +281,9 @@ mod tests {
 
     /// Sets up fixtures used in almost every test.
     fn fixtures() -> Fixtures {
-        let mut clock = TestClock::new();
+        let clock = TestClock::new();
         let cfg = HealthConfig::test_config();
-        let mut rng = crate::new_rng();
+        let rng = crate::new_rng();
 
         let health = ConnectionHealth::new(clock.now());
 
