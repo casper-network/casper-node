@@ -36,7 +36,7 @@ pub(crate) struct HealthConfig {
     pub(crate) ping_interval: Duration,
     /// Duration during which a ping must succeed to be considered successful.
     pub(crate) ping_timeout: Duration,
-    /// Number of attempts before giving up and disconnecting a peer due to too many failed pings.
+    /// Number of retries before giving up and disconnecting a peer due to too many failed pings.
     pub(crate) ping_retries: u16,
     /// How many spurious pongs to tolerate before banning a peer.
     pub(crate) pong_limit: u32,
@@ -222,8 +222,9 @@ impl ConnectionHealth {
         };
 
         if is_valid_pong {
-            // Our pong is valid, reset invalid count and record it.
+            // Our pong is valid, reset invalid and ping count, then record it.
             self.invalid_pong_count = 0;
+            self.ping_timeouts = 0;
             self.last_pong_received = Some(tt);
             false
         } else {
@@ -501,6 +502,13 @@ mod tests {
 
         // We miss two pings initially, before recovering.
         clock.advance(Duration::from_secs(5));
+
+        assert_matches!(
+            health.update_health(&mut rng, &cfg, clock.now()),
+            HealthCheckOutcome::SendPing(_)
+        );
+
+        clock.advance(Duration::from_secs(2));
 
         assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
