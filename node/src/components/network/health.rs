@@ -136,7 +136,7 @@ impl ConnectionHealth {
         }
 
         // Our honeymoon period is from first establishment of the connection until we send a ping.
-        if now.duration_since(self.connected_since) < cfg.ping_interval {
+        if now.saturating_duration_since(self.connected_since) < cfg.ping_interval {
             return HealthCheckOutcome::DoNothing;
         }
 
@@ -760,24 +760,24 @@ mod tests {
             mut health,
         } = fixtures();
 
-        clock.advance(Duration::from_secs(5));
+        clock.advance(Duration::from_secs(5)); // t = 5
         assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
             HealthCheckOutcome::SendPing(_)
         );
 
-        clock.rewind(Duration::from_secs(3));
+        clock.rewind(Duration::from_secs(3)); // t = 2
         assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
             HealthCheckOutcome::DoNothing
         );
 
-        clock.advance(Duration::from_secs(6));
+        clock.advance(Duration::from_secs(4)); // t = 6
         assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
             HealthCheckOutcome::DoNothing
         );
-        clock.advance(Duration::from_secs(1));
+        clock.advance(Duration::from_secs(1)); // t = 7
 
         assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
