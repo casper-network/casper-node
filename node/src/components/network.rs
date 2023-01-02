@@ -815,6 +815,13 @@ where
                         debug!("dropping connection, as requested");
                     })
                 }
+                DialRequest::SendPing {
+                    peer_id,
+                    nonce,
+                    span,
+                } => {
+                    todo!("handle send ping request")
+                }
             }
         }
 
@@ -1136,7 +1143,7 @@ where
             }
             (ComponentStatus::Initialized, Event::SweepOutgoing) => {
                 let now = Instant::now();
-                let requests = self.outgoing_manager.perform_housekeeping(now);
+                let requests = self.outgoing_manager.perform_housekeeping(rng, now);
 
                 let mut effects = self.process_dial_requests(requests);
 
