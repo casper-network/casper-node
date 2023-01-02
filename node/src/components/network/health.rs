@@ -668,7 +668,7 @@ mod tests {
             mut health,
         } = fixtures();
 
-        clock.advance(Duration::from_secs(5));
+        clock.advance(Duration::from_secs(5)); // t = 5
 
         let nonce_1 = assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
@@ -676,12 +676,12 @@ mod tests {
         );
 
         // Ignore the nonce if sent in the past (and also don't crash).
-        clock.rewind(Duration::from_secs(1));
+        clock.rewind(Duration::from_secs(1)); // t = 4
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), nonce_1)));
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
 
         // Another ping should be sent out, since `nonce_1` was ignored.
-        clock.advance(Duration::from_secs(2));
+        clock.advance(Duration::from_secs(3)); // t = 7
         let nonce_2 = assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
             HealthCheckOutcome::SendPing(nonce) => nonce
