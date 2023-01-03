@@ -59,6 +59,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 * Move `finality_threshold_fraction` from the `highway` to the `core` section in the chainspec.
 * Move `max_execution_delay` from the `highway` to the `consensus` section in the `config.toml`.
+* Connections to unresponsive nodes will be terminated, based on a watchdog feature.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
