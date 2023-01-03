@@ -1,6 +1,8 @@
 mod config;
 mod event;
 mod metrics;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
