@@ -129,6 +129,11 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Maximum time for a ping until it connections are severed.
+///
+/// If you are running a network under very extreme conditions, it may make sense to alter these
+/// values, but usually these values should require no changing.
+///
+/// `PING_TIMEOUT` should be less than `PING_INTERVAL` at all times.
 const PING_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// How many pings to send before giving up and dropping the connection.
