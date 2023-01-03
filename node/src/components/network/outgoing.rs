@@ -1692,7 +1692,7 @@ mod tests {
 
         assert!(manager
             .handle_dial_outcome(DialOutcome::Successful {
-                addr: addr,
+                addr,
                 handle: 1,
                 node_id: id,
                 when: clock.now(),
@@ -1807,7 +1807,7 @@ mod tests {
         assert!(dials(addr, &manager.learn_addr(addr, false, clock.now())));
         assert!(manager
             .handle_dial_outcome(DialOutcome::Successful {
-                addr: addr,
+                addr,
                 handle: 1,
                 node_id: id,
                 when: clock.now(),
