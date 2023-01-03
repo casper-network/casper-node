@@ -478,14 +478,30 @@ impl FinalizedBlock {
         self.deploy_hashes.iter().chain(&self.transfer_hashes)
     }
 
-    /// Generates a random instance using a `TestRng`.
+    /// Generates a random instance using a `TestRng` and includes specified deploys.
     #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random_with_deploys<'a, I: IntoIterator<Item = &'a Deploy>>(
+        rng: &mut TestRng,
+        deploys_iter: I,
+    ) -> Self {
         let era = rng.gen_range(0..5);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        FinalizedBlock::random_with_specifics(rng, EraId::from(era), height, is_switch, None)
+        FinalizedBlock::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            is_switch,
+            Timestamp::now(),
+            deploys_iter,
+        )
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        FinalizedBlock::random_with_deploys(rng, None)
     }
 
     #[cfg(any(feature = "testing", test))]
@@ -497,6 +513,7 @@ impl FinalizedBlock {
         era_id: EraId,
         height: u64,
         is_switch: bool,
+        timestamp: Timestamp,
         deploys_iter: I,
     ) -> Self {
         use std::iter;
@@ -513,8 +530,6 @@ impl FinalizedBlock {
             );
         }
         let random_bit = rng.gen();
-        // TODO - make Timestamp deterministic.
-        let timestamp = Timestamp::now();
         let block_payload = BlockPayload::new(deploys, vec![], vec![], random_bit);
 
         let era_report = if is_switch {
@@ -1415,9 +1430,12 @@ impl Block {
         Ok(())
     }
 
-    /// Generates a random instance using a `TestRng`.
+    /// Generates a random instance using a `TestRng` and includes specified deploys.
     #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random_with_deploys<'a, I: IntoIterator<Item = &'a Deploy>>(
+        rng: &mut TestRng,
+        deploys_iter: I,
+    ) -> Self {
         let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
@@ -1428,8 +1446,14 @@ impl Block {
             height,
             ProtocolVersion::V1_0_0,
             is_switch,
-            None,
+            deploys_iter,
         )
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Block::random_with_deploys(rng, None)
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
@@ -1444,8 +1468,14 @@ impl Block {
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let finalized_block =
-            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
+        let finalized_block = FinalizedBlock::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            is_switch,
+            Timestamp::now(),
+            deploys_iter,
+        );
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
             .clone()
@@ -1484,8 +1514,14 @@ impl Block {
             None => BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
         };
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let mut finalized_block =
-            FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch, deploys_iter);
+        let mut finalized_block = FinalizedBlock::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            is_switch,
+            Timestamp::now(),
+            deploys_iter,
+        );
         if !validator_weights.is_empty() {
             finalized_block.era_report = Box::new(Some(EraReport::default()));
         }
@@ -2536,6 +2572,7 @@ mod tests {
                     self.block.header().era_id(),
                     self.block.header().height() + 1,
                     is_switch_block,
+                    Timestamp::now(),
                     iter::empty(),
                 ),
                 validators,
