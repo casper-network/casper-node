@@ -88,7 +88,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
-    health::HealthConfig,
+    health::{HealthConfig, TaggedTimestamp},
     limiter::Limiter,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -819,9 +819,10 @@ where
                     peer_id,
                     nonce,
                     span,
-                } => {
-                    todo!("handle send ping request")
-                }
+                } => span.in_scope(|| {
+                    debug!("enqueuing ping to be sent");
+                    self.send_message(peer_id, Arc::new(Message::Ping { nonce }), None);
+                }),
             }
         }
 
@@ -846,6 +847,26 @@ where
                 // connection in the future instead.
                 warn!("received unexpected handshake");
                 Effects::new()
+            }
+            Message::Ping { nonce } => {
+                // Send a pong. Incoming pings and pongs are rate limited.
+
+                self.send_message(peer_id, Arc::new(Message::Pong { nonce }), None);
+                Effects::new()
+            }
+            Message::Pong { nonce } => {
+                // Record the time the pong arrived and forward it to outgoing.
+                let pong = TaggedTimestamp::from_parts(Instant::now(), nonce);
+                if self.outgoing_manager.record_pong(peer_id, pong) {
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            peer_id,
+                            BlocklistJustification::PongLimitExceeded,
+                        )
+                        .ignore()
+                } else {
+                    Effects::new()
+                }
             }
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()

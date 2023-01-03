@@ -17,7 +17,7 @@ use serde::{
 
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
-use super::counting_format::ConnectionId;
+use super::{counting_format::ConnectionId, health::Nonce};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -46,6 +46,16 @@ pub(crate) enum Message<P> {
         #[serde(default)]
         chainspec_hash: Option<Digest>,
     },
+    /// A ping request.
+    Ping {
+        /// The nonce to be returned with the pong.
+        nonce: Nonce,
+    },
+    /// A pong response.
+    Pong {
+        /// Nonce to match pong to ping.
+        nonce: Nonce,
+    },
     Payload(P),
 }
 
@@ -54,7 +64,9 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } => MessageKind::Protocol,
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
+                MessageKind::Protocol
+            }
             Message::Payload(payload) => payload.message_kind(),
         }
     }
@@ -63,7 +75,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn is_low_priority(&self) -> bool {
         match self {
-            Message::Handshake { .. } => false,
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
             Message::Payload(payload) => payload.is_low_priority(),
         }
     }
@@ -73,6 +85,10 @@ impl<P: Payload> Message<P> {
     pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Handshake { .. } => 0,
+            // Ping and Pong have a hardcoded weights. Since every ping will result in a pong being
+            // sent as a reply, it has a higher weight.
+            Message::Ping { .. } => 2,
+            Message::Pong { .. } => 1,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
         }
     }
@@ -81,7 +97,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
         match self {
-            Message::Handshake { .. } => false,
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
             Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
         }
     }
@@ -98,7 +114,7 @@ impl<P: Payload> Message<P> {
         REv: FromIncoming<P> + Send,
     {
         match self {
-            Message::Handshake { .. } => Err(self),
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => Err(self),
             Message::Payload(payload) => {
                 // Note: For now, the wrapping/unwrap of the payload is a bit unfortunate here.
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
@@ -277,6 +293,8 @@ impl<P: Display> Display for Message<P> {
                     OptDisplay::new(chainspec_hash.as_ref(), "none")
                 )
             }
+            Message::Ping { nonce } => write!(f, "ping({})", nonce),
+            Message::Pong { nonce } => write!(f, "pong({})", nonce),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
@@ -604,8 +622,8 @@ mod tests {
                 assert!(!is_syncing);
                 assert!(chainspec_hash.is_none())
             }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
+            Message::Payload(_) | Message::Ping { .. } | Message::Pong { .. } => {
+                panic!("did not expect modern handshake to deserialize to anything but")
             }
         }
     }
@@ -631,8 +649,8 @@ mod tests {
                 assert!(!is_syncing);
                 assert!(chainspec_hash.is_none())
             }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
+            Message::Payload(_) | Message::Ping { .. } | Message::Pong { .. } => {
+                panic!("did not expect modern handshake to deserialize to anything but")
             }
         }
     }
@@ -677,8 +695,8 @@ mod tests {
                 assert!(!is_syncing);
                 assert!(chainspec_hash.is_none())
             }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
+            Message::Payload(_) | Message::Ping { .. } | Message::Pong { .. } => {
+                panic!("did not expect modern handshake to deserialize to anything but")
             }
         }
     }
@@ -723,8 +741,8 @@ mod tests {
                 assert!(!is_syncing);
                 assert!(chainspec_hash.is_none())
             }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
+            Message::Payload(_) | Message::Ping { .. } | Message::Pong { .. } => {
+                panic!("did not expect modern handshake to deserialize to anything but")
             }
         }
     }

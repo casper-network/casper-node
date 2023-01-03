@@ -64,7 +64,6 @@ impl TaggedTimestamp {
     }
 
     /// Creates a new tagged timestamp from parts.
-    #[cfg(test)]
     pub(crate) fn from_parts(timestamp: Instant, nonce: Nonce) -> Self {
         TaggedTimestamp { nonce, timestamp }
     }
