@@ -961,150 +961,86 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (self.status.clone(), event) {
-            (ComponentStatus::Fatal(msg), _) => {
+        match &self.status {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
-                    "should not handle this event when network component has fatal error"
+                    ?event,
+                    name = <Self as InitializedComponent<REv>>::name(self),
+                    "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
             }
-            (ComponentStatus::InitializationPending, Event::Initialize) => {
-                match self.initialize(effect_builder) {
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as InitializedComponent<REv>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => match self.initialize(effect_builder) {
                     Ok(effects) => effects,
                     Err(error) => {
                         error!(%error, "failed to initialize network component");
-                        self.status = ComponentStatus::Fatal(error.to_string());
+                        self.status = ComponentState::Fatal(error.to_string());
                         Effects::new()
                     }
-                }
-            }
-            (ComponentStatus::Uninitialized | ComponentStatus::InitializationPending, _) => {
-                warn!("should not handle this event when network component is uninitialized");
+                },
+                _ => {
+                    warn!(
+                        ?event,
+                        name = <Self as InitializedComponent<REv>>::name(self),
+                        "should not handle this event when component is pending initialization"
+                    );
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::Initialize) => {
-                // noop
+            },
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as InitializedComponent<REv>>::name(self),
+                        "component already initialized"
+                    );
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::IncomingConnection { incoming, span }) => {
+                Event::IncomingConnection { incoming, span } => {
                 self.handle_incoming_connection(incoming, span)
             }
-            (ComponentStatus::Initialized, Event::IncomingMessage { peer_id, msg, span }) => {
+                Event::IncomingMessage { peer_id, msg, span } => {
                 self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
             }
-            (
-                ComponentStatus::Initialized,
                 Event::IncomingClosed {
                     result,
                     peer_id,
                     peer_addr,
                     span,
-                },
-            ) => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
-
-            (ComponentStatus::Initialized, Event::OutgoingConnection { outgoing, span }) => {
+                } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
+                Event::OutgoingConnection { outgoing, span } => {
                 self.handle_outgoing_connection(*outgoing, span)
             }
-
-            (ComponentStatus::Initialized, Event::OutgoingDropped { peer_id, peer_addr }) => {
+                Event::OutgoingDropped { peer_id, peer_addr } => {
                 self.handle_outgoing_dropped(*peer_id, peer_addr)
             }
-
-            (ComponentStatus::Initialized, Event::NetworkRequest { req }) => {
-                match *req {
-                    NetworkRequest::SendMessage {
-                        dest,
-                        payload,
-                        respond_after_queueing,
-                        auto_closing_responder,
-                    } => {
-                        // We're given a message to send. Pass on the responder so that confirmation
-                        // can later be given once the message has actually been buffered.
-                        self.net_metrics.direct_message_requests.inc();
-
-                        if respond_after_queueing {
-                            self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
-                            auto_closing_responder.respond(()).ignore()
-                        } else {
-                            self.send_message(
-                                *dest,
-                                Arc::new(Message::Payload(*payload)),
-                                Some(auto_closing_responder),
-                            );
-                            Effects::new()
-                        }
-                    }
-                    NetworkRequest::ValidatorBroadcast {
-                        payload,
-                        era_id,
-                        auto_closing_responder,
-                    } => {
-                        // We're given a message to broadcast.
-                        self.broadcast_message_to_validators(
-                            Arc::new(Message::Payload(*payload)),
-                            era_id,
-                        );
-                        auto_closing_responder.respond(()).ignore()
-                    }
-                    NetworkRequest::Gossip {
-                        payload,
-                        gossip_target,
-                        count,
-                        exclude,
-                        auto_closing_responder,
-                    } => {
-                        // We're given a message to gossip.
-                        let sent_to = self.gossip_message(
-                            rng,
-                            Arc::new(Message::Payload(*payload)),
-                            gossip_target,
-                            count,
-                            exclude,
-                        );
-                        auto_closing_responder.respond(sent_to).ignore()
-                    }
+                Event::NetworkRequest { req: request } => {
+                    self.handle_network_request(*request, rng)
                 }
+                Event::NetworkInfoRequest { req } => {
+                    return match *req {
+                        NetworkInfoRequest::Peers { responder } => {
+                            responder.respond(self.peers()).ignore()
             }
-            (ComponentStatus::Initialized, Event::NetworkInfoRequest { req }) => match *req {
-                NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
                 NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
                     .respond(self.fully_connected_peers_random(rng, count))
                     .ignore(),
                 NetworkInfoRequest::Insight { responder } => responder
                     .respond(NetworkInsights::collect_from_component(self))
                     .ignore(),
-            },
-            (ComponentStatus::Initialized, Event::PeerAddressReceived(gossiped_address)) => {
-                let requests = self.outgoing_manager.learn_addr(
-                    gossiped_address.into(),
-                    false,
-                    Instant::now(),
-                );
-                self.process_dial_requests(requests)
-            }
-            (
-                ComponentStatus::Initialized,
-                Event::BlocklistAnnouncement(PeerBehaviorAnnouncement::OffenseCommitted {
-                    offender,
-                    justification,
-                }),
-            ) => {
-                // TODO: We do not have a proper by-node-ID blocklist, but rather only block the
-                // current outgoing address of a peer.
-                info!(%offender, %justification, "adding peer to blocklist after transgression");
-
-                if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
-                    let requests =
-                        self.outgoing_manager
-                            .block_addr(addr, Instant::now(), *justification);
-                    self.process_dial_requests(requests)
-                } else {
-                    // Peer got away with it, no longer an outgoing connection.
-                    Effects::new()
                 }
             }
-            (ComponentStatus::Initialized, Event::GossipOurAddress) => {
+                Event::GossipOurAddress => {
                 let our_address = GossipedAddress::new(
                     self.context
                         .public_addr()
@@ -1121,7 +1057,15 @@ where
                 );
                 effects
             }
-            (ComponentStatus::Initialized, Event::SweepOutgoing) => {
+                Event::PeerAddressReceived(gossiped_address) => {
+                    let requests = self.outgoing_manager.learn_addr(
+                        gossiped_address.into(),
+                        false,
+                        Instant::now(),
+                    );
+                    self.process_dial_requests(requests)
+                }
+                Event::SweepOutgoing => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
 
@@ -1135,6 +1079,29 @@ where
 
                 effects
             }
+                Event::BlocklistAnnouncement(announcement) => match announcement {
+                    PeerBehaviorAnnouncement::OffenseCommitted {
+                        offender,
+                        justification,
+                    } => {
+                        // TODO: We do not have a proper by-node-ID blocklist, but rather only block
+                        // the current outgoing address of a peer.
+                        info!(%offender, %justification, "adding peer to blocklist after transgression");
+
+                        if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
+                            let requests = self.outgoing_manager.block_addr(
+                                addr,
+                                Instant::now(),
+                                *justification,
+                            );
+                            self.process_dial_requests(requests)
+                        } else {
+                            // Peer got away with it, no longer an outgoing connection.
+                            Effects::new()
+                        }
+                    }
+                },
+            },
         }
     }
 }

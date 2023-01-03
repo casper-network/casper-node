@@ -117,6 +117,14 @@ where
         event: Event,
     ) -> Effects<Event> {
         match &self.status {
+            ComponentStatus::Fatal(msg) => {
+                error!(msg,
+                    ?event,
+                    name = <DiagnosticsPort as InitializedComponent<MainEvent>>::name(&self),
+                    "should not handle this event when this component has fatal error"
+                );
+                return Effects::new();
+            }
             ComponentStatus::Uninitialized => {
                 warn!(
                     ?event,
@@ -136,12 +144,6 @@ where
                 }
             },
             ComponentStatus::Initialized => Effects::new(),
-            ComponentStatus::Fatal(msg) => {
-                error!(msg,
-                "DiagnosticsPort: should not handle this event when this component has fatal error"
-                );
-                return Effects::new();
-            }
         }
     }
 }

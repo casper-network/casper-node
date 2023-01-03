@@ -189,98 +189,91 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        // TODO: This is only required if we want to log the event. And we do to maintain
-        // consistency. This unnecessary allocation might be dodged by matching on `&event`,
-        // but this will cause a need for a major rewrite.
-        let event_description = format!("{:?}", event);
-
-        match (self.status.clone(), event) {
-            (ComponentStatus::Fatal(msg), _) => {
+        match &self.status {
+            ComponentStatus::Fatal(msg) => {
                 error!(
                     msg,
+                    ?event,
+                    name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
                     "should not handle this event when this component has fatal error"
                 );
-                Effects::new()
+                return Effects::new();
             }
-            (ComponentStatus::InitializationPending, Event::Initialize) => {
-                let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
-                self.status = status;
-                effects
-            }
-            (ComponentStatus::InitializationPending, _) => {
-                warn!("should not handle this event when component is pending initialization");
-                Effects::new()
-            }
-            (ComponentStatus::Uninitialized, _) => {
+            ComponentStatus::Uninitialized => {
                 warn!(
-                    event = event_description,
+                    ?event,
                     name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
                     "should not handle this event when component is uninitialized"
                 );
                 return Effects::new();
             }
-            (ComponentStatus::Initialized, Event::Initialize) => {
-                // noop
-                // a programmer error?
-                Effects::new()
-            }
-            (ComponentStatus::Initialized, Event::BlockAdded(block)) => {
-                self.broadcast(SseData::BlockAdded {
+            ComponentStatus::InitializationPending => match event {
+                Event::Initialize => {
+                    let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
+                    self.status = status;
+                    return effects;
+                }
+                _ => {
+                    warn!(
+                        ?event,
+                        name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                        "should not handle this event when component is pending initialization"
+                    );
+                    return Effects::new();
+                }
+            },
+            ComponentStatus::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                        "component already initialized"
+                    );
+                    return Effects::new();
+                }
+                Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
                     block: Box::new(JsonBlock::new(*block, None)),
-                })
-            }
-            (ComponentStatus::Initialized, Event::DeployAccepted(deploy)) => {
-                self.broadcast(SseData::DeployAccepted {
+                }),
+                Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
                     deploy: Arc::new(*deploy),
-                })
-            }
-            (
-                ComponentStatus::Initialized,
+                }),
                 Event::DeployProcessed {
                     deploy_hash,
                     deploy_header,
                     block_hash,
                     execution_result,
-                },
-            ) => self.broadcast(SseData::DeployProcessed {
-                deploy_hash: Box::new(deploy_hash),
-                account: Box::new(deploy_header.account().clone()),
-                timestamp: deploy_header.timestamp(),
-                ttl: deploy_header.ttl(),
-                dependencies: deploy_header.dependencies().clone(),
-                block_hash: Box::new(block_hash),
-                execution_result,
-            }),
-            (ComponentStatus::Initialized, Event::DeploysExpired(deploy_hashes)) => deploy_hashes
-                .into_iter()
-                .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
-                .collect(),
-            (
-                ComponentStatus::Initialized,
+                } => self.broadcast(SseData::DeployProcessed {
+                    deploy_hash: Box::new(deploy_hash),
+                    account: Box::new(deploy_header.account().clone()),
+                    timestamp: deploy_header.timestamp(),
+                    ttl: deploy_header.ttl(),
+                    dependencies: deploy_header.dependencies().clone(),
+                    block_hash: Box::new(block_hash),
+                    execution_result,
+                }),
+                Event::DeploysExpired(deploy_hashes) => deploy_hashes
+                    .into_iter()
+                    .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                    .collect(),
                 Event::Fault {
                     era_id,
                     public_key,
                     timestamp,
-                },
-            ) => self.broadcast(SseData::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            }),
-            (ComponentStatus::Initialized, Event::FinalitySignature(fs)) => {
-                self.broadcast(SseData::FinalitySignature(fs))
-            }
-            (
-                ComponentStatus::Initialized,
+                } => self.broadcast(SseData::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                }),
+                Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
                 Event::Step {
                     era_id,
                     execution_effect,
-                },
-            ) => self.broadcast(SseData::Step {
-                era_id,
-                execution_effect,
-            }),
+                } => self.broadcast(SseData::Step {
+                    era_id,
+                    execution_effect,
+                }),
+            },
         }
     }
 }

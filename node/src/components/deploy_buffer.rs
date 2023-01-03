@@ -542,33 +542,13 @@ where
     ) -> Effects<Self::Event> {
         match &self.status {
             ComponentStatus::Fatal(msg) => {
-                warn!(
+                error!(
                     msg,
+                    ?event,
+                    name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
                     "should not handle this event when this component has fatal error"
                 );
-                Effects::new()
-            }
-            ComponentStatus::InitializationPending => {
-                if let Event::Initialize(blocks) = event {
-                    for block in blocks {
-                        self.register_block(&block);
-                    }
-                    info!(
-                        "initialization of {} finished",
-                        <DeployBuffer as InitializedComponent<MainEvent>>::name(&self)
-                    );
-                    self.status = ComponentStatus::Initialized;
-                    // start self-expiry management on initialization
-                    effect_builder
-                        .set_timeout(self.cfg.expiry_check_interval().into())
-                        .event(move |_| Event::Expire)
-                } else {
-                    warn!(
-                        ?event,
-                        "should not handle this event when component is pending initialization"
-                    );
-                    Effects::new()
-                }
+                return Effects::new();
             }
             ComponentStatus::Uninitialized => {
                 warn!(
@@ -578,9 +558,39 @@ where
                 );
                 return Effects::new();
             }
+            ComponentStatus::InitializationPending => {
+                match event {
+                    Event::Initialize(blocks) => {
+                        for block in blocks {
+                            self.register_block(&block);
+                        }
+                        info!(
+                            "initialization of {} finished",
+                            <DeployBuffer as InitializedComponent<MainEvent>>::name(&self)
+                        );
+                        self.status = ComponentStatus::Initialized;
+                        // start self-expiry management on initialization
+                        effect_builder
+                            .set_timeout(self.cfg.expiry_check_interval().into())
+                            .event(move |_| Event::Expire)
+                    }
+                    _ => {
+                        warn!(
+                            ?event,
+                            name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
+                            "should not handle this event when component is pending initialization"
+                        );
+                        return Effects::new();
+                    }
+                }
+            }
             ComponentStatus::Initialized => match event {
                 Event::Initialize(_) => {
-                    warn!("deploy buffer already initialized");
+                    error!(
+                        ?event,
+                        name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
+                        "component already initialized"
+                    );
                     Effects::new()
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {

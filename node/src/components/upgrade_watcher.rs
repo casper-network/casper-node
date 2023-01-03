@@ -282,33 +282,47 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
+            ComponentStatus::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                    "should not handle this event when this component has fatal error"
+                );
+                return Effects::new();
+            }
+            ComponentStatus::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                    "should not handle this event when component is uninitialized"
+                );
+                return Effects::new();
+            }
             ComponentStatus::InitializationPending => match event {
                 Event::Initialize => self.start_checking_for_upgrades(effect_builder),
-                Event::Request(_) | Event::CheckForNextUpgrade | Event::GotNextUpgrade(_) => {
-                    warn!("should not handle this event when component is uninitialized");
-                    Effects::new()
+                _ => {
+                    warn!(
+                        ?event,
+                        name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                        "should not handle this event when component is pending initialization"
+                    );
+                    return Effects::new();
                 }
             },
-            ComponentStatus::Uninitialized => {
-                warn!("should not handle this event when component is uninitialized");
-                Effects::new()
-            }
             ComponentStatus::Initialized => match event {
                 Event::Initialize => {
-                    warn!("should not handle this event when component is initialized");
-                    Effects::new()
+                    error!(
+                        ?event,
+                        name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                        "component already initialized"
+                    );
+                    return Effects::new();
                 }
                 Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
                 Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
                 Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
             },
-            ComponentStatus::Fatal(msg) => {
-                error!(
-                    msg,
-                    "BlockSynchronizer: should not handle this event when this component has fatal error"
-                );
-                Effects::new()
-            }
         }
     }
 }

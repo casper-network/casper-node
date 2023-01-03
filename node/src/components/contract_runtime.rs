@@ -598,7 +598,7 @@ impl ContractRuntime {
 
         let metrics = Arc::new(Metrics::new(registry)?);
 
-        info!("initialization of ContractRuntime finished");
+        info!("initialization of contract_runtime finished");
         Ok(ContractRuntime {
             status: ComponentStatus::Initialized,
             execution_pre_state,
