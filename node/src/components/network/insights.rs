@@ -179,13 +179,15 @@ impl OutgoingStateInsight {
             } => {
                 let rtt_ms = rtt.map(|duration| duration.as_millis());
 
-                // TODO: Display last ping/pong and invalid pong count in a concise, but meaningful manner.
                 write!(
                     f,
-                    "connected -> {} @ {} (rtt {})",
+                    "connected -> {} @ {} (rtt {}, invalid {}, last ping/pong {}/{})",
                     peer_id,
                     peer_addr,
-                    OptDisplay::new(rtt_ms, "?")
+                    OptDisplay::new(rtt_ms, "?"),
+                    invalid_pong_count,
+                    OptDisplay::new(last_ping_sent.map(|t| time_delta(now, t)), "-"),
+                    OptDisplay::new(last_pong_received.map(|t| time_delta(now, t)), "-"),
                 )
             }
             OutgoingStateInsight::Blocked {
