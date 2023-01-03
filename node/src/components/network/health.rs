@@ -597,13 +597,13 @@ mod tests {
 
         clock.advance(Duration::from_secs(5));
 
-        let nonce_1 = assert_matches!(
+        assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
-            HealthCheckOutcome::SendPing(nonce) => nonce
+            HealthCheckOutcome::SendPing(_)
         );
 
-        // We have received `nonce_1`. Make the `ConnectionHealth` receive some unasked pongs,
-        // without exceeding the unasked pong limit.
+        // Make the `ConnectionHealth` receive some unasked pongs, without exceeding the unasked
+        // pong limit.
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
@@ -631,13 +631,13 @@ mod tests {
 
         clock.advance(Duration::from_secs(5));
 
-        let nonce_1 = assert_matches!(
+        assert_matches!(
             health.update_health(&mut rng, &cfg, clock.now()),
-            HealthCheckOutcome::SendPing(nonce) => nonce
+            HealthCheckOutcome::SendPing(_)
         );
 
-        // We have received `nonce_1`. Make the `ConnectionHealth` receive some unasked pongs,
-        // without exceeding the unasked pong limit.
+        // Make the `ConnectionHealth` receive some unasked pongs, without exceeding the unasked
+        // pong limit.
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
         assert!(!health.record_pong(&cfg, TaggedTimestamp::from_parts(clock.now(), rng.gen())));

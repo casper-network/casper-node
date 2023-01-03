@@ -1681,23 +1681,20 @@ mod tests {
         let mut rng = crate::new_rng();
         let mut clock = TestClock::new();
 
-        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
-        let id_a = NodeId::random(&mut rng);
+        let addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let id = NodeId::random(&mut rng);
 
         // Setup a connection and put it into the connected state.
         let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
 
         // Trigger a new connection via learning an address.
-        assert!(dials(
-            addr_a,
-            &manager.learn_addr(addr_a, false, clock.now())
-        ));
+        assert!(dials(addr, &manager.learn_addr(addr, false, clock.now())));
 
         assert!(manager
             .handle_dial_outcome(DialOutcome::Successful {
-                addr: addr_a,
+                addr: addr,
                 handle: 1,
-                node_id: id_a,
+                node_id: id,
                 when: clock.now(),
             })
             .is_none());
@@ -1721,6 +1718,7 @@ mod tests {
                     .as_slice(),
                 &[DialRequest::SendPing { nonce, peer_id, ..  }] => (nonce, peer_id)
             );
+            assert_eq!(peer_id, id);
 
             // After a second, nothing should have changed.
             assert!(manager
@@ -1739,7 +1737,7 @@ mod tests {
             );
 
             // Ensure the ID is correct.
-            assert_eq!(peer_id, id_a);
+            assert_eq!(peer_id, id);
 
             // Pong arrives 1 second later.
             clock.advance(Duration::from_secs(1));
@@ -1792,7 +1790,7 @@ mod tests {
             &[DialRequest::Disconnect { .. }, DialRequest::Dial { addr, .. }] => addr
         );
 
-        assert_eq!(dial_addr, addr_a);
+        assert_eq!(dial_addr, addr);
     }
 
     #[test]
