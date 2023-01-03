@@ -1024,6 +1024,7 @@ mod tests {
 
     use assert_matches::assert_matches;
     use datasize::DataSize;
+    use rand::Rng;
     use thiserror::Error;
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
@@ -1792,5 +1793,38 @@ mod tests {
         );
 
         assert_eq!(dial_addr, addr_a);
+    }
+
+    #[test]
+    fn indicates_issue_when_excessive_pongs_are_encountered() {
+        let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
+
+        let addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let id = NodeId::random(&mut rng);
+
+        // Ensure we have one connected node.
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
+
+        assert!(dials(addr, &manager.learn_addr(addr, false, clock.now())));
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Successful {
+                addr: addr,
+                handle: 1,
+                node_id: id,
+                when: clock.now(),
+            })
+            .is_none());
+
+        clock.advance(Duration::from_millis(50));
+
+        // We can now receive excessive pongs.
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
     }
 }
