@@ -35,7 +35,7 @@ pub(crate) struct ConnectionHealth {
 pub(crate) struct HealthConfig {
     /// How often to send a ping to ensure a connection is established.
     ///
-    /// The interval determines how soon after connecting or a successful ping another ping is sent.
+    /// Determines how soon after connecting or a successful ping another ping is sent.
     pub(crate) ping_interval: Duration,
     /// Duration during which a ping must succeed to be considered successful.
     pub(crate) ping_timeout: Duration,
