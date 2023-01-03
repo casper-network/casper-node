@@ -46,7 +46,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::Finalize,
+    reactor::{main_reactor::MainEvent, Finalize},
     types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
@@ -150,17 +150,18 @@ where
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
+            (ComponentStatus::InitializationPending, Event::Initialize) => {
                 let (effects, status) = self.bind(self.config.enable_server, effect_builder);
                 self.status = status;
                 effects
             }
-            (ComponentStatus::Uninitialized, _) => {
+            (ComponentStatus::Uninitialized | ComponentStatus::InitializationPending, _) => {
                 warn!("should not handle this event when component is uninitialized");
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 // noop
+                // a programmer error?
                 Effects::new()
             }
             (
@@ -244,6 +245,17 @@ where
 
     fn name(&self) -> &str {
         "rest_server"
+    }
+
+    fn start_initialization(&mut self) {
+        if <RestServer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            self.status = ComponentStatus::InitializationPending;
+        } else {
+            error!(
+                name = <RestServer as InitializedComponent<MainEvent>>::name(self),
+                "component must be uninitialized"
+            );
+        }
     }
 }
 

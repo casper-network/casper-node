@@ -18,7 +18,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{net::UnixListener, sync::watch};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
@@ -28,6 +28,7 @@ use crate::{
         requests::{NetworkInfoRequest, SetNodeStopRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    reactor::main_reactor::MainEvent,
     types::NodeRng,
     utils::umask,
     WithDir,
@@ -115,14 +116,31 @@ where
         _rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Event> {
-        match event {
-            Event::Initialize => {
-                if self.status != ComponentStatus::Uninitialized {
-                    return Effects::new();
+        match &self.status {
+            ComponentStatus::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <DiagnosticsPort as InitializedComponent<MainEvent>>::name(&self),
+                    "should not handle this event when component is uninitialized"
+                );
+                return Effects::new();
+            }
+            ComponentStatus::InitializationPending => match event {
+                Event::Initialize => {
+                    if self.status != ComponentStatus::InitializationPending {
+                        return Effects::new();
+                    }
+                    let (effects, status) = self.bind(self.config.value().enabled, effect_builder);
+                    self.status = status;
+                    effects
                 }
-                let (effects, status) = self.bind(self.config.value().enabled, effect_builder);
-                self.status = status;
-                effects
+            },
+            ComponentStatus::Initialized => Effects::new(),
+            ComponentStatus::Fatal(msg) => {
+                error!(msg,
+                "DiagnosticsPort: should not handle this event when this component has fatal error"
+                );
+                return Effects::new();
             }
         }
     }
@@ -143,6 +161,17 @@ where
 
     fn name(&self) -> &str {
         "diagnostics"
+    }
+
+    fn start_initialization(&mut self) {
+        if <DiagnosticsPort as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            self.status = ComponentStatus::InitializationPending;
+        } else {
+            error!(
+                name = <DiagnosticsPort as InitializedComponent<MainEvent>>::name(self),
+                "component must be uninitialized"
+            );
+        }
     }
 }
 
@@ -205,7 +234,7 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     }
 
     // This is not thread-safe, as it will set the umask for the entire process, but we assume that
-    // initalization happens "sufficiently single-threaded".
+    // initialization happens "sufficiently single-threaded".
     let umask_guard = umask::temp_umask(socket_umask);
     let listener = UnixListener::bind(socket_path)?;
     drop(umask_guard);

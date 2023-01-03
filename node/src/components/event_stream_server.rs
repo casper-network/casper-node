@@ -44,6 +44,7 @@ use super::Component;
 use crate::{
     components::{ComponentStatus, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
+    reactor::main_reactor::MainEvent,
     types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
@@ -188,6 +189,11 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        // TODO: This is only required if we want to log the event. And we do to maintain
+        // consistency. This unnecessary allocation might be dodged by matching on `&event`,
+        // but this will cause a need for a major rewrite.
+        let event_description = format!("{:?}", event);
+
         match (self.status.clone(), event) {
             (ComponentStatus::Fatal(msg), _) => {
                 error!(
@@ -196,17 +202,26 @@ where
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
+            (ComponentStatus::InitializationPending, Event::Initialize) => {
                 let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
                 self.status = status;
                 effects
             }
-            (ComponentStatus::Uninitialized, _) => {
-                warn!("should not handle this event when component is uninitialized");
+            (ComponentStatus::InitializationPending, _) => {
+                warn!("should not handle this event when component is pending initialization");
                 Effects::new()
+            }
+            (ComponentStatus::Uninitialized, _) => {
+                warn!(
+                    event = event_description,
+                    name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                    "should not handle this event when component is uninitialized"
+                );
+                return Effects::new();
             }
             (ComponentStatus::Initialized, Event::Initialize) => {
                 // noop
+                // a programmer error?
                 Effects::new()
             }
             (ComponentStatus::Initialized, Event::BlockAdded(block)) => {
@@ -280,6 +295,17 @@ where
 
     fn name(&self) -> &str {
         "event_stream_server"
+    }
+
+    fn start_initialization(&mut self) {
+        if <EventStreamServer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            self.status = ComponentStatus::InitializationPending;
+        } else {
+            error!(
+                name = <EventStreamServer as InitializedComponent<MainEvent>>::name(self),
+                "component must be uninitialized"
+            );
+        }
     }
 }
 

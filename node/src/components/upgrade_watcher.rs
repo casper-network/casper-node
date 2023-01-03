@@ -33,6 +33,7 @@ use crate::{
         announcements::UpgradeWatcherAnnouncement, requests::UpgradeWatcherRequest, EffectBuilder,
         EffectExt, Effects,
     },
+    reactor::main_reactor::MainEvent,
     types::{
         chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
         ActivationPoint, Chainspec,
@@ -209,9 +210,13 @@ impl UpgradeWatcher {
     where
         REv: From<UpgradeWatcherAnnouncement> + Send,
     {
-        if self.status != ComponentStatus::Uninitialized {
+        if self.status != ComponentStatus::InitializationPending {
             return Effects::new();
         }
+        info!(
+            "initialization of {} finished",
+            <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self)
+        );
         self.status = ComponentStatus::Initialized;
         self.check_for_next_upgrade(effect_builder)
     }
@@ -276,11 +281,34 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::Initialize => self.start_checking_for_upgrades(effect_builder),
-            Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
-            Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
-            Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
+        match &self.status {
+            ComponentStatus::InitializationPending => match event {
+                Event::Initialize => self.start_checking_for_upgrades(effect_builder),
+                Event::Request(_) | Event::CheckForNextUpgrade | Event::GotNextUpgrade(_) => {
+                    warn!("should not handle this event when component is uninitialized");
+                    Effects::new()
+                }
+            },
+            ComponentStatus::Uninitialized => {
+                warn!("should not handle this event when component is uninitialized");
+                Effects::new()
+            }
+            ComponentStatus::Initialized => match event {
+                Event::Initialize => {
+                    warn!("should not handle this event when component is initialized");
+                    Effects::new()
+                }
+                Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
+                Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
+                Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
+            },
+            ComponentStatus::Fatal(msg) => {
+                error!(
+                    msg,
+                    "BlockSynchronizer: should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
         }
     }
 }
@@ -294,6 +322,17 @@ where
 
     fn name(&self) -> &str {
         "upgrade_watcher"
+    }
+
+    fn start_initialization(&mut self) {
+        if <UpgradeWatcher as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            self.status = ComponentStatus::InitializationPending;
+        } else {
+            error!(
+                name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(self),
+                "component must be uninitialized"
+            );
+        }
     }
 }
 

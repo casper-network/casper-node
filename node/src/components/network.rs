@@ -101,7 +101,8 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::{Finalize, ReactorEvent},
+    protocol,
+    reactor::{main_reactor::MainEvent, Finalize, ReactorEvent},
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
@@ -367,6 +368,10 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
+        info!(
+            "initialization of {} finished",
+            "Network" // todo: use proper call to `name()`
+        );
         self.status = ComponentStatus::Initialized;
         Ok(effects)
     }
@@ -964,7 +969,7 @@ where
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
+            (ComponentStatus::InitializationPending, Event::Initialize) => {
                 match self.initialize(effect_builder) {
                     Ok(effects) => effects,
                     Err(error) => {
@@ -974,7 +979,7 @@ where
                     }
                 }
             }
-            (ComponentStatus::Uninitialized, _) => {
+            (ComponentStatus::Uninitialized | ComponentStatus::InitializationPending, _) => {
                 warn!("should not handle this event when network component is uninitialized");
                 Effects::new()
             }
@@ -1151,6 +1156,14 @@ where
 
     fn name(&self) -> &str {
         "network"
+    }
+
+    fn start_initialization(&mut self) {
+        if self.is_uninitialized() {
+            self.status = ComponentStatus::InitializationPending;
+        } else {
+            error!(name = self.name(), "component must be uninitialized");
+        }
     }
 }
 

@@ -41,7 +41,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::{self},
+    reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
@@ -1028,6 +1028,17 @@ where
     fn name(&self) -> &str {
         "block_synchronizer"
     }
+
+    fn start_initialization(&mut self) {
+        if <BlockSynchronizer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            self.status = ComponentStatus::InitializationPending;
+        } else {
+            error!(
+                name = <BlockSynchronizer as InitializedComponent<MainEvent>>::name(self),
+                "component must be uninitialized"
+            );
+        }
+    }
 }
 
 impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
@@ -1047,17 +1058,29 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 );
                 return Effects::new();
             }
-            ComponentStatus::Uninitialized => {
+            ComponentStatus::InitializationPending => {
                 return if matches!(event, Event::Initialize) {
                     self.status = ComponentStatus::Initialized;
+                    info!(
+                        "initialization of {} finished",
+                        <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self)
+                    );
                     // start dishonest peer management on initialization
                     effect_builder
                         .set_timeout(self.config.disconnect_dishonest_peers_interval().into())
                         .event(move |_| Event::Request(BlockSynchronizerRequest::DishonestPeers))
                 } else {
-                    warn!("BlockSynchronizer: should not handle this event when component is uninitialized");
+                    warn!("BlockSynchronizer: should not handle this event when component initialization is pending");
                     Effects::new()
                 };
+            }
+            ComponentStatus::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self),
+                    "should not handle this event when component is uninitialized"
+                );
+                return Effects::new();
             }
             ComponentStatus::Initialized => (),
         }

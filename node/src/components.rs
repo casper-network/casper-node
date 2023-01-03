@@ -70,6 +70,7 @@ pub(crate) mod upgrade_watcher;
 use datasize::DataSize;
 use serde::Deserialize;
 use std::fmt::{Debug, Display};
+use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
@@ -80,6 +81,7 @@ use crate::{
 pub(crate) enum ComponentStatus {
     #[default]
     Uninitialized,
+    InitializationPending,
     Initialized,
     Fatal(String),
 }
@@ -139,6 +141,8 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
         matches!(self.status(), ComponentStatus::Fatal(_))
     }
 
+    fn start_initialization(&mut self);
+
     fn name(&self) -> &str;
 }
 
@@ -152,11 +156,15 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         effect_builder: EffectBuilder<REv>,
     ) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
         if !enabled {
+            info!("initialization of {} finished", self.name());
             return (Effects::new(), ComponentStatus::Initialized);
         }
 
         match self.listen(effect_builder) {
-            Ok(effects) => (effects, ComponentStatus::Initialized),
+            Ok(effects) => {
+                info!("initialization of {} finished", self.name());
+                (effects, ComponentStatus::Initialized)
+            }
             Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error))),
         }
     }

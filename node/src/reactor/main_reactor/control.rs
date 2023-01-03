@@ -255,37 +255,6 @@ impl MainReactor {
             return Some(effects);
         }
 
-        /*
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
-        {
-            let blocks = match self.storage.read_blocks_for_replay_protection() {
-                Ok(blocks) => blocks,
-                Err(err) => {
-                    return Some(
-                        fatal!(
-                            effect_builder,
-                            "fatal block store error when attempting to read highest blocks: {}",
-                            err
-                        )
-                        .ignore(),
-                    )
-                }
-            };
-            debug!(
-                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
-                "DeployBuffer: initialization"
-            );
-            let event = deploy_buffer::Event::Initialize(blocks);
-            if let Some(effects) = utils::initialize_component(
-                effect_builder,
-                &mut self.deploy_buffer,
-                MainEvent::DeployBuffer(event),
-            ) {
-                return Some(effects);
-            }
-        }
-        */
-
         // bring up rpc server near-to-last to defer complications (such as put_deploy)
         if let Some(effects) = utils::initialize_component(
             effect_builder,
