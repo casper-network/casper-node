@@ -99,13 +99,6 @@ impl Display for Nonce {
     }
 }
 
-impl Nonce {
-    /// Convert the nonce into an integer.
-    pub(crate) fn into_inner(self) -> u64 {
-        self.0
-    }
-}
-
 impl rand::distributions::Distribution<Nonce> for rand::distributions::Standard {
     #[inline(always)]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Nonce {
