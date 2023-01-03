@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.  The format
 * Update the default `control_flow` opcode cost from `440` to `440000`.
 
 
+
 ## 2.0.1
 
 ### Security

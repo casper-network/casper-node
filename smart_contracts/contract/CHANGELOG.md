@@ -14,11 +14,16 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Add `named_dictionary_get` and `named_dictionary_put` to the storage component of the contract API.
+* Support fetching the calling account's authorization keys via the new function `runtime::list_authorization_keys` which calls the new `ext_ffi::casper_load_authorization_keys`.
+* Support providing 32 random bytes via the new function `runtime::random_bytes` which calls the new `ext_ffi::casper_random_bytes`.
+* Add `storage::read_from_key` for reading a value under a given `Key`.
+* Add `storage::dictionary_read` for reading a value from a dictionary under a given `Key`, calling the new `ext_ffi::casper_dictionary_read`.
+* Add `storage::named_dictionary_put` for writing a named value to a named dictionary.
+* Add `storage::named_dictionary_get` for reading a named value from a named dictionary.
 
 ### Changed
-* Increased `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
-* Update pinned version of Rust to `nightly-2022-01-13`.
+* Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+* Update pinned version of Rust to `nightly-2022-08-03`.
 
 
 
