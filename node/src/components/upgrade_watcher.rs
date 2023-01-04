@@ -301,7 +301,7 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => self.start_checking_for_upgrades(effect_builder),
-                _ => {
+                Event::Request(_) | Event::CheckForNextUpgrade | Event::GotNextUpgrade(_) => {
                     warn!(
                         ?event,
                         name = <Self as InitializedComponent<MainEvent>>::name(self),

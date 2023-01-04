@@ -213,7 +213,13 @@ where
                     self.status = status;
                     effects
                 }
-                _ => {
+                Event::BlockAdded(_)
+                | Event::DeployAccepted(_)
+                | Event::DeployProcessed { .. }
+                | Event::DeploysExpired(_)
+                | Event::Fault { .. }
+                | Event::FinalitySignature(_)
+                | Event::Step { .. } => {
                     warn!(
                         ?event,
                         name = <Self as InitializedComponent<MainEvent>>::name(self),

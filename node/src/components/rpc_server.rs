@@ -246,7 +246,15 @@ where
                     self.status = status;
                     effects
                 }
-                _ => {
+                Event::RpcRequest(_)
+                | Event::GetBlockResult { .. }
+                | Event::GetBlockTransfersResult { .. }
+                | Event::QueryGlobalStateResult { .. }
+                | Event::QueryEraValidatorsResult { .. }
+                | Event::GetBidsResult { .. }
+                | Event::GetDeployResult { .. }
+                | Event::GetPeersResult { .. }
+                | Event::GetBalanceResult { .. } => {
                     warn!(
                         ?event,
                         name = <Self as InitializedComponent<MainEvent>>::name(self),

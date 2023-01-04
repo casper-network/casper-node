@@ -1076,7 +1076,24 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                                 Event::Request(BlockSynchronizerRequest::DishonestPeers)
                             })
                     }
-                    _ => {
+                    Event::Request(_)
+                    | Event::DisconnectFromPeer(_)
+                    | Event::MadeFinalizedBlock { .. }
+                    | Event::MarkBlockExecutionEnqueued(_)
+                    | Event::MarkBlockCompleted(_)
+                    | Event::ValidatorMatrixUpdated
+                    | Event::BlockHeaderFetched(_)
+                    | Event::BlockFetched(_)
+                    | Event::ApprovalsHashesFetched(_)
+                    | Event::FinalitySignatureFetched(_)
+                    | Event::GlobalStateSynced { .. }
+                    | Event::GotExecutionResultsChecksum { .. }
+                    | Event::DeployFetched { .. }
+                    | Event::ExecutionResultsFetched { .. }
+                    | Event::ExecutionResultsStored(_)
+                    | Event::AccumulatedPeers(_, _)
+                    | Event::NetworkPeers(_, _)
+                    | Event::GlobalStateSynchronizer(_) => {
                         warn!(
                             ?event,
                             name = <Self as InitializedComponent<MainEvent>>::name(self),

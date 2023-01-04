@@ -1044,7 +1044,17 @@ where
                         Effects::new()
                     }
                 },
-                _ => {
+                Event::IncomingConnection { .. }
+                | Event::IncomingMessage { .. }
+                | Event::IncomingClosed { .. }
+                | Event::OutgoingConnection { .. }
+                | Event::OutgoingDropped { .. }
+                | Event::NetworkRequest { .. }
+                | Event::NetworkInfoRequest { .. }
+                | Event::GossipOurAddress
+                | Event::PeerAddressReceived(_)
+                | Event::SweepOutgoing
+                | Event::BlocklistAnnouncement(_) => {
                     warn!(
                         ?event,
                         name = <Self as InitializedComponent<REv>>::name(self),

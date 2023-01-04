@@ -166,7 +166,7 @@ where
                     self.status = status;
                     effects
                 }
-                _ => {
+                Event::RestRequest(_) | Event::GetMetricsResult { .. } => {
                     warn!(
                         ?event,
                         name = <Self as InitializedComponent<MainEvent>>::name(self),

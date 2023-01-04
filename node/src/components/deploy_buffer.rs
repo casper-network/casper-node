@@ -567,7 +567,13 @@ where
                             .set_timeout(self.cfg.expiry_check_interval().into())
                             .event(move |_| Event::Expire)
                     }
-                    _ => {
+                    Event::Request(_)
+                    | Event::ReceiveDeployGossiped(_)
+                    | Event::StoredDeploy(_, _)
+                    | Event::BlockProposed(_)
+                    | Event::Block(_)
+                    | Event::BlockFinalized(_)
+                    | Event::Expire => {
                         warn!(
                             ?event,
                             name = <Self as InitializedComponent<MainEvent>>::name(self),
