@@ -248,10 +248,16 @@ impl SyncLeaper {
             Some(activity) => {
                 let result = activity.status();
                 if result.active() == false {
-                    if matches!(result, LeapStatus::Received { .. }) {
-                        self.metrics
-                            .sync_leap_duration
-                            .observe(activity.leap_start.elapsed().as_secs_f64());
+                    match result {
+                        LeapStatus::Received { .. } | LeapStatus::Failed { .. } => {
+                            self.metrics
+                                .sync_leap_duration
+                                .observe(activity.leap_start.elapsed().as_secs_f64());
+                        }
+                        LeapStatus::Idle | LeapStatus::Awaiting { .. } => {
+                            // should be unreachable
+                            error!(status = %result, ?activity, "sync leaper has inconsistent status");
+                        }
                     }
                     self.leap_activity = None;
                 }

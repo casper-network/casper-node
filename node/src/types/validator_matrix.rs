@@ -360,23 +360,44 @@ mod tests {
         {
             assert!(validator_matrix.register_era_validator_weights(evw));
         }
+        // For a `MAX_VALIDATOR_MATRIX_ENTRIES` value of 6, the validator
+        // matrix should contain eras 0 through 5 inclusive.
+        assert_eq!(
+            vec![0u64, 1, 2, 3, 4, 5],
+            validator_matrix
+                .read_inner()
+                .keys()
+                .copied()
+                .map(EraId::value)
+                .collect::<Vec<u64>>()
+        );
 
         // Now that we have 6 entries in the validator matrix, try adding more.
         // We should have an entry for era 3 (we have eras 0 through 5
         // inclusive).
         assert!(validator_matrix.has_era(&(MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2).into()));
-        // Add era 7.
+        // Add era 7, which would be the 7th entry in the matrix. Skipping era
+        // 6 should have no effect on the pruning.
         era_validator_weights.push(empty_era_validator_weights(
             (MAX_VALIDATOR_MATRIX_ENTRIES as u64 + 1).into(),
         ));
         // Now the entry for era 3 should be dropped and we should be left with
-        // the 3 lowest eras [0, 1, 2] and 3 highest eras [4, 5, 6].
+        // the 3 lowest eras [0, 1, 2] and 3 highest eras [4, 5, 7].
         assert!(validator_matrix
             .register_era_validator_weights(era_validator_weights.last().cloned().unwrap()));
         assert!(!validator_matrix.has_era(&(MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2).into()));
         assert_eq!(
             validator_matrix.read_inner().len(),
             MAX_VALIDATOR_MATRIX_ENTRIES
+        );
+        assert_eq!(
+            vec![0u64, 1, 2, 4, 5, 7],
+            validator_matrix
+                .read_inner()
+                .keys()
+                .copied()
+                .map(EraId::value)
+                .collect::<Vec<u64>>()
         );
 
         // Adding existing eras shouldn't change the state.
