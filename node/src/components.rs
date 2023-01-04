@@ -152,7 +152,7 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
         if self.is_uninitialized() {
             self.set_status(ComponentState::Initializing);
         } else {
-            error!(name = self.name(), "component must be uninitialized");
+            info!(name = self.name(), "component must be uninitialized");
         }
     }
 
