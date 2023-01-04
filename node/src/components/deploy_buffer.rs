@@ -44,6 +44,8 @@ pub(crate) use event::Event;
 
 use metrics::Metrics;
 
+const COMPONENT_NAME: &str = "deploy_buffer";
+
 type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
 
 #[derive(DataSize, Debug)]
@@ -106,7 +108,7 @@ impl DeployBuffer {
         if <Self as InitializedComponent<MainEvent>>::is_uninitialized(self) {
             info!(
                 "pending initialization of {}",
-                <Self as InitializedComponent<MainEvent>>::name(self)
+                <Self as Component<MainEvent>>::name(self)
             );
             <Self as InitializedComponent<MainEvent>>::set_state(
                 self,
@@ -129,10 +131,7 @@ impl DeployBuffer {
                 blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
                 "DeployBuffer: initialization"
             );
-            info!(
-                "initialized {}",
-                <Self as InitializedComponent<MainEvent>>::name(self)
-            );
+            info!("initialized {}", <Self as Component<MainEvent>>::name(self));
             let event = Event::Initialize(blocks);
             return Some(smallvec![async {
                 smallvec![MainEvent::DeployBuffer(event)]
@@ -144,7 +143,7 @@ impl DeployBuffer {
                 fatal!(
                     effect_builder,
                     "{} failed to initialize",
-                    <Self as InitializedComponent<MainEvent>>::name(self)
+                    <Self as Component<MainEvent>>::name(self)
                 )
                 .ignore(),
             );
@@ -515,14 +514,10 @@ where
         &self.state
     }
 
-    fn name(&self) -> &str {
-        "deploy_buffer"
-    }
-
     fn set_state(&mut self, new_state: ComponentState) {
         info!(
             ?new_state,
-            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            name = <Self as Component<MainEvent>>::name(self),
             "component state changed"
         );
 
@@ -547,7 +542,7 @@ where
                 error!(
                     msg,
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
@@ -555,7 +550,7 @@ where
             ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
                 Effects::new()
@@ -584,7 +579,7 @@ where
                     | Event::Expire => {
                         warn!(
                             ?event,
-                            name = <Self as InitializedComponent<MainEvent>>::name(self),
+                            name = <Self as Component<MainEvent>>::name(self),
                             "should not handle this event when component is pending initialization"
                         );
                         Effects::new()
@@ -595,7 +590,7 @@ where
                 Event::Initialize(_) => {
                     error!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "component already initialized"
                     );
                     Effects::new()
@@ -633,5 +628,9 @@ where
                 Event::Expire => self.expire(effect_builder),
             },
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

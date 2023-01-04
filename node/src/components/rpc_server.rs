@@ -60,6 +60,8 @@ pub use config::Config;
 pub(crate) use event::Event;
 pub use speculative_exec_config::Config as SpeculativeExecConfig;
 
+const COMPONENT_NAME: &str = "rpc_server";
+
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
     From<Event>
@@ -227,7 +229,7 @@ where
                 error!(
                     msg,
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
@@ -235,7 +237,7 @@ where
             ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
                 Effects::new()
@@ -257,7 +259,7 @@ where
                 | Event::GetBalanceResult { .. } => {
                     warn!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
                     Effects::new()
@@ -267,7 +269,7 @@ where
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "component already initialized"
                     );
                     Effects::new()
@@ -492,6 +494,10 @@ where
             },
         }
     }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 }
 
 impl<REv> InitializedComponent<REv> for RpcServer
@@ -502,14 +508,10 @@ where
         &self.state
     }
 
-    fn name(&self) -> &str {
-        "rpc_server"
-    }
-
     fn set_state(&mut self, new_state: ComponentState) {
         info!(
             ?new_state,
-            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            name = <Self as Component<MainEvent>>::name(self),
             "component state changed"
         );
 

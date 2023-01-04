@@ -38,6 +38,8 @@ use gossip_table::{GossipAction, GossipTable};
 pub(crate) use message::Message;
 use metrics::Metrics;
 
+const COMPONENT_NAME: &str = "gossiper";
+
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
 pub(crate) trait ReactorEventT<T>:
@@ -643,6 +645,10 @@ where
         };
         self.update_gossip_table_metrics();
         effects
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

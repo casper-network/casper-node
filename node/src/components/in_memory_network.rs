@@ -301,6 +301,8 @@ use crate::{
 
 use super::network::FromIncoming;
 
+const COMPONENT_NAME: &str = "in_memory_network";
+
 /// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
@@ -591,6 +593,10 @@ where
                 }
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

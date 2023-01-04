@@ -108,6 +108,8 @@ use crate::{
     NodeRng,
 };
 
+const COMPONENT_NAME: &str = "network";
+
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
@@ -1019,7 +1021,7 @@ where
                 error!(
                     msg,
                     ?event,
-                    name = <Self as InitializedComponent<REv>>::name(self),
+                    name = <Self as Component<REv>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
@@ -1027,7 +1029,7 @@ where
             ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <Self as InitializedComponent<REv>>::name(self),
+                    name = <Self as Component<REv>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
                 Effects::new()
@@ -1057,7 +1059,7 @@ where
                 | Event::BlocklistAnnouncement(_) => {
                     warn!(
                         ?event,
-                        name = <Self as InitializedComponent<REv>>::name(self),
+                        name = <Self as Component<REv>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
                     Effects::new()
@@ -1067,7 +1069,7 @@ where
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <Self as InitializedComponent<REv>>::name(self),
+                        name = <Self as Component<REv>>::name(self),
                         "component already initialized"
                     );
                     Effects::new()
@@ -1170,6 +1172,10 @@ where
             },
         }
     }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 }
 
 impl<REv, P> InitializedComponent<REv> for Network<REv, P>
@@ -1187,14 +1193,10 @@ where
         &self.state
     }
 
-    fn name(&self) -> &str {
-        "network"
-    }
-
     fn set_state(&mut self, new_state: ComponentState) {
         info!(
             ?new_state,
-            name = <Self as InitializedComponent<REv>>::name(self),
+            name = <Self as Component<REv>>::name(self),
             "component state changed"
         );
 

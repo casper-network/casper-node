@@ -64,6 +64,8 @@ pub(crate) use types::{
     BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
 };
 
+const COMPONENT_NAME: &str = "contract_runtime";
+
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
 #[derive(Debug, Error, From)]
 pub(crate) enum ContractRuntimeError {
@@ -233,6 +235,10 @@ where
             }
             Event::TrieDemand(demand) => self.handle_trie_demand(demand),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

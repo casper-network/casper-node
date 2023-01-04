@@ -41,6 +41,8 @@ use crate::{
     NodeRng,
 };
 
+const COMPONENT_NAME: &str = "upgrade_watcher";
+
 const DEFAULT_UPGRADE_CHECK_INTERVAL: &str = "30sec";
 
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -282,7 +284,7 @@ where
                 error!(
                     msg,
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
@@ -290,7 +292,7 @@ where
             ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
                 Effects::new()
@@ -300,7 +302,7 @@ where
                 Event::Request(_) | Event::CheckForNextUpgrade | Event::GotNextUpgrade(_) => {
                     warn!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
                     Effects::new()
@@ -310,7 +312,7 @@ where
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "component already initialized"
                     );
                     Effects::new()
@@ -321,6 +323,10 @@ where
             },
         }
     }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 }
 impl<REv> InitializedComponent<REv> for UpgradeWatcher
 where
@@ -330,14 +336,10 @@ where
         &self.state
     }
 
-    fn name(&self) -> &str {
-        "upgrade_watcher"
-    }
-
     fn set_state(&mut self, new_state: ComponentState) {
         info!(
             ?new_state,
-            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            name = <Self as Component<MainEvent>>::name(self),
             "component state changed"
         );
 

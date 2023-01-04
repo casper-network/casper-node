@@ -42,6 +42,8 @@ use crate::{
 
 pub(crate) use event::{Event, EventMetadata};
 
+const COMPONENT_NAME: &str = "deploy_acceptor";
+
 const ARG_TARGET: &str = "target";
 
 #[derive(Debug, Error, Serialize)]
@@ -1005,5 +1007,9 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 verification_start_timestamp,
             ),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

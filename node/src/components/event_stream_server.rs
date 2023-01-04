@@ -55,6 +55,8 @@ use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 pub(crate) use sse_server::SseData;
 
+const COMPONENT_NAME: &str = "event_stream_server";
+
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
 /// <https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging> for further details).  The
@@ -194,7 +196,7 @@ where
                 error!(
                     msg,
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
@@ -202,7 +204,7 @@ where
             ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
                 Effects::new()
@@ -222,7 +224,7 @@ where
                 | Event::Step { .. } => {
                     warn!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
                     Effects::new()
@@ -232,7 +234,7 @@ where
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <Self as InitializedComponent<MainEvent>>::name(self),
+                        name = <Self as Component<MainEvent>>::name(self),
                         "component already initialized"
                     );
                     Effects::new()
@@ -282,6 +284,10 @@ where
             },
         }
     }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 }
 
 impl<REv> InitializedComponent<REv> for EventStreamServer
@@ -292,14 +298,10 @@ where
         &self.state
     }
 
-    fn name(&self) -> &str {
-        "event_stream_server"
-    }
-
     fn set_state(&mut self, new_state: ComponentState) {
         info!(
             ?new_state,
-            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            name = <Self as Component<MainEvent>>::name(self),
             "component state changed"
         );
 

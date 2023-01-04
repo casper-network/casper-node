@@ -37,6 +37,8 @@ pub(crate) use stop_at::StopAtSpec;
 pub use tasks::FileSerializer;
 use util::ShowUnixAddr;
 
+const COMPONENT_NAME: &str = "diagnostics_port";
+
 /// Diagnostics port configuration.
 #[derive(Clone, DataSize, Debug, Deserialize)]
 pub(crate) struct Config {
@@ -121,7 +123,7 @@ where
                 error!(
                     msg,
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
@@ -129,7 +131,7 @@ where
             ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <Self as InitializedComponent<MainEvent>>::name(self),
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
                 Effects::new()
@@ -147,6 +149,10 @@ where
             ComponentState::Initialized => Effects::new(),
         }
     }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 }
 
 impl<REv> InitializedComponent<REv> for DiagnosticsPort
@@ -162,14 +168,10 @@ where
         &self.state
     }
 
-    fn name(&self) -> &str {
-        "diagnostics"
-    }
-
     fn set_state(&mut self, new_state: ComponentState) {
         info!(
             ?new_state,
-            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            name = <Self as Component<MainEvent>>::name(self),
             "component state changed"
         );
 

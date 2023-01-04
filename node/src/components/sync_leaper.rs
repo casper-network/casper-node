@@ -29,6 +29,8 @@ pub(crate) use event::Event;
 
 use metrics::Metrics;
 
+const COMPONENT_NAME: &str = "sync_leaper";
+
 #[derive(Debug, DataSize)]
 enum PeerState {
     RequestSent,
@@ -435,5 +437,9 @@ where
                 Effects::new()
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

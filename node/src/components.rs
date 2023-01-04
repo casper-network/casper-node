@@ -131,6 +131,9 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
+
+    /// Name of the component.
+    fn name(&self) -> &str;
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {
@@ -157,8 +160,6 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
     }
 
     fn set_state(&mut self, new_state: ComponentState);
-
-    fn name(&self) -> &str;
 }
 
 pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
