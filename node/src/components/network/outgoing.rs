@@ -66,9 +66,9 @@
 //! │ ┌───────────┐         │ │  │      │          │          │
 //! │ │           │◄────────┘ │  │      │ Loopback │          │
 //! │ │ Connected │           │  └─────►│          │          │
-//! │ │           │ dropped   │         └──────────┘          │
+//! │ │           │ dropped/  │         └──────────┘          │
 //! │ └─────┬─────┴───────────┘                               │
-//! │       │                                                 │
+//! │       │       timeout                                   │
 //! │       │ block                                           │
 //! └───────┴─────────────────────────────────────────────────┘
 //! ```
@@ -104,9 +104,15 @@ use std::{
 use datasize::DataSize;
 
 use prometheus::IntGauge;
-use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
+use rand::Rng;
+use tracing::{debug, error, error_span, field::Empty, info, trace, warn, Span};
 
-use super::{blocklist::BlocklistJustification, display_error, NodeId};
+use super::{
+    blocklist::BlocklistJustification,
+    display_error,
+    health::{ConnectionHealth, HealthCheckOutcome, HealthConfig, Nonce, TaggedTimestamp},
+    NodeId,
+};
 
 /// An outgoing connection/address in various states.
 #[derive(DataSize, Debug)]
@@ -154,6 +160,8 @@ where
         ///
         /// Can be a channel to decouple sending, or even a direct connection handle.
         handle: H,
+        /// Health of the connection.
+        health: ConnectionHealth,
     },
     /// The address was blocked and will not be retried.
     Blocked {
@@ -199,6 +207,8 @@ pub enum DialOutcome<H, E> {
         handle: H,
         /// The remote peer's authenticated node ID.
         node_id: NodeId,
+        /// The moment the connection was established.
+        when: Instant,
     },
     /// The connection attempt failed.
     Failed {
@@ -242,8 +252,17 @@ pub(crate) enum DialRequest<H> {
 
     /// Disconnects a potentially existing connection.
     ///
-    /// Used when a peer has been blocked or should be disconnected for other reasons.
+    /// Used when a peer has been blocked or should be disconnected for other reasons. Note that
+    /// this request can immediately be followed by a connection request, as in the case of a ping
+    /// timeout.
     Disconnect { handle: H, span: Span },
+
+    /// Send a ping to a peer.
+    SendPing {
+        peer_id: NodeId,
+        nonce: Nonce,
+        span: Span,
+    },
 }
 
 impl<H> Display for DialRequest<H>
@@ -257,6 +276,9 @@ where
             }
             DialRequest::Disconnect { handle, .. } => {
                 write!(f, "disconnect: {}", handle)
+            }
+            DialRequest::SendPing { peer_id, nonce, .. } => {
+                write!(f, "ping[{}]: {}", nonce, peer_id)
             }
         }
     }
@@ -273,6 +295,8 @@ pub struct OutgoingConfig {
     pub(crate) unblock_after: Duration,
     /// Safety timeout, after which a connection is no longer expected to finish dialing.
     pub(crate) sweep_timeout: Duration,
+    /// Health check configuration.
+    pub(crate) health: HealthConfig,
 }
 
 impl OutgoingConfig {
@@ -412,11 +436,13 @@ where
     ///
     /// Will trigger an update of the routing table if necessary. Does not emit any other
     /// side-effects.
+    ///
+    /// Returns the new state, as well as any residual handle.
     fn change_outgoing_state(
         &mut self,
         addr: SocketAddr,
         mut new_state: OutgoingState<H, E>,
-    ) -> &mut Outgoing<H, E> {
+    ) -> (&mut Outgoing<H, E>, Option<H>) {
         let (prev_state, new_outgoing) = match self.outgoing.entry(addr) {
             Entry::Vacant(vacant) => {
                 let inserted = vacant.insert(Outgoing {
@@ -482,7 +508,14 @@ where
             OutgoingState::Waiting { .. } => self.metrics.out_state_waiting.inc(),
         }
 
-        new_outgoing
+        // Finally, deconstruct the previous state in case we need to preserve the handle.
+        let handle = if let Some(OutgoingState::Connected { handle, .. }) = prev_state {
+            Some(handle)
+        } else {
+            None
+        };
+
+        (new_outgoing, handle)
     }
 
     /// Retrieves the address by peer.
@@ -530,7 +563,7 @@ where
                 }
                 Entry::Vacant(_vacant) => {
                     info!("connecting to newly learned address");
-                    let outgoing = self.change_outgoing_state(
+                    let (outgoing, _) = self.change_outgoing_state(
                         addr,
                         OutgoingState::Connecting {
                             failures_so_far: 0,
@@ -649,18 +682,47 @@ where
             })
     }
 
+    /// Records a pong being received.
+    pub(super) fn record_pong(&mut self, peer_id: NodeId, pong: TaggedTimestamp) -> bool {
+        let addr = if let Some(addr) = self.routes.get(&peer_id) {
+            *addr
+        } else {
+            debug!(%peer_id, nonce=%pong.nonce(), "ignoring pong received from peer without route");
+            return false;
+        };
+
+        if let Some(outgoing) = self.outgoing.get_mut(&addr) {
+            if let OutgoingState::Connected { ref mut health, .. } = outgoing.state {
+                health.record_pong(&self.config.health, pong)
+            } else {
+                debug!(%peer_id, nonce=%pong.nonce(), "ignoring pong received from peer that is not in connected state");
+                false
+            }
+        } else {
+            debug!(%peer_id, nonce=%pong.nonce(), "ignoring pong received from peer without route");
+            false
+        }
+    }
+
     /// Performs housekeeping like reconnection or unblocking peers.
     ///
     /// This function must periodically be called. A good interval is every second.
-    pub(super) fn perform_housekeeping(&mut self, now: Instant) -> Vec<DialRequest<H>> {
+    pub(super) fn perform_housekeeping<R: Rng>(
+        &mut self,
+        rng: &mut R,
+        now: Instant,
+    ) -> Vec<DialRequest<H>> {
         let mut to_forget = Vec::new();
         let mut to_fail = Vec::new();
+        let mut to_ping_timeout = Vec::new();
         let mut to_reconnect = Vec::new();
+        let mut to_ping = Vec::new();
 
-        for (&addr, outgoing) in self.outgoing.iter() {
-            let span = make_span(addr, Some(outgoing));
+        for (&addr, outgoing) in self.outgoing.iter_mut() {
+            // Note: `Span::in_scope` is no longer serviceable here due to borrow limitations.
+            let _span_guard = make_span(addr, Some(outgoing)).entered();
 
-            span.in_scope(|| match outgoing.state {
+            match outgoing.state {
                 // Decide whether to attempt reconnecting a failed-waiting address.
                 OutgoingState::Waiting {
                     failures_so_far,
@@ -714,12 +776,33 @@ where
                         to_fail.push((addr, failures_so_far + 1));
                     }
                 }
+                OutgoingState::Connected {
+                    peer_id,
+                    ref mut health,
+                    ..
+                } => {
+                    // Check if we need to send a ping, or give up and disconnect.
+                    let health_outcome = health.update_health(rng, &self.config.health, now);
 
-                OutgoingState::Connected { .. } | OutgoingState::Loopback => {
+                    match health_outcome {
+                        HealthCheckOutcome::DoNothing => {
+                            // Nothing to do.
+                        }
+                        HealthCheckOutcome::SendPing(nonce) => {
+                            debug!(%nonce, "sending ping");
+                            to_ping.push((peer_id, addr, nonce));
+                        }
+                        HealthCheckOutcome::GiveUp => {
+                            info!("disconnecting after ping retries were exhausted");
+                            to_ping_timeout.push(addr);
+                        }
+                    }
+                }
+                OutgoingState::Loopback => {
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
                     // the `trace` level.
                 }
-            });
+            }
         }
 
         // Remove all addresses marked for forgetting.
@@ -743,25 +826,61 @@ where
             });
         });
 
-        // Reconnect all others.
-        to_reconnect
-            .into_iter()
-            .map(|(addr, failures_so_far)| {
-                let span = make_span(addr, self.outgoing.get(&addr));
+        let mut dial_requests = Vec::new();
 
-                span.clone().in_scope(|| {
-                    self.change_outgoing_state(
-                        addr,
-                        OutgoingState::Connecting {
-                            failures_so_far,
-                            since: now,
-                        },
-                    )
+        // Request disconnection from failed pings.
+        for addr in to_ping_timeout {
+            let span = make_span(addr, self.outgoing.get(&addr));
+
+            let (_, opt_handle) = span.clone().in_scope(|| {
+                self.change_outgoing_state(
+                    addr,
+                    OutgoingState::Connecting {
+                        failures_so_far: 0,
+                        since: now,
+                    },
+                )
+            });
+
+            if let Some(handle) = opt_handle {
+                dial_requests.push(DialRequest::Disconnect {
+                    handle,
+                    span: span.clone(),
                 });
+            } else {
+                error!("did not expect connection under ping timeout to not have a residual connection handle. this is a bug");
+            }
+            dial_requests.push(DialRequest::Dial { addr, span });
+        }
 
-                DialRequest::Dial { addr, span }
-            })
-            .collect()
+        // Reconnect others.
+        dial_requests.extend(to_reconnect.into_iter().map(|(addr, failures_so_far)| {
+            let span = make_span(addr, self.outgoing.get(&addr));
+
+            span.clone().in_scope(|| {
+                self.change_outgoing_state(
+                    addr,
+                    OutgoingState::Connecting {
+                        failures_so_far,
+                        since: now,
+                    },
+                )
+            });
+
+            DialRequest::Dial { addr, span }
+        }));
+
+        // Finally, schedule pings.
+        dial_requests.extend(to_ping.into_iter().map(|(peer_id, addr, nonce)| {
+            let span = make_span(addr, self.outgoing.get(&addr));
+            DialRequest::SendPing {
+                peer_id,
+                nonce,
+                span,
+            }
+        }));
+
+        dial_requests
     }
 
     /// Handles the outcome of a dialing attempt.
@@ -779,7 +898,7 @@ where
                 addr,
                 handle,
                 node_id,
-                ..
+                when
             } => {
                 info!("established outgoing connection");
 
@@ -798,6 +917,7 @@ where
                         OutgoingState::Connected {
                             peer_id: node_id,
                             handle,
+                            health: ConnectionHealth::new(when),
                         },
                     );
                     None
@@ -902,12 +1022,17 @@ where
 mod tests {
     use std::{net::SocketAddr, time::Duration};
 
+    use assert_matches::assert_matches;
     use datasize::DataSize;
+    use rand::Rng;
     use thiserror::Error;
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
     use crate::{
-        components::network::blocklist::BlocklistJustification,
+        components::network::{
+            blocklist::BlocklistJustification,
+            health::{HealthConfig, TaggedTimestamp},
+        },
         testing::{init_logging, test_clock::TestClock},
     };
 
@@ -927,6 +1052,7 @@ mod tests {
             base_timeout: Duration::from_secs(1),
             unblock_after: Duration::from_secs(60),
             sweep_timeout: Duration::from_secs(45),
+            health: HealthConfig::test_config(),
         }
     }
 
@@ -997,14 +1123,25 @@ mod tests {
         assert_eq!(manager.metrics().out_state_waiting.get(), 1);
 
         // Performing housekeeping multiple times should not make a difference.
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Advancing the clock will trigger a reconnection on the next housekeeping.
         clock.advance_time(2_000);
-        assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
         assert_eq!(manager.metrics().out_state_connecting.get(), 1);
         assert_eq!(manager.metrics().out_state_waiting.get(), 0);
 
@@ -1014,6 +1151,7 @@ mod tests {
                 addr: addr_a,
                 handle: 99,
                 node_id: id_a,
+                when: clock.now(),
             },)
             .is_none());
         assert_eq!(manager.metrics().out_state_connecting.get(), 0);
@@ -1024,7 +1162,9 @@ mod tests {
         assert_eq!(manager.get_addr(id_a), Some(addr_a));
 
         // Time passes, and our connection drops. Reconnecting should be immediate.
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
         clock.advance_time(20_000);
         assert!(dials(
             addr_a,
@@ -1038,13 +1178,16 @@ mod tests {
         assert!(manager.get_addr(id_a).is_none());
 
         // Reconnection is already in progress, so we do not expect another request on housekeeping.
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
     }
 
     #[test]
     fn connections_forgotten_after_too_many_tries() {
         init_logging();
 
+        let mut rng = crate::new_rng();
         let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
@@ -1083,17 +1226,21 @@ mod tests {
         assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
         assert!(manager.learn_addr(addr_b, false, clock.now()).is_none());
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
         assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
         assert!(manager.learn_addr(addr_b, false, clock.now()).is_none());
 
         // After 1.999 seconds, reconnection should still be delayed.
         clock.advance_time(1_999);
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Adding 0.001 seconds finally is enough to reconnect.
         clock.advance_time(1);
-        let requests = manager.perform_housekeeping(clock.now());
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
         assert!(dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
@@ -1101,7 +1248,9 @@ mod tests {
         // anything, as  we are currently connecting.
         clock.advance_time(6_000);
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Fail the connection again, wait 3.999 seconds, expecting no reconnection.
         assert!(manager
@@ -1120,11 +1269,13 @@ mod tests {
             .is_none());
 
         clock.advance_time(3_999);
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Adding 0.001 seconds finally again pushes us over the threshold.
         clock.advance_time(1);
-        let requests = manager.perform_housekeeping(clock.now());
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
         assert!(dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
@@ -1144,14 +1295,18 @@ mod tests {
                 when: clock.now(),
             },)
             .is_none());
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // The last attempt should happen 8 seconds after the error, not the last attempt.
         clock.advance_time(7_999);
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         clock.advance_time(1);
-        let requests = manager.perform_housekeeping(clock.now());
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
         assert!(dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
@@ -1172,13 +1327,15 @@ mod tests {
             .is_none());
 
         // Only the unforgettable address should be reconnecting.
-        let requests = manager.perform_housekeeping(clock.now());
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
         assert!(!dials(addr_a, &requests));
         assert!(dials(addr_b, &requests));
 
         // But not `addr_a`, even after a long wait.
         clock.advance_time(1_000_000_000);
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
     }
 
     #[test]
@@ -1214,7 +1371,9 @@ mod tests {
             &manager.learn_addr(addr_b, true, clock.now())
         ));
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Fifteen seconds later we succeed in connecting to `addr_b`.
         clock.advance_time(15_000);
@@ -1223,12 +1382,15 @@ mod tests {
                 addr: addr_b,
                 handle: 101,
                 node_id: id_b,
+                when: clock.now(),
             },)
             .is_none());
         assert_eq!(manager.get_route(id_b), Some(&101));
 
         // Invariant through housekeeping.
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         assert_eq!(manager.get_route(id_b), Some(&101));
 
@@ -1264,10 +1426,13 @@ mod tests {
                 addr: addr_c,
                 handle: 42,
                 node_id: id_c,
+                when: clock.now(),
             },)
         ));
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         assert!(manager.get_route(id_c).is_none());
 
@@ -1275,11 +1440,16 @@ mod tests {
         // unblocked due to the block timing out.
 
         clock.advance_time(30_000);
-        assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
 
         // Fifteen seconds later, B and C are still blocked, but we redeem B early.
         clock.advance_time(15_000);
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         assert!(dials(addr_b, &manager.redeem_addr(addr_b, clock.now())));
 
@@ -1289,6 +1459,7 @@ mod tests {
                 addr: addr_b,
                 handle: 77,
                 node_id: id_b,
+                when: clock.now(),
             },)
             .is_none());
         assert!(manager
@@ -1296,6 +1467,7 @@ mod tests {
                 addr: addr_a,
                 handle: 66,
                 node_id: id_a,
+                when: clock.now(),
             },)
             .is_none());
 
@@ -1307,6 +1479,7 @@ mod tests {
     fn loopback_handled_correctly() {
         init_logging();
 
+        let mut rng = crate::new_rng();
         let mut clock = TestClock::new();
 
         let loopback_addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
@@ -1325,7 +1498,9 @@ mod tests {
             },)
             .is_none());
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Learning loopbacks again should not trigger another connection
         assert!(manager
@@ -1344,7 +1519,9 @@ mod tests {
 
         clock.advance_time(1_000_000_000);
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
     }
 
     #[test]
@@ -1369,11 +1546,13 @@ mod tests {
             addr: addr_a,
             handle: 22,
             node_id: id_a,
+            when: clock.now(),
         });
         manager.handle_dial_outcome(DialOutcome::Successful {
             addr: addr_b,
             handle: 33,
             node_id: id_b,
+            when: clock.now(),
         });
 
         let mut peer_ids: Vec<_> = manager.connected_peers().collect();
@@ -1407,12 +1586,17 @@ mod tests {
         // We now let enough time pass to cause the connection to be considered failed aborted.
         // No effects are expected at this point.
         clock.advance_time(50_000);
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // The connection will now experience a regular failure. Since this is the first connection
         // failure, it should reconnect after 2 seconds.
         clock.advance_time(2_000);
-        assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
 
         // We now simulate the second connection (`handle: 2`) succeeding first, after 1 second.
         clock.advance_time(1_000);
@@ -1421,6 +1605,7 @@ mod tests {
                 addr: addr_a,
                 handle: 2,
                 node_id: id_a,
+                when: clock.now(),
             })
             .is_none());
 
@@ -1434,6 +1619,7 @@ mod tests {
                 addr: addr_a,
                 handle: 1,
                 node_id: id_a,
+                when: clock.now(),
             })
             .is_none());
 
@@ -1445,6 +1631,7 @@ mod tests {
     fn blocking_not_overridden_by_racing_failed_connections() {
         init_logging();
 
+        let mut rng = crate::new_rng();
         let mut clock = TestClock::new();
 
         let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
@@ -1481,7 +1668,161 @@ mod tests {
         clock.advance_time(60);
         assert!(manager.is_blocked(addr_a));
 
-        assert!(manager.perform_housekeeping(clock.now()).is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
         assert!(manager.is_blocked(addr_a));
+    }
+
+    #[test]
+    fn emits_and_accepts_pings() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
+
+        let addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let id = NodeId::random(&mut rng);
+
+        // Setup a connection and put it into the connected state.
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
+
+        // Trigger a new connection via learning an address.
+        assert!(dials(addr, &manager.learn_addr(addr, false, clock.now())));
+
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Successful {
+                addr,
+                handle: 1,
+                node_id: id,
+                when: clock.now(),
+            })
+            .is_none());
+
+        // Initial housekeeping should do nothing.
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+
+        // Go through 50 pings, which should be happening every 5 seconds.
+        for _ in 0..50 {
+            clock.advance(Duration::from_secs(3));
+            assert!(manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .is_empty());
+            clock.advance(Duration::from_secs(2));
+
+            let (_first_nonce, peer_id) = assert_matches!(
+                manager
+                    .perform_housekeeping(&mut rng, clock.now())
+                    .as_slice(),
+                &[DialRequest::SendPing { nonce, peer_id, ..  }] => (nonce, peer_id)
+            );
+            assert_eq!(peer_id, id);
+
+            // After a second, nothing should have changed.
+            assert!(manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .is_empty());
+
+            clock.advance(Duration::from_secs(1));
+            // Waiting another second (two in total) should trigger another ping.
+            clock.advance(Duration::from_secs(1));
+
+            let (second_nonce, peer_id) = assert_matches!(
+                manager
+                    .perform_housekeeping(&mut rng, clock.now())
+                    .as_slice(),
+                &[DialRequest::SendPing { nonce, peer_id, ..  }] => (nonce, peer_id)
+            );
+
+            // Ensure the ID is correct.
+            assert_eq!(peer_id, id);
+
+            // Pong arrives 1 second later.
+            clock.advance(Duration::from_secs(1));
+
+            // We now feed back the ping with the correct nonce. This should not result in a ban.
+            assert!(!manager.record_pong(
+                peer_id,
+                TaggedTimestamp::from_parts(clock.now(), second_nonce),
+            ));
+
+            // This resets the "cycle", the next ping is due in 5 seconds.
+        }
+
+        // Now we are going to miss 4 pings in a row and expect a disconnect.
+        clock.advance(Duration::from_secs(5));
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
+        clock.advance(Duration::from_secs(2));
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
+        clock.advance(Duration::from_secs(2));
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
+        clock.advance(Duration::from_secs(2));
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
+
+        // This results in a disconnect, followed by a reconnect.
+        clock.advance(Duration::from_secs(2));
+        let dial_addr = assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::Disconnect { .. }, DialRequest::Dial { addr, .. }] => addr
+        );
+
+        assert_eq!(dial_addr, addr);
+    }
+
+    #[test]
+    fn indicates_issue_when_excessive_pongs_are_encountered() {
+        let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
+
+        let addr: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let id = NodeId::random(&mut rng);
+
+        // Ensure we have one connected node.
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(test_config());
+
+        assert!(dials(addr, &manager.learn_addr(addr, false, clock.now())));
+        assert!(manager
+            .handle_dial_outcome(DialOutcome::Successful {
+                addr,
+                handle: 1,
+                node_id: id,
+                when: clock.now(),
+            })
+            .is_none());
+
+        clock.advance(Duration::from_millis(50));
+
+        // We can now receive excessive pongs.
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+        assert!(manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
     }
 }

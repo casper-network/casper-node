@@ -31,6 +31,7 @@ mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod health;
 mod identity;
 mod insights;
 mod limiter;
@@ -87,6 +88,7 @@ use self::{
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
+    health::{HealthConfig, TaggedTimestamp},
     limiter::Limiter,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -124,6 +126,20 @@ const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Interval during which to perform outgoing manager housekeeping.
 const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
+
+/// How often to send a ping down a healthy connection.
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Maximum time for a ping until it connections are severed.
+///
+/// If you are running a network under very extreme conditions, it may make sense to alter these
+/// values, but usually these values should require no changing.
+///
+/// `PING_TIMEOUT` should be less than `PING_INTERVAL` at all times.
+const PING_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// How many pings to send before giving up and dropping the connection.
+const PING_RETRIES: u16 = 5;
 
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle<P> {
@@ -244,6 +260,12 @@ where
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
                 unblock_after: cfg.blocklist_retain_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
+                health: HealthConfig {
+                    ping_interval: PING_INTERVAL,
+                    ping_timeout: PING_TIMEOUT,
+                    ping_retries: PING_RETRIES,
+                    pong_limit: (1 + PING_RETRIES as u32) * 2,
+                },
             },
             net_metrics.create_outgoing_metrics(),
         );
@@ -722,6 +744,7 @@ where
                         addr: peer_addr,
                         handle,
                         node_id: peer_id,
+                        when: now,
                     });
 
                 let mut effects = self.process_dial_requests(request);
@@ -857,6 +880,14 @@ where
                         debug!("dropping connection, as requested");
                     })
                 }
+                DialRequest::SendPing {
+                    peer_id,
+                    nonce,
+                    span,
+                } => span.in_scope(|| {
+                    debug!("enqueuing ping to be sent");
+                    self.send_message(peer_id, Arc::new(Message::Ping { nonce }), None);
+                }),
             }
         }
 
@@ -881,6 +912,26 @@ where
                 // connection in the future instead.
                 warn!("received unexpected handshake");
                 Effects::new()
+            }
+            Message::Ping { nonce } => {
+                // Send a pong. Incoming pings and pongs are rate limited.
+
+                self.send_message(peer_id, Arc::new(Message::Pong { nonce }), None);
+                Effects::new()
+            }
+            Message::Pong { nonce } => {
+                // Record the time the pong arrived and forward it to outgoing.
+                let pong = TaggedTimestamp::from_parts(Instant::now(), nonce);
+                if self.outgoing_manager.record_pong(peer_id, pong) {
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            peer_id,
+                            BlocklistJustification::PongLimitExceeded,
+                        )
+                        .ignore()
+                } else {
+                    Effects::new()
+                }
             }
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()
@@ -1135,7 +1186,7 @@ where
                 }
                 Event::SweepOutgoing => {
                     let now = Instant::now();
-                    let requests = self.outgoing_manager.perform_housekeeping(now);
+                    let requests = self.outgoing_manager.perform_housekeeping(rng, now);
 
                     let mut effects = self.process_dial_requests(requests);
 

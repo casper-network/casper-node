@@ -530,6 +530,7 @@ dependencies = [
  "anyhow",
  "aquamarine",
  "assert-json-diff",
+ "assert_matches",
  "async-trait",
  "backtrace",
  "base16",

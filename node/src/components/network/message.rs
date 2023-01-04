@@ -17,7 +17,7 @@ use serde::{
 
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
-use super::counting_format::ConnectionId;
+use super::{counting_format::ConnectionId, health::Nonce};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -46,6 +46,16 @@ pub(crate) enum Message<P> {
         #[serde(default)]
         chainspec_hash: Option<Digest>,
     },
+    /// A ping request.
+    Ping {
+        /// The nonce to be returned with the pong.
+        nonce: Nonce,
+    },
+    /// A pong response.
+    Pong {
+        /// Nonce to match pong to ping.
+        nonce: Nonce,
+    },
     Payload(P),
 }
 
@@ -54,7 +64,9 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } => MessageKind::Protocol,
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
+                MessageKind::Protocol
+            }
             Message::Payload(payload) => payload.message_kind(),
         }
     }
@@ -63,7 +75,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn is_low_priority(&self) -> bool {
         match self {
-            Message::Handshake { .. } => false,
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
             Message::Payload(payload) => payload.is_low_priority(),
         }
     }
@@ -73,6 +85,10 @@ impl<P: Payload> Message<P> {
     pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Handshake { .. } => 0,
+            // Ping and Pong have a hardcoded weights. Since every ping will result in a pong being
+            // sent as a reply, it has a higher weight.
+            Message::Ping { .. } => 2,
+            Message::Pong { .. } => 1,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
         }
     }
@@ -81,7 +97,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
         match self {
-            Message::Handshake { .. } => false,
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
             Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
         }
     }
@@ -98,7 +114,7 @@ impl<P: Payload> Message<P> {
         REv: FromIncoming<P> + Send,
     {
         match self {
-            Message::Handshake { .. } => Err(self),
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => Err(self),
             Message::Payload(payload) => {
                 // Note: For now, the wrapping/unwrap of the payload is a bit unfortunate here.
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
@@ -277,6 +293,8 @@ impl<P: Display> Display for Message<P> {
                     OptDisplay::new(chainspec_hash.as_ref(), "none")
                 )
             }
+            Message::Ping { nonce } => write!(f, "ping({})", nonce),
+            Message::Pong { nonce } => write!(f, "pong({})", nonce),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
@@ -588,25 +606,23 @@ mod tests {
 
         let modern_handshake: Message<protocol::Message> = roundtrip_message(&legacy_handshake);
 
-        match modern_handshake {
-            Message::Handshake {
-                network_name,
-                public_addr,
-                protocol_version,
-                consensus_certificate,
-                is_syncing,
-                chainspec_hash,
-            } => {
-                assert_eq!(network_name, "example-handshake");
-                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
-                assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
-                assert!(consensus_certificate.is_none());
-                assert!(!is_syncing);
-                assert!(chainspec_hash.is_none())
-            }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
-            }
+        if let Message::Handshake {
+            network_name,
+            public_addr,
+            protocol_version,
+            consensus_certificate,
+            is_syncing,
+            chainspec_hash,
+        } = modern_handshake
+        {
+            assert_eq!(network_name, "example-handshake");
+            assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
+            assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
+            assert!(consensus_certificate.is_none());
+            assert!(!is_syncing);
+            assert!(chainspec_hash.is_none())
+        } else {
+            panic!("did not expect modern handshake to deserialize to anything but")
         }
     }
 
@@ -614,26 +630,24 @@ mod tests {
     fn current_handshake_decodes_from_historic_v1_0_0() {
         let modern_handshake: Message<protocol::Message> = deserialize_message(V1_0_0_HANDSHAKE);
 
-        match modern_handshake {
-            Message::Handshake {
-                network_name,
-                public_addr,
-                protocol_version,
-                consensus_certificate,
-                is_syncing,
-                chainspec_hash,
-            } => {
-                assert!(!is_syncing);
-                assert_eq!(network_name, "serialization-test");
-                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
-                assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
-                assert!(consensus_certificate.is_none());
-                assert!(!is_syncing);
-                assert!(chainspec_hash.is_none())
-            }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
-            }
+        if let Message::Handshake {
+            network_name,
+            public_addr,
+            protocol_version,
+            consensus_certificate,
+            is_syncing,
+            chainspec_hash,
+        } = modern_handshake
+        {
+            assert!(!is_syncing);
+            assert_eq!(network_name, "serialization-test");
+            assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
+            assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
+            assert!(consensus_certificate.is_none());
+            assert!(!is_syncing);
+            assert!(chainspec_hash.is_none())
+        } else {
+            panic!("did not expect modern handshake to deserialize to anything but")
         }
     }
 
@@ -641,45 +655,43 @@ mod tests {
     fn current_handshake_decodes_from_historic_v1_4_2() {
         let modern_handshake: Message<protocol::Message> = deserialize_message(V1_4_2_HANDSHAKE);
 
-        match modern_handshake {
-            Message::Handshake {
-                network_name,
-                public_addr,
-                protocol_version,
-                consensus_certificate,
-                is_syncing,
-                chainspec_hash,
-            } => {
-                assert_eq!(network_name, "example-handshake");
-                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
-                assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
-                assert!(!is_syncing);
-                let ConsensusCertificate {
-                    public_key,
-                    signature,
-                } = consensus_certificate.unwrap();
+        if let Message::Handshake {
+            network_name,
+            public_addr,
+            protocol_version,
+            consensus_certificate,
+            is_syncing,
+            chainspec_hash,
+        } = modern_handshake
+        {
+            assert_eq!(network_name, "example-handshake");
+            assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
+            assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
+            assert!(!is_syncing);
+            let ConsensusCertificate {
+                public_key,
+                signature,
+            } = consensus_certificate.unwrap();
 
-                assert_eq!(
-                    public_key,
-                    PublicKey::from_hex(
-                        "020283c0d687933eb20a541c8540478877861ede4affaf04a68ea194b7a40046424e"
-                    )
-                    .unwrap()
-                );
-                assert_eq!(
-                    signature,
-                    Signature::from_hex(
-                        "02cdfa333c18893d9f36035a3b7702348acff0fd5a2ae9cbc0e48e59dd085581a6015\
+            assert_eq!(
+                public_key,
+                PublicKey::from_hex(
+                    "020283c0d687933eb20a541c8540478877861ede4affaf04a68ea194b7a40046424e"
+                )
+                .unwrap()
+            );
+            assert_eq!(
+                signature,
+                Signature::from_hex(
+                    "02cdfa333c18893d9f36035a3b7702348acff0fd5a2ae9cbc0e48e59dd085581a6015\
                         9b7fccc54dd0fa9443d2e3573378d61ea16e659d16d0009a40b7750bcceae"
-                    )
-                    .unwrap()
-                );
-                assert!(!is_syncing);
-                assert!(chainspec_hash.is_none())
-            }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
-            }
+                )
+                .unwrap()
+            );
+            assert!(!is_syncing);
+            assert!(chainspec_hash.is_none())
+        } else {
+            panic!("did not expect modern handshake to deserialize to anything but")
         }
     }
 
@@ -687,45 +699,43 @@ mod tests {
     fn current_handshake_decodes_from_historic_v1_4_3() {
         let modern_handshake: Message<protocol::Message> = deserialize_message(V1_4_3_HANDSHAKE);
 
-        match modern_handshake {
-            Message::Handshake {
-                network_name,
-                public_addr,
-                protocol_version,
-                consensus_certificate,
-                is_syncing,
-                chainspec_hash,
-            } => {
-                assert!(!is_syncing);
-                assert_eq!(network_name, "example-handshake");
-                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
-                assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
-                let ConsensusCertificate {
-                    public_key,
-                    signature,
-                } = consensus_certificate.unwrap();
+        if let Message::Handshake {
+            network_name,
+            public_addr,
+            protocol_version,
+            consensus_certificate,
+            is_syncing,
+            chainspec_hash,
+        } = modern_handshake
+        {
+            assert!(!is_syncing);
+            assert_eq!(network_name, "example-handshake");
+            assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
+            assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
+            let ConsensusCertificate {
+                public_key,
+                signature,
+            } = consensus_certificate.unwrap();
 
-                assert_eq!(
-                    public_key,
-                    PublicKey::from_hex(
-                        "020331efbf7cc3381515a7229f9c3e797030228caa189fb2a1028ade04e2970f74c5"
-                    )
-                    .unwrap()
-                );
-                assert_eq!(
-                    signature,
-                    Signature::from_hex(
-                        "027664866794bacce441392f432dba2de67da3ba785e59c9480f126794ed78b8e5299\
+            assert_eq!(
+                public_key,
+                PublicKey::from_hex(
+                    "020331efbf7cc3381515a7229f9c3e797030228caa189fb2a1028ade04e2970f74c5"
+                )
+                .unwrap()
+            );
+            assert_eq!(
+                signature,
+                Signature::from_hex(
+                    "027664866794bacce441392f432dba2de67da3ba785e59c9480f126794ed78b8e5299\
                         9761c08158285580b4a67b7e343c228133c41d4250bf79d786d7c199ca977"
-                    )
-                    .unwrap()
-                );
-                assert!(!is_syncing);
-                assert!(chainspec_hash.is_none())
-            }
-            Message::Payload(_) => {
-                panic!("did not expect modern handshake to deserialize to payload")
-            }
+                )
+                .unwrap()
+            );
+            assert!(!is_syncing);
+            assert!(chainspec_hash.is_none())
+        } else {
+            panic!("did not expect modern handshake to deserialize to anything but")
         }
     }
 
