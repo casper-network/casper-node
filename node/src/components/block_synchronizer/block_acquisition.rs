@@ -64,6 +64,24 @@ use crate::{
 // partitioned. the block synchronizer will periodically attempt to refresh its peer list to
 // mitigate this, but this strategy is less effective on small networks. we periodically
 // reattempt until we succeed or the node shuts down, in which case: ¯\_(ツ)_/¯
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     Initialized --> HaveBlockHeader
+///     HaveBlockHeader --> HaveWeakFinalitySignatures
+///     HaveWeakFinalitySignatures --> HaveBlock
+///     HaveBlock --> B{is historical?}
+///     B -->|Yes| HaveGlobalState
+///     B -->|No| C
+///     HaveGlobalState --> HaveAllExecutionResults
+///     HaveAllExecutionResults --> A{is legacy block?}
+///     A -->|Yes| C
+///     A -->|No| HaveApprovalsHashes
+///     HaveApprovalsHashes --> C{is block empty?}
+///     C -->|Yes| HaveStrictFinalitySignatures
+///     C -->|No| HaveAllDeploys
+///     HaveAllDeploys --> HaveStrictFinalitySignatures
+/// ```
 #[derive(Clone, DataSize, Debug)]
 pub(super) enum BlockAcquisitionState {
     Initialized(BlockHash, SignatureAcquisition),
@@ -192,6 +210,23 @@ pub(super) enum Acceptance {
     NeededIt,
 }
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// sequenceDiagram
+///     Note right of Initialized: need next
+///     Initialized ->> BlockHeader: get header
+///     BlockHeader ->> WeakFinalitySignatures: get at least weak finality
+///     WeakFinalitySignatures ->> Block: get block
+///     Block -->> GlobalState: is historical?
+///     GlobalState ->> AllExecutionResults: get execution results
+///     AllExecutionResults -->> ApprovalsHashes: is not legacy?
+///     AllExecutionResults -->> AllDeploys: is legacy?
+///     ApprovalsHashes ->> AllDeploys: get deploys
+///     GlobalState -->> StrictFinalitySignatures: is block empty?
+///     Block -->> AllDeploys: is not historical and is not empty?
+///     Block -->> StrictFinalitySignatures: is not historical and is empty?
+///     AllDeploys ->> StrictFinalitySignatures: get strict finality
+/// ```
 impl BlockAcquisitionState {
     // the BlockAcquisitionState states and their valid transitions follow:
     //
