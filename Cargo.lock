@@ -516,6 +516,7 @@ dependencies = [
  "ansi_term",
  "anyhow",
  "assert-json-diff",
+ "assert_matches",
  "async-trait",
  "backtrace",
  "base16",

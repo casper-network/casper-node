@@ -60,6 +60,7 @@ All notable changes to this project will be documented in this file.  The format
   * `execution_queue_size` to report the number of blocks enqueued pending execution
   * `accumulated_(outgoing|incoming)_limiter_delay` to report how much time was spent throttling other peers.
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
+* Connections to unresponsive nodes will be terminated, based on a watchdog feature.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
