@@ -10,8 +10,8 @@ use prometheus::Registry;
 use rand::Rng;
 
 enum DeployType {
-    NativeTransfer,
-    Contract,
+    Transfer,
+    Standard,
     Random,
 }
 
@@ -35,14 +35,14 @@ fn create_valid_deploys(
             None => Timestamp::now(),
         };
         match deploy_type {
-            DeployType::NativeTransfer => {
+            DeployType::Transfer => {
                 deploys.push(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
                     rng,
                     deploy_timestamp,
                     deploy_ttl,
                 ));
             }
-            DeployType::Contract => {
+            DeployType::Standard => {
                 if strict_timestamp.is_some() {
                     unimplemented!();
                 }
@@ -105,7 +105,7 @@ fn assert_container_sizes(
 }
 
 #[test]
-fn test_register_deploy() {
+fn register_deploy_and_check_size() {
     let mut rng = TestRng::new();
     let mut deploy_buffer =
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
@@ -142,7 +142,7 @@ fn test_register_deploy() {
 }
 
 #[test]
-fn test_register_block() {
+fn register_block_with_valid_deploys() {
     let mut rng = TestRng::new();
     let mut deploy_buffer =
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
@@ -155,7 +155,7 @@ fn test_register_block() {
 }
 
 #[test]
-fn test_register_block_finalized() {
+fn register_finalized_block_with_valid_deploys() {
     let mut rng = TestRng::new();
     let mut deploy_buffer =
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
@@ -168,7 +168,7 @@ fn test_register_block_finalized() {
 }
 
 #[test]
-fn test_proposable_deploys() {
+fn get_proposable_deploys() {
     let mut rng = TestRng::new();
     let mut deploy_buffer =
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
@@ -225,7 +225,7 @@ fn test_proposable_deploys() {
 }
 
 #[test]
-fn test_get_appendable_block_with_native_transfers() {
+fn get_appendable_block_with_native_transfers() {
     let mut rng = TestRng::new();
     let deploy_config = DeployConfig {
         block_max_deploy_count: 10,
@@ -235,16 +235,16 @@ fn test_get_appendable_block_with_native_transfers() {
     };
     let mut deploy_buffer =
         DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
-    test_get_appendable_block(
+    get_appendable_block(
         &mut rng,
         &mut deploy_buffer,
-        DeployType::NativeTransfer,
+        DeployType::Transfer,
         deploy_config.block_max_transfer_count as usize,
     );
 }
 
 #[test]
-fn test_get_appendable_block_with_contracts() {
+fn get_appendable_block_with_standard_deploys() {
     let mut rng = TestRng::new();
     let deploy_config = DeployConfig {
         block_max_deploy_count: 10,
@@ -254,16 +254,16 @@ fn test_get_appendable_block_with_contracts() {
     };
     let mut deploy_buffer =
         DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
-    test_get_appendable_block(
+    get_appendable_block(
         &mut rng,
         &mut deploy_buffer,
-        DeployType::Contract,
+        DeployType::Standard,
         deploy_config.block_max_deploy_count as usize,
     );
 }
 
 #[test]
-fn test_get_appendable_block_with_random_deploy() {
+fn get_appendable_block_with_random_deploys() {
     let mut rng = TestRng::new();
     let deploy_config = DeployConfig {
         block_max_deploy_count: 10,
@@ -273,7 +273,7 @@ fn test_get_appendable_block_with_random_deploy() {
     };
     let mut deploy_buffer =
         DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
-    test_get_appendable_block(
+    get_appendable_block(
         &mut rng,
         &mut deploy_buffer,
         DeployType::Random,
@@ -281,7 +281,7 @@ fn test_get_appendable_block_with_random_deploy() {
     );
 }
 
-fn test_get_appendable_block(
+fn get_appendable_block(
     rng: &mut TestRng,
     deploy_buffer: &mut DeployBuffer,
     deploy_type: DeployType,
@@ -307,7 +307,7 @@ fn test_get_appendable_block(
 }
 
 #[test]
-fn test_have_full_ttl_deploys() {
+fn have_full_ttl_worth_of_deploys() {
     let mut rng = TestRng::new();
     let deploy_config = DeployConfig::default();
     let mut deploy_buffer =
@@ -400,7 +400,7 @@ fn test_have_full_ttl_deploys() {
 }
 
 #[test]
-fn test_register_deploys_and_blocks() {
+fn register_deploys_and_blocks() {
     let mut rng = TestRng::new();
     let mut deploy_buffer =
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
@@ -533,7 +533,7 @@ impl MockReactor {
 }
 
 #[tokio::test]
-async fn test_expire() {
+async fn expire_deploys_and_check_announcement() {
     let mut rng = TestRng::new();
     let mut deploy_buffer =
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
@@ -552,7 +552,7 @@ async fn test_expire() {
     let expired_deploys = create_valid_deploys(
         &mut rng,
         num_deploys,
-        DeployType::NativeTransfer,
+        DeployType::Transfer,
         Some(past_timestamp),
         Some(ttl),
     );
@@ -569,7 +569,7 @@ async fn test_expire() {
     let deploys = create_valid_deploys(
         &mut rng,
         num_deploys,
-        DeployType::NativeTransfer,
+        DeployType::Transfer,
         None,
         None,
     );
