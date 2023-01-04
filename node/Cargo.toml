@@ -14,6 +14,7 @@ default-run = "casper-node"
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1"
+aquamarine = "0.1.12"
 async-trait = "0.1.50"
 backtrace = "0.3.50"
 base16 = "0.2.1"

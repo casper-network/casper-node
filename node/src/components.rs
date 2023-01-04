@@ -77,6 +77,13 @@ use crate::{
     NodeRng,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     Uninitialized --> Initializing
+///     Initializing --> Initialized
+///     Initializing --> Fatal
+/// ```
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
 pub(crate) enum ComponentStatus {
     #[default]
