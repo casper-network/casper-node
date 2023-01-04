@@ -54,11 +54,11 @@ impl MainReactor {
     ) -> (Duration, Effects<MainEvent>) {
         match self.state {
             ReactorState::Initialize => match self.initialize_next_component(effect_builder) {
-                Some(effects) => (Duration::ZERO, effects),
+                Some(effects) => (self.control_logic_default_delay.into(), effects),
                 None => {
                     if false == self.net.has_sufficient_fully_connected_peers() {
                         info!("Initialize: awaiting sufficient fully-connected peers");
-                        return (Duration::from_secs(2), Effects::new());
+                        return (self.control_logic_default_delay.into(), Effects::new());
                     }
                     if let Err(msg) = self.refresh_contract_runtime() {
                         return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
