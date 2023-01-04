@@ -60,14 +60,6 @@ All notable changes to this project will be documented in this file.  The format
   * `execution_queue_size` to report the number of blocks enqueued pending execution
   * `accumulated_(outgoing|incoming)_limiter_delay` to report how much time was spent throttling other peers.
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
-* The network handshake now contains the hash of the chainspec used and will be successful only if they match.
-* Add an `identity` option to load existing network identity certificates signed by a CA.
-* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
-* Make consensus settings non-optional. A value 0 disables them.
-* Add a `[consensus.zug]` section to `config.toml` for the Zug protocol.
-* Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
-* Move `finality_threshold_fraction` from the `highway` to the `core` section in the chainspec.
-* Move `max_execution_delay` from the `highway` to the `consensus` section in the `config.toml`.
 * Connections to unresponsive nodes will be terminated, based on a watchdog feature.
 
 ### Changed
