@@ -566,13 +566,7 @@ async fn expire_deploys_and_check_announcement() {
         .collect();
 
     // generate and register some valid deploys
-    let deploys = create_valid_deploys(
-        &mut rng,
-        num_deploys,
-        DeployType::Transfer,
-        None,
-        None,
-    );
+    let deploys = create_valid_deploys(&mut rng, num_deploys, DeployType::Transfer, None, None);
     deploys
         .iter()
         .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
