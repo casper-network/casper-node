@@ -35,6 +35,22 @@ pub struct DeployConfig {
     pub(crate) native_transfer_minimum_motes: u64,
 }
 
+impl DeployConfig {
+    /// Validates `DeployConfig` parameters
+    pub fn is_valid(&self) -> bool {
+        // the total number of deploys + transfers should not exceed the number of approvals because
+        // each deploy or transfer needs at least one approval to be valid
+        if let Some(total_deploy_and_transfer_slots) = self
+            .block_max_deploy_count
+            .checked_add(self.block_max_transfer_count)
+        {
+            self.block_max_approval_count >= total_deploy_and_transfer_slots
+        } else {
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
@@ -175,5 +191,32 @@ mod tests {
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
+    }
+
+    #[test]
+    fn deploy_and_transfer_counts_valid() {
+        let config = DeployConfig {
+            block_max_approval_count: 100,
+            block_max_deploy_count: 100,
+            block_max_transfer_count: 100,
+            ..Default::default()
+        };
+        assert!(!config.is_valid());
+
+        let config = DeployConfig {
+            block_max_approval_count: 200,
+            block_max_deploy_count: 100,
+            block_max_transfer_count: 100,
+            ..Default::default()
+        };
+        assert!(config.is_valid());
+
+        let config = DeployConfig {
+            block_max_approval_count: 200,
+            block_max_deploy_count: 10,
+            block_max_transfer_count: 100,
+            ..Default::default()
+        };
+        assert!(config.is_valid());
     }
 }
