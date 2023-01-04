@@ -25,7 +25,7 @@ use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::join;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
@@ -98,8 +98,8 @@ impl<REv> ReactorEventT for REv where
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RpcServer {
-    /// The status.
-    status: ComponentState,
+    /// The state.
+    state: ComponentState,
     /// The config.
     config: Config,
     /// The config for speculative execution.
@@ -127,7 +127,7 @@ impl RpcServer {
         node_startup_instant: Instant,
     ) -> Self {
         RpcServer {
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             speculative_exec_config,
             api_version,
@@ -222,7 +222,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -242,8 +242,8 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, status) = self.bind(self.config.enable_server, effect_builder);
-                    self.status = status;
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
                 Event::RpcRequest(_)
@@ -498,16 +498,22 @@ impl<REv> InitializedComponent<REv> for RpcServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "rpc_server"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

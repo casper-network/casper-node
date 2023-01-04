@@ -48,7 +48,7 @@ type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
-    status: ComponentState,
+    state: ComponentState,
     cfg: Config,
     deploy_config: DeployConfig,
     // Keeps track of all deploys the buffer is currently aware of.
@@ -87,7 +87,7 @@ impl DeployBuffer {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(DeployBuffer {
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
             cfg,
             deploy_config,
             buffer: HashMap::new(),
@@ -108,7 +108,10 @@ impl DeployBuffer {
                 "pending initialization of {}",
                 <Self as InitializedComponent<MainEvent>>::name(self)
             );
-            self.status = ComponentState::Initializing;
+            <Self as InitializedComponent<MainEvent>>::set_state(
+                self,
+                ComponentState::Initializing,
+            );
             let blocks = match storage.read_blocks_for_replay_protection() {
                 Ok(blocks) => blocks,
                 Err(err) => {
@@ -508,16 +511,22 @@ impl<REv> InitializedComponent<REv> for DeployBuffer
 where
     REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "deploy_buffer"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 
@@ -533,7 +542,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -557,11 +566,10 @@ where
                         for block in blocks {
                             self.register_block(&block);
                         }
-                        info!(
-                            "initialization of {} finished",
-                            <Self as InitializedComponent<MainEvent>>::name(self)
+                        <Self as InitializedComponent<MainEvent>>::set_state(
+                            self,
+                            ComponentState::Initialized,
                         );
-                        self.status = ComponentState::Initialized;
                         // start self-expiry management on initialization
                         effect_builder
                             .set_timeout(self.cfg.expiry_check_interval().into())

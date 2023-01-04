@@ -83,7 +83,7 @@ struct InnerServer {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct EventStreamServer {
-    status: ComponentState,
+    state: ComponentState,
     config: Config,
     storage_path: PathBuf,
     api_version: ProtocolVersion,
@@ -93,7 +93,7 @@ pub(crate) struct EventStreamServer {
 impl EventStreamServer {
     pub(crate) fn new(config: Config, storage_path: PathBuf, api_version: ProtocolVersion) -> Self {
         EventStreamServer {
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             storage_path,
             api_version,
@@ -189,7 +189,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -209,8 +209,8 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
-                    self.status = status;
+                    let (effects, state) = self.bind(self.config.enable_server, _effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
                 Event::BlockAdded(_)
@@ -288,16 +288,22 @@ impl<REv> InitializedComponent<REv> for EventStreamServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "event_stream_server"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

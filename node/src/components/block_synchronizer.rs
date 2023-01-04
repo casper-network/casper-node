@@ -182,7 +182,7 @@ impl DocExample for BlockSynchronizerStatus {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
-    status: ComponentState,
+    state: ComponentState,
     config: Config,
     max_simultaneous_peers: u32,
     validator_matrix: ValidatorMatrix,
@@ -205,7 +205,7 @@ impl BlockSynchronizer {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(BlockSynchronizer {
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             max_simultaneous_peers,
             validator_matrix,
@@ -1021,16 +1021,22 @@ impl<REv> InitializedComponent<REv> for BlockSynchronizer
 where
     REv: ReactorEvent + From<FetcherRequest<Block>>,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "block_synchronizer"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 
@@ -1043,7 +1049,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -1064,10 +1070,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
             ComponentState::Initializing => {
                 match event {
                     Event::Initialize => {
-                        self.status = ComponentState::Initialized;
-                        info!(
-                            "initialization of {} finished",
-                            <Self as InitializedComponent<MainEvent>>::name(self)
+                        <Self as InitializedComponent<MainEvent>>::set_state(
+                            self,
+                            ComponentState::Initialized,
                         );
                         // start dishonest peer management on initialization
                         effect_builder

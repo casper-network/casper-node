@@ -102,8 +102,8 @@ pub(crate) struct InnerRestServer {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
-    /// The component status.
-    status: ComponentState,
+    /// The component state.
+    state: ComponentState,
     config: Config,
     api_version: ProtocolVersion,
     network_name: String,
@@ -120,7 +120,7 @@ impl RestServer {
         node_startup_instant: Instant,
     ) -> Self {
         RestServer {
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             api_version,
             network_name,
@@ -142,7 +142,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -162,8 +162,8 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, status) = self.bind(self.config.enable_server, effect_builder);
-                    self.status = status;
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
                 Event::RestRequest(_) | Event::GetMetricsResult { .. } => {
@@ -251,16 +251,22 @@ impl<REv> InitializedComponent<REv> for RestServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "rest_server"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

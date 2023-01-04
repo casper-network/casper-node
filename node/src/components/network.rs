@@ -174,8 +174,8 @@ where
     /// The era that is considered the active era by the network component.
     active_era: EraId,
 
-    /// The status of this component.
-    status: ComponentState,
+    /// The state of this component.
+    state: ComponentState,
 }
 
 #[derive(DataSize)]
@@ -209,7 +209,8 @@ where
         + FromIncoming<P>
         + From<StorageRequest>
         + From<NetworkRequest<P>>
-        + From<PeerBehaviorAnnouncement>,
+        + From<PeerBehaviorAnnouncement>
+        + From<BeginGossipRequest<GossipedAddress>>,
 {
     /// Creates a new network component instance.
     #[allow(clippy::type_complexity)]
@@ -265,7 +266,7 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
         };
 
         Ok(component)
@@ -367,11 +368,7 @@ where
                 .event(|_| Event::SweepOutgoing),
         );
 
-        info!(
-            "initialization of {} finished",
-            "Network" // todo: use proper call to `name()`
-        );
-        self.status = ComponentState::Initialized;
+        <Self as InitializedComponent<REv>>::set_state(self, ComponentState::Initialized);
         Ok(effects)
     }
 
@@ -1017,7 +1014,7 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -1040,7 +1037,10 @@ where
                     Ok(effects) => effects,
                     Err(error) => {
                         error!(%error, "failed to initialize network component");
-                        self.status = ComponentState::Fatal(error.to_string());
+                        <Self as InitializedComponent<REv>>::set_state(
+                            self,
+                            ComponentState::Fatal(error.to_string()),
+                        );
                         Effects::new()
                     }
                 },
@@ -1183,16 +1183,22 @@ where
         + From<PeerBehaviorAnnouncement>,
     P: Payload,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "network"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<REv>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 
@@ -1247,7 +1253,7 @@ where
         // otherwise.
         f.debug_struct("Network")
             .field("our_id", &self.context.our_id())
-            .field("status", &self.status)
+            .field("state", &self.state)
             .field("public_addr", &self.context.public_addr())
             .finish()
     }

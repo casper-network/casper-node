@@ -190,7 +190,7 @@ impl Display for Event {
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    status: ComponentState,
+    state: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -598,9 +598,8 @@ impl ContractRuntime {
 
         let metrics = Arc::new(Metrics::new(registry)?);
 
-        info!("initialization of contract_runtime finished");
         Ok(ContractRuntime {
-            status: ComponentState::Initialized,
+            state: ComponentState::Initialized,
             execution_pre_state,
             engine_state,
             metrics,

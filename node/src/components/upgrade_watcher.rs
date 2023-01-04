@@ -167,7 +167,7 @@ pub(crate) struct UpgradeWatcher {
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    status: ComponentState,
+    state: ComponentState,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -190,7 +190,7 @@ impl UpgradeWatcher {
             current_version,
             config,
             root_dir,
-            status: ComponentState::Uninitialized,
+            state: ComponentState::Uninitialized,
             next_upgrade,
         };
 
@@ -210,14 +210,10 @@ impl UpgradeWatcher {
     where
         REv: From<UpgradeWatcherAnnouncement> + Send,
     {
-        if self.status != ComponentState::Initializing {
+        if self.state != ComponentState::Initializing {
             return Effects::new();
         }
-        info!(
-            "initialization of {} finished",
-            <Self as InitializedComponent<MainEvent>>::name(self)
-        );
-        self.status = ComponentState::Initialized;
+        <Self as InitializedComponent<MainEvent>>::set_state(self, ComponentState::Initialized);
         self.check_for_next_upgrade(effect_builder)
     }
 
@@ -281,7 +277,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
+        match &self.state {
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -330,16 +326,22 @@ impl<REv> InitializedComponent<REv> for UpgradeWatcher
 where
     REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
-    fn status(&self) -> &ComponentState {
-        &self.status
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
     fn name(&self) -> &str {
         "upgrade_watcher"
     }
 
-    fn set_status(&mut self, new_status: ComponentState) {
-        self.status = new_status;
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as InitializedComponent<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

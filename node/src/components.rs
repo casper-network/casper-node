@@ -70,7 +70,7 @@ pub(crate) mod upgrade_watcher;
 use datasize::DataSize;
 use serde::Deserialize;
 use std::fmt::{Debug, Display};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
@@ -134,29 +134,29 @@ pub(crate) trait Component<REv> {
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {
-    fn status(&self) -> &ComponentState;
+    fn state(&self) -> &ComponentState;
 
     fn is_uninitialized(&self) -> bool {
-        self.status() == &ComponentState::Uninitialized
+        self.state() == &ComponentState::Uninitialized
     }
 
     fn is_initialized(&self) -> bool {
-        self.status() == &ComponentState::Initialized
+        self.state() == &ComponentState::Initialized
     }
 
     fn is_fatal(&self) -> bool {
-        matches!(self.status(), ComponentState::Fatal(_))
+        matches!(self.state(), ComponentState::Fatal(_))
     }
 
     fn start_initialization(&mut self) {
         if self.is_uninitialized() {
-            self.set_status(ComponentState::Initializing);
+            self.set_state(ComponentState::Initializing);
         } else {
             info!(name = self.name(), "component must be uninitialized");
         }
     }
 
-    fn set_status(&mut self, new_status: ComponentState);
+    fn set_state(&mut self, new_state: ComponentState);
 
     fn name(&self) -> &str;
 }
@@ -171,15 +171,11 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         effect_builder: EffectBuilder<REv>,
     ) -> (Effects<Self::ComponentEvent>, ComponentState) {
         if !enabled {
-            info!("initialization of {} finished", self.name());
             return (Effects::new(), ComponentState::Initialized);
         }
 
         match self.listen(effect_builder) {
-            Ok(effects) => {
-                info!("initialization of {} finished", self.name());
-                (effects, ComponentState::Initialized)
-            }
+            Ok(effects) => (effects, ComponentState::Initialized),
             Err(error) => (Effects::new(), ComponentState::Fatal(format!("{}", error))),
         }
     }
