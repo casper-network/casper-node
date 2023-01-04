@@ -70,7 +70,7 @@ pub(crate) mod upgrade_watcher;
 use datasize::DataSize;
 use serde::Deserialize;
 use std::fmt::{Debug, Display};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{
     effect::{EffectBuilder, Effects},
@@ -85,10 +85,10 @@ use crate::{
 ///     Initializing --> Fatal
 /// ```
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
-pub(crate) enum ComponentStatus {
+pub(crate) enum ComponentState {
     #[default]
     Uninitialized,
-    InitializationPending,
+    Initializing,
     Initialized,
     Fatal(String),
 }
@@ -134,21 +134,29 @@ pub(crate) trait Component<REv> {
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {
-    fn status(&self) -> ComponentStatus;
+    fn status(&self) -> &ComponentState;
 
     fn is_uninitialized(&self) -> bool {
-        self.status() == ComponentStatus::Uninitialized
+        self.status() == &ComponentState::Uninitialized
     }
 
     fn is_initialized(&self) -> bool {
-        self.status() == ComponentStatus::Initialized
+        self.status() == &ComponentState::Initialized
     }
 
     fn is_fatal(&self) -> bool {
-        matches!(self.status(), ComponentStatus::Fatal(_))
+        matches!(self.status(), ComponentState::Fatal(_))
     }
 
-    fn start_initialization(&mut self);
+    fn start_initialization(&mut self) {
+        if self.is_uninitialized() {
+            self.set_status(ComponentState::Initializing);
+        } else {
+            error!(name = self.name(), "component must be uninitialized");
+        }
+    }
+
+    fn set_status(&mut self, new_status: ComponentState);
 
     fn name(&self) -> &str;
 }
@@ -161,18 +169,18 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         &mut self,
         enabled: bool,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
+    ) -> (Effects<Self::ComponentEvent>, ComponentState) {
         if !enabled {
             info!("initialization of {} finished", self.name());
-            return (Effects::new(), ComponentStatus::Initialized);
+            return (Effects::new(), ComponentState::Initialized);
         }
 
         match self.listen(effect_builder) {
             Ok(effects) => {
                 info!("initialization of {} finished", self.name());
-                (effects, ComponentStatus::Initialized)
+                (effects, ComponentState::Initialized)
             }
-            Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error))),
+            Err(error) => (Effects::new(), ComponentState::Fatal(format!("{}", error))),
         }
     }
 

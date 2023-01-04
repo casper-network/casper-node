@@ -35,7 +35,7 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     components::{
-        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentStatus, InitializedComponent,
+        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentState, InitializedComponent,
         PortBoundComponent,
     },
     effect::{
@@ -103,7 +103,7 @@ pub(crate) struct InnerRestServer {
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
     /// The component status.
-    status: ComponentStatus,
+    status: ComponentState,
     config: Config,
     api_version: ProtocolVersion,
     network_name: String,
@@ -120,7 +120,7 @@ impl RestServer {
         node_startup_instant: Instant,
     ) -> Self {
         RestServer {
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             config,
             api_version,
             network_name,
@@ -143,46 +143,46 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
                     ?event,
-                    name = <RestServer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <RestServer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => match event {
+            ComponentState::Initializing => match event {
                 Event::Initialize => {
                     let (effects, status) = self.bind(self.config.enable_server, effect_builder);
                     self.status = status;
-                    return effects;
+                    effects
                 }
                 _ => {
                     warn!(
                         ?event,
-                        name = <RestServer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
             },
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <RestServer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "component already initialized"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
                 Event::RestRequest(RestRequest::Status { responder }) => {
                     let node_uptime = self.node_startup_instant.elapsed();
@@ -251,23 +251,16 @@ impl<REv> InitializedComponent<REv> for RestServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "rest_server"
     }
 
-    fn start_initialization(&mut self) {
-        if <RestServer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <RestServer as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 

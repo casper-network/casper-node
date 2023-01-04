@@ -21,7 +21,7 @@ use tokio::{net::UnixListener, sync::watch};
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
+    components::{Component, ComponentState, InitializedComponent, PortBoundComponent},
     effect::{
         announcements::ControlAnnouncement,
         diagnostics_port::DumpConsensusStateRequest,
@@ -61,7 +61,7 @@ impl Default for Config {
 /// Diagnostics port component.
 #[derive(Debug, DataSize)]
 pub(crate) struct DiagnosticsPort {
-    status: ComponentStatus,
+    status: ComponentState,
     /// Sender which will cause server and client connections to exit when dropped.
     #[data_size(skip)]
     _shutdown_sender: Option<watch::Sender<()>>, // only used for its `Drop` impl
@@ -72,7 +72,7 @@ impl DiagnosticsPort {
     /// Creates a new diagnostics port component.
     pub(crate) fn new(config: WithDir<Config>) -> Self {
         DiagnosticsPort {
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             config,
             _shutdown_sender: None,
         }
@@ -117,25 +117,26 @@ where
         event: Event,
     ) -> Effects<Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
-                error!(msg,
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
                     ?event,
-                    name = <DiagnosticsPort as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <DiagnosticsPort as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => match event {
+            ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    if self.status != ComponentStatus::InitializationPending {
+                    if self.status != ComponentState::Initializing {
                         return Effects::new();
                     }
                     let (effects, status) = self.bind(self.config.value().enabled, effect_builder);
@@ -143,7 +144,7 @@ where
                     effects
                 }
             },
-            ComponentStatus::Initialized => Effects::new(),
+            ComponentState::Initialized => Effects::new(),
         }
     }
 }
@@ -157,23 +158,16 @@ where
         + From<SetNodeStopRequest>
         + Send,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "diagnostics"
     }
 
-    fn start_initialization(&mut self) {
-        if <DiagnosticsPort as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <DiagnosticsPort as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 

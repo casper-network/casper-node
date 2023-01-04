@@ -30,7 +30,7 @@ use super::network::blocklist::BlocklistJustification;
 use crate::{
     components::{
         fetcher::{Error as FetcherError, FetchResult, FetchedData},
-        Component, ComponentStatus, InitializedComponent, ValidatorBoundComponent,
+        Component, ComponentState, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
         announcements::{BlockSynchronizerAnnouncement, PeerBehaviorAnnouncement},
@@ -182,7 +182,7 @@ impl DocExample for BlockSynchronizerStatus {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockSynchronizer {
-    status: ComponentStatus,
+    status: ComponentState,
     config: Config,
     max_simultaneous_peers: u32,
     validator_matrix: ValidatorMatrix,
@@ -205,7 +205,7 @@ impl BlockSynchronizer {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(BlockSynchronizer {
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             config,
             max_simultaneous_peers,
             validator_matrix,
@@ -1021,23 +1021,16 @@ impl<REv> InitializedComponent<REv> for BlockSynchronizer
 where
     REv: ReactorEvent + From<FetcherRequest<Block>>,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "block_synchronizer"
     }
 
-    fn start_initialization(&mut self) {
-        if <BlockSynchronizer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <BlockSynchronizer as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 
@@ -1051,64 +1044,64 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
                     ?event,
-                    name = <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => {
+            ComponentState::Initializing => {
                 match event {
                     Event::Initialize => {
-                        self.status = ComponentStatus::Initialized;
+                        self.status = ComponentState::Initialized;
                         info!(
                             "initialization of {} finished",
-                            <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self)
+                            <Self as InitializedComponent<MainEvent>>::name(self)
                         );
                         // start dishonest peer management on initialization
-                        return effect_builder
+                        effect_builder
                             .set_timeout(self.config.disconnect_dishonest_peers_interval().into())
                             .event(move |_| {
                                 Event::Request(BlockSynchronizerRequest::DishonestPeers)
-                            });
+                            })
                     }
                     _ => {
                         warn!(
                             ?event,
-                            name =
-                                <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self),
+                            name = <Self as InitializedComponent<MainEvent>>::name(self),
                             "should not handle this event when component is pending initialization"
                         );
-                        return Effects::new();
+                        Effects::new()
                     }
                 }
             }
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <BlockSynchronizer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "component already initialized"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
                 Event::Request(request) => match request {
                     // the rpc and rest servers include block sync data on their status responses
                     BlockSynchronizerRequest::Status { responder } => {
                         responder.respond(self.status()).ignore()
                     }
-                    // prompts for what data (if any) is needed next to acquire block(s) being sync'd
+                    // prompts for what data (if any) is needed next to acquire block(s) being
+                    // sync'd
                     BlockSynchronizerRequest::NeedNext => self.need_next(effect_builder, rng),
                     // this component is periodically asked for any peers that have provided false
                     // data (if any) which are then disconnected from

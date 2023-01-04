@@ -38,7 +38,7 @@ use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::{
-        contract_runtime::EraValidatorsRequest, ComponentStatus, InitializedComponent,
+        contract_runtime::EraValidatorsRequest, ComponentState, InitializedComponent,
         PortBoundComponent,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -99,7 +99,7 @@ impl<REv> ReactorEventT for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct RpcServer {
     /// The status.
-    status: ComponentStatus,
+    status: ComponentState,
     /// The config.
     config: Config,
     /// The config for speculative execution.
@@ -127,7 +127,7 @@ impl RpcServer {
         node_startup_instant: Instant,
     ) -> Self {
         RpcServer {
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             config,
             speculative_exec_config,
             api_version,
@@ -223,193 +223,164 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
                     ?event,
-                    name = <RpcServer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <RpcServer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => match event {
+            ComponentState::Initializing => match event {
                 Event::Initialize => {
                     let (effects, status) = self.bind(self.config.enable_server, effect_builder);
                     self.status = status;
-                    return effects;
+                    effects
                 }
                 _ => {
                     warn!(
                         ?event,
-                        name = <RpcServer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
             },
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <RpcServer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "component already initialized"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
-                Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => {
-                    return effect_builder
-                        .announce_deploy_received(deploy, Some(responder))
-                        .ignore()
-                }
+                Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
+                    .announce_deploy_received(deploy, Some(responder))
+                    .ignore(),
                 Event::RpcRequest(RpcRequest::GetBlock {
                     maybe_id: Some(BlockIdentifier::Hash(hash)),
                     only_from_available_block_range,
                     responder,
-                }) => {
-                    return effect_builder
-                        .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
-                        .event(move |result| Event::GetBlockResult {
-                            maybe_id: Some(BlockIdentifier::Hash(hash)),
-                            result: Box::new(result),
-                            main_responder: responder,
-                        })
-                }
+                }) => effect_builder
+                    .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
+                    .event(move |result| Event::GetBlockResult {
+                        maybe_id: Some(BlockIdentifier::Hash(hash)),
+                        result: Box::new(result),
+                        main_responder: responder,
+                    }),
                 Event::RpcRequest(RpcRequest::GetBlock {
                     maybe_id: Some(BlockIdentifier::Height(height)),
                     only_from_available_block_range,
                     responder,
-                }) => {
-                    return effect_builder
-                        .get_block_at_height_with_metadata_from_storage(
-                            height,
-                            only_from_available_block_range,
-                        )
-                        .event(move |result| Event::GetBlockResult {
-                            maybe_id: Some(BlockIdentifier::Height(height)),
-                            result: Box::new(result),
-                            main_responder: responder,
-                        })
-                }
+                }) => effect_builder
+                    .get_block_at_height_with_metadata_from_storage(
+                        height,
+                        only_from_available_block_range,
+                    )
+                    .event(move |result| Event::GetBlockResult {
+                        maybe_id: Some(BlockIdentifier::Height(height)),
+                        result: Box::new(result),
+                        main_responder: responder,
+                    }),
                 Event::RpcRequest(RpcRequest::GetBlock {
                     maybe_id: None,
                     only_from_available_block_range: _,
                     responder,
-                }) => {
-                    return effect_builder
-                        .get_highest_block_with_metadata_from_storage()
-                        .event(move |result| Event::GetBlockResult {
-                            maybe_id: None,
-                            result: Box::new(result),
-                            main_responder: responder,
-                        })
-                }
+                }) => effect_builder
+                    .get_highest_block_with_metadata_from_storage()
+                    .event(move |result| Event::GetBlockResult {
+                        maybe_id: None,
+                        result: Box::new(result),
+                        main_responder: responder,
+                    }),
                 Event::RpcRequest(RpcRequest::GetBlockTransfers {
                     block_hash,
                     responder,
-                }) => {
-                    return effect_builder
-                        .get_block_transfers_from_storage(block_hash)
-                        .event(move |result| Event::GetBlockTransfersResult {
-                            block_hash,
-                            result: Box::new(result),
-                            main_responder: responder,
-                        })
-                }
+                }) => effect_builder
+                    .get_block_transfers_from_storage(block_hash)
+                    .event(move |result| Event::GetBlockTransfersResult {
+                        block_hash,
+                        result: Box::new(result),
+                        main_responder: responder,
+                    }),
                 Event::RpcRequest(RpcRequest::QueryGlobalState {
                     state_root_hash,
                     base_key,
                     path,
                     responder,
-                }) => {
-                    return self.handle_query(
-                        effect_builder,
-                        state_root_hash,
-                        base_key,
-                        path,
-                        responder,
-                    )
-                }
+                }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
                 Event::RpcRequest(RpcRequest::QueryEraValidators {
                     state_root_hash,
                     protocol_version,
                     responder,
-                }) => {
-                    return self.handle_era_validators(
-                        effect_builder,
-                        state_root_hash,
-                        protocol_version,
-                        responder,
-                    )
-                }
+                }) => self.handle_era_validators(
+                    effect_builder,
+                    state_root_hash,
+                    protocol_version,
+                    responder,
+                ),
                 Event::RpcRequest(RpcRequest::GetBids {
                     state_root_hash,
                     responder,
                 }) => {
                     let get_bids_request = GetBidsRequest::new(state_root_hash);
-                    return effect_builder
+                    effect_builder
                         .get_bids(get_bids_request)
                         .event(move |result| Event::GetBidsResult {
                             result,
                             main_responder: responder,
-                        });
+                        })
                 }
                 Event::RpcRequest(RpcRequest::GetBalance {
                     state_root_hash,
                     purse_uref,
                     responder,
                 }) => {
-                    return self.handle_get_balance(
-                        effect_builder,
-                        state_root_hash,
-                        purse_uref,
-                        responder,
-                    );
+                    self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder)
                 }
                 Event::RpcRequest(RpcRequest::GetDeploy {
                     hash,
                     responder,
                     finalized_approvals,
-                }) => {
-                    return effect_builder
-                        .get_deploy_and_metadata_from_storage(hash)
-                        .event(move |result| Event::GetDeployResult {
-                            hash,
-                            result: Box::new(result.map(
-                                |(deploy_with_finalized_approvals, metadata_ext)| {
-                                    if finalized_approvals {
-                                        (deploy_with_finalized_approvals.into_naive(), metadata_ext)
-                                    } else {
-                                        (
-                                            deploy_with_finalized_approvals
-                                                .discard_finalized_approvals(),
-                                            metadata_ext,
-                                        )
-                                    }
-                                },
-                            )),
-                            main_responder: responder,
-                        })
-                }
-                Event::RpcRequest(RpcRequest::GetPeers { responder }) => {
-                    return effect_builder.network_peers().event(move |peers| {
-                        Event::GetPeersResult {
-                            peers,
-                            main_responder: responder,
-                        }
-                    })
-                }
+                }) => effect_builder
+                    .get_deploy_and_metadata_from_storage(hash)
+                    .event(move |result| Event::GetDeployResult {
+                        hash,
+                        result: Box::new(result.map(
+                            |(deploy_with_finalized_approvals, metadata_ext)| {
+                                if finalized_approvals {
+                                    (deploy_with_finalized_approvals.into_naive(), metadata_ext)
+                                } else {
+                                    (
+                                        deploy_with_finalized_approvals
+                                            .discard_finalized_approvals(),
+                                        metadata_ext,
+                                    )
+                                }
+                            },
+                        )),
+                        main_responder: responder,
+                    }),
+                Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder
+                    .network_peers()
+                    .event(move |peers| Event::GetPeersResult {
+                        peers,
+                        main_responder: responder,
+                    }),
                 Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
                     let node_uptime = self.node_startup_instant.elapsed();
                     let network_name = self.network_name.clone();
-                    return async move {
+                    async move {
                         let (
                             last_added_block,
                             peers,
@@ -448,20 +419,18 @@ where
                         );
                         responder.respond(status_feed).await;
                     }
-                    .ignore();
-                }
-                Event::RpcRequest(RpcRequest::GetAvailableBlockRange { responder }) => {
-                    return async move {
-                        responder
-                            .respond(
-                                effect_builder
-                                    .get_available_block_range_from_storage()
-                                    .await,
-                            )
-                            .await
-                    }
                     .ignore()
                 }
+                Event::RpcRequest(RpcRequest::GetAvailableBlockRange { responder }) => async move {
+                    responder
+                        .respond(
+                            effect_builder
+                                .get_available_block_range_from_storage()
+                                .await,
+                        )
+                        .await
+                }
+                .ignore(),
                 Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
                     block_header,
                     deploy,
@@ -478,40 +447,40 @@ where
                     }
                 }
                 Event::GetBlockResult {
-                    maybe_id,
+                    maybe_id: _,
                     result,
                     main_responder,
-                } => return main_responder.respond(*result).ignore(),
+                } => main_responder.respond(*result).ignore(),
                 Event::GetBlockTransfersResult {
-                    block_hash,
+                    block_hash: _,
                     result,
                     main_responder,
-                } => return main_responder.respond(*result).ignore(),
+                } => main_responder.respond(*result).ignore(),
                 Event::QueryGlobalStateResult {
                     result,
                     main_responder,
-                } => return main_responder.respond(result).ignore(),
+                } => main_responder.respond(result).ignore(),
                 Event::QueryEraValidatorsResult {
                     result,
                     main_responder,
-                } => return main_responder.respond(result).ignore(),
+                } => main_responder.respond(result).ignore(),
                 Event::GetBidsResult {
                     result,
                     main_responder,
-                } => return main_responder.respond(result).ignore(),
+                } => main_responder.respond(result).ignore(),
                 Event::GetDeployResult {
-                    hash,
+                    hash: _,
                     result,
                     main_responder,
-                } => return main_responder.respond(*result).ignore(),
+                } => main_responder.respond(*result).ignore(),
                 Event::GetPeersResult {
                     peers,
                     main_responder,
-                } => return main_responder.respond(peers).ignore(),
+                } => main_responder.respond(peers).ignore(),
                 Event::GetBalanceResult {
                     result,
                     main_responder,
-                } => return main_responder.respond(result).ignore(),
+                } => main_responder.respond(result).ignore(),
             },
         }
     }
@@ -521,23 +490,16 @@ impl<REv> InitializedComponent<REv> for RpcServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "rpc_server"
     }
 
-    fn start_initialization(&mut self) {
-        if <RpcServer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <RpcServer as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 

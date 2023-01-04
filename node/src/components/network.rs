@@ -95,14 +95,13 @@ use self::{
     tasks::{MessageQueueItem, NetworkContext},
 };
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent},
+    components::{Component, ComponentState, InitializedComponent},
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    protocol,
-    reactor::{main_reactor::MainEvent, Finalize, ReactorEvent},
+    reactor::{Finalize, ReactorEvent},
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
@@ -176,7 +175,7 @@ where
     active_era: EraId,
 
     /// The status of this component.
-    status: ComponentStatus,
+    status: ComponentState,
 }
 
 #[derive(DataSize)]
@@ -266,7 +265,7 @@ where
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
         };
 
         Ok(component)
@@ -372,7 +371,7 @@ where
             "initialization of {} finished",
             "Network" // todo: use proper call to `name()`
         );
-        self.status = ComponentStatus::Initialized;
+        self.status = ComponentState::Initialized;
         Ok(effects)
     }
 
@@ -1051,8 +1050,8 @@ where
                         name = <Self as InitializedComponent<REv>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
-                Effects::new()
-            }
+                    Effects::new()
+                }
             },
             ComponentState::Initialized => match event {
                 Event::Initialize => {
@@ -1061,14 +1060,14 @@ where
                         name = <Self as InitializedComponent<REv>>::name(self),
                         "component already initialized"
                     );
-                Effects::new()
-            }
+                    Effects::new()
+                }
                 Event::IncomingConnection { incoming, span } => {
-                self.handle_incoming_connection(incoming, span)
-            }
+                    self.handle_incoming_connection(incoming, span)
+                }
                 Event::IncomingMessage { peer_id, msg, span } => {
-                self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
-            }
+                    self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
+                }
                 Event::IncomingClosed {
                     result,
                     peer_id,
@@ -1076,11 +1075,11 @@ where
                     span,
                 } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
                 Event::OutgoingConnection { outgoing, span } => {
-                self.handle_outgoing_connection(*outgoing, span)
-            }
+                    self.handle_outgoing_connection(*outgoing, span)
+                }
                 Event::OutgoingDropped { peer_id, peer_addr } => {
-                self.handle_outgoing_dropped(*peer_id, peer_addr)
-            }
+                    self.handle_outgoing_dropped(*peer_id, peer_addr)
+                }
                 Event::NetworkRequest { req: request } => {
                     self.handle_network_request(*request, rng)
                 }
@@ -1088,32 +1087,32 @@ where
                     return match *req {
                         NetworkInfoRequest::Peers { responder } => {
                             responder.respond(self.peers()).ignore()
-            }
-                NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
-                    .respond(self.fully_connected_peers_random(rng, count))
-                    .ignore(),
-                NetworkInfoRequest::Insight { responder } => responder
-                    .respond(NetworkInsights::collect_from_component(self))
-                    .ignore(),
+                        }
+                        NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
+                            .respond(self.fully_connected_peers_random(rng, count))
+                            .ignore(),
+                        NetworkInfoRequest::Insight { responder } => responder
+                            .respond(NetworkInsights::collect_from_component(self))
+                            .ignore(),
+                    }
                 }
-            }
                 Event::GossipOurAddress => {
-                let our_address = GossipedAddress::new(
-                    self.context
-                        .public_addr()
-                        .expect("component not initialized properly"),
-                );
+                    let our_address = GossipedAddress::new(
+                        self.context
+                            .public_addr()
+                            .expect("component not initialized properly"),
+                    );
 
-                let mut effects = effect_builder
-                    .begin_gossip(our_address, Source::Ourself)
-                    .ignore();
-                effects.extend(
-                    effect_builder
-                        .set_timeout(self.cfg.gossip_interval.into())
-                        .event(|_| Event::GossipOurAddress),
-                );
-                effects
-            }
+                    let mut effects = effect_builder
+                        .begin_gossip(our_address, Source::Ourself)
+                        .ignore();
+                    effects.extend(
+                        effect_builder
+                            .set_timeout(self.cfg.gossip_interval.into())
+                            .event(|_| Event::GossipOurAddress),
+                    );
+                    effects
+                }
                 Event::PeerAddressReceived(gossiped_address) => {
                     let requests = self.outgoing_manager.learn_addr(
                         gossiped_address.into(),
@@ -1123,19 +1122,19 @@ where
                     self.process_dial_requests(requests)
                 }
                 Event::SweepOutgoing => {
-                let now = Instant::now();
-                let requests = self.outgoing_manager.perform_housekeeping(now);
+                    let now = Instant::now();
+                    let requests = self.outgoing_manager.perform_housekeeping(now);
 
-                let mut effects = self.process_dial_requests(requests);
+                    let mut effects = self.process_dial_requests(requests);
 
-                effects.extend(
-                    effect_builder
-                        .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
-                        .event(|_| Event::SweepOutgoing),
-                );
+                    effects.extend(
+                        effect_builder
+                            .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
+                            .event(|_| Event::SweepOutgoing),
+                    );
 
-                effects
-            }
+                    effects
+                }
                 Event::BlocklistAnnouncement(announcement) => match announcement {
                     PeerBehaviorAnnouncement::OffenseCommitted {
                         offender,
@@ -1174,20 +1173,16 @@ where
         + From<PeerBehaviorAnnouncement>,
     P: Payload,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "network"
     }
 
-    fn start_initialization(&mut self) {
-        if self.is_uninitialized() {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(name = self.name(), "component must be uninitialized");
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 

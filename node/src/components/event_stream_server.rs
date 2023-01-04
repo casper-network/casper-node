@@ -42,7 +42,7 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
-    components::{ComponentStatus, InitializedComponent, PortBoundComponent},
+    components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
     reactor::main_reactor::MainEvent,
     types::JsonBlock,
@@ -83,7 +83,7 @@ struct InnerServer {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct EventStreamServer {
-    status: ComponentStatus,
+    status: ComponentState,
     config: Config,
     storage_path: PathBuf,
     api_version: ProtocolVersion,
@@ -93,7 +93,7 @@ pub(crate) struct EventStreamServer {
 impl EventStreamServer {
     pub(crate) fn new(config: Config, storage_path: PathBuf, api_version: ProtocolVersion) -> Self {
         EventStreamServer {
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             config,
             storage_path,
             api_version,
@@ -190,46 +190,46 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
                     ?event,
-                    name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => match event {
+            ComponentState::Initializing => match event {
                 Event::Initialize => {
                     let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
                     self.status = status;
-                    return effects;
+                    effects
                 }
                 _ => {
                     warn!(
                         ?event,
-                        name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
             },
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <EventStreamServer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "component already initialized"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
@@ -282,23 +282,16 @@ impl<REv> InitializedComponent<REv> for EventStreamServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "event_stream_server"
     }
 
-    fn start_initialization(&mut self) {
-        if <EventStreamServer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <EventStreamServer as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 

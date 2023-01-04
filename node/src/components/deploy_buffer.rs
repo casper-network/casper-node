@@ -21,7 +21,7 @@ use casper_types::Timestamp;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        Component, ComponentStatus, InitializedComponent,
+        Component, ComponentState, InitializedComponent,
     },
     effect::{
         announcements::DeployBufferAnnouncement,
@@ -48,7 +48,7 @@ type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
-    status: ComponentStatus,
+    status: ComponentState,
     cfg: Config,
     deploy_config: DeployConfig,
     // Keeps track of all deploys the buffer is currently aware of.
@@ -87,7 +87,7 @@ impl DeployBuffer {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(DeployBuffer {
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             cfg,
             deploy_config,
             buffer: HashMap::new(),
@@ -103,12 +103,12 @@ impl DeployBuffer {
         effect_builder: EffectBuilder<MainEvent>,
         storage: &Storage,
     ) -> Option<Effects<MainEvent>> {
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+        if <Self as InitializedComponent<MainEvent>>::is_uninitialized(self) {
             info!(
                 "pending initialization of {}",
-                <DeployBuffer as InitializedComponent<MainEvent>>::name(self)
+                <Self as InitializedComponent<MainEvent>>::name(self)
             );
-            self.status = ComponentStatus::InitializationPending;
+            self.status = ComponentState::Initializing;
             let blocks = match storage.read_blocks_for_replay_protection() {
                 Ok(blocks) => blocks,
                 Err(err) => {
@@ -128,7 +128,7 @@ impl DeployBuffer {
             );
             info!(
                 "initialized {}",
-                <DeployBuffer as InitializedComponent<MainEvent>>::name(self)
+                <Self as InitializedComponent<MainEvent>>::name(self)
             );
             let event = Event::Initialize(blocks);
             return Some(smallvec![async {
@@ -136,12 +136,12 @@ impl DeployBuffer {
             }
             .boxed()]);
         }
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_fatal(self) {
+        if <Self as InitializedComponent<MainEvent>>::is_fatal(self) {
             return Some(
                 fatal!(
                     effect_builder,
                     "{} failed to initialize",
-                    <DeployBuffer as InitializedComponent<MainEvent>>::name(self)
+                    <Self as InitializedComponent<MainEvent>>::name(self)
                 )
                 .ignore(),
             );
@@ -508,23 +508,16 @@ impl<REv> InitializedComponent<REv> for DeployBuffer
 where
     REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "deploy_buffer"
     }
 
-    fn start_initialization(&mut self) {
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <DeployBuffer as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 
@@ -541,24 +534,24 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
                     ?event,
-                    name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => {
+            ComponentState::Initializing => {
                 match event {
                     Event::Initialize(blocks) => {
                         for block in blocks {
@@ -566,9 +559,9 @@ where
                         }
                         info!(
                             "initialization of {} finished",
-                            <DeployBuffer as InitializedComponent<MainEvent>>::name(&self)
+                            <Self as InitializedComponent<MainEvent>>::name(self)
                         );
-                        self.status = ComponentStatus::Initialized;
+                        self.status = ComponentState::Initialized;
                         // start self-expiry management on initialization
                         effect_builder
                             .set_timeout(self.cfg.expiry_check_interval().into())
@@ -577,18 +570,18 @@ where
                     _ => {
                         warn!(
                             ?event,
-                            name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
+                            name = <Self as InitializedComponent<MainEvent>>::name(self),
                             "should not handle this event when component is pending initialization"
                         );
-                        return Effects::new();
+                        Effects::new()
                     }
                 }
             }
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize(_) => {
                     error!(
                         ?event,
-                        name = <DeployBuffer as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "component already initialized"
                     );
                     Effects::new()

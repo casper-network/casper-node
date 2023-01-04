@@ -40,7 +40,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
-    components::{fetcher::FetchResponse, Component, ComponentStatus},
+    components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
@@ -190,7 +190,7 @@ impl Display for Event {
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    status: ComponentStatus,
+    status: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -600,7 +600,7 @@ impl ContractRuntime {
 
         info!("initialization of contract_runtime finished");
         Ok(ContractRuntime {
-            status: ComponentStatus::Initialized,
+            status: ComponentState::Initialized,
             execution_pre_state,
             engine_state,
             metrics,

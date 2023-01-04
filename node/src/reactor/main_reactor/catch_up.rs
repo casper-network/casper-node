@@ -9,7 +9,7 @@ use crate::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
         sync_leaper,
-        sync_leaper::{LeapActivityError, LeapStatus},
+        sync_leaper::{LeapActivityError, LeapState},
         ValidatorBoundComponent,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
@@ -267,17 +267,17 @@ impl MainReactor {
         let leap_status = self.sync_leaper.leap_status();
         info!(%block_hash, %leap_status, "CatchUp: status");
         match leap_status {
-            LeapStatus::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
-            LeapStatus::Awaiting { .. } => CatchUpInstruction::CheckLater(
+            LeapState::Idle => self.catch_up_leaper_idle(effect_builder, rng, block_hash),
+            LeapState::Awaiting { .. } => CatchUpInstruction::CheckLater(
                 "sync leaper is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
             ),
-            LeapStatus::Received {
+            LeapState::Received {
                 best_available,
                 from_peers,
                 ..
             } => self.catch_up_leap_received(effect_builder, best_available, from_peers),
-            LeapStatus::Failed { error, .. } => {
+            LeapState::Failed { error, .. } => {
                 self.catch_up_leap_failed(effect_builder, rng, block_hash, error)
             }
         }

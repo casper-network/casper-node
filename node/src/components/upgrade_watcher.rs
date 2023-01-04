@@ -28,7 +28,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent},
+    components::{Component, ComponentState, InitializedComponent},
     effect::{
         announcements::UpgradeWatcherAnnouncement, requests::UpgradeWatcherRequest, EffectBuilder,
         EffectExt, Effects,
@@ -167,7 +167,7 @@ pub(crate) struct UpgradeWatcher {
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    status: ComponentStatus,
+    status: ComponentState,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -190,7 +190,7 @@ impl UpgradeWatcher {
             current_version,
             config,
             root_dir,
-            status: ComponentStatus::Uninitialized,
+            status: ComponentState::Uninitialized,
             next_upgrade,
         };
 
@@ -210,14 +210,14 @@ impl UpgradeWatcher {
     where
         REv: From<UpgradeWatcherAnnouncement> + Send,
     {
-        if self.status != ComponentStatus::InitializationPending {
+        if self.status != ComponentState::Initializing {
             return Effects::new();
         }
         info!(
             "initialization of {} finished",
-            <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self)
+            <Self as InitializedComponent<MainEvent>>::name(self)
         );
-        self.status = ComponentStatus::Initialized;
+        self.status = ComponentState::Initialized;
         self.check_for_next_upgrade(effect_builder)
     }
 
@@ -282,42 +282,42 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match &self.status {
-            ComponentStatus::Fatal(msg) => {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
                     ?event,
-                    name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::Uninitialized => {
+            ComponentState::Uninitialized => {
                 warn!(
                     ?event,
-                    name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                    name = <Self as InitializedComponent<MainEvent>>::name(self),
                     "should not handle this event when component is uninitialized"
                 );
-                return Effects::new();
+                Effects::new()
             }
-            ComponentStatus::InitializationPending => match event {
+            ComponentState::Initializing => match event {
                 Event::Initialize => self.start_checking_for_upgrades(effect_builder),
                 _ => {
                     warn!(
                         ?event,
-                        name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "should not handle this event when component is pending initialization"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
             },
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize => {
                     error!(
                         ?event,
-                        name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(&self),
+                        name = <Self as InitializedComponent<MainEvent>>::name(self),
                         "component already initialized"
                     );
-                    return Effects::new();
+                    Effects::new()
                 }
                 Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
                 Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
@@ -330,23 +330,16 @@ impl<REv> InitializedComponent<REv> for UpgradeWatcher
 where
     REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn status(&self) -> &ComponentState {
+        &self.status
     }
 
     fn name(&self) -> &str {
         "upgrade_watcher"
     }
 
-    fn start_initialization(&mut self) {
-        if <UpgradeWatcher as InitializedComponent<MainEvent>>::is_uninitialized(self) {
-            self.status = ComponentStatus::InitializationPending;
-        } else {
-            error!(
-                name = <UpgradeWatcher as InitializedComponent<MainEvent>>::name(self),
-                "component must be uninitialized"
-            );
-        }
+    fn set_status(&mut self, new_status: ComponentState) {
+        self.status = new_status;
     }
 }
 
