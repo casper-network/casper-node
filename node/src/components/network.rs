@@ -759,6 +759,63 @@ where
         })
     }
 
+    fn handle_network_request(
+        &self,
+        request: NetworkRequest<P>,
+        rng: &mut NodeRng,
+    ) -> Effects<Event<P>> {
+        match request {
+            NetworkRequest::SendMessage {
+                dest,
+                payload,
+                respond_after_queueing,
+                auto_closing_responder,
+            } => {
+                // We're given a message to send. Pass on the responder so that confirmation
+                // can later be given once the message has actually been buffered.
+                self.net_metrics.direct_message_requests.inc();
+
+                if respond_after_queueing {
+                    self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
+                    auto_closing_responder.respond(()).ignore()
+                } else {
+                    self.send_message(
+                        *dest,
+                        Arc::new(Message::Payload(*payload)),
+                        Some(auto_closing_responder),
+                    );
+                    Effects::new()
+                }
+            }
+            NetworkRequest::ValidatorBroadcast {
+                payload,
+                era_id,
+                auto_closing_responder,
+            } => {
+                // We're given a message to broadcast.
+                self.broadcast_message_to_validators(Arc::new(Message::Payload(*payload)), era_id);
+                auto_closing_responder.respond(()).ignore()
+            }
+            NetworkRequest::Gossip {
+                payload,
+                gossip_target,
+                count,
+                exclude,
+                auto_closing_responder,
+            } => {
+                // We're given a message to gossip.
+                let sent_to = self.gossip_message(
+                    rng,
+                    Arc::new(Message::Payload(*payload)),
+                    gossip_target,
+                    count,
+                    exclude,
+                );
+                auto_closing_responder.respond(sent_to).ignore()
+            }
+        }
+    }
+
     fn handle_outgoing_dropped(
         &mut self,
         peer_id: NodeId,
