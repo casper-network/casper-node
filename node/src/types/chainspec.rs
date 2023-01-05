@@ -115,7 +115,9 @@ impl Chainspec {
             }
         }
 
-        self.protocol_config.is_valid() && self.core_config.is_valid()
+        self.protocol_config.is_valid()
+            && self.core_config.is_valid()
+            && self.deploy_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.

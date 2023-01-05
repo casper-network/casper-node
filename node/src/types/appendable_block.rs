@@ -190,6 +190,7 @@ impl AppendableBlock {
             - self.transfers.len()
             + self.deploy_config.block_max_deploy_count as usize
             - self.deploys.len();
+        // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }
 }
@@ -219,5 +220,16 @@ impl Display for AppendableBlock {
             self.total_gas,
             self.total_size,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl AppendableBlock {
+        pub(crate) fn deploy_and_transfer_set(&self) -> &HashSet<DeployHash> {
+            &self.deploy_and_transfer_set
+        }
     }
 }

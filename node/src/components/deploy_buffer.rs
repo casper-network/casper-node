@@ -1,6 +1,8 @@
 mod config;
 mod event;
 mod metrics;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
@@ -192,11 +194,6 @@ impl DeployBuffer {
         // note the .rev() at the end (we go backwards)
         // I only mention it as it seems to keep tripping people up. Not YOU of course, but people.
         for (height, timestamp) in self.chain_index.range(..from_height).rev() {
-            // if we've reached genesis via an unbroken sequence, we're good
-            // if we've seen a full ttl period of blocks, we're good
-            if *height == 0 || *timestamp < earliest_needed {
-                return true;
-            }
             // gap detection; any gaps in the chain index means we do not have full ttl awareness
             // for instance, for block_height 6 in set [0,1,2,4,5,6] block 3 is missing
             // therefore, we can't possibly have ttl
@@ -204,6 +201,12 @@ impl DeployBuffer {
             if contiguous_next != current.0 {
                 debug!("DeployBuffer: missing block at height: {}", contiguous_next);
                 return false;
+            }
+
+            // if we've reached genesis via an unbroken sequence, we're good
+            // if we've seen a full ttl period of blocks, we're good
+            if *height == 0 || *timestamp < earliest_needed {
+                return true;
             }
             current = (*height, timestamp);
         }
