@@ -265,6 +265,9 @@ where
     /// # Panics
     ///
     /// If the `condition` is not reached inside of `within`, panics.
+    // Note: `track_caller` will not have an effect until
+    //       <https://github.com/rust-lang/rust/issues/87417> is fixed.
+    #[track_caller]
     pub(crate) async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
     where
         F: Fn(&Nodes<R>) -> bool,
@@ -274,6 +277,7 @@ where
             .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
     }
 
+    #[track_caller]
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)
     where
         F: Fn(&Nodes<R>) -> bool,
