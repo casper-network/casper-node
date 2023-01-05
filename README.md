@@ -128,6 +128,8 @@ RUST_LOG=info cargo run --release -- validator resources/local/config.toml
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.
 
+When developing and running unit tests, setting `NODE_TEST_LOG=json` will cause the log messages produced by the tests to be JSON-formatted.
+
 ### Log message format
 
 A typical log message will look like:

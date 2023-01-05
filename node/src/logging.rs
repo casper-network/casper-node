@@ -265,7 +265,17 @@ where
 /// See `init_params` for details.
 #[cfg(test)]
 pub fn init() -> anyhow::Result<()> {
-    init_with_config(&Default::default())
+    let mut cfg = LoggingConfig::default();
+
+    // The `NODE_TEST_LOG` environment variable can be used to specify JSON output when testing.
+    match env::var("NODE_TEST_LOG") {
+        Ok(s) if s == "json" => {
+            cfg.format = LoggingFormat::Json;
+        }
+        _ => (),
+    }
+
+    init_with_config(&cfg)
 }
 
 /// A handle for reloading the logger.

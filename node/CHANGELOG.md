@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add an `identity` option to load existing network identity certificates signed by a CA.
 * TLS connection keys can now be logged using the `network.keylog_location` setting (similar to `SSLKEYLOGFILE` envvar found in other applications).
 * Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
+* Unit tests can be run with JSON log output by setting a `NODE_TEST_LOG=json` environment variable.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
