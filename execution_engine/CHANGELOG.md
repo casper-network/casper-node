@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.  The format
 * Lift the temporary limit of the size of individual values stored in global state.
 * Lift the temporary limit of the global maximum delegator capacity.
 * Providing incorrect Wasm for execution will cause the default 2.5CSPR to be charged.
-
+* Update the default `control_flow` opcode cost from `440` to `440000`.
 
 
 ## 2.0.1

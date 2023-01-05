@@ -10,8 +10,8 @@ import { Option } from "../../../../contract_as/assembly/option";
 import { toBytesU32 } from "../../../../contract_as/assembly/bytesrepr";
 import { arrayToTyped } from "../../../../contract_as/assembly/utils";
 import { U512 } from "../../../../contract_as/assembly/bignum";
-import { transferFromPurseToPurse } from "../../../../contract_as/assembly/purse";
-import { getMainPurse } from "../../../../contract_as/assembly/account";
+import { transferFromPurseToPurse, transferFromPurseToPursePassthrough } from "../../../../contract_as/assembly/purse";
+import { getMainPurse, getMainPurseBytes } from "../../../../contract_as/assembly/account";
 
 const CONTRACT_INITIAL_VERSION: u8 = 1;
 const PACKAGE_HASH_KEY = "package_hash_key";
@@ -32,10 +32,10 @@ export function restricted_contract(): void { }
 
 export function restricted_session_caller(): void {
   let packageHashBytes = CL.getNamedArg(ARG_PACKAGE_HASH);
-  let packageKey = Key.fromBytes(packageHashBytes).unwrap();
-  let contractVersion = new Option(arrayToTyped(toBytesU32(CONTRACT_INITIAL_VERSION)));
+  let packageHash = packageHashBytes.slice(1);
+  let contractVersion = new Option(toBytesU32(CONTRACT_INITIAL_VERSION));
   CL.callVersionedContract(
-    <Uint8Array>packageKey.hash,
+    StaticArray.fromArray(packageHash),
     contractVersion,
     RESTRICTED_SESSION,
     new RuntimeArgs(),
@@ -44,10 +44,11 @@ export function restricted_session_caller(): void {
 
 function contract_caller(): void {
   let packageHashBytes = CL.getNamedArg(ARG_PACKAGE_HASH);
-  let packageKey = Key.fromBytes(packageHashBytes).unwrap();
-  let contractVersion = new Option(arrayToTyped(toBytesU32(CONTRACT_INITIAL_VERSION)));
+  // let packageKey = Key.fromBytes(packageHashBytes).unwrap();
+  let packageHash = packageHashBytes.slice(1);
+  let contractVersion = new Option(toBytesU32(CONTRACT_INITIAL_VERSION));
   CL.callVersionedContract(
-    <Uint8Array>packageKey.hash,
+    StaticArray.fromArray(packageHash),
     contractVersion,
     RESTRICTED_CONTRACT,
     new RuntimeArgs(),
@@ -68,39 +69,22 @@ export function uncallable_contract(): void { }
 
 export function restricted_standard_payment(): void {
   // Performs standard payment operation as a restricted session entrypoint.
-
   let amountBytes = CL.getNamedArg("amount");
   if (amountBytes === null) {
     Error.fromErrorCode(ErrorCode.MissingArgument).revert();
     return;
   }
-
-  let amountResult = U512.fromBytes(amountBytes);
-  if (amountResult.hasError()) {
-    Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
-    return;
-  }
-
-  let amount = amountResult.value;
-
   let handlePayment = CL.getSystemContract(CL.SystemContract.HandlePayment);
-
-  let paymentPurseOutput = CL.callContract(handlePayment, "get_payment_purse", new RuntimeArgs());
-
-  let paymentPurseResult = URef.fromBytes(paymentPurseOutput);
-  if (paymentPurseResult.hasError()) {
+  let paymentPurseBytes = CL.callContract(handlePayment, "get_payment_purse", null);
+  if (paymentPurseBytes === null) {
     Error.fromErrorCode(ErrorCode.InvalidPurse).revert();
     return;
   }
-  let paymentPurse = paymentPurseResult.value;
-
-  let err = transferFromPurseToPurse(getMainPurse(), paymentPurse, amount);
+  let err = transferFromPurseToPursePassthrough(getMainPurseBytes(), paymentPurseBytes, amountBytes);
   if (err !== null) {
     err.revert();
     return;
   }
-
-
 }
 
 export function call_restricted_entry_points(): void {
@@ -111,16 +95,16 @@ export function call_restricted_entry_points(): void {
 }
 
 
-function createGroup(packageHash: Uint8Array): URef {
-  let valueKey = Key.create(CLValue.fromU64(0));
-  if (!valueKey) {
+function createGroup(packageHash: StaticArray<u8>): URef {
+  let key = Key.create(CLValue.fromU64(0));
+  if (key === null) {
     Error.fromErrorCode(ErrorCode.Formatting).revert();
     throw 0;
   }
 
-  CL.putKey("saved_uref", valueKey);
+  CL.putKey("saved_uref", key);
 
-  let existingURefs: Array<URef> = [<URef>valueKey.uref];
+  let existingURefs: Array<URef> = [<URef>key.uref];
 
   let newURefs = CL.createContractUserGroup(
     packageHash,
@@ -262,7 +246,7 @@ function createEntryPoints(): CL.EntryPoints {
 }
 
 function installVersion1(
-  contractPackageHash: Uint8Array,
+  contractPackageHash: StaticArray<u8>,
   restrictedURef: URef,
 ): void {
   let contractVariable = Key.create(CLValue.fromI32(0));

@@ -7,13 +7,13 @@ const OPTION_TAG_SOME: u8 = 1;
  * no value at all. Similar to Rust's `Option` or Haskell's `Maybe`.
  */
 export class Option{
-    private bytes: Uint8Array | null;
+    private bytes: Array<u8>  | null;
 
 	/**
 	 * Constructs a new option containing the value of `bytes`. `bytes` can be `null`, which
 	 * indicates no value.
 	 */
-    constructor(bytes: Uint8Array | null) {
+    constructor(bytes: Array<u8>  | null) {
         this.bytes = bytes;
     }
 
@@ -40,9 +40,9 @@ export class Option{
 	 *
 	 * @returns The inner value, or `null` if there was none.
 	 */
-    unwrap(): Uint8Array{
+    unwrap(): Array<u8> {
         assert(this.isSome());
-        return <Uint8Array>this.bytes;
+        return <Array<u8>>this.bytes;
     }
 
 	/**
@@ -54,7 +54,7 @@ export class Option{
             result[0] = OPTION_TAG_NONE;
             return result;
         }
-        const bytes = <Uint8Array>this.bytes;
+        const bytes = <Array<u8>>this.bytes;
 
         let result = new Array<u8>(bytes.length + 1);
         result[0] = OPTION_TAG_SOME;
@@ -68,11 +68,11 @@ export class Option{
 	/**
 	 * Deserializes an array of bytes into an `Option`.
 	 */
-    static fromBytes(bytes: Uint8Array): Option{
+    static fromBytes(bytes: StaticArray<u8>): Option{
         // check SOME / NONE flag at head
         // TODO: what if length is exactly 1?
         if (bytes.length >= 1 && bytes[0] == 1)
-            return new Option(bytes.subarray(1));
+            return new Option(bytes.slice(1));
 
         return new Option(null);
     }
