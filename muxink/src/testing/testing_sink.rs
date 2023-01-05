@@ -12,7 +12,10 @@ use std::{
 };
 
 use bytes::Buf;
-use futures::{FutureExt, Sink, SinkExt};
+use futures::{Sink, SinkExt};
+
+#[cfg(test)]
+use futures::FutureExt;
 
 /// A sink for unit testing.
 ///
