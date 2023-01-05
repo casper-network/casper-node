@@ -20,7 +20,7 @@ activation_point = 3000
 name = 'casper'
 # The maximum size of an acceptable networking message in bytes.  Any message larger than this will
 # be rejected at the networking level.
-maximum_net_message_size = 23_068_672
+maximum_net_message_size = 25_165_824
 
 [core]
 # Era duration.
