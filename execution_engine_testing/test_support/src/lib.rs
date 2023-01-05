@@ -53,7 +53,7 @@ pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
 pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
 
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
+pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 
 /// Default round seigniorage rate represented as a fractional number.
 ///
