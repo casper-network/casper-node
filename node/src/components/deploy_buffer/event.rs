@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -17,7 +20,7 @@ pub(crate) enum Event {
     ReceiveDeployGossiped(DeployId),
     StoredDeploy(DeployId, Box<Option<Deploy>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
-    Block(Box<Block>),
+    Block(Arc<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
 }

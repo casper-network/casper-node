@@ -14,6 +14,8 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
+use std::sync::Arc;
+
 use datasize::DataSize;
 use either::Either;
 use once_cell::sync::Lazy;
@@ -46,7 +48,7 @@ use crate::{
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
-        Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        HotBlockState, Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -409,7 +411,11 @@ impl BlockSynchronizer {
                 // other components need to know that we've added an historical block
                 // that they may be interested in
                 if let Some(block) = builder.maybe_block() {
-                    effects.extend(effect_builder.announce_completed_block(block).ignore());
+                    effects.extend(
+                        effect_builder
+                            .announce_completed_block(Arc::new(*block))
+                            .ignore(),
+                    );
                 }
                 self.metrics
                     .historical_block_sync_duration
@@ -1214,7 +1220,11 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     Some((finalized_block, deploys)) => {
                         effects.extend(
                             effect_builder
-                                .enqueue_block_for_execution(finalized_block, deploys)
+                                .enqueue_block_for_execution(
+                                    finalized_block,
+                                    deploys,
+                                    HotBlockState::new_synced(),
+                                )
                                 .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
                         );
                     }

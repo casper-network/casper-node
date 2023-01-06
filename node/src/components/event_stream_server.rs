@@ -212,7 +212,7 @@ where
             (ComponentStatus::Initialized, Event::BlockAdded(block)) => {
                 self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
-                    block: Box::new(JsonBlock::new(*block, None)),
+                    block: Box::new(JsonBlock::new(&*block, None)),
                 })
             }
             (ComponentStatus::Initialized, Event::DeployAccepted(deploy)) => {

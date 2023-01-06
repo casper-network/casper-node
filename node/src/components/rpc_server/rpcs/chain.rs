@@ -166,7 +166,7 @@ impl RpcWithOptionalParams for GetBlock {
             effect_builder,
         )
         .await?;
-        let json_block = JsonBlock::new(block, Some(block_signatures));
+        let json_block = JsonBlock::new(&block, Some(block_signatures));
 
         // Return the result.
         let result = Self::ResponseResult {

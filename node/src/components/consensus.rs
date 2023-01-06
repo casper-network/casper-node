@@ -35,7 +35,10 @@ use casper_types::{EraId, PublicKey, Timestamp};
 use crate::{
     components::Component,
     effect::{
-        announcements::{ConsensusAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement},
+        announcements::{
+            ConsensusAnnouncement, FatalAnnouncement, HotBlockAnnouncement,
+            PeerBehaviorAnnouncement,
+        },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{ConsensusDemand, ConsensusMessageIncoming},
         requests::{
@@ -335,6 +338,7 @@ pub(crate) trait ReactorEventT:
     + From<ContractRuntimeRequest>
     + From<ChainspecRawBytesRequest>
     + From<PeerBehaviorAnnouncement>
+    + From<HotBlockAnnouncement>
     + From<FatalAnnouncement>
 {
 }
@@ -353,6 +357,7 @@ impl<REv> ReactorEventT for REv where
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
         + From<PeerBehaviorAnnouncement>
+        + From<HotBlockAnnouncement>
         + From<FatalAnnouncement>
 {
 }

@@ -2,6 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 mod approvals_hashes;
+mod hot_block;
 
 use std::{
     array::TryFromSliceError,
@@ -47,6 +48,10 @@ use crate::{
     utils::{ds, DisplayIter},
 };
 pub(crate) use approvals_hashes::ApprovalsHashes;
+pub(crate) use hot_block::{
+    HotBlock, MergeMismatchError as HotBlockMergeError, State as HotBlockState,
+    StateChange as HotBlockStateChange,
+};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -172,7 +177,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let signature = crypto::sign(block.hash.inner(), secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
-    JsonBlock::new(block, Some(block_signature))
+    JsonBlock::new(&block, Some(block_signature))
 });
 static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     let block_header = Block::doc_example().header().clone();
@@ -2028,8 +2033,8 @@ pub(crate) mod json_compatibility {
         transfer_hashes: Vec<DeployHash>,
     }
 
-    impl From<BlockBody> for JsonBlockBody {
-        fn from(body: BlockBody) -> Self {
+    impl From<&BlockBody> for JsonBlockBody {
+        fn from(body: &BlockBody) -> Self {
             JsonBlockBody {
                 proposer: body.proposer().clone(),
                 deploy_hashes: body.deploy_hashes().clone(),
@@ -2065,10 +2070,10 @@ pub(crate) mod json_compatibility {
 
     impl JsonBlock {
         /// Create a new JSON Block with a Linear chain block and its associated signatures.
-        pub fn new(block: Block, maybe_signatures: Option<BlockSignatures>) -> Self {
+        pub fn new(block: &Block, maybe_signatures: Option<BlockSignatures>) -> Self {
             let hash = *block.hash();
             let header = JsonBlockHeader::from(block.header.clone());
-            let body = JsonBlockBody::from(block.body);
+            let body = JsonBlockBody::from(&block.body);
             let proofs = maybe_signatures
                 .map(|signatures| signatures.proofs.into_iter().map(JsonProof::from).collect())
                 .unwrap_or_default();
@@ -2140,7 +2145,7 @@ pub(crate) mod json_compatibility {
             let mut rng = TestRng::new();
             let block: Block = Block::random(&mut rng);
             let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
-            let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
+            let json_block = JsonBlock::new(&block, Some(empty_signatures));
             let block_deserialized = Block::from(json_block);
             assert_eq!(block, block_deserialized);
         }
