@@ -26,9 +26,11 @@ function get_chain_era()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
     local ERA
+    local STATUS
 
     if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        ERA=$(curl -s "$(get_node_address_rest $NODE_ID)/status" | jq '.last_added_block_info.era_id')
+        STATUS=$(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status")
+        ERA=$(echo $STATUS | jq '.last_added_block_info.era_id')
         if [ "$ERA" == "null" ]; then
             echo 0
         else
@@ -50,7 +52,7 @@ function get_chain_height()
     local NODE_ID=${1:-$(get_node_for_dispatch)}
 
     if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        curl -s "$(get_node_address_rest $NODE_ID)/status" | jq '.last_added_block_info.height'
+        curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" | jq '.last_added_block_info.height'
     else
         echo "N/A"
     fi
@@ -75,7 +77,7 @@ function get_chain_latest_block_hash()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
 
-    curl -s "$(get_node_address_rest $NODE_ID)/status" \
+    curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" \
     | jq '.last_added_block_info.hash' \
     | tr '[:upper:]' '[:lower:]' \
     | sed -e 's/^"//' -e 's/"$//'
@@ -133,7 +135,7 @@ function get_node_status()
 
     NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
     NODE_API_RESPONSE=$(
-        curl -s --header 'Content-Type: application/json' \
+        curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES --header 'Content-Type: application/json' \
             --request POST "$NODE_ADDRESS_CURL" \
             --data-raw '{
                 "id": 1,
@@ -229,6 +231,6 @@ function get_node_connected_peer_count()
 {
     local NODE_ID=${1}
 
-    echo $(curl -s "$(get_node_address_rest $NODE_ID)/status" | jq '.peers' | jq length)
+    echo $(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" | jq '.peers' | jq length)
 }
 
