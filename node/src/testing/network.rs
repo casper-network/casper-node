@@ -12,7 +12,7 @@ use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
 use tokio::time;
-use tracing::{debug, error_span};
+use tracing::{debug, error_span, field, Span};
 use tracing_futures::Instrument;
 
 use super::ConditionCheckReactor;
@@ -58,6 +58,8 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 pub(crate) struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
     nodes: HashMap<NodeId, Runner<ConditionCheckReactor<R>>>,
+    /// Mapping of node IDs to spans.
+    spans: HashMap<NodeId, Span>,
 }
 
 impl<R> Network<R>
@@ -102,6 +104,7 @@ where
     pub(crate) fn new() -> Self {
         Network {
             nodes: HashMap::new(),
+            spans: HashMap::new(),
         }
     }
 
@@ -115,9 +118,15 @@ where
         cfg: R::Config,
         rng: &'b mut NodeRng,
     ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
+        let node_idx = self.nodes.len();
+        let span = error_span!("node", node_idx, node_id = field::Empty);
+
+        let runner: Runner<ConditionCheckReactor<R>> =
+            Runner::new(cfg, rng).instrument(span.clone()).await?;
 
         let node_id = runner.reactor().node_id();
+        span.record("node_id", field::display(node_id));
+        self.spans.insert(node_id, span.clone());
 
         let node_ref = match self.nodes.entry(node_id) {
             Entry::Occupied(_) => {
@@ -144,9 +153,10 @@ where
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
+        let span = self.spans.get(&node_id).expect("should find span");
         if runner
             .try_crank(rng)
-            .instrument(error_span!("crank", node_id = %node_id))
+            .instrument(span.clone())
             .await
             .is_some()
         {
@@ -205,12 +215,8 @@ where
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            event_count += if node
-                .try_crank(rng)
-                .instrument(error_span!("crank", node_id = %node_id))
-                .await
-                .is_some()
-            {
+            let span = self.spans.get(&node_id).expect("span disappeared").clone();
+            event_count += if node.try_crank(rng).instrument(span).await.is_some() {
                 1
             } else {
                 0
