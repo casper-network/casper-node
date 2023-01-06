@@ -476,6 +476,7 @@ where
                 // The `AutoClosingResponder` will respond by itself.
                 return;
             };
+            trace!(%msg, encoded_size=payload.len(), %channel, "enqueued message for sending");
 
             let send_token = TokenizedCount::new(self.net_metrics.queued_messages.clone());
 

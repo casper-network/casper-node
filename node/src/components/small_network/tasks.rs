@@ -472,7 +472,7 @@ where
 
         let msg: Message<P> = deserialize_network_message(&frame)
             .map_err(MessageReaderError::DeserializationError)?;
-        trace!(%msg, "message received");
+        trace!(%msg, %channel, "message received");
 
         // TODO: Re-add support for demands when backpressure is added.
 
