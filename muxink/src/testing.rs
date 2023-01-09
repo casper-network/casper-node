@@ -103,3 +103,19 @@ impl<T> Stream for TestStream<T> {
         }
     }
 }
+
+mod stream_tests {
+    use futures::StreamExt;
+
+    use crate::testing::TestStream;
+
+    #[tokio::test]
+    async fn smoke_test() {
+        let mut stream = TestStream::new(vec![1, 2, 3]);
+
+        assert_eq!(stream.next().await, Some(1));
+        assert_eq!(stream.next().await, Some(2));
+        assert_eq!(stream.next().await, Some(3));
+        assert_eq!(stream.next().await, None);
+    }
+}
