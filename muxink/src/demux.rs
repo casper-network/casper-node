@@ -242,9 +242,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::Error as IoError;
+    use std::{io::Error as IoError, time::Duration};
 
-    use crate::testing::testing_stream::TestingStream;
+    use crate::testing::{testing_stream::TestingStream, BackgroundTask};
 
     use super::*;
     use bytes::BytesMut;
@@ -384,6 +384,42 @@ mod tests {
             _ => panic!("Channel 0 was available even though we already have a handle to it"),
         }
         assert!(Demultiplexer::create_handle::<IoError>(demux, 1).is_ok());
+    }
+
+    #[tokio::test]
+    async fn all_channels_pending_initially_causes_correct_wakeups() {
+        // Load up a single message for channel 1.
+        let items: Vec<Result<Bytes, DemultiplexerError<IoError>>> =
+            vec![Ok(Bytes::from_static(&[0x01, 0xFF]))];
+        let stream = TestingStream::new(items);
+        let ctrl = stream.control();
+
+        ctrl.pause();
+
+        let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
+
+        let mut zero_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 0).unwrap();
+        let mut one_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 1).unwrap();
+
+        let zero_reader = BackgroundTask::spawn(async move { zero_handle.next().await });
+        let one_reader = BackgroundTask::spawn(async move { one_handle.next().await });
+
+        // Sleep for 100 ms to give the background tasks plenty of time to start and block.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(zero_reader.is_running());
+        assert!(one_reader.is_running());
+
+        // Both should be stuck, since the stream is paused. We can unpause it, wait and
+        // `one_reader` should be woken up and finish. Shortly after, `zero_reader` will have
+        // finished as well.
+        ctrl.unpause();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert!(zero_reader.has_finished());
+        assert!(one_reader.has_finished());
+
+        assert!(zero_reader.retrieve_output().await.is_none());
+        assert!(one_reader.retrieve_output().await.is_some());
     }
 
     #[tokio::test]
