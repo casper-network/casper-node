@@ -12,7 +12,7 @@ use std::{
     marker::Unpin,
     pin::Pin,
     result::Result,
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 use bytes::Buf;
@@ -64,10 +64,14 @@ where
 // streams says that in general it is not safe, so it is important to test
 // using a stream which has this property as well.
 pub(crate) struct TestStream<T> {
-    // The items which will be returned by the stream in reverse order
+    /// The items which will be returned by the stream in reverse order
     items: VecDeque<T>,
-    // Once this is set to true, this `Stream` will panic upon calling [`Stream::poll_next`]
+    /// Once this is set to true, this `Stream` will panic upon calling [`Stream::poll_next`]
     finished: bool,
+    /// Whether the stream should return [`Poll::Pending`] at the moment.
+    paused: bool,
+    /// The waker to reawake the stream after unpausing.
+    waker: Option<Waker>,
 }
 
 impl<T> TestStream<T> {
@@ -77,7 +81,21 @@ impl<T> TestStream<T> {
         TestStream {
             items: items.into_iter().collect(),
             finished: false,
+            paused: false,
+            waker: None,
         }
+    }
+
+    /// Sets the paused state of the stream.
+    ///
+    /// A waker will be called if the stream transitioned from paused to unpaused.
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        if self.paused && !paused {
+            if let Some(waker) = self.waker.take() {
+                waker.wake();
+            }
+        }
+        self.paused = paused;
     }
 }
 
@@ -88,7 +106,12 @@ impl<T> Unpin for TestStream<T> {}
 impl<T> Stream for TestStream<T> {
     type Item = T;
 
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.paused {
+            self.waker = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
+
         // Panic if we've already emitted [`Poll::Ready(None)`]
         if self.finished {
             panic!("polled a TestStream after completion");
