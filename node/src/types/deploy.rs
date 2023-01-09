@@ -716,7 +716,18 @@ impl Deploy {
 
     /// Returns a random deploy for a native transfer.
     pub(crate) fn random_valid_native_transfer(rng: &mut TestRng) -> Self {
-        let deploy = Self::random(rng);
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(rng.gen_range(60..300));
+        Self::random_valid_native_transfer_with_timestamp_and_ttl(rng, timestamp, ttl)
+    }
+
+    /// Returns a random deploy for a native transfer with timestamp and ttl.
+    pub(crate) fn random_valid_native_transfer_with_timestamp_and_ttl(
+        rng: &mut TestRng,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let deploy = Self::random_with_timestamp_and_ttl(rng, timestamp, ttl);
         let transfer_args = runtime_args! {
             "amount" => *MAX_PAYMENT,
             "source" => PublicKey::random(rng).to_account_hash(),
@@ -734,8 +745,8 @@ impl Deploy {
         };
         let secret_key = SecretKey::random(rng);
         Deploy::new(
-            Timestamp::now(),
-            deploy.header.ttl(),
+            timestamp,
+            ttl,
             deploy.header.gas_price(),
             deploy.header.dependencies().clone(),
             deploy.header.chain_name().to_string(),

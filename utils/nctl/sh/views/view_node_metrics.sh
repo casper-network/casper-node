@@ -44,9 +44,9 @@ function do_render()
     ENDPOINT="$(get_node_address_rest "$NODE_ID")"/metrics
 
     if [ "$METRICS" = "all" ]; then
-        curl -s --location --request GET "$ENDPOINT"  
+        curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES --location --request GET "$ENDPOINT"  
     else
-        echo "node #$NODE_ID :: $(curl -s --location --request GET "$ENDPOINT" | grep "$METRICS" | tail -n 1)"
+        echo "node #$NODE_ID :: $(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES --location --request GET "$ENDPOINT" | grep "$METRICS" | tail -n 1)"
     fi
 }
 
