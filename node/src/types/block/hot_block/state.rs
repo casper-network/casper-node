@@ -174,7 +174,6 @@ impl State {
         Ok(self)
     }
 
-    #[cfg(debug_assertions)]
     pub(crate) fn verify_complete(&self) -> bool {
         self.is_stored
             && self.has_been_sent_to_deploy_buffer
