@@ -76,15 +76,13 @@ impl<T> TestingStream<T> {
     }
 }
 
-// We implement Unpin because of the constraint in the implementation of the
-// `DemultiplexerHandle`.
-// TODO: Remove this.
-impl<T> Unpin for TestingStream<T> {}
-
-impl<T> Stream for TestingStream<T> {
+impl<T> Stream for TestingStream<T>
+where
+    T: Unpin,
+{
     type Item = T;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         {
             let mut guard = self.control.lock().expect("stream control poisoned");
 
@@ -94,17 +92,19 @@ impl<T> Stream for TestingStream<T> {
             }
         }
 
+        let mut self_mut = Pin::into_inner(self);
+
         // Panic if we've already emitted [`Poll::Ready(None)`]
-        if self.finished {
+        if self_mut.finished {
             panic!("polled a TestStream after completion");
         }
-        if let Some(t) = self.items.pop_front() {
+        if let Some(t) = self_mut.items.pop_front() {
             Poll::Ready(Some(t))
         } else {
             // Before we return None, make sure we set finished to true so that calling this
             // again will result in a panic, as the specification for `Stream` tells us is
             // possible with an arbitrary implementation.
-            self.finished = true;
+            self_mut.finished = true;
             Poll::Ready(None)
         }
     }
