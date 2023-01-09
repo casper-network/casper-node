@@ -68,6 +68,12 @@ pub(crate) struct TestStream<T> {
     items: VecDeque<T>,
     /// Once this is set to true, this `Stream` will panic upon calling [`Stream::poll_next`]
     finished: bool,
+    control: StreamControl,
+}
+
+/// Stream control for pausing and unpausing.
+#[derive(Debug, Default)]
+struct StreamControl {
     /// Whether the stream should return [`Poll::Pending`] at the moment.
     paused: bool,
     /// The waker to reawake the stream after unpausing.
@@ -81,8 +87,7 @@ impl<T> TestStream<T> {
         TestStream {
             items: items.into_iter().collect(),
             finished: false,
-            paused: false,
-            waker: None,
+            control: Default::default(),
         }
     }
 
@@ -90,12 +95,12 @@ impl<T> TestStream<T> {
     ///
     /// A waker will be called if the stream transitioned from paused to unpaused.
     pub(crate) fn set_paused(&mut self, paused: bool) {
-        if self.paused && !paused {
-            if let Some(waker) = self.waker.take() {
+        if self.control.paused && !paused {
+            if let Some(waker) = self.control.waker.take() {
                 waker.wake();
             }
         }
-        self.paused = paused;
+        self.control.paused = paused;
     }
 }
 
@@ -107,8 +112,8 @@ impl<T> Stream for TestStream<T> {
     type Item = T;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.paused {
-            self.waker = Some(cx.waker().clone());
+        if self.control.paused {
+            self.control.waker = Some(cx.waker().clone());
             return Poll::Pending;
         }
 
@@ -129,7 +134,7 @@ impl<T> Stream for TestStream<T> {
 }
 
 mod stream_tests {
-    use futures::StreamExt;
+    use futures::{FutureExt, StreamExt};
 
     use crate::testing::TestStream;
 
@@ -152,5 +157,25 @@ mod stream_tests {
         stream.next().await;
         stream.next().await;
         stream.next().await;
+    }
+
+    #[test]
+    fn stream_can_be_paused() {
+        let mut stream = TestStream::new([1, 2, 3]);
+
+        assert_eq!(
+            stream.next().now_or_never().expect("should be ready"),
+            Some(1)
+        );
+
+        stream.set_paused(true);
+        assert!(stream.next().now_or_never().is_none());
+        assert!(stream.next().now_or_never().is_none());
+        stream.set_paused(false);
+
+        assert_eq!(
+            stream.next().now_or_never().expect("should be ready"),
+            Some(2)
+        );
     }
 }
