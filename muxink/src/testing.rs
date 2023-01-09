@@ -142,4 +142,15 @@ mod stream_tests {
         assert_eq!(stream.next().await, Some(3));
         assert_eq!(stream.next().await, None);
     }
+
+    #[tokio::test]
+    #[should_panic(expected = "polled a TestStream after completion")]
+    async fn stream_panics_if_polled_after_ready() {
+        let mut stream = TestStream::new([1, 2, 3]);
+        stream.next().await;
+        stream.next().await;
+        stream.next().await;
+        stream.next().await;
+        stream.next().await;
+    }
 }
