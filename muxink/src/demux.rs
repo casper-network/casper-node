@@ -13,7 +13,7 @@ use std::{
 };
 
 use bytes::{Buf, Bytes};
-use futures::{ready, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use thiserror::Error as ThisError;
 
 const CHANNEL_BYTE_COUNT: usize = MAX_CHANNELS / CHANNELS_PER_BYTE;
@@ -198,7 +198,16 @@ where
         // Try to read from the stream, placing the frame into `next_frame` and returning
         // `Poll::Pending` if it's in the wrong channel, otherwise returning it in a
         // `Poll::Ready`.
-        match ready!(demux.stream.poll_next_unpin(cx)) {
+        let unpin_outcome = match demux.stream.poll_next_unpin(cx) {
+            Poll::Ready(outcome) => outcome,
+            Poll::Pending => {
+                // We need to register our waker to be woken up once data comes in.
+                demux.wakers[self.channel as usize] = Some(cx.waker().clone());
+                return Poll::Pending;
+            }
+        };
+
+        match unpin_outcome {
             Some(Ok(mut bytes)) => {
                 if bytes.is_empty() {
                     return Poll::Ready(Some(Err(DemultiplexerError::EmptyMessage)));
@@ -402,7 +411,11 @@ mod tests {
         let mut one_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 1).unwrap();
 
         let zero_reader = BackgroundTask::spawn(async move { zero_handle.next().await });
-        let one_reader = BackgroundTask::spawn(async move { one_handle.next().await });
+        let one_reader = BackgroundTask::spawn(async move {
+            let rv = one_handle.next().await;
+            assert!(one_handle.next().await.is_none());
+            rv
+        });
 
         // Sleep for 100 ms to give the background tasks plenty of time to start and block.
         tokio::time::sleep(Duration::from_millis(100)).await;
