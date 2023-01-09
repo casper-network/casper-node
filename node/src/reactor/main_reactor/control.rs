@@ -237,14 +237,7 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
-        // open the rest server to make sure it can bind & allow metrics & status endpoint access
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rest_server,
-            MainEvent::RestServer(rest_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
+
         // initialize deploy buffer from local storage; on a new node this is nearly a noop
         // but on a restarting node it can be relatively time consuming (depending upon TTL and
         // how many deploys there have been within the TTL)
@@ -255,14 +248,6 @@ impl MainReactor {
             return Some(effects);
         }
 
-        // bring up rpc server near-to-last to defer complications (such as put_deploy)
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
         // bring up networking near-to-last to avoid unnecessary premature connectivity
         if let Some(effects) = utils::initialize_component(
             effect_builder,
@@ -271,6 +256,7 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
+
         // bring up the BlockSynchronizer after Network to start it's self-perpetuating
         // dishonest peer announcing behavior
         if let Some(effects) = utils::initialize_component(
@@ -280,6 +266,25 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
+
+        // bring up rpc and rest server last to defer complications (such as put_deploy) and
+        // for it to be able to answer to /status, which requires various other components to be
+        // initialized
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rpc_server,
+            MainEvent::RpcServer(rpc_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rest_server,
+            MainEvent::RestServer(rest_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+
         None
     }
 
