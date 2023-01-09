@@ -44,11 +44,7 @@ use crate::{
 #[derive(Eq, PartialEq, Clone, Debug, Hash, Serialize, Deserialize, DataSize, Default)]
 pub(crate) struct ConsensusValue(Vec<u8>);
 
-impl ConsensusValueT for ConsensusValue {
-    fn needs_validation(&self) -> bool {
-        !self.0.is_empty()
-    }
-}
+impl ConsensusValueT for ConsensusValue {}
 
 impl Display for ConsensusValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

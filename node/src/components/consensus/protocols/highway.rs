@@ -37,7 +37,7 @@ use crate::{
             synchronizer::Synchronizer,
         },
         protocols,
-        traits::{ConsensusValueT, Context},
+        traits::Context,
         utils::ValidatorIndex,
         ActionId, EraMessage, EraRequest, TimerId,
     },
@@ -320,26 +320,22 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         {
             let panorama = &swunit.wire_unit().panorama;
             let fork_choice = self.highway.state().fork_choice(panorama);
-            if value.needs_validation() {
-                self.log_proposal(vertex, "requesting proposal validation");
-                let ancestor_values = self.ancestors(fork_choice).cloned().collect();
-                let block_context = BlockContext::new(timestamp, ancestor_values);
-                let proposed_block = ProposedBlock::new(value.clone(), block_context);
-                if self
-                    .pending_values
-                    .entry(proposed_block.clone())
-                    .or_default()
-                    .insert((vv, sender))
-                {
-                    outcomes.push(ProtocolOutcome::ValidateConsensusValue {
-                        sender,
-                        proposed_block,
-                    });
-                }
-                return outcomes;
-            } else {
-                self.log_proposal(vertex, "proposal does not need validation");
+            self.log_proposal(vertex, "requesting proposal validation");
+            let ancestor_values = self.ancestors(fork_choice).cloned().collect();
+            let block_context = BlockContext::new(timestamp, ancestor_values);
+            let proposed_block = ProposedBlock::new(value.clone(), block_context);
+            if self
+                .pending_values
+                .entry(proposed_block.clone())
+                .or_default()
+                .insert((vv, sender))
+            {
+                outcomes.push(ProtocolOutcome::ValidateConsensusValue {
+                    sender,
+                    proposed_block,
+                });
             }
+            return outcomes;
         }
 
         // Either consensus value doesn't need validation or it's not a proposal.

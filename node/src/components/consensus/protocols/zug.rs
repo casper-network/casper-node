@@ -89,7 +89,7 @@ use crate::{
             ProtocolOutcomes, TerminalBlockData,
         },
         protocols,
-        traits::{ConsensusValueT, Context},
+        traits::Context,
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, EraMessage, EraRequest, LeaderSequence, TimerId,
     },
@@ -1630,11 +1630,7 @@ impl<C: Context + 'static> Zug<C> {
             }
         }
         let block_context = BlockContext::new(proposal.timestamp(), ancestor_values);
-        if let Some(block) = proposal
-            .maybe_block()
-            .filter(|value| value.needs_validation())
-            .cloned()
-        {
+        if let Some(block) = proposal.maybe_block().cloned() {
             self.log_proposal(&proposal, round_id, "requesting proposal validation");
             let proposed_block = ProposedBlock::new(block, block_context);
             if self

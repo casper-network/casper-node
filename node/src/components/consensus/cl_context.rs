@@ -48,11 +48,7 @@ impl ValidatorSecret for Keypair {
     }
 }
 
-impl ConsensusValueT for Arc<BlockPayload> {
-    fn needs_validation(&self) -> bool {
-        !self.transfers().is_empty() || !self.deploys().is_empty() || !self.accusations().is_empty()
-    }
-}
+impl ConsensusValueT for Arc<BlockPayload> {}
 
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
 #[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]

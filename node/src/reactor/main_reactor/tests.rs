@@ -23,7 +23,7 @@ use crate::{
     },
     effect::{
         incoming::ConsensusMessageIncoming,
-        requests::{ContractRuntimeRequest, DeployBufferRequest, NetworkRequest},
+        requests::{ContractRuntimeRequest, NetworkRequest},
         EffectExt,
     },
     protocol::Message,
@@ -714,77 +714,5 @@ async fn should_store_finalized_approvals() {
             assert_eq!(maybe_finalized_approvals.as_ref(), None);
             assert_eq!(maybe_original_approvals.as_ref(), Some(&expected_approvals));
         }
-    }
-}
-
-#[tokio::test]
-async fn empty_block_validation_regression() {
-    testing::init_logging();
-
-    let mut rng = crate::new_rng();
-
-    let size: usize = 4;
-    let keys: Vec<Arc<SecretKey>> = (0..size)
-        .map(|_| Arc::new(SecretKey::random(&mut rng)))
-        .collect();
-    let stakes: BTreeMap<PublicKey, U512> = keys
-        .iter()
-        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
-        .collect();
-
-    // We make the first validator always accuse everyone else.
-    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
-    chain.chainspec_mut().highway_config.maximum_round_length = "1second".parse().unwrap();
-    chain.chainspec_mut().core_config.minimum_era_height = 15;
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
-    let malicious_validator = stakes.keys().next().unwrap().clone();
-    info!("Malicious validator: {:?}", malicious_validator);
-    let _everyone_else: Vec<_> = stakes
-        .keys()
-        .filter(|pub_key| **pub_key != malicious_validator)
-        .cloned()
-        .collect();
-    let malicious_runner = net
-        .runners_mut()
-        .find(|runner| runner.main_reactor().consensus().public_key() == &malicious_validator)
-        .unwrap();
-    malicious_runner
-        .reactor_mut()
-        .inner_mut()
-        .set_filter(move |event| match event {
-            MainEvent::DeployBufferRequest(DeployBufferRequest::GetAppendableBlock {
-                timestamp,
-                responder,
-            }) => {
-                info!("Accusing everyone else!");
-                Either::Right(MainEvent::DeployBufferRequest(
-                    DeployBufferRequest::GetAppendableBlock {
-                        timestamp,
-                        responder,
-                    },
-                ))
-            }
-            event => Either::Right(event),
-        });
-
-    let timeout = Duration::from_secs(300);
-    info!("Waiting for the first era to end.");
-    net.settle_on(&mut rng, is_in_era(EraId::new(1)), timeout)
-        .await;
-    let switch_blocks = SwitchBlocks::collect(net.nodes(), 1);
-
-    // Nobody actually double-signed. The accusations should have had no effect.
-    assert_eq!(switch_blocks.equivocators(0), []);
-    // If the malicious validator was the first proposer, all their Highway units might be invalid,
-    // because they all refer to the invalid proposal, so they might get flagged as inactive. No
-    // other validators should be considered inactive.
-    match switch_blocks.inactive_validators(0) {
-        [] => {}
-        [inactive_validator] if malicious_validator == *inactive_validator => {}
-        inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
 }
