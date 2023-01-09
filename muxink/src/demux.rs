@@ -386,16 +386,6 @@ mod tests {
         assert!(Demultiplexer::create_handle::<IoError>(demux, 1).is_ok());
     }
 
-    // #[test]
-    // fn all_channels_pending_initially() {
-    //     let stream: TestStream<()> = TestStream::new(Vec::new());
-    //     let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
-
-    //     let zero_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 0).unwrap();
-
-    //     let one_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 1).unwrap();
-    // }
-
     #[tokio::test]
     async fn concurrent_channels_on_different_tasks() {
         let items: Vec<Result<Bytes, DemultiplexerError<IoError>>> = [
