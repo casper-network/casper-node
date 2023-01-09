@@ -4,6 +4,21 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The state of the reactor.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     Initialize --> CatchUp
+///     CatchUp --> KeepUp
+///     KeepUp --> CatchUp
+///     KeepUp --> Validate
+///     Validate --> KeepUp
+///     CatchUp --> ShutdownForUpgrade
+///     KeepUp --> ShutdownForUpgrade
+///     Validate --> ShutdownForUpgrade
+///     CatchUp --> Upgrading
+///     CatchUp --> Validate
+///     Upgrading --> CatchUp
+/// ```
 #[derive(
     Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,
 )]
