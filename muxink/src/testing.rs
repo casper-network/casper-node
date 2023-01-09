@@ -71,10 +71,11 @@ pub(crate) struct TestStream<T> {
 }
 
 impl<T> TestStream<T> {
+    /// Creates a new stream for testing.
     #[cfg(test)]
-    pub(crate) fn new(items: Vec<T>) -> Self {
+    pub(crate) fn new<I: IntoIterator<Item = T>>(items: I) -> Self {
         TestStream {
-            items: items.into(),
+            items: items.into_iter().collect(),
             finished: false,
         }
     }
@@ -111,7 +112,7 @@ mod stream_tests {
 
     #[tokio::test]
     async fn smoke_test() {
-        let mut stream = TestStream::new(vec![1, 2, 3]);
+        let mut stream = TestStream::new([1, 2, 3]);
 
         assert_eq!(stream.next().await, Some(1));
         assert_eq!(stream.next().await, Some(2));
