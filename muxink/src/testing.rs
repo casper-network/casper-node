@@ -63,7 +63,7 @@ where
 // [`Poll::Ready(None)`], whereas many other streams are. The interface for
 // streams says that in general it is not safe, so it is important to test
 // using a stream which has this property as well.
-pub(crate) struct TestStream<T> {
+pub(crate) struct TestingStream<T> {
     /// The items which will be returned by the stream in reverse order
     items: VecDeque<T>,
     /// Once this is set to true, this `Stream` will panic upon calling [`Stream::poll_next`]
@@ -80,11 +80,11 @@ struct StreamControl {
     waker: Option<Waker>,
 }
 
-impl<T> TestStream<T> {
+impl<T> TestingStream<T> {
     /// Creates a new stream for testing.
     #[cfg(test)]
     pub(crate) fn new<I: IntoIterator<Item = T>>(items: I) -> Self {
-        TestStream {
+        TestingStream {
             items: items.into_iter().collect(),
             finished: false,
             control: Default::default(),
@@ -106,9 +106,9 @@ impl<T> TestStream<T> {
 
 // We implement Unpin because of the constraint in the implementation of the
 // `DemultiplexerHandle`.
-impl<T> Unpin for TestStream<T> {}
+impl<T> Unpin for TestingStream<T> {}
 
-impl<T> Stream for TestStream<T> {
+impl<T> Stream for TestingStream<T> {
     type Item = T;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -136,11 +136,11 @@ impl<T> Stream for TestStream<T> {
 mod stream_tests {
     use futures::{FutureExt, StreamExt};
 
-    use crate::testing::TestStream;
+    use crate::testing::TestingStream;
 
     #[tokio::test]
     async fn smoke_test() {
-        let mut stream = TestStream::new([1, 2, 3]);
+        let mut stream = TestingStream::new([1, 2, 3]);
 
         assert_eq!(stream.next().await, Some(1));
         assert_eq!(stream.next().await, Some(2));
@@ -151,7 +151,7 @@ mod stream_tests {
     #[tokio::test]
     #[should_panic(expected = "polled a TestStream after completion")]
     async fn stream_panics_if_polled_after_ready() {
-        let mut stream = TestStream::new([1, 2, 3]);
+        let mut stream = TestingStream::new([1, 2, 3]);
         stream.next().await;
         stream.next().await;
         stream.next().await;
@@ -161,7 +161,7 @@ mod stream_tests {
 
     #[test]
     fn stream_can_be_paused() {
-        let mut stream = TestStream::new([1, 2, 3]);
+        let mut stream = TestingStream::new([1, 2, 3]);
 
         assert_eq!(
             stream.next().now_or_never().expect("should be ready"),

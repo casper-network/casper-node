@@ -244,7 +244,7 @@ where
 mod tests {
     use std::io::Error as IoError;
 
-    use crate::testing::TestStream;
+    use crate::testing::TestingStream;
 
     use super::*;
     use bytes::BytesMut;
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn channel_activation() {
         let items: Vec<Result<Bytes, DemultiplexerError<IoError>>> = vec![];
-        let stream = TestStream::new(items);
+        let stream = TestingStream::new(items);
         let mut demux = Demultiplexer::new(stream);
 
         let examples: Vec<u8> = (0u8..255u8).collect();
@@ -293,7 +293,7 @@ mod tests {
         .into_iter()
         .map(Result::Ok)
         .collect();
-        let stream = TestStream::new(items);
+        let stream = TestingStream::new(items);
         let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
 
         // We make two handles, one for the 0 channel and another for the 1 channel
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn single_handle_per_channel() {
-        let stream: TestStream<()> = TestStream::new(Vec::new());
+        let stream: TestingStream<()> = TestingStream::new(Vec::new());
         let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
 
         // Creating a handle for a channel works.
@@ -385,6 +385,16 @@ mod tests {
         }
         assert!(Demultiplexer::create_handle::<IoError>(demux, 1).is_ok());
     }
+
+    // #[test]
+    // fn all_channels_pending_initially() {
+    //     let stream: TestStream<()> = TestStream::new(Vec::new());
+    //     let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
+
+    //     let zero_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 0).unwrap();
+
+    //     let one_handle = Demultiplexer::create_handle::<IoError>(demux.clone(), 1).unwrap();
+    // }
 
     #[tokio::test]
     async fn concurrent_channels_on_different_tasks() {
@@ -401,7 +411,7 @@ mod tests {
         .into_iter()
         .map(Result::Ok)
         .collect();
-        let stream = TestStream::new(items);
+        let stream = TestingStream::new(items);
         let demux = Arc::new(Mutex::new(Demultiplexer::new(stream)));
 
         let handle_0 = Demultiplexer::create_handle::<IoError>(demux.clone(), 0).unwrap();
