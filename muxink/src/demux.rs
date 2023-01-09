@@ -244,7 +244,7 @@ where
 mod tests {
     use std::io::Error as IoError;
 
-    use crate::testing::TestingStream;
+    use crate::testing::testing_stream::TestingStream;
 
     use super::*;
     use bytes::BytesMut;
