@@ -50,7 +50,6 @@ use crate::{
 pub(crate) use approvals_hashes::ApprovalsHashes;
 pub(crate) use hot_block::{
     HotBlock, MergeMismatchError as HotBlockMergeError, State as HotBlockState,
-    StateChange as HotBlockStateChange,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {

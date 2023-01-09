@@ -24,7 +24,7 @@ use super::{diagnostics_port::StopAtSpec, Component};
 /// The shutdown trigger component's event.
 #[derive(DataSize, Debug, From, Serialize)]
 pub(crate) enum Event {
-    /// A reactor announcement (usually checked for block completion).
+    /// An announcement that a block has been completed.
     CompletedBlock(Arc<Block>),
     /// A request to trigger a shutdown.
     #[from]

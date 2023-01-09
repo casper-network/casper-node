@@ -10,7 +10,7 @@ use crate::{
     components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
     types::{
         BlockHash, BlockSignatures, EmptyValidationMetadata, EraValidatorWeights, FetcherItem,
-        FinalitySignature, HotBlock, HotBlockStateChange, NodeId, SignatureWeight,
+        FinalitySignature, HotBlock, NodeId, SignatureWeight,
     },
 };
 
@@ -205,7 +205,7 @@ impl BlockAcceptor {
         if self.has_sufficient_finality() {
             if let Some(hot_block) = self.hot_block.as_mut() {
                 if hot_block.state.is_executed()
-                    && hot_block.state.register_as_marked_complete() == HotBlockStateChange::Updated
+                    && hot_block.state.register_as_marked_complete().was_updated()
                 {
                     debug!(
                         %block_hash, no_block, no_sigs,
@@ -241,8 +241,10 @@ impl BlockAcceptor {
                     block_signatures
                         .insert_proof(signature.public_key.clone(), signature.signature);
                 });
-                if hot_block.state.register_has_sufficient_finality()
-                    == HotBlockStateChange::AlreadySet
+                if hot_block
+                    .state
+                    .register_has_sufficient_finality()
+                    .was_already_registered()
                 {
                     error!(
                         %block_hash,
@@ -253,8 +255,10 @@ impl BlockAcceptor {
                     );
                 }
                 if hot_block.state.is_executed() {
-                    if hot_block.state.register_as_marked_complete()
-                        == HotBlockStateChange::AlreadySet
+                    if hot_block
+                        .state
+                        .register_as_marked_complete()
+                        .was_already_registered()
                     {
                         error!(
                             %block_hash,
@@ -272,7 +276,11 @@ impl BlockAcceptor {
                         faulty_senders,
                     );
                 } else {
-                    if hot_block.state.register_as_stored() == HotBlockStateChange::AlreadySet {
+                    if hot_block
+                        .state
+                        .register_as_stored()
+                        .was_already_registered()
+                    {
                         error!(
                             %block_hash,
                             block_height = hot_block.block.height(),

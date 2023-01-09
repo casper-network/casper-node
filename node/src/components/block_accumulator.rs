@@ -232,7 +232,7 @@ impl BlockAccumulator {
     }
 
     /// Returns the height of the local tip, i.e. the latest executed block.
-    pub(crate) fn local_tip(&self) -> Option<u64> {
+    pub(crate) fn local_tip_height(&self) -> Option<u64> {
         self.local_tip.map(|identifier| identifier.height)
     }
 

@@ -3,16 +3,26 @@ use serde::Serialize;
 
 use super::MergeMismatchError;
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug, DataSize)]
+#[derive(Clone, Copy, Debug, DataSize)]
 pub(crate) enum StateChange {
     Updated,
-    AlreadySet,
+    AlreadyRegistered,
+}
+
+impl StateChange {
+    pub(crate) fn was_updated(self) -> bool {
+        matches!(self, StateChange::Updated)
+    }
+
+    pub(crate) fn was_already_registered(self) -> bool {
+        matches!(self, StateChange::AlreadyRegistered)
+    }
 }
 
 impl From<bool> for StateChange {
     fn from(current_state: bool) -> Self {
         if current_state {
-            StateChange::AlreadySet
+            StateChange::AlreadyRegistered
         } else {
             StateChange::Updated
         }
@@ -21,17 +31,17 @@ impl From<bool> for StateChange {
 
 #[derive(Clone, Copy, Eq, PartialEq, Default, Serialize, Debug, DataSize)]
 pub(crate) struct State {
-    pub(super) is_immediate_switch_block_for_current_protocol_version: bool,
-    pub(super) is_stored: bool,
-    pub(super) has_been_sent_to_deploy_buffer: bool,
-    pub(super) has_updated_validator_matrix: bool,
-    pub(super) has_been_gossiped: bool,
-    pub(super) is_executed: bool,
-    pub(super) we_have_tried_to_sign: bool,
-    pub(super) has_been_sent_to_consensus_post_execution: bool,
-    pub(super) has_been_sent_to_accumulator_post_execution: bool,
-    pub(super) has_sufficient_finality: bool,
-    pub(super) is_marked_complete: bool,
+    pub(super) immediate_switch_block_for_current_protocol_version: bool,
+    pub(super) stored: bool,
+    pub(super) sent_to_deploy_buffer: bool,
+    pub(super) updated_validator_matrix: bool,
+    pub(super) gossiped: bool,
+    pub(super) executed: bool,
+    pub(super) tried_to_sign: bool,
+    pub(super) sent_to_consensus_post_execution: bool,
+    pub(super) sent_to_accumulator_post_execution: bool,
+    pub(super) sufficient_finality: bool,
+    pub(super) marked_complete: bool,
 }
 
 impl State {
@@ -44,7 +54,7 @@ impl State {
     /// `is_immediate_switch_block_for_current_protocol_version`.
     pub(crate) fn new_immediate_switch() -> Self {
         State {
-            is_immediate_switch_block_for_current_protocol_version: true,
+            immediate_switch_block_for_current_protocol_version: true,
             ..Self::default()
         }
     }
@@ -52,140 +62,137 @@ impl State {
     /// Returns a new `State` with all fields set to `false` except for `is_stored`.
     pub(crate) fn new_synced() -> Self {
         State {
-            is_stored: true,
+            stored: true,
             ..Self::default()
         }
     }
 
     pub(crate) fn is_stored(&self) -> bool {
-        self.is_stored
+        self.stored
     }
 
     pub(crate) fn is_executed(&self) -> bool {
-        self.is_executed
+        self.executed
     }
 
     pub(crate) fn has_sufficient_finality(&self) -> bool {
-        self.has_sufficient_finality
+        self.sufficient_finality
     }
 
     pub(crate) fn is_marked_complete(&self) -> bool {
-        self.is_marked_complete
+        self.marked_complete
     }
 
     pub(crate) fn register_as_stored(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.is_stored);
-        self.is_stored = true;
+        let outcome = StateChange::from(self.stored);
+        self.stored = true;
         outcome
     }
 
     pub(crate) fn register_as_sent_to_deploy_buffer(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.has_been_sent_to_deploy_buffer);
-        self.has_been_sent_to_deploy_buffer = true;
+        let outcome = StateChange::from(self.sent_to_deploy_buffer);
+        self.sent_to_deploy_buffer = true;
         outcome
     }
 
     pub(crate) fn register_updated_validator_matrix(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.has_updated_validator_matrix);
-        self.has_updated_validator_matrix = true;
+        let outcome = StateChange::from(self.updated_validator_matrix);
+        self.updated_validator_matrix = true;
         outcome
     }
 
     pub(crate) fn register_as_gossiped(&mut self) -> StateChange {
         // We don't gossip immediate switch blocks
-        if self.is_immediate_switch_block_for_current_protocol_version {
-            return StateChange::AlreadySet;
+        if self.immediate_switch_block_for_current_protocol_version {
+            return StateChange::AlreadyRegistered;
         }
-        let outcome = StateChange::from(self.has_been_gossiped);
-        self.has_been_gossiped = true;
+        let outcome = StateChange::from(self.gossiped);
+        self.gossiped = true;
         outcome
     }
 
     pub(crate) fn register_as_executed(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.is_executed);
-        self.is_executed = true;
+        let outcome = StateChange::from(self.executed);
+        self.executed = true;
         outcome
     }
 
     pub(crate) fn register_we_have_tried_to_sign(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.we_have_tried_to_sign);
-        self.we_have_tried_to_sign = true;
+        let outcome = StateChange::from(self.tried_to_sign);
+        self.tried_to_sign = true;
         outcome
     }
 
     pub(crate) fn register_as_sent_to_consensus_post_execution(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.has_been_sent_to_consensus_post_execution);
-        self.has_been_sent_to_consensus_post_execution = true;
+        let outcome = StateChange::from(self.sent_to_consensus_post_execution);
+        self.sent_to_consensus_post_execution = true;
         outcome
     }
 
     pub(crate) fn register_as_sent_to_accumulator_post_execution(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.has_been_sent_to_accumulator_post_execution);
-        self.has_been_sent_to_accumulator_post_execution = true;
+        let outcome = StateChange::from(self.sent_to_accumulator_post_execution);
+        self.sent_to_accumulator_post_execution = true;
         outcome
     }
 
     pub(crate) fn register_has_sufficient_finality(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.has_sufficient_finality);
-        self.has_sufficient_finality = true;
+        let outcome = StateChange::from(self.sufficient_finality);
+        self.sufficient_finality = true;
         outcome
     }
 
     pub(crate) fn register_as_marked_complete(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.is_marked_complete);
-        self.is_marked_complete = true;
+        let outcome = StateChange::from(self.marked_complete);
+        self.marked_complete = true;
         outcome
     }
 
     pub(super) fn merge(mut self, other: State) -> Result<Self, MergeMismatchError> {
         let State {
-            is_immediate_switch_block_for_current_protocol_version,
-            ref mut is_stored,
-            ref mut has_been_sent_to_deploy_buffer,
-            ref mut has_updated_validator_matrix,
-            ref mut has_been_gossiped,
-            ref mut is_executed,
-            ref mut we_have_tried_to_sign,
-            ref mut has_been_sent_to_consensus_post_execution,
-            ref mut has_been_sent_to_accumulator_post_execution,
-            ref mut has_sufficient_finality,
-            ref mut is_marked_complete,
+            immediate_switch_block_for_current_protocol_version,
+            ref mut stored,
+            ref mut sent_to_deploy_buffer,
+            ref mut updated_validator_matrix,
+            ref mut gossiped,
+            ref mut executed,
+            ref mut tried_to_sign,
+            ref mut sent_to_consensus_post_execution,
+            ref mut sent_to_accumulator_post_execution,
+            ref mut sufficient_finality,
+            ref mut marked_complete,
         } = self;
 
-        if is_immediate_switch_block_for_current_protocol_version
-            != other.is_immediate_switch_block_for_current_protocol_version
+        if immediate_switch_block_for_current_protocol_version
+            != other.immediate_switch_block_for_current_protocol_version
         {
             return Err(MergeMismatchError::State);
         }
 
-        *is_stored |= other.is_stored;
-        *has_been_sent_to_deploy_buffer |= other.has_been_sent_to_deploy_buffer;
-        *has_updated_validator_matrix |= other.has_updated_validator_matrix;
-        *has_been_gossiped |= other.has_been_gossiped;
-        *is_executed |= other.is_executed;
-        *we_have_tried_to_sign |= other.we_have_tried_to_sign;
-        *has_been_sent_to_consensus_post_execution |=
-            other.has_been_sent_to_consensus_post_execution;
-        *has_been_sent_to_accumulator_post_execution |=
-            other.has_been_sent_to_accumulator_post_execution;
-        *has_sufficient_finality |= other.has_sufficient_finality;
-        *is_marked_complete |= other.is_marked_complete;
+        *stored |= other.stored;
+        *sent_to_deploy_buffer |= other.sent_to_deploy_buffer;
+        *updated_validator_matrix |= other.updated_validator_matrix;
+        *gossiped |= other.gossiped;
+        *executed |= other.executed;
+        *tried_to_sign |= other.tried_to_sign;
+        *sent_to_consensus_post_execution |= other.sent_to_consensus_post_execution;
+        *sent_to_accumulator_post_execution |= other.sent_to_accumulator_post_execution;
+        *sufficient_finality |= other.sufficient_finality;
+        *marked_complete |= other.marked_complete;
 
         Ok(self)
     }
 
     pub(crate) fn verify_complete(&self) -> bool {
-        self.is_stored
-            && self.has_been_sent_to_deploy_buffer
-            && self.has_updated_validator_matrix
-            && (self.has_been_gossiped
-                || self.is_immediate_switch_block_for_current_protocol_version)
-            && self.is_executed
-            && self.we_have_tried_to_sign
-            && self.has_been_sent_to_consensus_post_execution
-            && self.has_been_sent_to_accumulator_post_execution
-            && self.has_sufficient_finality
-            && self.is_marked_complete
+        self.stored
+            && self.sent_to_deploy_buffer
+            && self.updated_validator_matrix
+            && (self.gossiped || self.immediate_switch_block_for_current_protocol_version)
+            && self.executed
+            && self.tried_to_sign
+            && self.sent_to_consensus_post_execution
+            && self.sent_to_accumulator_post_execution
+            && self.sufficient_finality
+            && self.marked_complete
     }
 }
 
@@ -196,21 +203,21 @@ mod tests {
     #[test]
     fn should_merge() {
         let all_true = State {
-            is_immediate_switch_block_for_current_protocol_version: true,
-            is_stored: true,
-            has_been_sent_to_deploy_buffer: true,
-            has_updated_validator_matrix: true,
-            has_been_gossiped: true,
-            is_executed: true,
-            we_have_tried_to_sign: true,
-            has_been_sent_to_consensus_post_execution: true,
-            has_been_sent_to_accumulator_post_execution: true,
-            has_sufficient_finality: true,
-            is_marked_complete: true,
+            immediate_switch_block_for_current_protocol_version: true,
+            stored: true,
+            sent_to_deploy_buffer: true,
+            updated_validator_matrix: true,
+            gossiped: true,
+            executed: true,
+            tried_to_sign: true,
+            sent_to_consensus_post_execution: true,
+            sent_to_accumulator_post_execution: true,
+            sufficient_finality: true,
+            marked_complete: true,
         };
         let all_false = State {
             // this must be set the same as the `all_true`'s - all other fields are `false`.
-            is_immediate_switch_block_for_current_protocol_version: true,
+            immediate_switch_block_for_current_protocol_version: true,
             ..State::default()
         };
 
@@ -223,11 +230,11 @@ mod tests {
     #[test]
     fn should_fail_to_merge_different_immediate_switch_block_states() {
         let state1 = State {
-            is_immediate_switch_block_for_current_protocol_version: true,
+            immediate_switch_block_for_current_protocol_version: true,
             ..State::default()
         };
         let state2 = State {
-            is_immediate_switch_block_for_current_protocol_version: false,
+            immediate_switch_block_for_current_protocol_version: false,
             ..State::default()
         };
 

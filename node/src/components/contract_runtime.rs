@@ -51,7 +51,7 @@ use crate::{
     protocol::Message,
     types::{
         BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
-        FinalizedBlock, HotBlock, HotBlockState, HotBlockStateChange, TrieOrChunk, TrieOrChunkId,
+        FinalizedBlock, HotBlock, HotBlockState, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -805,7 +805,7 @@ impl ContractRuntime {
             .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
             .collect();
 
-        if hot_block_state.register_as_stored() == HotBlockStateChange::Updated {
+        if hot_block_state.register_as_stored().was_updated() {
             effect_builder
                 .put_executed_block_to_storage(
                     Arc::clone(&block),
@@ -821,7 +821,10 @@ impl ContractRuntime {
                 .put_execution_results_to_storage(*block.hash(), execution_results_map)
                 .await;
         }
-        if hot_block_state.register_as_executed() == HotBlockStateChange::AlreadySet {
+        if hot_block_state
+            .register_as_executed()
+            .was_already_registered()
+        {
             error!(
                 block_hash = %block.hash(),
                 block_height = block.height(),

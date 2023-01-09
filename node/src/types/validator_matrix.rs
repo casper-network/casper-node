@@ -176,7 +176,7 @@ impl ValidatorMatrix {
 
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
-    pub(crate) fn is_this_node_validator_in_era(&self, era_id: EraId) -> Option<bool> {
+    pub(crate) fn is_self_validator_in_era(&self, era_id: EraId) -> Option<bool> {
         self.is_validator_in_era(era_id, &self.public_signing_key)
     }
 
@@ -197,7 +197,7 @@ impl ValidatorMatrix {
         block_header: &BlockHeader,
     ) -> Option<FinalitySignature> {
         if self
-            .is_this_node_validator_in_era(block_header.era_id())
+            .is_self_validator_in_era(block_header.era_id())
             .unwrap_or(false)
         {
             return Some(FinalitySignature::create(

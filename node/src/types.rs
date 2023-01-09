@@ -27,7 +27,7 @@ pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
     compute_approvals_checksum, ApprovalsHashes, BlockHashAndHeight, BlockHeaderWithMetadata,
     BlockPayload, BlockWithMetadata, FinalitySignatureId, HotBlock, HotBlockMergeError,
-    HotBlockState, HotBlockStateChange,
+    HotBlockState,
 };
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},

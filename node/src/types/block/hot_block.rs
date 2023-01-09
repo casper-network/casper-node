@@ -11,7 +11,7 @@ use casper_types::ExecutionResult;
 use crate::types::{Block, DeployHash, DeployHeader};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
-pub(crate) use state::{State, StateChange};
+pub(crate) use state::State;
 
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct HotBlock {
