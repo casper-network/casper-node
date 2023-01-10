@@ -183,8 +183,8 @@ function _step_07()
         fi
     done
 
-    log "... awaiting auction bid acceptance (3 eras + 1 block)"
-    nctl-await-n-eras offset='3' sleep_interval='5.0' timeout='180'
+    log "... awaiting auction bid acceptance (2 eras + 1 block)"
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 
     log "... starting nodes"

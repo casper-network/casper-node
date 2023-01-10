@@ -132,8 +132,8 @@ function _step_04()
 # Step 05: Await 4 eras
 function _step_05()
 {
-    log_step_upgrades 5 "Awaiting Auction_Delay = 3 + 1"
-    nctl-await-n-eras offset='4' sleep_interval='5.0' timeout='300'
+    log_step_upgrades 5 "Awaiting Auction_Delay = 1 + 1"
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='300'
 }
 
 # Step 06: Assert NODE_ID is a validator
@@ -322,8 +322,8 @@ function _step_12()
 # Step 13: Await 4 eras
 function _step_13()
 {
-    log_step_upgrades 13 "Awaiting Auction_Delay = 3 + 1"
-    nctl-await-n-eras offset='4' sleep_interval='5.0' timeout='300'
+    log_step_upgrades 13 "Awaiting Auction_Delay = 1 + 1"
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='300'
 }
 
 # Step 14: Assert NODE_ID is NOT a validator
