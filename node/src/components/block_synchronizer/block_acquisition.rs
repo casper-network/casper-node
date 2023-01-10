@@ -289,7 +289,8 @@ impl BlockAcquisitionState {
                 deploy_state,
                 exec_results,
             ) => {
-                if is_historical == false {
+                signatures.set_is_checkable(exec_results.is_checkable());
+                if false == is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if deploy_state.needs_deploy().is_some() {
                     BlockAcquisitionAction::maybe_execution_results(
@@ -479,7 +480,7 @@ impl BlockAcquisitionState {
                 match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
                 {
                     SignatureWeight::Insufficient => None,
-                    SignatureWeight::Weak | SignatureWeight::Sufficient => {
+                    SignatureWeight::Weak | SignatureWeight::Strict => {
                         Some(BlockAcquisitionState::HaveWeakFinalitySignatures(
                             header.clone(),
                             acquired_signatures.clone(),

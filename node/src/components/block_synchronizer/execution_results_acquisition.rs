@@ -402,7 +402,7 @@ fn apply_chunk(
         }
     }
 
-    // ExecutionResultsChecksum::Legacy has no checksum, otherwise check it
+    // ExecutionResultsChecksum::Uncheckable has no checksum, otherwise check it
     if let ExecutionResultsChecksum::Checkable(expected) = checksum {
         if expected != digest {
             return Err(Error::ChecksumMismatch {

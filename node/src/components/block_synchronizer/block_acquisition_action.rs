@@ -12,7 +12,7 @@ use crate::{
     },
     types::{
         Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, DeployHash, DeployId,
-        EraValidatorWeights, Item, NodeId, SignatureWeight,
+        EraValidatorWeights, Item, NodeId,
     },
     NodeRng,
 };
@@ -151,38 +151,52 @@ impl BlockAcquisitionAction {
         signature_acquisition: &SignatureAcquisition,
         is_historical: bool,
     ) -> Self {
-        let peers_to_ask = peer_list.qualified_peers(rng);
-        let era_id = block_header.era_id();
-        let block_hash = block_header.block_hash();
-        let block_height = block_header.height();
-
-        if let SignatureWeight::Sufficient =
-            validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
-        {
-            if is_historical {
-                // we have enough signatures; need to make sure we've stored the necessary bits
+        match signature_acquisition.maybe_is_checkable() {
+            None => {
+                // TODO: this is probably an error; discuss w/ Fraser
                 return BlockAcquisitionAction {
                     peers_to_ask: vec![],
-                    need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
+                    need_next: NeedNext::ExecutionResultsChecksum(
+                        block_header.block_hash(),
+                        *block_header.state_root_hash(),
+                    ),
                 };
             }
+            Some(is_checkable) => {
+                let peers_to_ask = peer_list.qualified_peers(rng);
+                let era_id = block_header.era_id();
+                let block_hash = block_header.block_hash();
+                let block_height = block_header.height();
+                if validator_weights
+                    .has_sufficient_weight(signature_acquisition.have_signatures())
+                    .is_sufficient(is_checkable)
+                {
+                    if is_historical {
+                        // we have enough signatures; need to make sure we've stored the necessary bits
+                        return BlockAcquisitionAction {
+                            peers_to_ask: vec![],
+                            need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
+                        };
+                    }
 
-            return BlockAcquisitionAction {
-                peers_to_ask: vec![],
-                need_next: NeedNext::EnqueueForExecution(block_hash, block_height),
-            };
-        }
-        // need more signatures
-        BlockAcquisitionAction {
-            peers_to_ask,
-            need_next: NeedNext::FinalitySignatures(
-                block_hash,
-                era_id,
-                validator_weights
-                    .missing_validators(signature_acquisition.have_signatures())
-                    .cloned()
-                    .collect(),
-            ),
+                    return BlockAcquisitionAction {
+                        peers_to_ask: vec![],
+                        need_next: NeedNext::EnqueueForExecution(block_hash, block_height),
+                    };
+                }
+                // need more signatures
+                BlockAcquisitionAction {
+                    peers_to_ask,
+                    need_next: NeedNext::FinalitySignatures(
+                        block_hash,
+                        era_id,
+                        validator_weights
+                            .missing_validators(signature_acquisition.have_signatures())
+                            .cloned()
+                            .collect(),
+                    ),
+                }
+            }
         }
     }
 

@@ -24,7 +24,17 @@ pub(crate) enum SignatureWeight {
     /// At least one honest validator has signed the block.
     Weak,
     /// There can be no blocks on other forks that also have this many signatures.
-    Sufficient,
+    Strict,
+}
+
+impl SignatureWeight {
+    pub(crate) fn is_sufficient(&self, requires_strict_finality: bool) -> bool {
+        match self {
+            SignatureWeight::Insufficient => false,
+            SignatureWeight::Weak => !requires_strict_finality,
+            SignatureWeight::Strict => true,
+        }
+    }
 }
 
 #[derive(Clone, DataSize)]
@@ -308,7 +318,7 @@ impl EraValidatorWeights {
         if signature_weight * U512::from(*strict.denom())
             >= total_era_weight * U512::from(*strict.numer())
         {
-            return SignatureWeight::Sufficient;
+            return SignatureWeight::Strict;
         }
         if signature_weight * U512::from(*finality_threshold_fraction.denom())
             >= total_era_weight * U512::from(*finality_threshold_fraction.numer())
