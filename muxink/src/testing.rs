@@ -4,19 +4,21 @@ pub mod encoding;
 pub mod fixtures;
 pub mod pipe;
 pub mod testing_sink;
+pub mod testing_stream;
 
 use std::{
-    collections::VecDeque,
     fmt::Debug,
     io::Read,
-    marker::Unpin,
-    pin::Pin,
     result::Result,
-    task::{Context, Poll},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use bytes::Buf;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{Future, FutureExt, Stream, StreamExt};
+use tokio::task::JoinHandle;
 
 // In tests use small value to make sure that we correctly merge data that was polled from the
 // stream in small fragments.
@@ -59,47 +61,63 @@ where
         .expect("error in stream results")
 }
 
-// This stream is used because it is not safe to call it after it returns
-// [`Poll::Ready(None)`], whereas many other streams are. The interface for
-// streams says that in general it is not safe, so it is important to test
-// using a stream which has this property as well.
-pub(crate) struct TestStream<T> {
-    // The items which will be returned by the stream in reverse order
-    items: VecDeque<T>,
-    // Once this is set to true, this `Stream` will panic upon calling [`Stream::poll_next`]
-    finished: bool,
+/// A background task that can be asked whether it has completed or not.
+#[derive(Debug)]
+pub(crate) struct BackgroundTask<T> {
+    /// Join handle for the background task.
+    join_handle: JoinHandle<T>,
+    /// Indicates the task has started.
+    started: Arc<AtomicBool>,
+    /// Indicates the task has finished.
+    ended: Arc<AtomicBool>,
 }
 
-impl<T> TestStream<T> {
-    #[cfg(test)]
-    pub(crate) fn new(items: Vec<T>) -> Self {
-        TestStream {
-            items: items.into(),
-            finished: false,
+impl<T> BackgroundTask<T>
+where
+    T: Send,
+{
+    /// Spawns a new background task.
+    pub(crate) fn spawn<F>(fut: F) -> Self
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: 'static,
+    {
+        let started = Arc::new(AtomicBool::new(false));
+        let ended = Arc::new(AtomicBool::new(false));
+
+        let (s, e) = (started.clone(), ended.clone());
+        let join_handle = tokio::spawn(async move {
+            s.store(true, Ordering::SeqCst);
+            let rv = fut.await;
+            e.store(true, Ordering::SeqCst);
+
+            rv
+        });
+
+        BackgroundTask {
+            join_handle,
+            started,
+            ended,
         }
     }
-}
 
-// We implement Unpin because of the constraint in the implementation of the
-// `DemultiplexerHandle`.
-impl<T> Unpin for TestStream<T> {}
+    /// Returns whether or not the task has finished.
+    pub(crate) fn has_finished(&self) -> bool {
+        self.ended.load(Ordering::SeqCst)
+    }
 
-impl<T> Stream for TestStream<T> {
-    type Item = T;
+    /// Returns whether or not the task has begun.
+    pub(crate) fn has_started(&self) -> bool {
+        self.started.load(Ordering::SeqCst)
+    }
 
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // Panic if we've already emitted [`Poll::Ready(None)`]
-        if self.finished {
-            panic!("polled a TestStream after completion");
-        }
-        if let Some(t) = self.items.pop_front() {
-            Poll::Ready(Some(t))
-        } else {
-            // Before we return None, make sure we set finished to true so that calling this
-            // again will result in a panic, as the specification for `Stream` tells us is
-            // possible with an arbitrary implementation.
-            self.finished = true;
-            Poll::Ready(None)
-        }
+    /// Returns whether or not the task is currently executing.
+    pub(crate) fn is_running(&self) -> bool {
+        self.has_started() && !self.has_finished()
+    }
+
+    /// Waits for the task to complete and returns its output.
+    pub(crate) async fn retrieve_output(self) -> T {
+        self.join_handle.await.expect("future has panicked")
     }
 }
