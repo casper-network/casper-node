@@ -28,17 +28,20 @@ use casper_types::{
 };
 
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent},
+    components::{Component, ComponentState, InitializedComponent},
     effect::{
         announcements::UpgradeWatcherAnnouncement, requests::UpgradeWatcherRequest, EffectBuilder,
         EffectExt, Effects,
     },
+    reactor::main_reactor::MainEvent,
     types::{
         chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
         ActivationPoint, Chainspec,
     },
     NodeRng,
 };
+
+const COMPONENT_NAME: &str = "upgrade_watcher";
 
 const DEFAULT_UPGRADE_CHECK_INTERVAL: &str = "30sec";
 
@@ -166,7 +169,7 @@ pub(crate) struct UpgradeWatcher {
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    status: ComponentStatus,
+    state: ComponentState,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -189,7 +192,7 @@ impl UpgradeWatcher {
             current_version,
             config,
             root_dir,
-            status: ComponentStatus::Uninitialized,
+            state: ComponentState::Uninitialized,
             next_upgrade,
         };
 
@@ -209,10 +212,10 @@ impl UpgradeWatcher {
     where
         REv: From<UpgradeWatcherAnnouncement> + Send,
     {
-        if self.status != ComponentStatus::Uninitialized {
+        if self.state != ComponentState::Initializing {
             return Effects::new();
         }
-        self.status = ComponentStatus::Initialized;
+        <Self as InitializedComponent<MainEvent>>::set_state(self, ComponentState::Initialized);
         self.check_for_next_upgrade(effect_builder)
     }
 
@@ -276,24 +279,71 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::Initialize => self.start_checking_for_upgrades(effect_builder),
-            Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
-            Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
-            Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
+        match &self.state {
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => self.start_checking_for_upgrades(effect_builder),
+                Event::Request(_) | Event::CheckForNextUpgrade | Event::GotNextUpgrade(_) => {
+                    warn!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "should not handle this event when component is pending initialization"
+                    );
+                    Effects::new()
+                }
+            },
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
+                    Effects::new()
+                }
+                Event::Request(request) => request.0.respond(self.next_upgrade.clone()).ignore(),
+                Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
+                Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
+            },
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 impl<REv> InitializedComponent<REv> for UpgradeWatcher
 where
     REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
-    fn name(&self) -> &str {
-        "upgrade_watcher"
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

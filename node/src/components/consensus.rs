@@ -63,6 +63,8 @@ pub(crate) use leader_sequence::LeaderSequence;
 pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use validator_change::ValidatorChange;
 
+const COMPONENT_NAME: &str = "consensus";
+
 /// A message to be handled by the consensus protocol instance in a particular era.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum EraMessage<C>
@@ -440,5 +442,9 @@ where
                 }
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

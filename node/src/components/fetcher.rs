@@ -40,6 +40,8 @@ use metrics::Metrics;
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
 pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
 
+const COMPONENT_NAME: &str = "fetcher";
+
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
 #[derive(DataSize, Debug)]
 pub(crate) struct Fetcher<T>
@@ -133,5 +135,9 @@ where
             }
             Event::PutToStorage { item, peer } => self.signal(item.id(), Ok(*item), peer),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

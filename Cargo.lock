@@ -97,6 +97,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2cb2f989d18dd141ab8ae82f64d1a8cdd37e0840f73a406896cf5e99502fab61"
 
 [[package]]
+name = "aquamarine"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a941c39708478e8eea39243b5983f1c42d2717b3620ee91f4a52115fd02ac43f"
+dependencies = [
+ "itertools 0.9.0",
+ "proc-macro-error",
+ "proc-macro2 1.0.49",
+ "quote 1.0.23",
+ "syn 1.0.107",
+]
+
+[[package]]
 name = "assert-json-diff"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -439,7 +452,7 @@ dependencies = [
  "hex_fmt",
  "hostname",
  "humantime",
- "itertools",
+ "itertools 0.10.5",
  "libc",
  "linked-hash-map",
  "lmdb",
@@ -480,7 +493,7 @@ dependencies = [
  "hex",
  "hex-buffer-serde 0.3.0",
  "hex_fmt",
- "itertools",
+ "itertools 0.10.5",
  "once_cell",
  "proptest",
  "proptest-attr-macro",
@@ -501,7 +514,7 @@ dependencies = [
  "futures",
  "http",
  "hyper",
- "itertools",
+ "itertools 0.10.5",
  "serde",
  "serde_json",
  "tokio",
@@ -515,6 +528,7 @@ version = "1.4.8"
 dependencies = [
  "ansi_term",
  "anyhow",
+ "aquamarine",
  "assert-json-diff",
  "assert_matches",
  "async-trait",
@@ -543,7 +557,7 @@ dependencies = [
  "http",
  "humantime",
  "hyper",
- "itertools",
+ "itertools 0.10.5",
  "libc",
  "linked-hash-map",
  "lmdb",
@@ -907,7 +921,7 @@ dependencies = [
  "clap 2.34.0",
  "criterion-plot",
  "csv",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -929,7 +943,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2673cc8207403546f45f5fd319a974b1e6983ad1a3ee7e6041650013be041876"
 dependencies = [
  "cast",
- "itertools",
+ "itertools 0.10.5",
 ]
 
 [[package]]
@@ -2398,6 +2412,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4088d739b183546b239688ddbc79891831df421773df95e236daf7867866d355"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "itertools"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
+dependencies = [
+ "either",
 ]
 
 [[package]]

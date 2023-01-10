@@ -18,16 +18,17 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{net::UnixListener, sync::watch};
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    components::{Component, ComponentStatus, InitializedComponent, PortBoundComponent},
+    components::{Component, ComponentState, InitializedComponent, PortBoundComponent},
     effect::{
         announcements::ControlAnnouncement,
         diagnostics_port::DumpConsensusStateRequest,
         requests::{NetworkInfoRequest, SetNodeStopRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    reactor::main_reactor::MainEvent,
     types::NodeRng,
     utils::umask,
     WithDir,
@@ -35,6 +36,8 @@ use crate::{
 pub(crate) use stop_at::StopAtSpec;
 pub use tasks::FileSerializer;
 use util::ShowUnixAddr;
+
+const COMPONENT_NAME: &str = "diagnostics_port";
 
 /// Diagnostics port configuration.
 #[derive(Clone, DataSize, Debug, Deserialize)]
@@ -60,7 +63,7 @@ impl Default for Config {
 /// Diagnostics port component.
 #[derive(Debug, DataSize)]
 pub(crate) struct DiagnosticsPort {
-    status: ComponentStatus,
+    state: ComponentState,
     /// Sender which will cause server and client connections to exit when dropped.
     #[data_size(skip)]
     _shutdown_sender: Option<watch::Sender<()>>, // only used for its `Drop` impl
@@ -71,7 +74,7 @@ impl DiagnosticsPort {
     /// Creates a new diagnostics port component.
     pub(crate) fn new(config: WithDir<Config>) -> Self {
         DiagnosticsPort {
-            status: ComponentStatus::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             _shutdown_sender: None,
         }
@@ -115,16 +118,40 @@ where
         _rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Event> {
-        match event {
-            Event::Initialize => {
-                if self.status != ComponentStatus::Uninitialized {
-                    return Effects::new();
-                }
-                let (effects, status) = self.bind(self.config.value().enabled, effect_builder);
-                self.status = status;
-                effects
+        match &self.state {
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
             }
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => {
+                    if self.state != ComponentState::Initializing {
+                        return Effects::new();
+                    }
+                    let (effects, state) = self.bind(self.config.value().enabled, effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+                    effects
+                }
+            },
+            ComponentState::Initialized => Effects::new(),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
@@ -137,12 +164,18 @@ where
         + From<SetNodeStopRequest>
         + Send,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
-    fn name(&self) -> &str {
-        "diagnostics"
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 
@@ -205,7 +238,7 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     }
 
     // This is not thread-safe, as it will set the umask for the entire process, but we assume that
-    // initalization happens "sufficiently single-threaded".
+    // initialization happens "sufficiently single-threaded".
     let umask_guard = umask::temp_umask(socket_umask);
     let listener = UnixListener::bind(socket_path)?;
     drop(umask_guard);
