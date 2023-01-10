@@ -481,8 +481,7 @@ impl BlockAcquisitionState {
                 // thus the primary thing we are doing in this state is accumulating sigs
                 maybe_block_hash = Some(header.block_hash());
                 added = acquired_signatures.apply_signature(signature);
-                match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
-                {
+                match validator_weights.signature_weight(acquired_signatures.have_signatures()) {
                     SignatureWeight::Insufficient => None,
                     SignatureWeight::Weak | SignatureWeight::Strict => {
                         Some(BlockAcquisitionState::HaveWeakFinalitySignatures(

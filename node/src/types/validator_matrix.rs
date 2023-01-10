@@ -31,7 +31,7 @@ impl SignatureWeight {
     pub(crate) fn is_sufficient(&self, requires_strict_finality: bool) -> bool {
         match self {
             SignatureWeight::Insufficient => false,
-            SignatureWeight::Weak => !requires_strict_finality,
+            SignatureWeight::Weak => false == requires_strict_finality,
             SignatureWeight::Strict => true,
         }
     }
@@ -299,7 +299,7 @@ impl EraValidatorWeights {
         self.validator_weights.contains_key(public_key)
     }
 
-    pub(crate) fn has_sufficient_weight<'a>(
+    pub(crate) fn signature_weight<'a>(
         &self,
         validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> SignatureWeight {

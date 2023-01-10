@@ -2202,7 +2202,7 @@ impl Storage {
                 return false;
             }
             if let Some(validator_keys) = block_signatures.public_keys() {
-                match era_validator_weights.has_sufficient_weight(validator_keys.iter()) {
+                match era_validator_weights.signature_weight(validator_keys.iter()) {
                     SignatureWeight::Strict => {
                         return true;
                     }
