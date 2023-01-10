@@ -36,6 +36,12 @@ impl Display for ExecutionResultsChecksum {
     }
 }
 
+impl ExecutionResultsChecksum {
+    pub(super) fn is_checkable(&self) -> bool {
+        matches!(self, ExecutionResultsChecksum::Checkable(_))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {
     BlockHashMismatch {
@@ -338,9 +344,7 @@ impl ExecutionResultsAcquisition {
             ExecutionResultsAcquisition::Needed { .. } => false,
             ExecutionResultsAcquisition::Pending { checksum, .. }
             | ExecutionResultsAcquisition::Acquiring { checksum, .. }
-            | ExecutionResultsAcquisition::Complete { checksum, .. } => {
-                matches!(checksum, ExecutionResultsChecksum::Checkable(_))
-            }
+            | ExecutionResultsAcquisition::Complete { checksum, .. } => checksum.is_checkable(),
         }
     }
 

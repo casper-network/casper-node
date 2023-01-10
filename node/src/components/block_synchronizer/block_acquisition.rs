@@ -289,7 +289,6 @@ impl BlockAcquisitionState {
                 deploy_state,
                 exec_results,
             ) => {
-                signatures.set_is_checkable(exec_results.is_checkable());
                 if false == is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if deploy_state.needs_deploy().is_some() {
@@ -315,12 +314,14 @@ impl BlockAcquisitionState {
                 signatures,
                 deploys,
                 checksum,
-            ) => match (is_historical, checksum) {
-                (false, _) => Err(BlockAcquisitionError::InvalidStateTransition),
-                (true, ExecutionResultsChecksum::Checkable(_)) => Ok(
-                    BlockAcquisitionAction::approvals_hashes(block, peer_list, rng),
-                ),
-                (true, ExecutionResultsChecksum::Uncheckable) => {
+            ) if is_historical => {
+                let is_checkable = checksum.is_checkable();
+                signatures.set_is_checkable(is_checkable);
+                if is_checkable {
+                    Ok(BlockAcquisitionAction::approvals_hashes(
+                        block, peer_list, rng,
+                    ))
+                } else {
                     Ok(BlockAcquisitionAction::maybe_needs_deploy(
                         block.header(),
                         peer_list,
@@ -331,7 +332,10 @@ impl BlockAcquisitionState {
                         is_historical,
                     ))
                 }
-            },
+            }
+            BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _) => {
+                Err(BlockAcquisitionError::InvalidStateTransition)
+            }
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
                 Ok(BlockAcquisitionAction::maybe_needs_deploy(
                     block.header(),
