@@ -161,7 +161,8 @@ fn send_a_valid_wire_unit() {
         match outcome {
             ProtocolOutcome::CreatedGossipMessage(_)
             | ProtocolOutcome::FinalizedBlock(_)
-            | ProtocolOutcome::HandledProposedBlock(_) => (),
+            | ProtocolOutcome::HandledProposedBlock(_)
+            | ProtocolOutcome::ValidateConsensusValue { .. } => (),
             ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
                 outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, now))
             }

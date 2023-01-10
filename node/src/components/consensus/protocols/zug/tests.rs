@@ -327,6 +327,26 @@ fn abc_weights(
     (weights, validators)
 }
 
+fn handle_msg_and_validate_if_proposal(
+    zug: &mut Zug<ClContext>,
+    rng: &mut NodeRng,
+    sender: NodeId,
+    msg: EraMessage<ClContext>,
+    timestamp: Timestamp,
+) -> ProtocolOutcomes<ClContext> {
+    let initial_outcomes = zug.handle_message(rng, sender, msg, timestamp);
+    let mut final_outcomes = vec![];
+    for outcome in initial_outcomes {
+        match outcome {
+            ProtocolOutcome::ValidateConsensusValue { proposed_block, .. } => {
+                final_outcomes.extend(zug.resolve_validity(proposed_block, true, timestamp));
+            }
+            _ => final_outcomes.push(outcome),
+        }
+    }
+    final_outcomes
+}
+
 /// Tests the core logic of the consensus protocol, i.e. the criteria for sending votes and echoes
 /// and finalizing blocks.
 ///
@@ -408,30 +428,47 @@ fn zug_no_fault() {
 
     // Alice makes a proposal in round 2 with parent in round 1. Alice and Bob echo it.
     let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_proposal_message(2, &proposal2);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 2, echo(hash2), &bob_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
 
     // Alice and Bob even vote for it, so the round is committed!
     // But without an accepted parent it isn't finalized yet.
     let msg = create_message(&validators, 2, vote(true), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 2, vote(true), &bob_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
 
     // Alice makes a proposal in round 1 with no parent, and echoes it.
     let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_proposal_message(1, &proposal1);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
 
     // Now Carol receives Bob's proposal in round 0. Carol echoes it.
     let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_proposal_message(0, &proposal0);
-    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let mut outcomes =
+        handle_msg_and_validate_if_proposal(&mut sc_c, &mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 0, carol_idx, echo(hash0)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
@@ -439,7 +476,9 @@ fn zug_no_fault() {
 
     timestamp += block_time;
     let msg = create_proposal_message(2, &proposal2);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
 
     // On timeout, Carol votes to make round 0 skippable.
     let mut outcomes = sc_c.handle_timer(timestamp, timestamp, TIMER_ID_UPDATE, &mut rng);
@@ -451,7 +490,8 @@ fn zug_no_fault() {
     // 1 becomes current and Carol echoes Alice's proposal. That makes a quorum, but since round
     // 0 is not skippable round 1 is not yet accepted and thus round 2 is not yet current.
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let mut outcomes =
+        handle_msg_and_validate_if_proposal(&mut sc_c, &mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 1, carol_idx, echo(hash1)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
@@ -460,7 +500,9 @@ fn zug_no_fault() {
 
     // Bob votes false in round 0. That's not a quorum yet.
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut sc_c, &mut rng, sender, msg, timestamp,
+    ));
 
     // On timeout, Carol votes to make round 1 skippable.
     // TODO: Come up with a better test scenario where timestamps are in order.
@@ -478,7 +520,8 @@ fn zug_no_fault() {
     // and Carol votes for them. Since round 2 is already committed, both 1 and 2 are finalized.
     // Since round 2 became current, Carol echoes the proposal, too.
     let msg = create_message(&validators, 0, vote(false), &alice_kp);
-    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let mut outcomes =
+        handle_msg_and_validate_if_proposal(&mut sc_c, &mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 2, carol_idx, echo(hash2)));
     assert!(remove_signed(&mut gossip, 2, carol_idx, vote(true)));
@@ -507,7 +550,8 @@ fn zug_no_fault() {
     // Once Alice echoes Carol's proposal, she can go on to propose in round 4, too.
     // Since the round height is 3, the 4th proposal does not contain a block.
     let msg = create_message(&validators, 3, echo(hash3), &alice_kp);
-    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let mut outcomes =
+        handle_msg_and_validate_if_proposal(&mut sc_c, &mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 3, carol_idx, vote(true)));
     assert!(remove_proposal(&mut gossip, 4, &proposal4));
@@ -517,7 +561,8 @@ fn zug_no_fault() {
     // Only when Alice also votes for the switch block is it finalized.
     assert!(!sc_c.finalized_switch_block());
     let msg = create_message(&validators, 3, vote(true), &alice_kp);
-    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let mut outcomes =
+        handle_msg_and_validate_if_proposal(&mut sc_c, &mut rng, sender, msg, timestamp);
     let gossip = remove_gossip(&validators, &mut outcomes);
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
     expect_finalized(&outcomes, &[(&proposal3, 2)]);
@@ -573,37 +618,55 @@ fn zug_faults() {
 
     timestamp += zug.params.min_block_time();
 
-    // Alice makes sproposals in rounds 1 and 2, echoes and votes for them.
+    // Alice makes proposals in rounds 1 and 2, echoes and votes for them.
     let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_proposal_message(1, &proposal1);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 1, vote(true), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_proposal_message(2, &proposal2);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 2, vote(true), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
 
     // Since Carol did not make a proposal Alice votes to make round 0 skippable.
     let msg = create_message(&validators, 0, vote(false), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
 
     // Carol is offline and Alice alone does not have a quorum.
     // But if Bob equivocates, he counts towards every quorum, so the blocks get finalized.
     let msg = create_message(&validators, 3, vote(true), &bob_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 3, vote(false), &bob_kp);
-    let outcomes = zug.handle_message(&mut rng, sender, msg, timestamp);
-    expect_finalized(&outcomes, &[(&proposal1, 0), (&proposal2, 1)]);
+    let outcomes = handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
+    expect_finalized(&outcomes, &[(&proposal2, 1), (&proposal1, 0)]);
 
     // Now Carol starts two nodes by mistake, and equivocates. That crosses the FTT.
     let msg = create_message(&validators, 3, vote(true), &carol_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
+    expect_no_gossip_block_finalized(handle_msg_and_validate_if_proposal(
+        &mut zug, &mut rng, sender, msg, timestamp,
+    ));
     let msg = create_message(&validators, 3, vote(false), &carol_kp);
-    let outcomes = zug.handle_message(&mut rng, sender, msg, timestamp);
+    let outcomes = handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     assert!(outcomes.contains(&ProtocolOutcome::FttExceeded));
 }
 
@@ -667,15 +730,15 @@ fn zug_sends_sync_request() {
 
     // Now we get a proposal and echo from Alice, one false vote from Bob, and Carol double-signs.
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_proposal_message(0, &proposal0);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(true), &carol_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &carol_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
 
     // The next SyncRequest message must include all the new information.
     let mut outcomes = zug.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
@@ -754,19 +817,19 @@ fn zug_handles_sync_request() {
     // We get a proposal, echo and true vote from Alice, one echo and false vote from Bob, and
     // Carol double-signs.
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_proposal_message(0, &proposal0);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(true), &alice_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(true), &carol_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &carol_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
+    handle_msg_and_validate_if_proposal(&mut zug, &mut rng, sender, msg, timestamp);
 
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
 
@@ -874,7 +937,7 @@ fn zug_handles_sync_request() {
         };
         let (_outcomes, response) = zug.handle_request_message(&mut rng, sender, msg, timestamp);
         if let Some(msg) = response {
-            let mut _outcomes = zug2.handle_message(&mut rng, sender, msg, timestamp);
+            handle_msg_and_validate_if_proposal(&mut zug2, &mut rng, sender, msg, timestamp);
         }
     }
 
