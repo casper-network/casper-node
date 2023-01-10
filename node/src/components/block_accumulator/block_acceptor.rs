@@ -217,8 +217,7 @@ impl BlockAcceptor {
         }
 
         let faulty_senders = self.remove_bogus_validators(era_validator_weights);
-        if SignatureWeight::Sufficient
-            == era_validator_weights.has_sufficient_weight(self.signatures.keys())
+        if SignatureWeight::Strict == era_validator_weights.signature_weight(self.signatures.keys())
         {
             if let Some(block) = self.block.clone() {
                 self.touch();

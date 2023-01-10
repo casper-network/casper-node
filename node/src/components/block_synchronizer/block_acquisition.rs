@@ -289,7 +289,7 @@ impl BlockAcquisitionState {
                 deploy_state,
                 exec_results,
             ) => {
-                if is_historical == false {
+                if false == is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if deploy_state.needs_deploy().is_some() {
                     BlockAcquisitionAction::maybe_execution_results(
@@ -314,12 +314,14 @@ impl BlockAcquisitionState {
                 signatures,
                 deploys,
                 checksum,
-            ) => match (is_historical, checksum) {
-                (false, _) => Err(BlockAcquisitionError::InvalidStateTransition),
-                (true, ExecutionResultsChecksum::Checkable(_)) => Ok(
-                    BlockAcquisitionAction::approvals_hashes(block, peer_list, rng),
-                ),
-                (true, ExecutionResultsChecksum::Uncheckable) => {
+            ) if is_historical => {
+                let is_checkable = checksum.is_checkable();
+                signatures.set_is_checkable(is_checkable);
+                if is_checkable {
+                    Ok(BlockAcquisitionAction::approvals_hashes(
+                        block, peer_list, rng,
+                    ))
+                } else {
                     Ok(BlockAcquisitionAction::maybe_needs_deploy(
                         block.header(),
                         peer_list,
@@ -330,7 +332,10 @@ impl BlockAcquisitionState {
                         is_historical,
                     ))
                 }
-            },
+            }
+            BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _) => {
+                Err(BlockAcquisitionError::InvalidStateTransition)
+            }
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
                 Ok(BlockAcquisitionAction::maybe_needs_deploy(
                     block.header(),
@@ -476,10 +481,9 @@ impl BlockAcquisitionState {
                 // thus the primary thing we are doing in this state is accumulating sigs
                 maybe_block_hash = Some(header.block_hash());
                 added = acquired_signatures.apply_signature(signature);
-                match validator_weights.has_sufficient_weight(acquired_signatures.have_signatures())
-                {
+                match validator_weights.signature_weight(acquired_signatures.have_signatures()) {
                     SignatureWeight::Insufficient => None,
-                    SignatureWeight::Weak | SignatureWeight::Sufficient => {
+                    SignatureWeight::Weak | SignatureWeight::Strict => {
                         Some(BlockAcquisitionState::HaveWeakFinalitySignatures(
                             header.clone(),
                             acquired_signatures.clone(),
