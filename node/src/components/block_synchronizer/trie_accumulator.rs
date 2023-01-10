@@ -28,6 +28,8 @@ use crate::{
     NodeRng,
 };
 
+const COMPONENT_NAME: &str = "trie_accumulator";
+
 #[derive(Debug, From, Error, Clone, Serialize)]
 pub(crate) enum Error {
     #[error("trie accumulator fetcher error: {0}")]
@@ -292,5 +294,9 @@ where
                 }
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

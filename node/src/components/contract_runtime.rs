@@ -40,7 +40,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
-    components::{fetcher::FetchResponse, Component, ComponentStatus},
+    components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
@@ -63,6 +63,8 @@ use operations::execute_only;
 pub(crate) use types::{
     BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
 };
+
+const COMPONENT_NAME: &str = "contract_runtime";
 
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
 #[derive(Debug, Error, From)]
@@ -190,7 +192,7 @@ impl Display for Event {
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    status: ComponentStatus,
+    state: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -233,6 +235,10 @@ where
             }
             Event::TrieDemand(demand) => self.handle_trie_demand(demand),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
@@ -599,7 +605,7 @@ impl ContractRuntime {
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
-            status: ComponentStatus::Initialized,
+            state: ComponentState::Initialized,
             execution_pre_state,
             engine_state,
             metrics,

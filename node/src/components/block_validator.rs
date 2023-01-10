@@ -45,6 +45,8 @@ use keyed_counter::KeyedCounter;
 
 use crate::components::fetcher::FetchedData;
 
+const COMPONENT_NAME: &str = "block_validator";
+
 impl ProposedBlock<ClContext> {
     fn timestamp(&self) -> Timestamp {
         self.context().timestamp()
@@ -387,6 +389,10 @@ where
             }
         }
         effects
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

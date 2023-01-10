@@ -33,6 +33,8 @@ use crate::{
     NodeRng,
 };
 
+const COMPONENT_NAME: &str = "metrics";
+
 /// The metrics component.
 #[derive(DataSize, Debug)]
 pub(crate) struct Metrics {
@@ -68,6 +70,10 @@ impl<REv> Component<REv> for Metrics {
                 }
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

@@ -65,11 +65,27 @@ where
     K: DataSize,
     V: DataSize,
 {
+    // Copied from
+    // https://github.com/CasperLabs/datasize-rs/blob/e04c3251eb5473651a0abf55c18869acaef635c1/datasize/src/std.rs#L201-L220
+    fn estimate_hashbrown_rawtable<T>(capacity: usize) -> usize {
+        let buckets = if capacity < 8 {
+            if capacity < 4 {
+                4
+            } else {
+                8
+            }
+        } else {
+            (capacity * 8 / 7).next_power_of_two()
+        };
+        let size = mem::size_of::<T>();
+        let ctrl_offset = size * buckets;
+        ctrl_offset + buckets
+    }
+
     if map.len() < SAMPLE_SIZE {
         map.estimate_heap_size()
     } else {
-        let base_size =
-            map.capacity() * (mem::size_of::<V>() + mem::size_of::<K>() + mem::size_of::<usize>());
+        let base_size = estimate_hashbrown_rawtable::<(K, V)>(map.capacity());
 
         let mut rng = sampling_rng(map.len());
 

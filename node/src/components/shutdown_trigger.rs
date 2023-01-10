@@ -22,6 +22,8 @@ use crate::{
 
 use super::{diagnostics_port::StopAtSpec, Component};
 
+const COMPONENT_NAME: &str = "shutdown_trigger";
+
 //// Shutdown trigger component.
 #[derive(DataSize, Debug)]
 pub(crate) struct ShutdownTrigger {
@@ -138,6 +140,10 @@ where
                 effects
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

@@ -12,7 +12,7 @@ use crate::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
         sync_leaper,
-        sync_leaper::{LeapActivityError, LeapStatus},
+        sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
@@ -290,19 +290,19 @@ impl MainReactor {
         let leap_status = self.sync_leaper.leap_status();
         info!(%parent_hash, %leap_status, "historical status");
         match leap_status {
-            LeapStatus::Idle => {
+            LeapState::Idle => {
                 self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
             }
-            LeapStatus::Awaiting { .. } => KeepUpInstruction::CheckLater(
+            LeapState::Awaiting { .. } => KeepUpInstruction::CheckLater(
                 "historical sync leaper is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
             ),
-            LeapStatus::Received {
+            LeapState::Received {
                 best_available,
                 from_peers: _,
                 ..
             } => self.sync_back_leap_received(best_available),
-            LeapStatus::Failed { error, .. } => {
+            LeapState::Failed { error, .. } => {
                 self.sync_back_leap_failed(effect_builder, rng, parent_hash, error)
             }
         }

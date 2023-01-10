@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
@@ -7,13 +6,9 @@ use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::{
-        block_synchronizer,
-        block_synchronizer::BlockSynchronizerProgress,
-        consensus::EraReport,
-        contract_runtime::ExecutionPreState,
-        deploy_buffer::{self, DeployBuffer},
-        diagnostics_port, event_stream_server, network, rest_server, rpc_server, upgrade_watcher,
-        InitializedComponent,
+        block_synchronizer, block_synchronizer::BlockSynchronizerProgress, consensus::EraReport,
+        contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
+        rest_server, rpc_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -59,11 +54,11 @@ impl MainReactor {
     ) -> (Duration, Effects<MainEvent>) {
         match self.state {
             ReactorState::Initialize => match self.initialize_next_component(effect_builder) {
-                Some(effects) => (Duration::ZERO, effects),
+                Some(effects) => (self.control_logic_default_delay.into(), effects),
                 None => {
                     if false == self.net.has_sufficient_fully_connected_peers() {
                         info!("Initialize: awaiting sufficient fully-connected peers");
-                        return (Duration::from_secs(2), Effects::new());
+                        return (self.control_logic_default_delay.into(), Effects::new());
                     }
                     if let Err(msg) = self.refresh_contract_runtime() {
                         return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
@@ -242,53 +237,17 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
-        // open the rest server to make sure it can bind & allow metrics & status endpoint access
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rest_server,
-            MainEvent::RestServer(rest_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
+
         // initialize deploy buffer from local storage; on a new node this is nearly a noop
         // but on a restarting node it can be relatively time consuming (depending upon TTL and
         // how many deploys there have been within the TTL)
-        if <DeployBuffer as InitializedComponent<MainEvent>>::is_uninitialized(&self.deploy_buffer)
+        if let Some(effects) = self
+            .deploy_buffer
+            .initialize_component(effect_builder, &self.storage)
         {
-            let blocks = match self.storage.read_blocks_for_replay_protection() {
-                Ok(blocks) => blocks,
-                Err(err) => {
-                    return Some(
-                        fatal!(
-                            effect_builder,
-                            "fatal block store error when attempting to read highest blocks: {}",
-                            err
-                        )
-                        .ignore(),
-                    )
-                }
-            };
-            debug!(
-                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
-                "DeployBuffer: initialization"
-            );
-            let event = deploy_buffer::Event::Initialize(blocks);
-            if let Some(effects) = utils::initialize_component(
-                effect_builder,
-                &mut self.deploy_buffer,
-                MainEvent::DeployBuffer(event),
-            ) {
-                return Some(effects);
-            }
-        }
-        // bring up rpc server near-to-last to defer complications (such as put_deploy)
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
-        ) {
             return Some(effects);
         }
+
         // bring up networking near-to-last to avoid unnecessary premature connectivity
         if let Some(effects) = utils::initialize_component(
             effect_builder,
@@ -297,6 +256,7 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
+
         // bring up the BlockSynchronizer after Network to start it's self-perpetuating
         // dishonest peer announcing behavior
         if let Some(effects) = utils::initialize_component(
@@ -306,6 +266,25 @@ impl MainReactor {
         ) {
             return Some(effects);
         }
+
+        // bring up rpc and rest server last to defer complications (such as put_deploy) and
+        // for it to be able to answer to /status, which requires various other components to be
+        // initialized
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rpc_server,
+            MainEvent::RpcServer(rpc_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.rest_server,
+            MainEvent::RestServer(rest_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+
         None
     }
 
