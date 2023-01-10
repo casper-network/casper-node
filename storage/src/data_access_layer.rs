@@ -3,8 +3,8 @@ use casper_types::EraId;
 use crate::global_state::{
     shared,
     storage::{
-        self,
         state::{CommitProvider, StateProvider},
+        trie::TrieRaw,
     },
 };
 
@@ -61,19 +61,11 @@ where
         self.state.empty_root()
     }
 
-    fn get_trie(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie_or_chunk_id: storage::trie::TrieOrChunkId,
-    ) -> Result<Option<storage::trie::TrieOrChunk>, Self::Error> {
-        self.state.get_trie(correlation_id, trie_or_chunk_id)
-    }
-
     fn get_trie_full(
         &self,
         correlation_id: shared::CorrelationId,
         trie_key: &casper_hashing::Digest,
-    ) -> Result<Option<casper_types::bytesrepr::Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         self.state.get_trie_full(correlation_id, trie_key)
     }
 
@@ -85,12 +77,12 @@ where
         self.state.put_trie(correlation_id, trie)
     }
 
-    fn missing_trie_keys(
+    fn missing_children(
         &self,
         correlation_id: shared::CorrelationId,
-        trie_keys: Vec<casper_hashing::Digest>,
+        trie_raw: &[u8],
     ) -> Result<Vec<casper_hashing::Digest>, Self::Error> {
-        self.state.missing_trie_keys(correlation_id, trie_keys)
+        self.state.missing_children(correlation_id, trie_raw)
     }
 }
 

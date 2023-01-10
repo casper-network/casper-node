@@ -9,6 +9,7 @@ use std::{
     fs::File,
 };
 
+use datasize::DataSize;
 use itertools::Itertools;
 use serde::Serialize;
 
@@ -16,11 +17,16 @@ use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
+        consensus::{ClContext, ProposedBlock},
+        deploy_acceptor::Error,
+        diagnostics_port::FileSerializer,
+        network::blocklist::BlocklistJustification,
+        upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, NodeId,
+        ApprovalsHashes, Block, Deploy, DeployHash, DeployHeader, FinalitySignature,
+        FinalizedBlock, GossiperItem, Item, NodeId,
     },
     utils::Source,
 };
@@ -36,18 +42,21 @@ use crate::{
 #[derive(Serialize)]
 #[must_use]
 pub(crate) enum ControlAnnouncement {
+    /// A shutdown has been requested by the user.
+    ShutdownDueToUserRequest,
+
+    /// The node should shut down with exit code 0 in readiness for the next binary to start.
+    ShutdownForUpgrade,
+
     /// The component has encountered a fatal error and cannot continue.
     ///
-    /// This usually triggers a shutdown of the component, reactor or whole application.
+    /// This usually triggers a shutdown of the application.
     FatalError {
-        /// File the fatal error occurred in.
         file: &'static str,
-        /// Line number where the fatal error occurred.
         line: u32,
-        /// Error message.
         msg: String,
     },
-    // An external event queue dump has been requested.
+    /// An external event queue dump has been requested.
     QueueDumpRequest {
         /// The format to dump the queue in.
         #[serde(skip)]
@@ -55,6 +64,74 @@ pub(crate) enum ControlAnnouncement {
         /// Responder called when the dump has been finished.
         finished: Responder<()>,
     },
+}
+
+impl Debug for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ControlAnnouncement::ShutdownDueToUserRequest => write!(f, "ShutdownDueToUserRequest"),
+            ControlAnnouncement::ShutdownForUpgrade => write!(f, "ShutdownForUpgrade"),
+            ControlAnnouncement::FatalError { file, line, msg } => f
+                .debug_struct("FatalError")
+                .field("file", file)
+                .field("line", line)
+                .field("msg", msg)
+                .finish(),
+            ControlAnnouncement::QueueDumpRequest { .. } => {
+                f.debug_struct("QueueDump").finish_non_exhaustive()
+            }
+        }
+    }
+}
+
+impl Display for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ControlAnnouncement::ShutdownDueToUserRequest => {
+                write!(f, "shutdown due to user request")
+            }
+            ControlAnnouncement::ShutdownForUpgrade => write!(f, "shutdown for upgrade"),
+            ControlAnnouncement::FatalError { file, line, msg } => {
+                write!(f, "fatal error [{}:{}]: {}", file, line, msg)
+            }
+            ControlAnnouncement::QueueDumpRequest { .. } => {
+                write!(f, "dump event queue")
+            }
+        }
+    }
+}
+
+/// A component has encountered a fatal error and cannot continue.
+///
+/// This usually triggers a shutdown of the application.
+#[derive(Serialize, Debug)]
+#[must_use]
+pub(crate) struct FatalAnnouncement {
+    pub(crate) file: &'static str,
+    pub(crate) line: u32,
+    pub(crate) msg: String,
+}
+
+impl Display for FatalAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "fatal error [{}:{}]: {}", self.file, self.line, self.msg)
+    }
+}
+
+#[derive(Clone, DataSize, Serialize, Debug)]
+#[must_use]
+pub(crate) enum ReactorAnnouncement {
+    CompletedBlock { block: Box<Block> },
+}
+
+impl Display for ReactorAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ReactorAnnouncement::CompletedBlock { block } => {
+                write!(f, "added complete block block_height: {}", block.height())
+            }
+        }
+    }
 }
 
 /// Queue dump format with handler.
@@ -78,33 +155,6 @@ impl QueueDumpFormat {
     }
 }
 
-impl Debug for ControlAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::FatalError { file, line, msg } => f
-                .debug_struct("FatalError")
-                .field("file", file)
-                .field("line", line)
-                .field("msg", msg)
-                .finish(),
-            Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
-        }
-    }
-}
-
-impl Display for ControlAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ControlAnnouncement::FatalError { file, line, msg } => {
-                write!(f, "fatal error [{}:{}]: {}", file, line, msg)
-            }
-            ControlAnnouncement::QueueDumpRequest { .. } => {
-                write!(f, "dump event queue")
-            }
-        }
-    }
-}
-
 /// An RPC API server announcement.
 #[derive(Debug, Serialize)]
 #[must_use]
@@ -122,7 +172,7 @@ impl Display for RpcServerAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             RpcServerAnnouncement::DeployReceived { deploy, .. } => {
-                write!(formatter, "api server received {}", deploy.id())
+                write!(formatter, "api server received {}", deploy.hash())
             }
         }
     }
@@ -154,27 +204,31 @@ impl Display for DeployAcceptorAnnouncement {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
                 formatter,
                 "accepted new deploy {} from {}",
-                deploy.id(),
+                deploy.hash(),
                 source
             ),
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
-                write!(formatter, "invalid deploy {} from {}", deploy.id(), source)
+                write!(
+                    formatter,
+                    "invalid deploy {} from {}",
+                    deploy.hash(),
+                    source
+                )
             }
         }
     }
 }
 
-/// A block proposer announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlockProposerAnnouncement {
+pub(crate) enum DeployBufferAnnouncement {
     /// Hashes of the deploys that expired.
     DeploysExpired(Vec<DeployHash>),
 }
 
-impl Display for BlockProposerAnnouncement {
+impl Display for DeployBufferAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+            DeployBufferAnnouncement::DeploysExpired(hashes) => {
                 write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }
@@ -184,10 +238,10 @@ impl Display for BlockProposerAnnouncement {
 /// A consensus announcement.
 #[derive(Debug)]
 pub(crate) enum ConsensusAnnouncement {
+    /// A block was proposed.
+    Proposed(Box<ProposedBlock<ClContext>>),
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
-    /// A finality signature was created.
-    CreatedFinalitySignature(Box<FinalitySignature>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
@@ -202,11 +256,11 @@ pub(crate) enum ConsensusAnnouncement {
 impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ConsensusAnnouncement::Proposed(block) => {
+                write!(formatter, "proposed block payload {}", block)
+            }
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized block payload {}", block)
-            }
-            ConsensusAnnouncement::CreatedFinalitySignature(fs) => {
-                write!(formatter, "signed an executed block: {}", fs)
             }
             ConsensusAnnouncement::Fault {
                 era_id,
@@ -214,25 +268,33 @@ impl Display for ConsensusAnnouncement {
                 timestamp,
             } => write!(
                 formatter,
-                "Validator fault with public key: {} has been identified at time: {} in era: {}",
+                "Validator fault with public key: {} has been identified at time: {} in {}",
                 public_key, timestamp, era_id,
             ),
         }
     }
 }
 
-/// A block-list related announcement.
+/// Notable / unexpected peer behavior has been detected by some part of the system.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlocklistAnnouncement {
+pub(crate) enum PeerBehaviorAnnouncement {
     /// A given peer committed a blockable offense.
-    OffenseCommitted(Box<NodeId>),
+    OffenseCommitted {
+        /// The peer ID of the offending node.
+        offender: Box<NodeId>,
+        /// Justification for blocking the peer.
+        justification: Box<BlocklistJustification>,
+    },
 }
 
-impl Display for BlocklistAnnouncement {
+impl Display for PeerBehaviorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlocklistAnnouncement::OffenseCommitted(peer) => {
-                write!(f, "peer {} committed offense", peer)
+            PeerBehaviorAnnouncement::OffenseCommitted {
+                offender,
+                justification,
+            } => {
+                write!(f, "peer {} committed offense: {}", offender, justification)
             }
         }
     }
@@ -240,18 +302,30 @@ impl Display for BlocklistAnnouncement {
 
 /// A Gossiper announcement.
 #[derive(Debug)]
-pub(crate) enum GossiperAnnouncement<T: Item> {
+pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
+    /// A new gossip has been received, but not necessarily the full item.
+    GossipReceived { item_id: T::Id, sender: NodeId },
+
     /// A new item has been received, where the item's ID is the complete item.
     NewCompleteItem(T::Id),
+
+    /// A new item has been received where the item's ID is NOT the complete item.
+    NewItemBody { item: Box<T>, sender: NodeId },
 
     /// Finished gossiping about the indicated item.
     FinishedGossiping(T::Id),
 }
 
-impl<T: Item> Display for GossiperAnnouncement<T> {
+impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            GossiperAnnouncement::GossipReceived { item_id, sender } => {
+                write!(f, "new gossiped item {} from sender {}", item_id, sender)
+            }
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
+            GossiperAnnouncement::NewItemBody { item, sender } => {
+                write!(f, "new item body {} from {}", item.id(), sender)
+            }
             GossiperAnnouncement::FinishedGossiping(item_id) => {
                 write!(f, "finished gossiping {}", item_id)
             }
@@ -259,39 +333,17 @@ impl<T: Item> Display for GossiperAnnouncement<T> {
     }
 }
 
-/// A linear chain announcement.
-#[derive(Debug)]
-pub(crate) enum LinearChainAnnouncement {
-    /// A new block has been created and stored locally.
-    BlockAdded(Box<Block>),
-    /// New finality signature received.
-    NewFinalitySignature(Box<FinalitySignature>),
-}
-
-impl Display for LinearChainAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            LinearChainAnnouncement::BlockAdded(block) => {
-                write!(f, "block added {}", block.hash())
-            }
-            LinearChainAnnouncement::NewFinalitySignature(fs) => {
-                write!(f, "new finality signature {}", fs.block_hash)
-            }
-        }
-    }
-}
-
 /// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum ChainspecLoaderAnnouncement {
+pub(crate) enum UpgradeWatcherAnnouncement {
     /// New upgrade recognized.
     UpgradeActivationPointRead(NextUpgrade),
 }
 
-impl Display for ChainspecLoaderAnnouncement {
+impl Display for UpgradeWatcherAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
+            UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
                 write!(f, "read {}", next_upgrade)
             }
         }
@@ -301,10 +353,12 @@ impl Display for ChainspecLoaderAnnouncement {
 /// A ContractRuntime announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum ContractRuntimeAnnouncement {
-    /// A new block from the linear chain was produced.
-    LinearChainBlock {
+    /// A new block was executed.
+    ExecutedBlock {
         /// The block.
         block: Box<Block>,
+        /// Approval hashes.
+        approvals_hashes: Box<ApprovalsHashes>,
         /// The results of executing the deploys in this block.
         // #[serde(skip_serializing)]
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
@@ -328,8 +382,8 @@ pub(crate) enum ContractRuntimeAnnouncement {
 impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
-                write!(f, "created linear chain block {}", block.hash())
+            ContractRuntimeAnnouncement::ExecutedBlock { block, .. } => {
+                write!(f, "executed block {}", block.hash())
             }
             ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
                 write!(f, "commit step completed for {}", era_id)
@@ -347,21 +401,41 @@ impl Display for ContractRuntimeAnnouncement {
     }
 }
 
-/// A chain synchronizer announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum ChainSynchronizerAnnouncement {
-    /// The node has finished the synchronization it was doing (fast-sync or sync-to-genesis,
-    /// depending on config) and may now accept requests that are unsafe for nodes that are
-    /// synchronizing. Once this message is received, the only way for the peer to signal it's in
-    /// the syncing process is to reconnect.
-    SyncFinished,
+pub(crate) enum BlockAccumulatorAnnouncement {
+    /// A block which wasn't previously stored on this node has been accepted and stored.
+    AcceptedNewBlock { block: Box<Block> },
+    /// A finality signature which wasn't previously stored on this node has been accepted and
+    /// stored.
+    AcceptedNewFinalitySignature {
+        finality_signature: Box<FinalitySignature>,
+    },
 }
 
-impl Display for ChainSynchronizerAnnouncement {
+impl Display for BlockAccumulatorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainSynchronizerAnnouncement::SyncFinished => {
-                write!(f, "synchronization finished")
+            BlockAccumulatorAnnouncement::AcceptedNewBlock { block } => {
+                write!(f, "block {} accepted", block.hash())
+            }
+            BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
+                write!(f, "finality signature {} accepted", finality_signature.id())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockSynchronizerAnnouncement {
+    /// A block which wasn't previously stored on this node has been accepted and stored.
+    CompletedBlock { block: Box<Block> },
+}
+
+impl Display for BlockSynchronizerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockSynchronizerAnnouncement::CompletedBlock { block } => {
+                write!(f, "block {} completed", block.hash())
             }
         }
     }

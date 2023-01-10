@@ -8,7 +8,7 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
-use crate::types::{Block, DeployHash, DeployHeader};
+use crate::types::{ApprovalsHashes, Block, BlockHeader, DeployHash, DeployHeader};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,34 +85,38 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Clone, Debug, DataSize)]
-pub struct StepEffectAndUpcomingEraValidators {
+pub(crate) struct StepEffectAndUpcomingEraValidators {
     /// Validator sets for all upcoming eras that have already been determined.
-    pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    pub(crate) upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     /// An [`ExecutionJournal`] created by an era ending.
-    pub step_execution_journal: ExecutionJournal,
+    pub(crate) step_execution_journal: ExecutionJournal,
 }
 
+#[doc(hidden)]
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
 /// effects it may have.
 #[derive(Clone, Debug, DataSize)]
-pub struct BlockAndExecutionEffects {
+pub struct BlockAndExecutionResults {
     /// The [`Block`] the contract runtime executed.
-    pub block: Box<Block>,
+    pub(crate) block: Box<Block>,
+    /// The [`ApprovalsHashes`] for the deploys in this block.
+    pub(crate) approvals_hashes: Box<ApprovalsHashes>,
     /// The results from executing the deploys in the block.
-    pub execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
-    pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
+    pub(crate) maybe_step_effect_and_upcoming_era_validators:
+        Option<StepEffectAndUpcomingEraValidators>,
 }
 
-impl BlockAndExecutionEffects {
-    /// Gets the block.
-    pub fn block(&self) -> &Block {
-        &self.block
+impl BlockAndExecutionResults {
+    #[doc(hidden)]
+    pub fn block_header(&self) -> &BlockHeader {
+        self.block.header()
     }
 }
 
-impl From<BlockAndExecutionEffects> for Block {
-    fn from(block_and_execution_effects: BlockAndExecutionEffects) -> Self {
-        *block_and_execution_effects.block
+impl From<BlockAndExecutionResults> for Block {
+    fn from(block_and_execution_results: BlockAndExecutionResults) -> Self {
+        *block_and_execution_results.block
     }
 }

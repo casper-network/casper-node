@@ -29,7 +29,7 @@ static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
 });
 static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    deploy_hash: *Deploy::doc_example().id(),
+    deploy_hash: *Deploy::doc_example().hash(),
 });
 
 /// Params for "account_put_deploy" RPC request.
@@ -77,7 +77,7 @@ impl RpcWithParams for PutDeploy {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let deploy_hash = *params.deploy.id();
+        let deploy_hash = *params.deploy.hash();
 
         // Submit the new deploy to be announced.
         let put_deploy_result = effect_builder

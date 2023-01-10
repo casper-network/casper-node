@@ -199,7 +199,7 @@ function _setup_asset_node_configs()
 
     if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
         SCRIPT+=(
-            "cfg['rpc_server']['speculative_execution_address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
+            "cfg['rpc_server']['speculative_execution_address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
         )
     fi
 
@@ -256,33 +256,45 @@ function _setup_asset_node_config_workaround_1()
 function _setup_asset_global_state_toml() {
     log "... setting node global_state.toml"
 
-    local NODE_ID=${1}
-    local PROTOCOL_VERSION=${2}
-    local GLOBAL_STATE_OUTPUT
-    local PATH_TO_NET
+    local IDX=${1}
+    local TARGET_PROTOCOL_VERSION
+    local VERSION_14_BOUNDARY
 
-    PATH_TO_NET="$(get_path_to_net)"
+    local SEMVER_GLOBAL_STATE_UPDATE_TOOL
+    local SEMVER_STAGE_1_PRE_VERSION
 
-    if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -gt "140" ]; then
-        # Check new data.lmdb path under ..storage/<chain_name>/
-        if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
-            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }')")
-        else
-            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }')")
-        fi
-    else
-        if [ -f "$PATH_TO_NET/nodes/node-$NODE_ID/storage/data.lmdb" ]; then
-            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$NODE_ID"/storage)
-        else
-            GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                    system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage)
-        fi
+    read -ra SEMVER_GLOBAL_STATE_UPDATE_TOOL <<< "$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen --version | grep -oE '[^ ]+$' | tr '.' ' ')"
+
+    # Check version of the global state update tool. 0.3 marks the transition to 1.5 fast sync node and supports the "validators" command.
+    if [ "${SEMVER_GLOBAL_STATE_UPDATE_TOOL[1]}" -lt "3" ]; then
+        log "ERROR :: Global State Update Generator must be version 0.3 or greater (found version ${SEMVER_GLOBAL_STATE_UPDATE_TOOL[0]}.${SEMVER_GLOBAL_STATE_UPDATE_TOOL[1]}.${SEMVER_GLOBAL_STATE_UPDATE_TOOL[2]})"
+        exit 1
     fi
 
-    echo "$GLOBAL_STATE_OUTPUT" > "$PATH_TO_NET/nodes/node-$NODE_ID/config/$PROTOCOL_VERSION/global_state.toml"
+    pushd "$(get_path_to_stages)/stage-1/"
+    read -ra SEMVER_STAGE_1_PRE_VERSION <<< $(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' |  sort | head -n 1 | tr '_' ' ')
+    popd
+    pushd "$(get_path_to_stages)/stage-1/"
+    read -ra SEMVER_STAGE_1_POST_VERSION <<< $(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' |  sort | tail -n 1 | tr '_' ' ')
+    local TARGET_PROTOCOL_VERSION=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | sort | tail -n 1)
+    popd
+
+    log "... processing upgrade from ${SEMVER_STAGE_1_PRE_VERSION[0]}.${SEMVER_STAGE_1_PRE_VERSION[1]}.${SEMVER_STAGE_1_PRE_VERSION[2]} to ${SEMVER_STAGE_1_POST_VERSION[0]}.${SEMVER_STAGE_1_POST_VERSION[1]}.${SEMVER_STAGE_1_POST_VERSION[2]}"
+
+    if [ "${SEMVER_STAGE_1_PRE_VERSION[0]}" -le "1" ] && \
+       [ "${SEMVER_STAGE_1_PRE_VERSION[1]}" -lt "4" ] && \
+       [ "${SEMVER_STAGE_1_POST_VERSION[0]}" -ge "1" ] && \
+       [ "${SEMVER_STAGE_1_POST_VERSION[1]}" -ge "4" ]; then
+        log "... upgrading across the 1.4.0 boundary, generating 'global_state.toml' file"
+        VERSION_14_BOUNDARY=1
+    else
+        log "... not upgrading across the 1.4.0 boundary, no 'global_state.toml' file needed"
+        VERSION_14_BOUNDARY=0
+    fi
+
+    if [ "$VERSION_14_BOUNDARY" -eq "1" ]; then
+        setup_asset_global_state_toml_for_node $IDX $TARGET_PROTOCOL_VERSION
+    fi
 }
 
 #######################################

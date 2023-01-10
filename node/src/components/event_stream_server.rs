@@ -28,21 +28,23 @@ mod sse_server;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use datasize::DataSize;
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     oneshot,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use warp::Filter;
 
 use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
+    components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
+    reactor::main_reactor::MainEvent,
     types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
@@ -52,6 +54,8 @@ pub(crate) use event::Event;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 pub(crate) use sse_server::SseData;
+
+const COMPONENT_NAME: &str = "event_stream_server";
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -81,45 +85,49 @@ struct InnerServer {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct EventStreamServer {
-    inner: Option<InnerServer>,
+    state: ComponentState,
+    config: Config,
+    storage_path: PathBuf,
+    api_version: ProtocolVersion,
+    sse_server: Option<InnerServer>,
 }
 
 impl EventStreamServer {
-    pub(crate) fn new(
-        config: Config,
-        storage_path: PathBuf,
-        api_version: ProtocolVersion,
-    ) -> Result<Self, ListeningError> {
-        if !config.enable_server {
-            return Ok(EventStreamServer { inner: None });
+    pub(crate) fn new(config: Config, storage_path: PathBuf, api_version: ProtocolVersion) -> Self {
+        EventStreamServer {
+            state: ComponentState::Uninitialized,
+            config,
+            storage_path,
+            api_version,
+            sse_server: None,
         }
+    }
 
-        let required_address = utils::resolve_address(&config.address).map_err(|error| {
+    fn listen(&mut self) -> Result<(), ListeningError> {
+        let required_address = utils::resolve_address(&self.config.address).map_err(|error| {
             warn!(
                 %error,
-                address=%config.address,
+                address=%self.config.address,
                 "failed to start event stream server, cannot parse address"
             );
             ListeningError::ResolveAddress(error)
         })?;
 
-        let event_indexer = EventIndexer::new(storage_path);
-        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-
         // Event stream channels and filter.
-        let broadcast_channel_size = config.event_stream_buffer_length
+        let broadcast_channel_size = self.config.event_stream_buffer_length
             * (100 + ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE)
             / 100;
+
         let ChannelsAndFilter {
             event_broadcaster,
             new_subscriber_info_receiver,
             sse_filter,
         } = ChannelsAndFilter::new(
             broadcast_channel_size as usize,
-            config.max_concurrent_subscribers,
+            self.config.max_concurrent_subscribers,
         );
 
-        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+        let (server_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let (listening_address, server_with_shutdown) =
             warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
@@ -130,30 +138,34 @@ impl EventStreamServer {
                     address: required_address,
                     error: Box::new(error),
                 })?;
+
         info!(address=%listening_address, "started event stream server");
 
+        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
+
         tokio::spawn(http_server::run(
-            config,
-            api_version,
+            self.config.clone(),
+            self.api_version,
             server_with_shutdown,
-            shutdown_sender,
+            server_shutdown_sender,
             sse_data_receiver,
             event_broadcaster,
             new_subscriber_info_receiver,
         ));
 
-        Ok(EventStreamServer {
-            inner: Some(InnerServer {
-                sse_data_sender,
-                event_indexer,
-                listening_address,
-            }),
-        })
+        let event_indexer = EventIndexer::new(self.storage_path.clone());
+
+        self.sse_server = Some(InnerServer {
+            sse_data_sender,
+            event_indexer,
+            listening_address,
+        });
+        Ok(())
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
     fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        if let Some(server) = self.inner.as_mut() {
+        if let Some(server) = self.sse_server.as_mut() {
             let event_index = server.event_indexer.next_index();
             let _ = server.sse_data_sender.send((event_index, sse_data));
         }
@@ -172,7 +184,6 @@ where
     REv: ReactorEventT,
 {
     type Event = Event;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -180,49 +191,136 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
-            Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
-                block_hash: *block.hash(),
-                block: Box::new(JsonBlock::new(*block, None)),
-            }),
-            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
-                deploy: Arc::new(*deploy),
-            }),
-            Event::DeployProcessed {
-                deploy_hash,
-                deploy_header,
-                block_hash,
-                execution_result,
-            } => self.broadcast(SseData::DeployProcessed {
-                deploy_hash: Box::new(deploy_hash),
-                account: Box::new(deploy_header.account().clone()),
-                timestamp: deploy_header.timestamp(),
-                ttl: deploy_header.ttl(),
-                dependencies: deploy_header.dependencies().clone(),
-                block_hash: Box::new(block_hash),
-                execution_result,
-            }),
-            Event::DeploysExpired(deploy_hashes) => deploy_hashes
-                .into_iter()
-                .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
-                .collect(),
-            Event::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            } => self.broadcast(SseData::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            }),
-            Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
-            Event::Step {
-                era_id,
-                execution_effect,
-            } => self.broadcast(SseData::Step {
-                era_id,
-                execution_effect,
-            }),
+        match &self.state {
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => {
+                    let (effects, state) = self.bind(self.config.enable_server, _effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+                    effects
+                }
+                Event::BlockAdded(_)
+                | Event::DeployAccepted(_)
+                | Event::DeployProcessed { .. }
+                | Event::DeploysExpired(_)
+                | Event::Fault { .. }
+                | Event::FinalitySignature(_)
+                | Event::Step { .. } => {
+                    warn!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "should not handle this event when component is pending initialization"
+                    );
+                    Effects::new()
+                }
+            },
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
+                    Effects::new()
+                }
+                Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
+                    block_hash: *block.hash(),
+                    block: Box::new(JsonBlock::new(*block, None)),
+                }),
+                Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
+                    deploy: Arc::new(*deploy),
+                }),
+                Event::DeployProcessed {
+                    deploy_hash,
+                    deploy_header,
+                    block_hash,
+                    execution_result,
+                } => self.broadcast(SseData::DeployProcessed {
+                    deploy_hash: Box::new(deploy_hash),
+                    account: Box::new(deploy_header.account().clone()),
+                    timestamp: deploy_header.timestamp(),
+                    ttl: deploy_header.ttl(),
+                    dependencies: deploy_header.dependencies().clone(),
+                    block_hash: Box::new(block_hash),
+                    execution_result,
+                }),
+                Event::DeploysExpired(deploy_hashes) => deploy_hashes
+                    .into_iter()
+                    .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                    .collect(),
+                Event::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => self.broadcast(SseData::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                }),
+                Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
+                Event::Step {
+                    era_id,
+                    execution_effect,
+                } => self.broadcast(SseData::Step {
+                    era_id,
+                    execution_effect,
+                }),
+            },
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+}
+
+impl<REv> InitializedComponent<REv> for EventStreamServer
+where
+    REv: ReactorEventT,
+{
+    fn state(&self) -> &ComponentState {
+        &self.state
+    }
+
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
+    }
+}
+
+impl<REv> PortBoundComponent<REv> for EventStreamServer
+where
+    REv: ReactorEventT,
+{
+    type Error = ListeningError;
+    type ComponentEvent = Event;
+
+    fn listen(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
+        self.listen()?;
+        Ok(Effects::new())
     }
 }

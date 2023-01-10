@@ -41,7 +41,7 @@ function do_render()
     
     NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
     NODE_API_RESPONSE=$(
-        curl -s --header 'Content-Type: application/json' \
+        curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES --header 'Content-Type: application/json' \
             --request POST "$NODE_ADDRESS_CURL" \
             --data-raw '{
                 "id": 1,

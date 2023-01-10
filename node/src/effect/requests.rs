@@ -4,13 +4,13 @@
 //! top-level module documentation for details.
 
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
     sync::Arc,
 };
 
+use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use serde::Serialize;
 use smallvec::SmallVec;
@@ -20,44 +20,44 @@ use casper_execution_engine::core::engine_state::{
     self,
     balance::{BalanceRequest, BalanceResult},
     era_validators::GetEraValidatorsError,
-    genesis::GenesisSuccess,
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
-    UpgradeConfig, UpgradeSuccess,
 };
 use casper_hashing::Digest;
-use casper_storage::global_state::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, TimeDiff, Transfer, URef,
+    PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use crate::{
     components::{
-        block_validator::ValidatingBlock,
-        consensus::{BlockContext, ClContext, ValidatorChange},
-        contract_runtime::{
-            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+        block_synchronizer::{
+            BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
         },
+        consensus::{ClContext, ProposedBlock, ValidatorChange},
+        contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
+        diagnostics_port::StopAtSpec,
         fetcher::FetchResult,
+        network::NetworkInsights,
+        upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::SpeculativeExecutionState,
+    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
+    reactor::main_reactor::ReactorState,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        AvailableBlockRange, Block, BlockAndDeploys, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockHeadersBatch, BlockHeadersBatchId, BlockPayload,
-        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployMetadataExt, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, NodeState, StatusFeed,
+        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
+        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
+        NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
 
-// Redirection for reactor macro.
-#[allow(unused_imports)]
-pub(crate) use super::diagnostics_port::DumpConsensusStateRequest;
+use super::GossipTarget;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);
@@ -81,7 +81,7 @@ impl Display for MetricsRequest {
 }
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<String>>();
-const_assert!(_NETWORK_EVENT_SIZE < 89);
+const_assert!(_NETWORK_EVENT_SIZE < 105);
 
 /// A networking request.
 #[derive(Debug, Serialize)]
@@ -100,12 +100,12 @@ pub(crate) enum NetworkRequest<P> {
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<()>,
     },
-    /// Send a message on the network to all peers.
-    /// Note: This request is deprecated and should be phased out, as not every network
-    ///       implementation is likely to implement broadcast support.
-    Broadcast {
+    /// Send a message on the network to validator peers in the given era.
+    ValidatorBroadcast {
         /// Message payload.
         payload: Box<P>,
+        /// Era whose validators are recipients.
+        era_id: EraId,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<()>,
@@ -114,6 +114,8 @@ pub(crate) enum NetworkRequest<P> {
     Gossip {
         /// Payload to gossip.
         payload: Box<P>,
+        /// Type of peers that should receive the gossip message.
+        gossip_target: GossipTarget,
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
@@ -145,20 +147,24 @@ impl<P> NetworkRequest<P> {
                 respond_after_queueing,
                 auto_closing_responder,
             },
-            NetworkRequest::Broadcast {
+            NetworkRequest::ValidatorBroadcast {
                 payload,
+                era_id,
                 auto_closing_responder,
-            } => NetworkRequest::Broadcast {
+            } => NetworkRequest::ValidatorBroadcast {
                 payload: Box::new(wrap_payload(*payload)),
+                era_id,
                 auto_closing_responder,
             },
             NetworkRequest::Gossip {
                 payload,
+                gossip_target,
                 count,
                 exclude,
                 auto_closing_responder,
             } => NetworkRequest::Gossip {
                 payload: Box::new(wrap_payload(*payload)),
+                gossip_target,
                 count,
                 exclude,
                 auto_closing_responder,
@@ -176,7 +182,7 @@ where
             NetworkRequest::SendMessage { dest, payload, .. } => {
                 write!(formatter, "send to {}: {}", dest, payload)
             }
-            NetworkRequest::Broadcast { payload, .. } => {
+            NetworkRequest::ValidatorBroadcast { payload, .. } => {
                 write!(formatter, "broadcast: {}", payload)
             }
             NetworkRequest::Gossip { payload, .. } => write!(formatter, "gossip: {}", payload),
@@ -185,7 +191,7 @@ where
 }
 
 /// A networking info request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
@@ -193,15 +199,15 @@ pub(crate) enum NetworkInfoRequest {
         /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, String>>,
     },
-    /// Get the peers in random order.
+    /// Get up to `count` fully-connected peers in random order.
     FullyConnectedPeers {
-        /// Responder to be called with all connected in random order peers.
+        count: usize,
+        /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,
     },
-    /// Get only non-syncing peers in random order.
-    FullyConnectedNonSyncingPeers {
-        /// Responder to be called with all connected non-syncing peers in random order.
-        responder: Responder<Vec<NodeId>>,
+    /// Get detailed insights into the nodes networking.
+    Insight {
+        responder: Responder<NetworkInsights>,
     },
 }
 
@@ -209,13 +215,16 @@ impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::Peers { responder: _ } => {
-                write!(formatter, "get peers-to-socket-address map")
+                formatter.write_str("get peers-to-socket-address map")
             }
-            NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
-                write!(formatter, "get fully connected peers")
+            NetworkInfoRequest::FullyConnectedPeers {
+                count,
+                responder: _,
+            } => {
+                write!(formatter, "get up to {} fully connected peers", count)
             }
-            NetworkInfoRequest::FullyConnectedNonSyncingPeers { responder: _ } => {
-                write!(formatter, "get fully connected non-syncing peers")
+            NetworkInfoRequest::Insight { responder: _ } => {
+                formatter.write_str("get networking insights")
             }
         }
     }
@@ -223,7 +232,7 @@ impl Display for NetworkInfoRequest {
 
 /// A gossip request.
 ///
-/// This request usually initiates gossiping process of the specifed item. Note that the gossiper
+/// This request usually initiates gossiping process of the specified item. Note that the gossiper
 /// will fetch the item itself, so only the ID is needed.
 ///
 /// The responder will be called as soon as the gossiper has initiated the process.
@@ -232,7 +241,7 @@ impl Display for NetworkInfoRequest {
 #[must_use]
 pub(crate) struct BeginGossipRequest<T>
 where
-    T: Item,
+    T: GossiperItem,
 {
     /// The ID of the item received.
     pub(crate) item_id: T::Id,
@@ -244,7 +253,7 @@ where
 
 impl<T> Display for BeginGossipRequest<T>
 where
-    T: Item,
+    T: GossiperItem,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "begin gossip of {} from {}", self.item_id, self.source)
@@ -262,43 +271,53 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
-    /// Store given block and its deploys.
-    PutBlockAndDeploys {
+    /// Store given block and mark it complete.
+    PutCompleteBlock {
         /// Block to be stored.
-        block: Box<BlockAndDeploys>,
-        /// Responder to call on success.  Failure is a fatal error.
-        responder: Responder<()>,
+        block: Box<Block>,
+        /// Responder to call with the result.  Returns true if the block was stored and it
+        /// was inserted into the completed blocks index on this attempt or false if it was
+        /// previously stored.
+        responder: Responder<bool>,
+    },
+    /// Store the approvals hashes.
+    PutApprovalsHashes {
+        /// Approvals hashes to store.
+        approvals_hashes: Box<ApprovalsHashes>,
+        responder: Responder<bool>,
+    },
+    /// Store the block and approvals hashes.
+    PutExecutedBlock {
+        /// Block to be stored.
+        block: Box<Block>,
+        /// Approvals hashes to store.
+        approvals_hashes: Box<ApprovalsHashes>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+        responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
     GetBlock {
         /// Hash of block to be retrieved.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
+        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve block and deploys with given hash.
-    GetBlockAndDeploys {
-        /// Hash of block to be retrieved.
+    /// Retrieve the approvals hashes.
+    GetApprovalsHashes {
+        /// Hash of the block for which to retrieve approvals hashes.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
-        /// storage.
-        responder: Responder<Option<BlockAndDeploys>>,
+        /// Responder to call with the result.  Returns `None` if the approvals hashes don't exist
+        /// in local storage.
+        responder: Responder<Option<ApprovalsHashes>>,
     },
-    /// Retrieve highest block.
-    GetHighestBlock {
+    /// Retrieve highest complete block.
+    GetHighestCompleteBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve highest block header.
-    GetHighestBlockHeader {
-        /// Responder.
-        responder: Responder<Option<BlockHeader>>,
-    },
-    /// Retrieve switch block header with given era ID.
-    GetSwitchBlockHeaderAtEraId {
-        /// Era ID of the switch block.
-        era_id: EraId,
+    /// Retrieve highest complete block header.
+    GetHighestCompleteBlockHeader {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
@@ -316,7 +335,7 @@ pub(crate) enum StorageRequest {
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
         only_from_available_block_range: bool,
-        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
@@ -326,7 +345,7 @@ pub(crate) enum StorageRequest {
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
         only_from_available_block_range: bool,
-        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
@@ -341,7 +360,7 @@ pub(crate) enum StorageRequest {
     GetBlockTransfers {
         /// Hash of block to get transfers of.
         block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` is the transfers do not exist in
+        /// Responder to call with the result.  Returns `None` if the transfers do not exist in
         /// local storage under the block_hash provided.
         responder: Responder<Option<Vec<Transfer>>>,
     },
@@ -349,7 +368,7 @@ pub(crate) enum StorageRequest {
     PutDeploy {
         /// Deploy to store.
         deploy: Box<Deploy>,
-        /// Responder to call with the result.  Returns true if the deploy was stored on this
+        /// Responder to call with the result.  Returns `true` if the deploy was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
@@ -360,13 +379,15 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
     },
-    /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
-    GetFinalizedBlocks {
-        /// Maximum TTL of block we're interested in.
-        /// I.e. we don't want deploys from blocks that are older than this.
-        ttl: TimeDiff,
-        /// Responder to call with the results.
-        responder: Responder<Vec<Block>>,
+    /// Retrieve legacy deploy with given hash.
+    GetLegacyDeploy {
+        deploy_hash: DeployHash,
+        responder: Responder<Option<LegacyDeploy>>,
+    },
+    /// Retrieve deploy with given ID.
+    GetDeploy {
+        deploy_id: DeployId,
+        responder: Responder<Option<Deploy>>,
     },
     /// Store execution results for a set of deploys of a single block.
     ///
@@ -382,6 +403,13 @@ pub(crate) enum StorageRequest {
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,
+    },
+    GetBlockExecutionResultsOrChunk {
+        /// Request ID.
+        id: BlockExecutionResultsOrChunkId,
+        /// Responder to call with the execution results.
+        /// None is returned when we don't have the block in the storage.
+        responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
@@ -400,15 +428,10 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
-    /// Retrieve block header and its metadata by its hash.
-    GetBlockHeaderAndMetadataByHash {
-        /// The hash of the block.
-        block_hash: BlockHash,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
-        only_from_available_block_range: bool,
-        /// The responder to call with the results.
-        responder: Responder<Option<BlockHeaderWithMetadata>>,
+    /// Retrieve a finality signature by block hash and public key.
+    GetFinalitySignature {
+        id: Box<FinalitySignatureId>,
+        responder: Responder<Option<FinalitySignature>>,
     },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
@@ -420,27 +443,19 @@ pub(crate) enum StorageRequest {
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
-    /// Retrieve block header and its metadata at a given height.
-    GetBlockHeaderAndMetadataByHeight {
-        /// The height of the block.
-        block_height: BlockHeight,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
-        only_from_available_block_range: bool,
-        /// The responder to call with the results.
-        responder: Responder<Option<BlockHeaderWithMetadata>>,
-    },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
         /// The responder to call the results with.
         responder: Responder<Option<BlockWithMetadata>>,
     },
-    /// Get finality signatures for a Block hash.
-    GetBlockSignatures {
+    /// Get a single finality signature for a block hash.
+    GetBlockSignature {
         /// The hash for the request.
         block_hash: BlockHash,
+        /// The public key of the signer.
+        public_key: Box<PublicKey>,
         /// Responder to call with the result.
-        responder: Responder<Option<BlockSignatures>>,
+        responder: Responder<Option<FinalitySignature>>,
     },
     /// Store finality signatures.
     PutBlockSignatures {
@@ -450,6 +465,10 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    PutFinalitySignature {
+        signature: Box<FinalitySignature>,
+        responder: Responder<bool>,
+    },
     /// Store a block header.
     PutBlockHeader {
         /// Block header that is to be stored.
@@ -457,19 +476,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result, if true then the block header was successfully
         /// stored.
         responder: Responder<bool>,
-    },
-    /// Store a batch of block headers.
-    PutHeadersBatch {
-        /// Batch of block headers to be stored.
-        block_headers: Vec<BlockHeader>,
-        /// Responder to call with the result, if true then the block headers were successfully
-        /// stored.
-        responder: Responder<bool>,
-    },
-    /// Read batch of block headers by their heights.
-    GetHeadersBatch {
-        block_headers_id: BlockHeadersBatchId,
-        responder: Responder<Option<BlockHeadersBatch>>,
     },
     /// Retrieve the height range of fully available blocks (not just block headers). Returns
     /// `[u64::MAX, u64::MAX]` when there are no sequences.
@@ -483,8 +489,9 @@ pub(crate) enum StorageRequest {
         deploy_hash: DeployHash,
         /// The set of finalized approvals.
         finalized_approvals: FinalizedApprovals,
-        /// Responder, responded to once the approvals are written.
-        responder: Responder<()>,
+        /// Responder, responded to once the approvals are written.  If true, new approvals were
+        /// written.
+        responder: Responder<bool>,
     },
 }
 
@@ -492,26 +499,25 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            StorageRequest::PutBlockAndDeploys {
-                block: block_deploys,
-                ..
+            StorageRequest::PutCompleteBlock { block, .. } => {
+                write!(formatter, "put complete {}", block)
+            }
+            StorageRequest::PutApprovalsHashes {
+                approvals_hashes, ..
             } => {
-                write!(
-                    formatter,
-                    "put block and deploys {}",
-                    block_deploys.block.hash()
-                )
+                write!(formatter, "put {}", approvals_hashes)
             }
-            StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-            StorageRequest::GetBlockAndDeploys { block_hash, .. } => {
-                write!(formatter, "get block and deploys {}", block_hash)
+            StorageRequest::GetBlock { block_hash, .. } => {
+                write!(formatter, "get block {}", block_hash)
             }
-            StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
-            StorageRequest::GetHighestBlockHeader { .. } => {
-                write!(formatter, "get highest block header")
+            StorageRequest::GetApprovalsHashes { block_hash, .. } => {
+                write!(formatter, "get approvals hashes {}", block_hash)
             }
-            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
-                write!(formatter, "get switch block header at era id {}", era_id)
+            StorageRequest::GetHighestCompleteBlock { .. } => {
+                write!(formatter, "get highest complete block")
+            }
+            StorageRequest::GetHighestCompleteBlockHeader { .. } => {
+                write!(formatter, "get highest complete block header")
             }
             StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
                 write!(formatter, "get block header for deploy {}", deploy_hash)
@@ -532,23 +538,29 @@ impl Display for StorageRequest {
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
                 write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
             }
+            StorageRequest::GetLegacyDeploy { deploy_hash, .. } => {
+                write!(formatter, "get legacy deploy {}", deploy_hash)
+            }
+            StorageRequest::GetDeploy { deploy_id, .. } => {
+                write!(formatter, "get deploy {}", deploy_id)
+            }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
+            StorageRequest::GetBlockExecutionResultsOrChunk { id, .. } => {
+                write!(formatter, "get execution results for {}", id)
+            }
+
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
+            }
+            StorageRequest::GetFinalitySignature { id, .. } => {
+                write!(formatter, "get finality signature {}", id)
             }
             StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
                 write!(
                     formatter,
                     "get block and metadata for block with hash: {}",
-                    block_hash
-                )
-            }
-            StorageRequest::GetBlockHeaderAndMetadataByHash { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get block header and metadata for block with hash: {}",
                     block_hash
                 )
             }
@@ -559,28 +571,25 @@ impl Display for StorageRequest {
                     block_height
                 )
             }
-            StorageRequest::GetBlockHeaderAndMetadataByHeight { block_height, .. } => {
-                write!(
-                    formatter,
-                    "get block header and metadata for block at height: {}",
-                    block_height
-                )
-            }
             StorageRequest::GetHighestBlockWithMetadata { .. } => {
                 write!(formatter, "get highest block with metadata")
             }
-            StorageRequest::GetBlockSignatures { block_hash, .. } => {
+            StorageRequest::GetBlockSignature {
+                block_hash,
+                public_key,
+                ..
+            } => {
                 write!(
                     formatter,
-                    "get finality signatures for block hash {}",
-                    block_hash
+                    "get finality signature for block hash {} from {}",
+                    block_hash, public_key
                 )
             }
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
-            StorageRequest::GetFinalizedBlocks { ttl, .. } => {
-                write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
+            StorageRequest::PutFinalitySignature { .. } => {
+                write!(formatter, "put finality signature")
             }
             StorageRequest::PutBlockHeader { block_header, .. } => {
                 write!(formatter, "put block header: {}", block_header)
@@ -591,15 +600,24 @@ impl Display for StorageRequest {
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
             }
-            StorageRequest::PutHeadersBatch { .. } => {
-                write!(formatter, "put block headers batch to storage")
-            }
-            StorageRequest::GetHeadersBatch {
-                block_headers_id, ..
-            } => {
-                write!(formatter, "get block headers batch: {}", block_headers_id)
+            StorageRequest::PutExecutedBlock { block, .. } => {
+                write!(formatter, "put executed block {}", block.hash(),)
             }
         }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct MakeBlockExecutableRequest {
+    /// Hash of the block to be made executable.
+    pub block_hash: BlockHash,
+    /// Responder with the executable block and it's deploys
+    pub responder: Responder<Option<(FinalizedBlock, Vec<Deploy>)>>,
+}
+
+impl Display for MakeBlockExecutableRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block made executable: {}", self.block_hash)
     }
 }
 
@@ -615,102 +633,37 @@ impl Display for StorageRequest {
 // the request has been completed before it can exit, i.e. it awaits the response. Otherwise, the
 // joiner reactor might exit before handling the announcement and it would go un-actioned.
 #[derive(Debug, Serialize)]
-pub(crate) struct MarkBlockCompletedRequest {
+pub(crate) struct BlockCompleteConfirmationRequest {
     /// Height of the block that was completed.
     pub block_height: u64,
     /// Responder indicating that the change has been recorded.
     pub responder: Responder<()>,
 }
 
-impl Display for MarkBlockCompletedRequest {
+impl Display for BlockCompleteConfirmationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "block completed: height {}", self.block_height)
     }
 }
 
-/// State store request.
 #[derive(DataSize, Debug, Serialize)]
-#[repr(u8)]
-pub(crate) enum StateStoreRequest {
-    /// Stores a piece of state to storage.
-    Save {
-        /// Key to store under.
-        key: Cow<'static, [u8]>,
-        /// Value to store, already serialized.
-        #[serde(skip_serializing)]
-        data: Vec<u8>,
-        /// Notification when storing is complete.
-        responder: Responder<()>,
-    },
-    /// Loads a piece of state from storage.
-    Load {
-        /// Key to load from.
-        key: Cow<'static, [u8]>,
-        /// Responder for value, if found, returning the previously passed in serialization form.
-        responder: Responder<Option<Vec<u8>>>,
+pub(crate) enum DeployBufferRequest {
+    GetAppendableBlock {
+        timestamp: Timestamp,
+        responder: Responder<AppendableBlock>,
     },
 }
 
-impl Display for StateStoreRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            StateStoreRequest::Save { key, data, .. } => {
-                write!(
-                    f,
-                    "save data under {} ({} bytes)",
-                    base16::encode_lower(key),
-                    data.len()
-                )
-            }
-            StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", base16::encode_lower(key))
-            }
-        }
-    }
-}
-
-/// Details of a request for a list of deploys to propose in a new block.
-#[derive(DataSize, Debug)]
-pub(crate) struct BlockPayloadRequest {
-    /// The context in which the new block will be proposed.
-    pub(crate) context: BlockContext<ClContext>,
-    /// The height of the next block to be finalized at the point the request was made.
-    /// This is _only_ a way of expressing how many blocks have been finalized at the moment the
-    /// request was made. Block Proposer uses this in order to determine if there might be any
-    /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
-    pub(crate) next_finalized: u64,
-    /// A list of validators reported as malicious in this block.
-    pub(crate) accusations: Vec<PublicKey>,
-    /// Random bit with which to construct the `BlockPayload` requested.
-    pub(crate) random_bit: bool,
-    /// Responder to call with the result.
-    pub(crate) responder: Responder<Arc<BlockPayload>>,
-}
-
-/// A `BlockProposer` request.
-#[derive(DataSize, Debug)]
-#[must_use]
-pub(crate) enum BlockProposerRequest {
-    /// Request a list of deploys to propose in a new block.
-    RequestBlockPayload(BlockPayloadRequest),
-}
-
-impl Display for BlockProposerRequest {
+impl Display for DeployBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
-                context,
-                next_finalized,
-                responder: _,
-                accusations: _,
-                random_bit: _,
-            }) => write!(
-                formatter,
-                "list for inclusion: instant {} height {} next_finalized {}",
-                context.timestamp(),
-                context.height(),
-                next_finalized
-            ),
+            DeployBufferRequest::GetAppendableBlock { timestamp, .. } => {
+                write!(
+                    formatter,
+                    "request for appendable block at instant {}",
+                    timestamp
+                )
+            }
         }
     }
 }
@@ -812,7 +765,7 @@ pub(crate) enum RpcRequest {
     /// Does not commit the effects. This is a "read-only" action.
     SpeculativeDeployExecute {
         /// Block header representing the state on top of which we will run the deploy.
-        block_header: BlockHeader,
+        block_header: Box<BlockHeader>,
         /// Deploy to execute.
         deploy: Box<Deploy>,
         /// Responder.
@@ -927,25 +880,6 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
-        /// The transfers for that `FinalizedBlock`
-        transfers: Vec<Deploy>,
-    },
-    /// Commit genesis chainspec.
-    CommitGenesis {
-        /// The chainspec.
-        chainspec: Arc<Chainspec>,
-        /// The chainspec files' raw bytes.
-        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-        /// Responder to call with the result.
-        responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
-    },
-    /// A request to run upgrade.
-    Upgrade {
-        /// Upgrade config.
-        #[serde(skip_serializing)]
-        upgrade_config: Box<UpgradeConfig>,
-        /// Responder to call with the upgrade result.
-        responder: Responder<Result<UpgradeSuccess, engine_state::Error>>,
     },
     /// A query request.
     Query {
@@ -979,25 +913,18 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-    /// Check if validator is bonded in the future era (identified by `era_id`).
-    IsBonded {
-        /// State root hash of the LFB.
+    /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
+    /// given state root hash.
+    GetExecutionResultsChecksum {
         state_root_hash: Digest,
-        /// Validator public key.
-        public_key: PublicKey,
-        /// Era ID in which validator should be bonded in.
-        era_id: EraId,
-        /// Protocol version at the `state_root_hash`.
-        protocol_version: ProtocolVersion,
-        /// Responder,
-        responder: Responder<Result<bool, GetEraValidatorsError>>,
+        responder: Responder<Result<Option<Digest>, engine_state::Error>>,
     },
     /// Get a trie or chunk by its ID.
     GetTrie {
         /// The ID of the trie (or chunk of a trie) to be read.
         trie_or_chunk_id: TrieOrChunkId,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunk>, engine_state::Error>>,
+        responder: Responder<Result<Option<TrieOrChunk>, ContractRuntimeError>>,
     },
     /// Get a trie by its ID.
     GetTrieFull {
@@ -1009,35 +936,9 @@ pub(crate) enum ContractRuntimeRequest {
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
-        trie_bytes: Bytes,
-        /// Responder to call with the result. Contains the missing descendants of the inserted
-        /// trie.
-        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
-    },
-    /// Find the missing descendants for a trie key
-    FindMissingDescendantTrieKeys {
-        /// The trie key to find the missing descendants for.
-        trie_key: Digest,
-        /// The responder to call with the result.
-        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
-    },
-    /// Execute a provided protoblock
-    ExecuteBlock {
-        /// The protocol version of the block to execute.
-        protocol_version: ProtocolVersion,
-        /// The state of the storage and blockchain to use to make the new block.
-        execution_pre_state: ExecutionPreState,
-        /// The finalized block to execute; must have the same height as the child height specified
-        /// by the `execution_pre_state`.
-        finalized_block: FinalizedBlock,
-        /// The deploys for the block to execute; must correspond to the deploy hashes of the
-        /// `finalized_block` in that order.
-        deploys: Vec<Deploy>,
-        /// The transfers for the block to execute; must correspond to the transfer hashes of the
-        /// `finalized_block` in that order.
-        transfers: Vec<Deploy>,
-        /// Responder to call with the result.
-        responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
+        trie_bytes: TrieRaw,
+        /// Responder to call with the result. Contains the hash of the stored trie.
+        responder: Responder<Result<Digest, engine_state::Error>>,
     },
     /// Execute deploys without commiting results
     SpeculativeDeployExecution {
@@ -1056,46 +957,30 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
-                transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }
-
-            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
-                write!(
-                    formatter,
-                    "commit genesis {}",
-                    chainspec.protocol_config.version
-                )
-            }
-
-            ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
-                write!(formatter, "upgrade request: {:?}", upgrade_config)
-            }
-
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
-
             ContractRuntimeRequest::GetBalance {
                 balance_request, ..
             } => write!(formatter, "balance request: {:?}", balance_request),
-
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
-
             ContractRuntimeRequest::GetBids {
                 get_bids_request, ..
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
-
-            ContractRuntimeRequest::IsBonded {
-                public_key, era_id, ..
-            } => {
-                write!(formatter, "is {} bonded in era {}", public_key, era_id)
-            }
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash, ..
+            } => write!(
+                formatter,
+                "get execution results checksum under {}",
+                state_root_hash
+            ),
             ContractRuntimeRequest::GetTrie {
                 trie_or_chunk_id, ..
             } => {
@@ -1107,14 +992,6 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)
             }
-            ContractRuntimeRequest::ExecuteBlock {
-                finalized_block, ..
-            } => {
-                write!(formatter, "Execute finalized block: {}", finalized_block)
-            }
-            ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
-                write!(formatter, "Find missing descendant trie keys: {}", trie_key)
-            }
             ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
                 deploy,
@@ -1123,7 +1000,7 @@ impl Display for ContractRuntimeRequest {
                 write!(
                     formatter,
                     "Execute {} on {}",
-                    deploy.id(),
+                    deploy.hash(),
                     execution_prestate.state_root_hash
                 )
             }
@@ -1134,21 +1011,57 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) struct FetcherRequest<T>
-where
-    T: Item,
-{
+pub(crate) struct FetcherRequest<T: FetcherItem> {
     /// The ID of the item to be retrieved.
     pub(crate) id: T::Id,
     /// The peer id of the peer to be asked if the item is not held locally
     pub(crate) peer: NodeId,
+    /// Metadata used during validation of the fetched item.
+    pub(crate) validation_metadata: T::ValidationMetadata,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
 }
 
-impl<T: Item> Display for FetcherRequest<T> {
+impl<T: FetcherItem> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
+    }
+}
+
+/// TrieAccumulator related requests.
+#[derive(Debug, Serialize, DataSize)]
+#[must_use]
+pub(crate) struct TrieAccumulatorRequest {
+    /// The hash of the trie node.
+    pub(crate) hash: Digest,
+    /// The peers to try to fetch from.
+    pub(crate) peers: Vec<NodeId>,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<Result<Box<TrieRaw>, TrieAccumulatorError>>,
+}
+
+impl Display for TrieAccumulatorRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "request trie by hash {}", self.hash)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SyncGlobalStateRequest {
+    pub(crate) block_hash: BlockHash,
+    pub(crate) state_root_hash: Digest,
+    pub(crate) peers: HashSet<NodeId>,
+    #[serde(skip)]
+    pub(crate) responder: Responder<Result<Digest, GlobalStateSynchronizerError>>,
+}
+
+impl Display for SyncGlobalStateRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "request to sync global state at {}",
+            self.block_hash
+        )
     }
 }
 
@@ -1157,7 +1070,7 @@ impl<T: Item> Display for FetcherRequest<T> {
 #[must_use]
 pub(crate) struct BlockValidationRequest {
     /// The block to be validated.
-    pub(crate) block: ValidatingBlock,
+    pub(crate) block: ProposedBlock<ClContext>,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: NodeId,
     /// Responder to call with the result.
@@ -1187,30 +1100,96 @@ pub(crate) enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
-#[allow(clippy::enum_variant_names)]
-pub(crate) enum ChainspecLoaderRequest {
-    /// Chainspec info request.
-    GetChainspecInfo(Responder<ChainspecInfo>),
+pub(crate) enum ChainspecRawBytesRequest {
     /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
     /// they are present.
     GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
 }
 
-impl Display for ChainspecLoaderRequest {
+impl Display for ChainspecRawBytesRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
-            ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
+            ChainspecRawBytesRequest::GetChainspecRawBytes(_) => {
+                write!(f, "get chainspec raw bytes")
+            }
         }
     }
 }
 
-/// ChainSynchronizer component request.
+/// UpgradeWatcher component request to get the next scheduled upgrade, if any.
 #[derive(Debug, Serialize)]
-pub(crate) struct NodeStateRequest(pub(crate) Responder<NodeState>);
+pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>>);
 
-impl Display for NodeStateRequest {
+impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "node state request")
+        write!(f, "get next upgrade")
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ReactorStatusRequest(pub(crate) Responder<(ReactorState, Timestamp)>);
+
+impl Display for ReactorStatusRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "get reactor status")
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockAccumulatorRequest {
+    GetPeersForBlock {
+        block_hash: BlockHash,
+        responder: Responder<Option<Vec<NodeId>>>,
+    },
+}
+
+impl Display for BlockAccumulatorRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "block accumulator request")
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockSynchronizerRequest {
+    NeedNext,
+    DishonestPeers,
+    Status {
+        responder: Responder<BlockSynchronizerStatus>,
+    },
+}
+
+impl Display for BlockSynchronizerRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockSynchronizerRequest::NeedNext => {
+                write!(f, "block synchronizer request: need next")
+            }
+            BlockSynchronizerRequest::DishonestPeers => {
+                write!(f, "block synchronizer request: dishonest peers")
+            }
+            BlockSynchronizerRequest::Status { .. } => {
+                write!(f, "block synchronizer request: status")
+            }
+        }
+    }
+}
+
+/// A request to set the current shutdown trigger.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct SetNodeStopRequest {
+    /// The specific stop-at spec.
+    ///
+    /// If `None`, clears the current stop at setting.
+    pub(crate) stop_at: Option<StopAtSpec>,
+    /// Responder to send the previously set stop-at spec to, if any.
+    pub(crate) responder: Responder<Option<StopAtSpec>>,
+}
+
+impl Display for SetNodeStopRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.stop_at {
+            None => f.write_str("clear node stop"),
+            Some(stop_at) => write!(f, "set node stop to: {}", stop_at),
+        }
     }
 }

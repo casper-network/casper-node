@@ -2,6 +2,8 @@
 //!
 //! See <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs> for info.
 
+use std::convert::Infallible;
+
 pub mod account;
 pub mod chain;
 mod common;
@@ -11,7 +13,7 @@ pub mod info;
 pub mod speculative_exec;
 pub mod state;
 
-use std::{convert::Infallible, str, sync::Arc, time::Duration};
+use std::{str, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use http::header::ACCEPT_ENCODING;
