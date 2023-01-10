@@ -1,6 +1,5 @@
 [core]
-era_duration = '180seconds'
-minimum_era_height = 30
+era_duration = '210seconds'
 auction_delay = 1
 
 [highway]
