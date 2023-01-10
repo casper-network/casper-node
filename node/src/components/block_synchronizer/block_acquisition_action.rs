@@ -172,7 +172,8 @@ impl BlockAcquisitionAction {
                     .is_sufficient(is_checkable)
                 {
                     if is_historical {
-                        // we have enough signatures; need to make sure we've stored the necessary bits
+                        // we have enough signatures; need to make sure we've stored the necessary
+                        // bits
                         return BlockAcquisitionAction {
                             peers_to_ask: vec![],
                             need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
