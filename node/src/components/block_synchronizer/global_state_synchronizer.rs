@@ -25,6 +25,8 @@ use crate::{
     NodeRng,
 };
 
+const COMPONENT_NAME: &str = "global_state_synchronizer";
+
 #[derive(Debug, Clone, Error)]
 pub(crate) enum Error {
     #[error(transparent)]
@@ -497,5 +499,9 @@ where
                     .handle_event(effect_builder, rng, event),
             ),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

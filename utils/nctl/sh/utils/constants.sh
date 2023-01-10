@@ -82,6 +82,7 @@ export NCTL_PROCESS_GROUP_3=validators-3
 # cURL arguments which are used when talking to the NCTL nodes.
 # We need to allow retires and limit the default timeouts because not all
 # testing scenarios guarantee that nodes are responsive immediately, which may
-# lead to the test being stuck.
+# lead to the test being stuck. The exponential backoff delay used for reties
+# is replaced with a constant 1 sec. delay.
 # In addition, we don't want cURL to put anything on the standard output.
-export NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES="--max-time 4 --connect-timeout 2 --retry 20 -s"
+export NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES="--max-time 4 --connect-timeout 2 --retry 20 --retry-connrefused --retry-delay 1 -s"

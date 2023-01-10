@@ -51,6 +51,8 @@ pub(crate) use sync_instruction::SyncInstruction;
 
 use metrics::Metrics;
 
+const COMPONENT_NAME: &str = "block_accumulator";
+
 /// If a peer "informs" us about more than the expected number of new blocks times this factor,
 /// they are probably spamming, and we refuse to create new block acceptors for them.
 const PEER_RATE_LIMIT_MULTIPLIER: usize = 2;
@@ -814,6 +816,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 maybe_block_signatures,
             } => self.register_stored(effect_builder, maybe_hot_block, maybe_block_signatures),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 

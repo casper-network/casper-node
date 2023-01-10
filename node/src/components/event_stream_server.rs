@@ -42,8 +42,9 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
-    components::{ComponentStatus, InitializedComponent, PortBoundComponent},
+    components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
+    reactor::main_reactor::MainEvent,
     types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
@@ -53,6 +54,8 @@ pub(crate) use event::Event;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
 pub(crate) use sse_server::SseData;
+
+const COMPONENT_NAME: &str = "event_stream_server";
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
@@ -82,7 +85,7 @@ struct InnerServer {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct EventStreamServer {
-    status: ComponentStatus,
+    state: ComponentState,
     config: Config,
     storage_path: PathBuf,
     api_version: ProtocolVersion,
@@ -92,7 +95,7 @@ pub(crate) struct EventStreamServer {
 impl EventStreamServer {
     pub(crate) fn new(config: Config, storage_path: PathBuf, api_version: ProtocolVersion) -> Self {
         EventStreamServer {
-            status: ComponentStatus::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             storage_path,
             api_version,
@@ -188,85 +191,102 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (self.status.clone(), event) {
-            (ComponentStatus::Fatal(msg), _) => {
+        match &self.state {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
-                let (effects, status) = self.bind(self.config.enable_server, _effect_builder);
-                self.status = status;
-                effects
-            }
-            (ComponentStatus::Uninitialized, _) => {
-                warn!("should not handle this event when component is uninitialized");
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::Initialize) => {
-                // noop
-                Effects::new()
-            }
-            (ComponentStatus::Initialized, Event::BlockAdded(block)) => {
-                self.broadcast(SseData::BlockAdded {
+            ComponentState::Initializing => match event {
+                Event::Initialize => {
+                    let (effects, state) = self.bind(self.config.enable_server, _effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+                    effects
+                }
+                Event::BlockAdded(_)
+                | Event::DeployAccepted(_)
+                | Event::DeployProcessed { .. }
+                | Event::DeploysExpired(_)
+                | Event::Fault { .. }
+                | Event::FinalitySignature(_)
+                | Event::Step { .. } => {
+                    warn!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "should not handle this event when component is pending initialization"
+                    );
+                    Effects::new()
+                }
+            },
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
+                    Effects::new()
+                }
+                Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
                     block: Box::new(JsonBlock::new(&*block, None)),
-                })
-            }
-            (ComponentStatus::Initialized, Event::DeployAccepted(deploy)) => {
-                self.broadcast(SseData::DeployAccepted {
+                }),
+                Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
                     deploy: Arc::new(*deploy),
-                })
-            }
-            (
-                ComponentStatus::Initialized,
+                }),
                 Event::DeployProcessed {
                     deploy_hash,
                     deploy_header,
                     block_hash,
                     execution_result,
-                },
-            ) => self.broadcast(SseData::DeployProcessed {
-                deploy_hash: Box::new(deploy_hash),
-                account: Box::new(deploy_header.account().clone()),
-                timestamp: deploy_header.timestamp(),
-                ttl: deploy_header.ttl(),
-                dependencies: deploy_header.dependencies().clone(),
-                block_hash: Box::new(block_hash),
-                execution_result,
-            }),
-            (ComponentStatus::Initialized, Event::DeploysExpired(deploy_hashes)) => deploy_hashes
-                .into_iter()
-                .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
-                .collect(),
-            (
-                ComponentStatus::Initialized,
+                } => self.broadcast(SseData::DeployProcessed {
+                    deploy_hash: Box::new(deploy_hash),
+                    account: Box::new(deploy_header.account().clone()),
+                    timestamp: deploy_header.timestamp(),
+                    ttl: deploy_header.ttl(),
+                    dependencies: deploy_header.dependencies().clone(),
+                    block_hash: Box::new(block_hash),
+                    execution_result,
+                }),
+                Event::DeploysExpired(deploy_hashes) => deploy_hashes
+                    .into_iter()
+                    .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                    .collect(),
                 Event::Fault {
                     era_id,
                     public_key,
                     timestamp,
-                },
-            ) => self.broadcast(SseData::Fault {
-                era_id,
-                public_key,
-                timestamp,
-            }),
-            (ComponentStatus::Initialized, Event::FinalitySignature(fs)) => {
-                self.broadcast(SseData::FinalitySignature(fs))
-            }
-            (
-                ComponentStatus::Initialized,
+                } => self.broadcast(SseData::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                }),
+                Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
                 Event::Step {
                     era_id,
                     execution_effect,
-                },
-            ) => self.broadcast(SseData::Step {
-                era_id,
-                execution_effect,
-            }),
+                } => self.broadcast(SseData::Step {
+                    era_id,
+                    execution_effect,
+                }),
+            },
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
@@ -274,12 +294,18 @@ impl<REv> InitializedComponent<REv> for EventStreamServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
-    fn name(&self) -> &str {
-        "event_stream_server"
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

@@ -70,16 +70,25 @@ pub(crate) mod upgrade_watcher;
 use datasize::DataSize;
 use serde::Deserialize;
 use std::fmt::{Debug, Display};
+use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
     NodeRng,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     Uninitialized --> Initializing
+///     Initializing --> Initialized
+///     Initializing --> Fatal
+/// ```
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
-pub(crate) enum ComponentStatus {
+pub(crate) enum ComponentState {
     #[default]
     Uninitialized,
+    Initializing,
     Initialized,
     Fatal(String),
 }
@@ -122,24 +131,35 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
+
+    /// Name of the component.
+    fn name(&self) -> &str;
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {
-    fn status(&self) -> ComponentStatus;
+    fn state(&self) -> &ComponentState;
 
     fn is_uninitialized(&self) -> bool {
-        self.status() == ComponentStatus::Uninitialized
+        self.state() == &ComponentState::Uninitialized
     }
 
     fn is_initialized(&self) -> bool {
-        self.status() == ComponentStatus::Initialized
+        self.state() == &ComponentState::Initialized
     }
 
     fn is_fatal(&self) -> bool {
-        matches!(self.status(), ComponentStatus::Fatal(_))
+        matches!(self.state(), ComponentState::Fatal(_))
     }
 
-    fn name(&self) -> &str;
+    fn start_initialization(&mut self) {
+        if self.is_uninitialized() {
+            self.set_state(ComponentState::Initializing);
+        } else {
+            info!(name = self.name(), "component must be uninitialized");
+        }
+    }
+
+    fn set_state(&mut self, new_state: ComponentState);
 }
 
 pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
@@ -150,14 +170,14 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         &mut self,
         enabled: bool,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Effects<Self::ComponentEvent>, ComponentStatus) {
+    ) -> (Effects<Self::ComponentEvent>, ComponentState) {
         if !enabled {
-            return (Effects::new(), ComponentStatus::Initialized);
+            return (Effects::new(), ComponentState::Initialized);
         }
 
         match self.listen(effect_builder) {
-            Ok(effects) => (effects, ComponentStatus::Initialized),
-            Err(error) => (Effects::new(), ComponentStatus::Fatal(format!("{}", error))),
+            Ok(effects) => (effects, ComponentState::Initialized),
+            Err(error) => (Effects::new(), ComponentState::Fatal(format!("{}", error))),
         }
     }
 

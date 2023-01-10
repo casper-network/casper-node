@@ -1686,7 +1686,14 @@ fn check_force_resync_with_marker_file() {
     // Add a couple of blocks into storage.
     let first_block = Block::random(&mut harness.rng);
     put_complete_block(&mut harness, &mut storage, Arc::new(first_block.clone()));
-    let second_block = Block::random(&mut harness.rng);
+    let second_block = loop {
+        // We need to make sure that the second random block has different height than the first
+        // one.
+        let block = Block::random(&mut harness.rng);
+        if block.height() != first_block.height() {
+            break block;
+        }
+    };
     put_complete_block(&mut harness, &mut storage, Arc::new(second_block));
     // Make sure the completed blocks are not the default anymore.
     assert_ne!(
