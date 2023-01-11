@@ -15,6 +15,8 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
+#[cfg(test)]
+use crate::testing::specimen::LargestSpecimen;
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
 use super::{counting_format::ConnectionId, health::Nonce};
@@ -417,6 +419,13 @@ pub struct EstimatorWeights {
 }
 
 #[cfg(test)]
+impl<P> LargestSpecimen for Message<P> {
+    fn largest_specimen() -> Self {
+        todo!()
+    }
+}
+
+#[cfg(test)]
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
@@ -427,9 +436,22 @@ mod tests {
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
     use tokio_serde::{Deserializer, Serializer};
 
-    use crate::{components::network::message_pack_format::MessagePackFormat, protocol};
+    use crate::{
+        components::network::message_pack_format::MessagePackFormat, protocol,
+        testing::specimen::LargestSpecimen,
+    };
 
     use super::*;
+
+    #[test]
+    fn serialized_message_does_not_exceed_maximum_size() {
+        // Note: In theory, this check could be moved into chainspec validation.
+        let specimen = Message::<protocol::Message>::largest_specimen();
+
+        let serialized = serialize_message(&specimen);
+
+        assert_eq!(serialized.len(), 0);
+    }
 
     /// Version 1.0.0 network level message.
     ///
