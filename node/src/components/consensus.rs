@@ -155,9 +155,9 @@ pub struct ActionId(pub u8);
 
 #[derive(DataSize, Debug, From)]
 pub struct NewBlockPayload {
-    era_id: EraId,
-    block_payload: Arc<BlockPayload>,
-    block_context: BlockContext<ClContext>,
+    pub(crate) era_id: EraId,
+    pub(crate) block_payload: Arc<BlockPayload>,
+    pub(crate) block_context: BlockContext<ClContext>,
 }
 
 #[derive(DataSize, Debug, From)]
