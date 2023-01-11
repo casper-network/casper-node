@@ -592,7 +592,8 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
-                // TODO: Removal of `CountingTransport` here means some functionality has to be restored.
+                // TODO: Removal of `CountingTransport` here means some functionality has to be
+                // restored.
 
                 // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
                 // tokio built-in version instead). The compat layer fixes that.

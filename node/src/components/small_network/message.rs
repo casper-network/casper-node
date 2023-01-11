@@ -340,8 +340,8 @@ pub enum Channel {
     /// Data solely used for syncing being requested.
     ///
     /// We separate sync data (e.g. trie nodes) requests from regular ("data") requests since the
-    /// former are not required for a validating node to make progress on consensus, thus separating
-    /// these can improve latency.
+    /// former are not required for a validating node to make progress on consensus, thus
+    /// separating these can improve latency.
     SyncDataRequests = 1,
     /// Sync data requests being answered.
     ///

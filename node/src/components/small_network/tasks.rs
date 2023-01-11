@@ -69,7 +69,8 @@ pub(super) struct EncodedMessage {
     ///
     /// If `None`, the sender is not interested in knowing.
     send_finished: Option<AutoClosingResponder<()>>,
-    /// We track the number of messages still buffered in memory, the token ensures accurate counts.
+    /// We track the number of messages still buffered in memory, the token ensures accurate
+    /// counts.
     send_token: TokenizedCount,
 }
 
@@ -525,7 +526,8 @@ pub(super) async fn encoded_message_sender(
     carrier: OutgoingCarrier,
     limiter: Arc<dyn LimiterHandle>,
 ) -> Result<(), OutgoingCarrierError> {
-    // TODO: Once the necessary methods are stabilized, setup const fns to initialize `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
+    // TODO: Once the necessary methods are stabilized, setup const fns to initialize
+    // `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
     let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
     let local_stop: ObservableFuse = ObservableFuse::new();
 
