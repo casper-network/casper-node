@@ -587,13 +587,15 @@ where
                 send_token,
             })) => {
                 limiter.request_allowance(data.len() as u32).await;
+                // Note: It may be tempting to use `feed()` instead of `send()` when no responder
+                //       is present, since after all the sender is only guaranteed an eventual
+                //       attempt of delivery and we can save a flush this way. However this leads
+                //       to extreme delays and failing synthetical tests in the absence of other
+                //       traffic, so the extra flush is the lesser of two evils until we implement
+                //       and leverage a multi-message sending API.
+                dest.send(data).await?;
                 if let Some(responder) = send_finished {
-                    dest.send(data).await?;
                     responder.respond(()).await;
-                } else {
-                    // TODO: Using `feed` here may not be a good idea - can we rely on data being
-                    //       flushed eventually?
-                    dest.feed(data).await?;
                 }
 
                 // We only drop the token once the message is sent or at least buffered.
