@@ -805,8 +805,8 @@ async fn empty_block_validation_regression() {
         });
 
     let timeout = Duration::from_secs(300);
-    info!("Waiting for the first era to end.");
-    net.settle_on(&mut rng, is_in_era(EraId::new(1)), timeout)
+    info!("Waiting for the first era after genesis to end.");
+    net.settle_on(&mut rng, is_in_era(EraId::new(2)), timeout)
         .await;
     let switch_blocks = SwitchBlocks::collect(net.nodes(), 1);
 
