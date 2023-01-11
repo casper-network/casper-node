@@ -143,30 +143,30 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    effect::{announcements::BlockSynchronizerAnnouncement, requests::BlockAccumulatorRequest},
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
-        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
-        NodeId, TrieOrChunk, TrieOrChunkId,
+        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, HotBlock,
+        HotBlockState, LegacyDeploy, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-    GossiperAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UpgradeWatcherAnnouncement,
+    BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
+    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+    DeployBufferAnnouncement, FatalAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
+    PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
-    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, FetcherRequest,
-    MakeBlockExecutableRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
+    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+    FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest, NetworkRequest,
+    ReactorStatusRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 use self::requests::{
@@ -859,7 +859,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// The block synchronizer has ensured that all the parts of this block are stored
-    pub(crate) async fn announce_completed_block(self, block: Box<Block>)
+    pub(crate) async fn announce_completed_block(self, block: Arc<Block>)
     where
         REv: From<BlockSynchronizerAnnouncement>,
     {
@@ -870,20 +870,6 @@ impl<REv> EffectBuilder<REv> {
             )
             .await;
     }
-
-    /// Announces that the block accumulator has received and stored a new block.
-    pub(crate) async fn announce_block_added(self, block: Box<Block>)
-    where
-        REv: From<BlockAccumulatorAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
-                QueueKind::Validation,
-            )
-            .await;
-    }
-
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
@@ -1047,27 +1033,6 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announces a new block has been created.
-    pub(crate) async fn announce_executed_block(
-        self,
-        block: Box<Block>,
-        approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ContractRuntimeAnnouncement::ExecutedBlock {
-                    block,
-                    approvals_hashes,
-                    execution_results,
-                },
-                QueueKind::ContractRuntime,
-            )
-            .await
-    }
-
     /// Announces validators for upcoming era.
     pub(crate) async fn announce_upcoming_era_validators(
         self,
@@ -1105,24 +1070,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    pub(crate) async fn put_block_to_storage(self, block: Box<Block>) -> bool
+    pub(crate) async fn put_block_to_storage(self, block: Arc<Block>) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutBlock { block, responder },
-            QueueKind::ToStorage,
-        )
-        .await
-    }
-
-    /// Puts the given complete block into the linear block store.
-    pub(crate) async fn put_complete_block_to_storage(self, block: Box<Block>) -> bool
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::PutCompleteBlock { block, responder },
             QueueKind::ToStorage,
         )
         .await
@@ -1149,7 +1102,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block and approvals hashes into the linear block store.
     pub(crate) async fn put_executed_block_to_storage(
         self,
-        block: Box<Block>,
+        block: Arc<Block>,
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> bool
@@ -1233,21 +1186,6 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::GetBlockHeaderByHeight {
                 block_height,
                 only_from_available_block_range,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Checks if a block header exists in storage
-    pub(crate) async fn block_header_exists(self, block_height: u64) -> bool
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::CheckBlockHeaderExistence {
-                block_height,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1734,16 +1672,11 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Enqueues a finalized block execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `finalized_block` - a finalized block to add to the execution queue.
-    /// * `deploys` - a vector of deploys and transactions that match the hashes in the finalized
-    ///   block, in that order.
     pub(crate) async fn enqueue_block_for_execution(
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        hot_block_state: HotBlockState,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1752,6 +1685,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    hot_block_state,
                 },
                 QueueKind::ContractRuntime,
             )
@@ -1802,6 +1736,16 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Consensus,
             )
+            .await
+    }
+
+    /// Announces that a hot block has been created or its state has changed.
+    pub(crate) async fn announce_hot_block(self, hot_block: HotBlock)
+    where
+        REv: From<HotBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(HotBlockAnnouncement(hot_block), QueueKind::Regular)
             .await
     }
 

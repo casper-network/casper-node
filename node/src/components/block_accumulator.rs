@@ -12,6 +12,7 @@ use std::{
     cmp::Ordering,
     collections::{btree_map, BTreeMap, VecDeque},
     convert::TryInto,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -26,20 +27,24 @@ use crate::{
     components::{network::blocklist::BlocklistJustification, Component},
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement,
+            BlockAccumulatorAnnouncement, FatalAnnouncement, HotBlockAnnouncement,
+            PeerBehaviorAnnouncement,
         },
         requests::{BlockAccumulatorRequest, BlockCompleteConfirmationRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, NodeId, ValidatorMatrix},
+    types::{
+        BlockHash, BlockSignatures, FinalitySignature, HotBlock, HotBlockState, NodeId,
+        ValidatorMatrix,
+    },
     NodeRng,
 };
 
 use crate::components::ValidatorBoundComponent;
 use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
-pub use error::Error;
+pub(crate) use error::Error;
 pub(crate) use event::Event;
 pub(crate) use sync_identifier::SyncIdentifier;
 pub(crate) use sync_instruction::SyncInstruction;
@@ -228,6 +233,11 @@ impl BlockAccumulator {
         }
     }
 
+    /// Returns the height of the local tip, i.e. the latest executed block.
+    pub(crate) fn local_tip_height(&self) -> Option<u64> {
+        self.local_tip.map(|identifier| identifier.height)
+    }
+
     /// Registers a peer with an existing acceptor, or creates a new one.
     ///
     /// If the era is outdated or the peer has already caused us to create more acceptors than
@@ -299,17 +309,20 @@ impl BlockAccumulator {
     fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: Block,
+        hot_block: HotBlock,
         sender: Option<NodeId>,
-        executed: bool,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
+        REv: From<StorageRequest>
+            + From<PeerBehaviorAnnouncement>
+            + From<BlockCompleteConfirmationRequest>
+            + From<FatalAnnouncement>
+            + Send,
     {
-        let block_hash = block.hash();
+        let block_hash = hot_block.block.hash();
         debug!(%block_hash, "registering block");
-        let era_id = block.header().era_id();
-        let block_height = block.header().height();
+        let era_id = hot_block.block.header().era_id();
+        let block_height = hot_block.block.header().height();
         if self
             .local_tip
             .as_ref()
@@ -325,7 +338,7 @@ impl BlockAccumulator {
             Some(acceptor) => acceptor,
         };
 
-        match acceptor.register_block(block, sender, executed) {
+        match acceptor.register_block(hot_block, sender) {
             Ok(_) => match self.validator_matrix.validator_weights(era_id) {
                 Some(evw) => {
                     let (should_store, faulty_senders) = acceptor.should_store_block(&evw);
@@ -381,6 +394,10 @@ impl BlockAccumulator {
                     error!(%error, "unexpected detection of bogus validator, this is a bug");
                     Effects::new()
                 }
+                Error::HotBlockMerge(error) => {
+                    error!(%error, "failed to merge hot blocks, this is a bug");
+                    Effects::new()
+                }
             },
         }
     }
@@ -392,7 +409,11 @@ impl BlockAccumulator {
         sender: Option<NodeId>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
+        REv: From<StorageRequest>
+            + From<PeerBehaviorAnnouncement>
+            + From<BlockCompleteConfirmationRequest>
+            + From<FatalAnnouncement>
+            + Send,
     {
         debug!(%finality_signature, "registering finality signature");
         let block_hash = finality_signature.block_hash;
@@ -471,6 +492,10 @@ impl BlockAccumulator {
                         error!(%error, "unexpected detection of bogus validator, this is a bug");
                         Effects::new()
                     }
+                    Error::HotBlockMerge(error) => {
+                        error!(%error, "failed to merge hot blocks, this is a bug");
+                        Effects::new()
+                    }
                 }
             }
         }
@@ -479,22 +504,27 @@ impl BlockAccumulator {
     fn register_stored<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        block: Option<Box<Block>>,
-        finality_signatures: Vec<FinalitySignature>,
+        maybe_hot_block: Option<HotBlock>,
+        maybe_block_signatures: Option<BlockSignatures>,
     ) -> Effects<Event>
     where
-        REv: From<BlockAccumulatorAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
+        REv: From<BlockAccumulatorAnnouncement>
+            + From<BlockCompleteConfirmationRequest>
+            + From<HotBlockAnnouncement>
+            + Send,
     {
         let mut effects = Effects::new();
-        if let Some(block) = block {
-            effects.extend(effect_builder.announce_block_added(block).ignore());
+        if let Some(hot_block) = maybe_hot_block {
+            effects.extend(effect_builder.announce_hot_block(hot_block).ignore());
         };
-        for finality_signature in finality_signatures {
-            effects.extend(
-                effect_builder
-                    .announce_finality_signature_accepted(Box::new(finality_signature))
-                    .ignore(),
-            );
+        if let Some(block_signatures) = maybe_block_signatures {
+            for finality_signature in block_signatures.finality_signatures() {
+                effects.extend(
+                    effect_builder
+                        .announce_finality_signature_accepted(Box::new(finality_signature))
+                        .ignore(),
+                );
+            }
         }
         effects
     }
@@ -612,6 +642,18 @@ impl BlockAccumulator {
             .set(self.block_children.len().try_into().unwrap_or(i64::MIN));
     }
 
+    fn update_block_children(&mut self, hot_block: &HotBlock) {
+        if let Some(parent_hash) = hot_block.block.parent() {
+            if self
+                .block_children
+                .insert(*parent_hash, *hot_block.block.hash())
+                .is_none()
+            {
+                self.metrics.known_child_blocks.inc();
+            }
+        }
+    }
+
     fn store_block_and_finality_signatures<REv, I>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -619,71 +661,71 @@ impl BlockAccumulator {
         faulty_senders: I,
     ) -> Effects<Event>
     where
-        REv: From<PeerBehaviorAnnouncement> + From<StorageRequest> + Send,
+        REv: From<PeerBehaviorAnnouncement>
+            + From<StorageRequest>
+            + From<BlockCompleteConfirmationRequest>
+            + Send,
         I: IntoIterator<Item = (NodeId, Error)>,
     {
         let mut effects = match should_store {
             ShouldStore::SufficientlySignedBlock {
-                block,
-                signatures,
-                executed,
+                hot_block,
+                block_signatures,
             } => {
-                debug!(block_hash = %block.hash(), %executed, "storing block and finality signatures");
-                if let Some(parent_hash) = block.parent() {
-                    if self
-                        .block_children
-                        .insert(*parent_hash, *block.hash())
-                        .is_none()
-                    {
-                        self.metrics.known_child_blocks.inc();
-                    }
-                }
-                let mut block_signatures =
-                    BlockSignatures::new(*block.hash(), block.header().era_id());
-                signatures.iter().for_each(|signature| {
-                    block_signatures
-                        .insert_proof(signature.public_key.clone(), signature.signature);
-                });
-                // We do the if branching like this instead of doing
-                // `wrap_effects` or `effects.extend` in order to make sure we
-                // chain the futures one after the other.
-                // TODO: optimize `ShouldStore` and the adjacent flow so that
-                // we don't store the block multiple times. The acceptor should
-                // know whether the block was stored or not and in the case of
-                // subsequent calls to this function, we should just store new
-                // information (i.e. only mark the block complete if it's
-                // already in storage).
-                if executed {
-                    // If the block was executed, it means we have the global
-                    // state for it. As on this code path we also know it is
-                    // sufficiently signed, we mark it as complete.
-                    effect_builder
-                        .put_complete_block_to_storage(Box::new(block.clone()))
-                        .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
-                        .event(move |_| Event::Stored {
-                            block: Some(Box::new(block)),
-                            finality_signatures: signatures,
-                        })
-                } else {
-                    // If the block wasn't executed yet, we just put it to
-                    // storage. An `ExecutedBlock` event will then retrigger
-                    // this flow and eventually mark it complete.
-                    effect_builder
-                        .put_block_to_storage(Box::new(block.clone()))
-                        .then(move |_| effect_builder.put_signatures_to_storage(block_signatures))
-                        .event(move |_| Event::Stored {
-                            block: Some(Box::new(block)),
-                            finality_signatures: signatures,
-                        })
-                }
+                let block_hash = hot_block.block.hash();
+                debug!(%block_hash, "storing block and finality signatures");
+                self.update_block_children(&hot_block);
+                // The block wasn't executed yet, so we just put it to storage. An `ExecutedBlock`
+                // event will then re-trigger this flow and eventually mark it complete.
+                let cloned_signatures = block_signatures.clone();
+                effect_builder
+                    .put_block_to_storage(Arc::clone(&hot_block.block))
+                    .then(move |_| effect_builder.put_signatures_to_storage(cloned_signatures))
+                    .event(move |_| Event::Stored {
+                        maybe_hot_block: Some(hot_block),
+                        maybe_block_signatures: Some(block_signatures),
+                    })
+            }
+            ShouldStore::CompletedBlock {
+                hot_block,
+                block_signatures,
+            } => {
+                let block_hash = hot_block.block.hash();
+                debug!(%block_hash, "storing finality signatures and marking block complete");
+                self.update_block_children(&hot_block);
+                // The block was already executed, which means it is stored and we have the global
+                // state for it. As on this code path we also know it is sufficiently signed,
+                // we mark it as complete.
+                let block_height = hot_block.block.height();
+                effect_builder
+                    .put_signatures_to_storage(block_signatures.clone())
+                    .then(move |_| effect_builder.mark_block_completed(block_height))
+                    .event(move |_| Event::Stored {
+                        maybe_hot_block: Some(hot_block),
+                        maybe_block_signatures: Some(block_signatures),
+                    })
+            }
+            ShouldStore::MarkComplete(hot_block) => {
+                let block_hash = hot_block.block.hash();
+                debug!(%block_hash, "marking block complete");
+                let block_height = hot_block.block.height();
+                effect_builder
+                    .mark_block_completed(block_height)
+                    .event(move |_| Event::Stored {
+                        maybe_hot_block: Some(hot_block),
+                        maybe_block_signatures: None,
+                    })
             }
             ShouldStore::SingleSignature(signature) => {
                 debug!(%signature, "storing finality signature");
+                let mut block_signatures =
+                    BlockSignatures::new(signature.block_hash, signature.era_id);
+                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
                 effect_builder
-                    .put_finality_signature_to_storage(signature.clone())
+                    .put_finality_signature_to_storage(signature)
                     .event(move |_| Event::Stored {
-                        block: None,
-                        finality_signatures: vec![signature],
+                        maybe_hot_block: None,
+                        maybe_block_signatures: Some(block_signatures),
                     })
             }
             ShouldStore::Nothing => {
@@ -708,6 +750,7 @@ pub(crate) trait ReactorEvent:
     + From<PeerBehaviorAnnouncement>
     + From<BlockAccumulatorAnnouncement>
     + From<BlockCompleteConfirmationRequest>
+    + From<HotBlockAnnouncement>
     + From<FatalAnnouncement>
     + Send
     + 'static
@@ -719,6 +762,7 @@ impl<REv> ReactorEvent for REv where
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
         + From<BlockCompleteConfirmationRequest>
+        + From<HotBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send
         + 'static
@@ -749,7 +793,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                self.register_block(effect_builder, *block, Some(sender), false)
+                let hot_block = HotBlock::new(Arc::new(*block), vec![], HotBlockState::new());
+                self.register_block(effect_builder, hot_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {
                 self.register_finality_signature(effect_builder, *finality_signature, None)
@@ -760,16 +805,16 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             } => {
                 self.register_finality_signature(effect_builder, *finality_signature, Some(sender))
             }
-            Event::ExecutedBlock { block } => {
-                let height = block.header().height();
-                let era_id = block.header().era_id();
+            Event::ExecutedBlock { hot_block } => {
+                let height = hot_block.block.header().height();
+                let era_id = hot_block.block.header().era_id();
                 self.register_local_tip(height, era_id);
-                self.register_block(effect_builder, *block, None, true)
+                self.register_block(effect_builder, hot_block, None)
             }
             Event::Stored {
-                block,
-                finality_signatures,
-            } => self.register_stored(effect_builder, block, finality_signatures),
+                maybe_hot_block,
+                maybe_block_signatures,
+            } => self.register_stored(effect_builder, maybe_hot_block, maybe_block_signatures),
         }
     }
 

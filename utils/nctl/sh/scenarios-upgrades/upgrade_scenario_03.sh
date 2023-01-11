@@ -256,7 +256,7 @@ function _step_09()
     do
         HEIGHT_2=$(get_chain_height "$NODE_ID")
         if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
-            log "ERROR :: protocol upgrade failure - >= 1 nodes have stalled"
+            log "ERROR :: protocol upgrade failure - node $NODE_ID has stalled - current height $HEIGHT_2 is <= starting height $HEIGHT_1"
             exit 1
         fi
     done

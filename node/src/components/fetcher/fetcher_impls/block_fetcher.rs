@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
@@ -38,7 +38,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
     ) -> StoringState<'a, Block> {
         StoringState::Enqueued(
             effect_builder
-                .put_block_to_storage(Box::new(item))
+                .put_block_to_storage(Arc::new(item))
                 .map(|_| ())
                 .boxed(),
         )

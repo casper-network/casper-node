@@ -32,7 +32,7 @@ function get_chain_era()
         STATUS=$(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status")
         ERA=$(echo $STATUS | jq '.last_added_block_info.era_id')
         if [ "$ERA" == "null" ]; then
-            echo 0
+            echo -2
         else
             echo $ERA
         fi

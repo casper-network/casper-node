@@ -760,13 +760,6 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&*block)?).ignore()
             }
-            StorageRequest::PutCompleteBlock { block, responder } => {
-                let wrote = self.write_block(&*block)?;
-                if wrote {
-                    self.mark_block_complete(block.height())?;
-                }
-                responder.respond(wrote).ignore()
-            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
@@ -819,12 +812,6 @@ impl Storage {
                     )?)
                     .ignore()
             }
-            StorageRequest::CheckBlockHeaderExistence {
-                block_height,
-                responder,
-            } => responder
-                .respond(self.block_header_exists(block_height))
-                .ignore(),
             StorageRequest::GetBlockTransfers {
                 block_hash,
                 responder,
@@ -1984,13 +1971,6 @@ impl Storage {
             block_header,
             block_signatures,
         }))
-    }
-
-    /// Checks whether a block at the given height exists in the block height index (and, since the
-    /// index is initialized on startup based on the actual contents of storage, if it exists in
-    /// storage).
-    fn block_header_exists(&self, block_height: u64) -> bool {
-        self.block_height_index.contains_key(&block_height)
     }
 
     /// Stores block headers in the db and, if successful, updates the in-memory indices.

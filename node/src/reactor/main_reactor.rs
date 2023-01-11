@@ -17,7 +17,7 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
@@ -42,7 +42,7 @@ use crate::{
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
-        shutdown_trigger::ShutdownTrigger,
+        shutdown_trigger::{self, ShutdownTrigger},
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
@@ -52,13 +52,14 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            DeployBufferAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement,
-            ReactorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            DeployBufferAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
+            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
     protocol::Message,
     reactor::{
         self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
@@ -66,7 +67,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        Item, TrieOrChunk, ValidatorMatrix,
+        HotBlock, HotBlockState, Item, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -394,36 +395,8 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::MainReactorAnnouncement(
-                ref ann @ ReactorAnnouncement::CompletedBlock { ref block },
-            ) => {
-                let mut effects = Effects::new();
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::EventStreamServer(event_stream_server::Event::BlockAdded(
-                        block.clone(),
-                    )),
-                ));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone())),
-                ));
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::Consensus(consensus::Event::BlockAdded {
-                        header: Box::new(block.header().clone()),
-                        header_hash: *block.hash(),
-                    }),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::ShutdownTrigger,
-                    self.shutdown_trigger
-                        .handle_event(effect_builder, rng, ann.clone().into()),
-                ));
-                effects
+            MainEvent::HotBlockAnnouncement(HotBlockAnnouncement(hot_block)) => {
+                self.handle_hot_block(effect_builder, rng, hot_block)
             }
 
             // LOCAL I/O BOUND COMPONENTS
@@ -638,64 +611,35 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::BlockSynchronizerAnnouncement(
                 BlockSynchronizerAnnouncement::CompletedBlock { block },
-            ) => self.dispatch_event(
-                effect_builder,
-                rng,
-                MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }),
-            ),
-
-            MainEvent::BlockAccumulatorAnnouncement(
-                BlockAccumulatorAnnouncement::AcceptedNewBlock { block },
             ) => {
-                let mut effects = Effects::new();
-                let deploy_buffer_event =
-                    MainEvent::DeployBuffer(deploy_buffer::Event::Block(block.clone()));
-                effects.extend(self.dispatch_event(effect_builder, rng, deploy_buffer_event));
-
-                // if it is a switch block, get validators
-                if let Some(validator_weights) = block.header().next_era_validator_weights() {
-                    self.switch_block = Some(block.header().clone());
-
-                    let era_id = block.header().era_id();
-                    self.validator_matrix
-                        .register_validator_weights(era_id.successor(), validator_weights.clone());
-                    debug!(
-                        "block_accumulator added switch block (notifying components of validator \
-                        weights at end of: {})",
-                        era_id
-                    );
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::BlockAccumulator,
-                        self.block_accumulator.handle_event(
-                            effect_builder,
-                            rng,
-                            block_accumulator::Event::ValidatorMatrixUpdated,
-                        ),
-                    ));
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::BlockSynchronizer,
-                        self.block_synchronizer.handle_event(
-                            effect_builder,
-                            rng,
-                            block_synchronizer::Event::ValidatorMatrixUpdated,
-                        ),
-                    ));
-                }
-                debug!(
-                    "notifying block gossiper to start gossiping for: {}",
-                    block.id()
-                );
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockGossiper,
-                    self.block_gossiper.handle_event(
+                let mut effects = reactor::wrap_effects(
+                    MainEvent::DeployBuffer,
+                    self.deploy_buffer.handle_event(
                         effect_builder,
                         rng,
-                        gossiper::Event::ItemReceived {
-                            item_id: *block.hash(),
-                            source: Source::Ourself,
+                        deploy_buffer::Event::Block(Arc::clone(&block)),
+                    ),
+                );
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::Consensus,
+                    self.consensus.handle_event(
+                        effect_builder,
+                        rng,
+                        consensus::Event::BlockAdded {
+                            header: Box::new(block.header().clone()),
+                            header_hash: *block.hash(),
                         },
                     ),
                 ));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::BlockAdded(Arc::clone(&block)),
+                    ),
+                ));
+                // TODO - fetch execution results from storage and send to event stream
                 effects
             }
             MainEvent::BlockAccumulatorAnnouncement(
@@ -973,108 +917,6 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::ExecutedBlock {
-                    block,
-                    approvals_hashes,
-                    execution_results,
-                },
-            ) => {
-                let mut effects = Effects::new();
-                let block_hash = *block.hash();
-                let is_switch_block = block.header().is_switch_block();
-                info!(
-                    %block_hash,
-                    height=block.header().height(),
-                    era=block.header().era_id().value(),
-                    is_switch_block=is_switch_block,
-                    "executed block"
-                );
-
-                if is_switch_block {
-                    self.switch_block = Some(block.header().clone());
-                } else {
-                    self.switch_block = None;
-                }
-
-                let execution_results_map: HashMap<_, _> = execution_results
-                    .iter()
-                    .cloned()
-                    .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
-                    .collect();
-
-                effects.extend(
-                    effect_builder
-                        .put_executed_block_to_storage(
-                            block.clone(),
-                            approvals_hashes,
-                            execution_results_map,
-                        )
-                        .ignore(),
-                );
-
-                // When this node is a validator in this era, sign and announce.
-                if let Some(finality_signature) = self
-                    .validator_matrix
-                    .create_finality_signature(block.header())
-                {
-                    // send to block accumulator
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::BlockAccumulator,
-                        self.block_accumulator.handle_event(
-                            effect_builder,
-                            rng,
-                            block_accumulator::Event::CreatedFinalitySignature {
-                                finality_signature: Box::new(finality_signature.clone()),
-                            },
-                        ),
-                    ));
-
-                    // broadcast to validator peers
-                    let era_id = finality_signature.era_id;
-                    let payload = Message::FinalitySignature(Box::new(finality_signature));
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::Network,
-                        effect_builder
-                            .broadcast_message_to_validators(payload, era_id)
-                            .ignore(),
-                    ));
-                }
-
-                effects.extend(effect_builder.mark_block_completed(block.height()).ignore());
-                effects.extend(self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    MainEvent::MainReactorAnnouncement(ReactorAnnouncement::CompletedBlock {
-                        block: block.clone(),
-                    }),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ExecutedBlock { block },
-                    ),
-                ));
-
-                // send deploy processed events to event stream
-                for (deploy_hash, deploy_header, execution_result) in execution_results {
-                    let event = event_stream_server::Event::DeployProcessed {
-                        deploy_hash,
-                        deploy_header: Box::new(deploy_header),
-                        block_hash,
-                        execution_result: Box::new(execution_result),
-                    };
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::EventStreamServer,
-                        self.event_stream_server
-                            .handle_event(effect_builder, rng, event),
-                    ));
-                }
-
-                effects
-            }
-            MainEvent::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::CommitStepSuccess {
                     era_id,
                     execution_effect,
@@ -1160,6 +1002,268 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::BlockExecutionResultsOrChunkFetcherRequest(..) => self
                 .fetchers
                 .dispatch_fetcher_event(effect_builder, rng, event),
+        }
+    }
+}
+
+impl MainReactor {
+    fn handle_hot_block(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        HotBlock {
+            block,
+            execution_results,
+            mut state,
+        }: HotBlock,
+    ) -> Effects<MainEvent> {
+        debug!(
+            "handling hot block {} {} {:?}",
+            block.height(),
+            block.hash(),
+            state
+        );
+        if !state.is_stored() {
+            return fatal!(
+                effect_builder,
+                "block should be stored after execution or accumulation"
+            )
+            .ignore();
+        }
+
+        let mut effects = Effects::new();
+
+        let should_update_switch_block_if_required = match self.block_accumulator.local_tip_height()
+        {
+            Some(local_tip_height) => block.height() > local_tip_height,
+            None => true,
+        };
+        if should_update_switch_block_if_required {
+            if block.header().is_switch_block() {
+                match self.switch_block.as_ref().map(|header| header.height()) {
+                    Some(current_height) => {
+                        if block.height() > current_height {
+                            self.switch_block = Some(block.header().clone());
+                        }
+                    }
+                    None => {
+                        self.switch_block = Some(block.header().clone());
+                    }
+                }
+            } else {
+                self.switch_block = None;
+            }
+        }
+
+        if state.register_as_sent_to_deploy_buffer().was_updated() {
+            effects.extend(reactor::wrap_effects(
+                MainEvent::DeployBuffer,
+                self.deploy_buffer.handle_event(
+                    effect_builder,
+                    rng,
+                    deploy_buffer::Event::Block(Arc::clone(&block)),
+                ),
+            ));
+        }
+
+        if state.register_updated_validator_matrix().was_updated() {
+            if let Some(validator_weights) = block.header().next_era_validator_weights() {
+                let era_id = block.header().era_id();
+                self.validator_matrix
+                    .register_validator_weights(era_id.successor(), validator_weights.clone());
+                debug!(
+                    "added switch block (notifying components of validator weights at end \
+                            of {})",
+                    era_id
+                );
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::ValidatorMatrixUpdated,
+                    ),
+                ));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockSynchronizer,
+                    self.block_synchronizer.handle_event(
+                        effect_builder,
+                        rng,
+                        block_synchronizer::Event::ValidatorMatrixUpdated,
+                    ),
+                ));
+            }
+        }
+
+        // Validators gossip the block as soon as they deem it valid, but non-validators
+        // only gossip once the block is marked complete.
+        if let Some(true) = self
+            .validator_matrix
+            .is_self_validator_in_era(block.header().era_id())
+        {
+            self.update_hot_block_gossip_state(
+                effect_builder,
+                rng,
+                block.hash(),
+                &mut state,
+                &mut effects,
+            );
+        }
+
+        if !state.is_executed() {
+            // We've done as much as we can on a valid but un-executed block.
+            return effects;
+        }
+
+        if state.register_we_have_tried_to_sign().was_updated() {
+            // When this node is a validator in this era, sign and announce.
+            if let Some(finality_signature) = self
+                .validator_matrix
+                .create_finality_signature(block.header())
+            {
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::CreatedFinalitySignature {
+                            finality_signature: Box::new(finality_signature.clone()),
+                        },
+                    ),
+                ));
+
+                let era_id = finality_signature.era_id;
+                let payload = Message::FinalitySignature(Box::new(finality_signature));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::Network,
+                    effect_builder
+                        .broadcast_message_to_validators(payload, era_id)
+                        .ignore(),
+                ));
+            }
+        }
+
+        if state
+            .register_as_sent_to_consensus_post_execution()
+            .was_updated()
+        {
+            effects.extend(reactor::wrap_effects(
+                MainEvent::Consensus,
+                self.consensus.handle_event(
+                    effect_builder,
+                    rng,
+                    consensus::Event::BlockAdded {
+                        header: Box::new(block.header().clone()),
+                        header_hash: *block.hash(),
+                    },
+                ),
+            ));
+        }
+
+        if state
+            .register_as_sent_to_accumulator_post_execution()
+            .was_updated()
+        {
+            let hot_block = HotBlock {
+                block,
+                execution_results,
+                state,
+            };
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::ExecutedBlock { hot_block },
+                ),
+            ));
+            // We've done as much as we can for now, we need to wait for the block
+            // accumulator to mark the block complete before proceeding further.
+            return effects;
+        }
+
+        if !state.is_marked_complete() {
+            error!(
+                block = %*block,
+                ?state,
+                "should be a complete block after passing to accumulator"
+            );
+        }
+
+        self.update_hot_block_gossip_state(
+            effect_builder,
+            rng,
+            block.hash(),
+            &mut state,
+            &mut effects,
+        );
+
+        debug_assert!(
+            state.verify_complete(),
+            "hot block {} at height {} has invalid state: {:?}",
+            block.hash(),
+            block.height(),
+            state
+        );
+
+        effects.extend(reactor::wrap_effects(
+            MainEvent::EventStreamServer,
+            self.event_stream_server.handle_event(
+                effect_builder,
+                rng,
+                event_stream_server::Event::BlockAdded(Arc::clone(&block)),
+            ),
+        ));
+
+        for (deploy_hash, deploy_header, execution_result) in execution_results {
+            let event = event_stream_server::Event::DeployProcessed {
+                deploy_hash,
+                deploy_header: Box::new(deploy_header),
+                block_hash: *block.hash(),
+                execution_result: Box::new(execution_result),
+            };
+            effects.extend(reactor::wrap_effects(
+                MainEvent::EventStreamServer,
+                self.event_stream_server
+                    .handle_event(effect_builder, rng, event),
+            ));
+        }
+
+        effects.extend(reactor::wrap_effects(
+            MainEvent::ShutdownTrigger,
+            self.shutdown_trigger.handle_event(
+                effect_builder,
+                rng,
+                shutdown_trigger::Event::CompletedBlock(Arc::clone(&block)),
+            ),
+        ));
+        effects
+    }
+
+    fn update_hot_block_gossip_state(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        block_hash: &BlockHash,
+        state: &mut HotBlockState,
+        effects: &mut Effects<MainEvent>,
+    ) {
+        if state.register_as_gossiped().was_updated() {
+            debug!(
+                "notifying block gossiper to start gossiping for: {}",
+                block_hash
+            );
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockGossiper,
+                self.block_gossiper.handle_event(
+                    effect_builder,
+                    rng,
+                    gossiper::Event::ItemReceived {
+                        item_id: *block_hash,
+                        source: Source::Ourself,
+                    },
+                ),
+            ));
         }
     }
 }

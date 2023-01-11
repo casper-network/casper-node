@@ -17,7 +17,7 @@ use crate::{
         upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
         utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, Item},
+    types::{BlockHash, BlockPayload, FinalizedBlock, HotBlockState, Item},
     NodeRng,
 };
 
@@ -337,8 +337,13 @@ impl MainReactor {
             next_block_height,
             PublicKey::System,
         );
+
         Ok(effect_builder
-            .enqueue_block_for_execution(finalized_block, vec![])
+            .enqueue_block_for_execution(
+                finalized_block,
+                vec![],
+                HotBlockState::new_immediate_switch(),
+            )
             .ignore())
     }
 
@@ -393,7 +398,11 @@ impl MainReactor {
                         PublicKey::System,
                     );
                     Ok(effect_builder
-                        .enqueue_block_for_execution(finalized_block, vec![])
+                        .enqueue_block_for_execution(
+                            finalized_block,
+                            vec![],
+                            HotBlockState::new_immediate_switch(),
+                        )
                         .ignore())
                 }
                 Err(err) => Err(err.to_string()),
@@ -433,7 +442,11 @@ impl MainReactor {
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
-        match self.storage.read_highest_complete_block() {
+        // Note: we don't want to read the highest COMPLETE block, as an immediate switch block is
+        // only marked complete after we receive enough signatures from validators.  Using the
+        // highest stored block ensures the ContractRuntime's `exec_queue` isn't set to a block
+        // height we already executed but haven't yet marked complete.
+        match self.storage.read_highest_block() {
             Ok(Some(block)) => {
                 let block_height = block.height();
                 let state_root_hash = block.state_root_hash();
@@ -449,7 +462,7 @@ impl MainReactor {
             Ok(None) => {
                 Ok(()) // noop
             }
-            Err(error) => Err(format!("failed to read highest complete block: {}", error)),
+            Err(error) => Err(format!("failed to read highest block: {}", error)),
         }
     }
 

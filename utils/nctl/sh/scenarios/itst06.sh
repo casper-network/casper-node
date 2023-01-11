@@ -7,7 +7,7 @@ set -e
 
 #######################################
 # Runs an integration tests that tries to simulate
-# transfers being sent to a node that falls over 
+# transfers being sent to a node that falls over
 # mid-stream.
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing.
@@ -35,7 +35,7 @@ function main() {
     do_start_node '5' "$LFB_HASH"
     # 7. Verify network is in sync
     check_network_sync 1 5
-    # 8. Give the tranfers a chance to be included
+    # 8. Give the transfers a chance to be included
     do_await_n_blocks '30'
     # 9. Walkback and verify transfers were included in blocks
     check_transfer_inclusion '1' '1000'
@@ -65,7 +65,7 @@ function do_background_wasmless_transfers() {
     sleep 1
 }
 
-# Loops lines the hashes in the temp file. Check if all transfers we recieved a hash
+# Loops lines the hashes in the temp file. Check if all transfers we received a hash
 # back from the client are included in a block.
 function check_transfer_inclusion() {
     local NODE_ID=${1}
@@ -74,7 +74,7 @@ function check_transfer_inclusion() {
     local TRANSFER_COUNT=$(echo "$TRANSFER_HASHES" | wc -l)
     local HASH
     log_step "Checking transfer inclusion..."
-    for (( i='1'; i<="$TRANSFER_COUNT"; i++ )); do
+    for (( i=1; i<="$TRANSFER_COUNT"; i++ )); do
         HASH=$(echo "$TRANSFER_HASHES" | sed -n "$i"p)
         if [ -z "$HASH" ]; then
             log "Error: No Hash found!"
@@ -101,7 +101,7 @@ for ARGUMENT in "$@"; do
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         timeout) SYNC_TIMEOUT_SEC=${VALUE} ;;
-        deploy_log) DEPLOY_LOG=$(VALUE} ;;
+        deploy_log) DEPLOY_LOG=${VALUE} ;;
         *) ;;
     esac
 done

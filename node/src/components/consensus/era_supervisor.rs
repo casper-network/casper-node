@@ -53,7 +53,7 @@ use crate::{
     fatal, protocol,
     types::{
         chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, NodeId,
+        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, HotBlockState, NodeId,
     },
     NodeRng,
 };
@@ -1190,14 +1190,6 @@ async fn execute_finalized_block<REv>(
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
 {
-    // if the block exists in storage, it either has been executed before, or we fast synced to a
-    // higher block - skip execution
-    if effect_builder
-        .block_header_exists(finalized_block.height())
-        .await
-    {
-        return;
-    }
     for (deploy_hash, finalized_approvals) in finalized_approvals {
         effect_builder
             .store_finalized_approvals(deploy_hash, finalized_approvals)
@@ -1224,9 +1216,8 @@ async fn execute_finalized_block<REv>(
             return;
         }
     };
-
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys)
+        .enqueue_block_for_execution(finalized_block, deploys, HotBlockState::new())
         .await
 }
 

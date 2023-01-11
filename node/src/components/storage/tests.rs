@@ -24,7 +24,10 @@ use super::{
 };
 use crate::{
     components::fetcher::FetchResponse,
-    effect::{requests::StorageRequest, Multiple},
+    effect::{
+        requests::{BlockCompleteConfirmationRequest, StorageRequest},
+        Multiple,
+    },
     storage::{
         lmdb_ext::{deserialize_internal, serialize_internal},
         FORCE_RESYNC_FILE_NAME,
@@ -409,10 +412,19 @@ fn get_highest_complete_block_header(
 fn put_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    block: Box<Block>,
+    block: Arc<Block>,
 ) -> bool {
+    let block_height = block.height();
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutCompleteBlock { block, responder }.into()
+        StorageRequest::PutBlock { block, responder }.into()
+    });
+    assert!(harness.is_idle());
+    harness.send_request(storage, move |responder| {
+        BlockCompleteConfirmationRequest {
+            block_height,
+            responder,
+        }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -494,7 +506,7 @@ fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::default();
 
     // Create a random blocks, load and store them.
-    let block_33 = Box::new(Block::random_with_specifics(
+    let block_33 = Arc::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         33,
@@ -502,7 +514,7 @@ fn can_retrieve_block_by_height() {
         true,
         None,
     ));
-    let block_14 = Box::new(Block::random_with_specifics(
+    let block_14 = Arc::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         14,
@@ -510,7 +522,7 @@ fn can_retrieve_block_by_height() {
         false,
         None,
     ));
-    let block_99 = Box::new(Block::random_with_specifics(
+    let block_99 = Arc::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(2),
         99,
@@ -642,7 +654,7 @@ fn different_block_at_height_is_fatal() {
     let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
-    let block_44_a = Box::new(Block::random_with_specifics(
+    let block_44_a = Arc::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
@@ -650,7 +662,7 @@ fn different_block_at_height_is_fatal() {
         false,
         None,
     ));
-    let block_44_b = Box::new(Block::random_with_specifics(
+    let block_44_b = Arc::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
@@ -1048,7 +1060,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let deploy = Deploy::random(&mut harness.rng);
     let execution_result: ExecutionResult = harness.rng.gen();
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
-    put_complete_block(&mut harness, &mut storage, Box::new(block.clone()));
+    put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
     put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
@@ -1119,7 +1131,7 @@ fn should_hard_reset() {
         assert!(put_complete_block(
             &mut harness,
             &mut storage,
-            Box::new(block.clone())
+            Arc::new(block.clone())
         ));
     }
 
@@ -1335,7 +1347,7 @@ fn can_put_and_get_block() {
 
     // Create a random block, store and load it.
     let block = Block::random(&mut harness.rng);
-    let block = Box::new(block);
+    let block = Arc::new(block);
 
     let mut storage = storage_fixture(&harness);
 
@@ -1654,7 +1666,7 @@ fn should_get_block_header_by_height() {
     // Requesting the block header before it is in storage should return None.
     assert!(get_block_header_by_height(&mut harness, &mut storage, height).is_none());
 
-    let was_new = put_complete_block(&mut harness, &mut storage, Box::new(block));
+    let was_new = put_complete_block(&mut harness, &mut storage, Arc::new(block));
     assert!(was_new);
 
     // Requesting the block header after it is in storage should return the block header.
@@ -1673,7 +1685,7 @@ fn check_force_resync_with_marker_file() {
 
     // Add a couple of blocks into storage.
     let first_block = Block::random(&mut harness.rng);
-    put_complete_block(&mut harness, &mut storage, Box::new(first_block.clone()));
+    put_complete_block(&mut harness, &mut storage, Arc::new(first_block.clone()));
     let second_block = loop {
         // We need to make sure that the second random block has different height than the first
         // one.
@@ -1682,7 +1694,7 @@ fn check_force_resync_with_marker_file() {
             break block;
         }
     };
-    put_complete_block(&mut harness, &mut storage, Box::new(second_block));
+    put_complete_block(&mut harness, &mut storage, Arc::new(second_block));
     // Make sure the completed blocks are not the default anymore.
     assert_ne!(
         storage.get_available_block_range(),
@@ -1704,7 +1716,7 @@ fn check_force_resync_with_marker_file() {
     );
     let first_block_height = first_block.height();
     // Add a block into storage.
-    put_complete_block(&mut harness, &mut storage, Box::new(first_block));
+    put_complete_block(&mut harness, &mut storage, Arc::new(first_block));
     assert_eq!(
         storage.get_available_block_range(),
         AvailableBlockRange::new(first_block_height, first_block_height)

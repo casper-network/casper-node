@@ -17,7 +17,7 @@ use crate::{
             BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             DeployBufferAnnouncement, FatalAnnouncement, GossiperAnnouncement,
-            PeerBehaviorAnnouncement, ReactorAnnouncement, RpcServerAnnouncement,
+            HotBlockAnnouncement, PeerBehaviorAnnouncement, RpcServerAnnouncement,
             UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
@@ -220,13 +220,13 @@ pub(crate) enum MainEvent {
     #[from]
     Storage(storage::Event),
     #[from]
-    StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    StorageRequest(StorageRequest),
     #[from]
     SetNodeStopRequest(SetNodeStopRequest),
     #[from]
-    MainReactorRequest(#[serde(skip_serializing)] ReactorStatusRequest),
+    MainReactorRequest(ReactorStatusRequest),
     #[from]
-    MainReactorAnnouncement(#[serde(skip_serializing)] ReactorAnnouncement),
+    HotBlockAnnouncement(HotBlockAnnouncement),
 }
 
 impl ReactorEvent for MainEvent {
@@ -333,8 +333,8 @@ impl ReactorEvent for MainEvent {
             MainEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             MainEvent::SetNodeStopRequest(_) => "SetNodeStopRequest",
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
-            MainEvent::MainReactorAnnouncement(_) => "MainReactorAnnouncement",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
+            MainEvent::HotBlockAnnouncement(_) => "HotBlockAnnouncement",
         }
     }
 }
@@ -510,8 +510,8 @@ impl Display for MainEvent {
             MainEvent::BlockFetcherRequest(inner) => Display::fmt(inner, f),
             MainEvent::SetNodeStopRequest(inner) => Display::fmt(inner, f),
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
-            MainEvent::MainReactorAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
+            MainEvent::HotBlockAnnouncement(inner) => Display::fmt(inner, f),
         }
     }
 }

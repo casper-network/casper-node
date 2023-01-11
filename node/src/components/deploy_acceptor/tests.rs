@@ -636,7 +636,7 @@ impl reactor::Reactor for Reactor {
 }
 
 fn put_block_to_storage_and_mark_complete(
-    block: Box<Block>,
+    block: Arc<Block>,
     result_sender: Sender<bool>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -729,7 +729,7 @@ async fn run_deploy_acceptor_without_timeout(
     .await
     .unwrap();
 
-    let block = Box::new(Block::random(&mut rng));
+    let block = Arc::new(Block::random(&mut rng));
     // Create a channel to assert that the block was successfully injected into storage.
     let (result_sender, result_receiver) = oneshot::channel();
 

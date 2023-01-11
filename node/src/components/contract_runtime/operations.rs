@@ -20,16 +20,15 @@ use casper_types::{
     CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
-use super::SpeculativeExecutionState;
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
+            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
     },
-    contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
         self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, Deploy, DeployHeader,
         FinalizedBlock, Item,
@@ -191,7 +190,7 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
-    let block = Box::new(Block::new(
+    let block = Arc::new(Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
