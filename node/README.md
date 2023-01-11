@@ -9,7 +9,7 @@
 
 The component for running a node on the casper network.
 
-[Node Operator Guide](https://docs.casperlabs.io/en/latest/node-operator/index.html)
+[Node Operator Guide](https://docs.casperlabs.io/operators/)
 
 ## License
 
