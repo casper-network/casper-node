@@ -148,11 +148,11 @@ This is comprised of the following parts:
 `RUST_LOG` can be set to enable varying levels for different modules.  Simply set it to a comma-separated list of
 `module-path=level`, where the module path is as shown above in the typical log message, with the end truncated to suit.
 
-For example, to enable `trace` level logging for the `small_network` module in `components`, `info` level for all other
+For example, to enable `trace` level logging for the `network` module in `components`, `info` level for all other
 modules in `components`, and `warn` level for the remaining codebase:
 
 ```
-RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
+RUST_LOG=casper_node::components::network=trace,casper_node::comp=info,warn
 ```
 
 ### Logging network messages and tracing events
@@ -173,6 +173,11 @@ being dispatched will be logged as well. Any event has an id (`ev`) and may have
 event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
 asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
 
+### Changing the logging filter at runtime
+
+If necessary, the filter of a running node can be changed using the diagnostics port, using the `set-log-filter`
+command. See the "Diagnostics port" section for details on how to access it.
+
 ## Debugging
 
 Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.
@@ -186,7 +191,7 @@ If the configuration option `diagnostics_port.enabled` is set to `true`, a unix 
 The `debug.socket` can be connected to by tools like `socat` for interactive use:
 
 ```sh
-socat - unix:/path/to/debug.socket
+socat readline unix:/path/to/debug.socket
 ```
 
 Entering `help` will show available commands. The `set` command allows configuring the current connection, see `set --help`.

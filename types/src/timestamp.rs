@@ -40,6 +40,9 @@ use crate::testing::TestRng;
 pub struct Timestamp(u64);
 
 impl Timestamp {
+    /// The maximum value a timestamp can have.
+    pub const MAX: Timestamp = Timestamp(u64::MAX);
+
     #[cfg(any(feature = "std", test))]
     /// Returns the timestamp of the current moment.
     pub fn now() -> Self {
@@ -261,6 +264,11 @@ impl TimeDiff {
         TimeDiff(seconds as u64 * 1_000)
     }
 
+    /// Creates a new time difference from milliseconds.
+    pub const fn from_millis(millis: u64) -> Self {
+        TimeDiff(millis)
+    }
+
     /// Returns the product, or `TimeDiff(u64::MAX)` if it would overflow.
     #[must_use]
     pub fn saturating_mul(self, rhs: u64) -> Self {
@@ -372,9 +380,32 @@ impl From<Duration> for TimeDiff {
     }
 }
 
-impl From<u64> for TimeDiff {
-    fn from(duration: u64) -> TimeDiff {
-        TimeDiff(duration)
+/// A module for the `[serde(with = serde_option_time_diff)]` attribute, to serialize and
+/// deserialize `Option<TimeDiff>` treating `None` as 0.
+#[cfg(any(feature = "std", test))]
+pub mod serde_option_time_diff {
+    use super::*;
+
+    /// Serializes an `Option<TimeDiff>`, using `0` if the value is `None`.
+    pub fn serialize<S: Serializer>(
+        maybe_td: &Option<TimeDiff>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        maybe_td
+            .unwrap_or_else(|| TimeDiff::from_millis(0))
+            .serialize(serializer)
+    }
+
+    /// Deserializes an `Option<TimeDiff>`, returning `None` if the value is `0`.
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<TimeDiff>, D::Error> {
+        let td = TimeDiff::deserialize(deserializer)?;
+        if td.0 == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(td))
+        }
     }
 }
 

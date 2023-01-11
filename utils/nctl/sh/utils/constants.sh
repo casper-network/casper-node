@@ -65,10 +65,10 @@ export NCTL_INITIAL_BALANCE_USER=1000000000000000000000000000000000   # (1e33)
 export NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
 
 # Intitial delegation amount of a user account.
-export NCTL_INITIAL_DELEGATION_AMOUNT=1000000000000000   # (1e15)
+export NCTL_INITIAL_DELEGATION_AMOUNT=1000000000000000000   # (1e18)
 
 # Base weight applied to a validator at genesis.
-export NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000   # (1e15)
+export NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000000   # (1e18)
 
 # Name of process group: boostrap validators.
 export NCTL_PROCESS_GROUP_1=validators-1
@@ -78,3 +78,11 @@ export NCTL_PROCESS_GROUP_2=validators-2
 
 # Name of process group: non-genesis validators.
 export NCTL_PROCESS_GROUP_3=validators-3
+
+# cURL arguments which are used when talking to the NCTL nodes.
+# We need to allow retires and limit the default timeouts because not all
+# testing scenarios guarantee that nodes are responsive immediately, which may
+# lead to the test being stuck. The exponential backoff delay used for reties
+# is replaced with a constant 1 sec. delay.
+# In addition, we don't want cURL to put anything on the standard output.
+export NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES="--max-time 4 --connect-timeout 2 --retry 20 --retry-connrefused --retry-delay 1 -s"

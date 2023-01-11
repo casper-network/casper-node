@@ -17,25 +17,27 @@ function main() {
     log "Starting Scenario: itst06"
     log "------------------------------------------------------------"
 
-    # 0. Verify network is creating blocks
+    # 0. Wait for network start up
+    do_await_genesis_era_to_complete
+    # 1. Verify network is creating blocks
     do_await_n_blocks '5'
-    # 1. Verify network is in sync
+    # 2. Verify network is in sync
     check_network_sync 1 5
-    # 2. Background transfers so we can stop the node mid-stream
+    # 3. Background transfers so we can stop the node mid-stream
     do_background_wasmless_transfers '5'
-    # 3. Stop node being sent transfers
+    # 4. Stop node being sent transfers
     do_stop_node '5'
-    # 4. Wait for the background job to complete
+    # 5. Wait for the background job to complete
     log_step "Waiting for background job to complete"
     wait
-    # 5. Get LFB and restart stopped node
+    # 6. Get LFB and restart stopped node
     do_read_lfb_hash '1'
     do_start_node '5' "$LFB_HASH"
-    # 6. Verify network is in sync
+    # 7. Verify network is in sync
     check_network_sync 1 5
-    # 7. Give the tranfers a chance to be included
+    # 8. Give the tranfers a chance to be included
     do_await_n_blocks '30'
-    # 8. Walkback and verify transfers were included in blocks
+    # 9. Walkback and verify transfers were included in blocks
     check_transfer_inclusion '1' '1000'
     # 10. Run Health Checks
     # ... restarts=1: due to node being stopped and started

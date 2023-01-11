@@ -13,7 +13,7 @@ use casper_types::{PublicKey, Timestamp, U512};
 use crate::components::consensus::{
     cl_context::ClContext,
     consensus_protocol::{ConsensusProtocol, ProposedBlock},
-    protocols::highway::HighwayProtocol,
+    protocols::{highway::HighwayProtocol, zug::Zug},
 };
 
 const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
@@ -152,11 +152,6 @@ impl Era {
     pub(crate) fn validators(&self) -> &BTreeMap<PublicKey, U512> {
         &self.validators
     }
-
-    /// Sets the pause status: While paused we don't create consensus messages other than pings.
-    pub(crate) fn set_paused(&mut self, paused: bool) {
-        self.consensus.set_paused(paused);
-    }
 }
 
 impl DataSize for Era {
@@ -195,11 +190,19 @@ impl DataSize for Era {
                 } else {
                     (*highway).estimate_heap_size()
                 }
+            } else if let Some(zug) = any_ref.downcast_ref::<Zug<ClContext>>() {
+                if *CASPER_ENABLE_DETAILED_CONSENSUS_METRICS {
+                    let detailed = (*zug).estimate_detailed_heap_size();
+                    match serde_json::to_string(&detailed) {
+                        Ok(encoded) => debug!(%encoded, "consensus memory metrics"),
+                        Err(err) => warn!(%err, "error encoding consensus memory metrics"),
+                    }
+                    detailed.total()
+                } else {
+                    (*zug).estimate_heap_size()
+                }
             } else {
-                warn!(
-                    "could not downcast consensus protocol to \
-                    HighwayProtocol<ClContext> to determine heap allocation size"
-                );
+                warn!("could not downcast consensus protocol to determine heap allocation size");
                 0
             }
         };

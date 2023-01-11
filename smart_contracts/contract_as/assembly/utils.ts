@@ -2,9 +2,8 @@
  * Encodes an UTF8 string into bytes.
  * @param str Input string.
  */
-export function encodeUTF8(str: String): Uint8Array {
-  let utf8Bytes = String.UTF8.encode(str);
-  return Uint8Array.wrap(utf8Bytes);
+export function encodeUTF8(str: String): ArrayBuffer {
+  return String.UTF8.encode(str);
 }
 
 /** Converts typed array to array */
@@ -38,7 +37,7 @@ export function checkItemsEqual<T>(a: Array<T>, b: Array<T>): bool {
 }
 
 /** Checks if two ordered arrays are equal */
-export function checkArraysEqual<T>(a: Array<T>, b: Array<T>, len: i32 = 0): bool {
+export function checkArraysEqual<T, U extends ArrayLike<T> = Array<T>>(a: U, b: U, len: i32 = 0): bool {
   if (!len) {
     len = a.length;
     if (len != b.length) return false;

@@ -28,7 +28,7 @@ use crate::{
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
-    deploy_hash: *Deploy::doc_example().id(),
+    deploy_hash: *Deploy::doc_example().hash(),
     finalized_approvals: true,
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {

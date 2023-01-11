@@ -27,7 +27,7 @@ pub const DEFAULT_LOCAL_COST: u32 = 390;
 /// Default cost of the `global` Wasm opcode.
 pub const DEFAULT_GLOBAL_COST: u32 = 390;
 /// Default cost of the `control_flow` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_COST: u32 = 440;
+pub const DEFAULT_CONTROL_FLOW_COST: u32 = 440000;
 /// Default cost of the `integer_comparison` Wasm opcode.
 pub const DEFAULT_INTEGER_COMPARISON_COST: u32 = 250;
 /// Default cost of the `conversion` Wasm opcode.

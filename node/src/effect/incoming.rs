@@ -2,16 +2,18 @@
 //!
 //! Any event suffixed -`Incoming` is usually the arrival of a specific network message.
 
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
-use casper_storage::global_state::storage::trie::TrieOrChunkIdDisplay;
 use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
     components::{consensus, gossiper},
     protocol::Message,
-    types::{FinalitySignature, NodeId, Tag},
+    types::{FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
 };
 
 use super::AutoClosingResponder;
@@ -27,7 +29,7 @@ impl<M> Display for MessageIncoming<M>
 where
     M: Display,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "incoming from {}: {}", self.sender, self.message)
     }
 }
@@ -47,7 +49,7 @@ impl<M> Display for DemandIncoming<M>
 where
     M: Display,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "demand from {}: {}", self.sender, self.request_msg)
     }
 }
@@ -61,14 +63,17 @@ pub(crate) type GossiperIncoming<T> = MessageIncoming<gossiper::Message<T>>;
 /// A new message requesting various objects arrived.
 pub(crate) type NetRequestIncoming = MessageIncoming<NetRequest>;
 
+/// A new message responding to a request arrived.
+pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
+
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
 
-/// A demand for a try that should be answered.
+/// A demand for a trie that should be answered.
 pub(crate) type TrieDemand = DemandIncoming<TrieRequest>;
 
-/// A new message responding to a request arrived.
-pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
+/// A demand for consensus protocol data that should be answered.
+pub(crate) type ConsensusDemand = DemandIncoming<consensus::ConsensusRequestMessage>;
 
 /// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
@@ -84,68 +89,47 @@ pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignatur
 #[derive(DataSize, Debug, Serialize)]
 #[repr(u8)]
 pub(crate) enum NetRequest {
-    /// Request for a deploy.
     Deploy(Vec<u8>),
-    /// Request for finalized approvals.
-    FinalizedApprovals(Vec<u8>),
-    /// Request for a block.
+    LegacyDeploy(Vec<u8>),
     Block(Vec<u8>),
-    /// Request for a gossiped public listening address.
-    // TODO: Move this out of `NetRequest` into its own type, it is never valid.
-    GossipedAddress(Vec<u8>),
-    /// Request for a block by its height in the linear chain.
-    BlockAndMetadataByHeight(Vec<u8>),
-    /// Request for a block and its deploys by hash.
-    BlockAndDeploys(Vec<u8>),
-    /// Request for a block header by its hash.
-    BlockHeaderByHash(Vec<u8>),
-    /// Request for a block header and its finality signatures by its height in the linear chain.
-    BlockHeaderAndFinalitySignaturesByHeight(Vec<u8>),
-    /// Request for a batch of block headers.
-    BlockHeadersBatch(Vec<u8>),
-    /// Request for finality signatures for a block.
-    FinalitySignatures(Vec<u8>),
+    BlockHeader(Vec<u8>),
+    FinalitySignature(Vec<u8>),
+    SyncLeap(Vec<u8>),
+    ApprovalsHashes(Vec<u8>),
+    BlockExecutionResults(Vec<u8>),
 }
 
 impl Display for NetRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
-            NetRequest::FinalizedApprovals(_) => f.write_str("request for finalized approvals"),
+            NetRequest::LegacyDeploy(_) => f.write_str("request for legacy deploy"),
             NetRequest::Block(_) => f.write_str("request for block"),
-            NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
-            NetRequest::BlockAndMetadataByHeight(_) => {
-                f.write_str("request for block and metadata by height")
+            NetRequest::BlockHeader(_) => f.write_str("request for block header"),
+            NetRequest::FinalitySignature(_) => {
+                f.write_str("request for gossiped finality signature")
             }
-            NetRequest::BlockHeaderByHash(_) => f.write_str("request for block header by hash"),
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                f.write_str("request for block header and finality signatures by height")
+            NetRequest::SyncLeap(_) => f.write_str("request for sync leap"),
+            NetRequest::ApprovalsHashes(_) => f.write_str("request for approvals hashes"),
+            NetRequest::BlockExecutionResults(_) => {
+                f.write_str("request for block execution results")
             }
-            NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
-            NetRequest::BlockHeadersBatch(_) => f.write_str("request for block headers batch"),
-            NetRequest::FinalitySignatures(_) => f.write_str("request for finality signatures"),
         }
     }
 }
 
 impl NetRequest {
     /// Returns a unique identifier of the requested object.
-    ///
-    /// The identifier is based on the domain-specific ID and the tag of the item, thus
-    /// `BlockAndMetadataByHeight` and `BlockHeaderAndFinalitySignaturesByHeight` have different IDs
-    /// even if the same height was requested.
     pub(crate) fn unique_id(&self) -> Vec<u8> {
         let id = match self {
-            NetRequest::Deploy(ref id) => id,
-            NetRequest::FinalizedApprovals(ref id) => id,
-            NetRequest::Block(ref id) => id,
-            NetRequest::GossipedAddress(ref id) => id,
-            NetRequest::BlockAndMetadataByHeight(ref id) => id,
-            NetRequest::BlockHeaderByHash(ref id) => id,
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
-            NetRequest::BlockAndDeploys(ref id) => id,
-            NetRequest::BlockHeadersBatch(ref id) => id,
-            NetRequest::FinalitySignatures(ref id) => id,
+            NetRequest::Deploy(ref id)
+            | NetRequest::LegacyDeploy(ref id)
+            | NetRequest::Block(ref id)
+            | NetRequest::BlockHeader(ref id)
+            | NetRequest::FinalitySignature(ref id)
+            | NetRequest::SyncLeap(ref id)
+            | NetRequest::ApprovalsHashes(ref id)
+            | NetRequest::BlockExecutionResults(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -158,28 +142,14 @@ impl NetRequest {
     pub(crate) fn tag(&self) -> Tag {
         match self {
             NetRequest::Deploy(_) => Tag::Deploy,
-            NetRequest::FinalizedApprovals(_) => Tag::FinalizedApprovals,
+            NetRequest::LegacyDeploy(_) => Tag::LegacyDeploy,
             NetRequest::Block(_) => Tag::Block,
-            NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
-            NetRequest::BlockAndMetadataByHeight(_) => Tag::BlockAndMetadataByHeight,
-            NetRequest::BlockHeaderByHash(_) => Tag::BlockHeaderByHash,
-            NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                Tag::BlockHeaderAndFinalitySignaturesByHeight
-            }
-            NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
-            NetRequest::BlockHeadersBatch(_) => Tag::BlockHeaderBatch,
-            NetRequest::FinalitySignatures(_) => Tag::FinalitySignaturesByHash,
+            NetRequest::BlockHeader(_) => Tag::BlockHeader,
+            NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
+            NetRequest::SyncLeap(_) => Tag::SyncLeap,
+            NetRequest::ApprovalsHashes(_) => Tag::ApprovalsHashes,
+            NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
         }
-    }
-}
-
-/// A request for a trie.
-#[derive(DataSize, Debug, Serialize)]
-pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
-
-impl Display for TrieRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
     }
 }
 
@@ -188,26 +158,14 @@ impl Display for TrieRequest {
 /// See `NetRequest` for notes.
 #[derive(Debug, Serialize)]
 pub(crate) enum NetResponse {
-    /// Response of a deploy.
     Deploy(Arc<[u8]>),
-    /// Response of finalized approvals.
-    FinalizedApprovals(Arc<[u8]>),
-    /// Response of a block.
+    LegacyDeploy(Arc<[u8]>),
     Block(Arc<[u8]>),
-    /// Response of a gossiped public listening address.
-    GossipedAddress(Arc<[u8]>),
-    /// Response of a block by its height in the linear chain.
-    BlockAndMetadataByHeight(Arc<[u8]>),
-    /// Response of a block header by its hash.
-    BlockHeaderByHash(Arc<[u8]>),
-    /// Response of a block header and its finality signatures by its height in the linear chain.
-    BlockHeaderAndFinalitySignaturesByHeight(Arc<[u8]>),
-    /// Response for a block and its deploys.
-    BlockAndDeploys(Arc<[u8]>),
-    /// Response of a block headers batch.
-    BlockHeadersBatch(Arc<[u8]>),
-    /// Response of finality signatures.
-    FinalitySignatures(Arc<[u8]>),
+    BlockHeader(Arc<[u8]>),
+    FinalitySignature(Arc<[u8]>),
+    SyncLeap(Arc<[u8]>),
+    ApprovalsHashes(Arc<[u8]>),
+    BlockExecutionResults(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -222,23 +180,29 @@ impl DataSize for NetResponse {
 }
 
 impl Display for NetResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetResponse::Deploy(_) => f.write_str("response, deploy"),
-            NetResponse::FinalizedApprovals(_) => f.write_str("response, finalized approvals"),
+            NetResponse::LegacyDeploy(_) => f.write_str("response, legacy deploy"),
             NetResponse::Block(_) => f.write_str("response, block"),
-            NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
-            NetResponse::BlockAndMetadataByHeight(_) => {
-                f.write_str("response, block and metadata by height")
+            NetResponse::BlockHeader(_) => f.write_str("response, block header"),
+            NetResponse::FinalitySignature(_) => f.write_str("response, finality signature"),
+            NetResponse::SyncLeap(_) => f.write_str("response for sync leap"),
+            NetResponse::ApprovalsHashes(_) => f.write_str("response for approvals hashes"),
+            NetResponse::BlockExecutionResults(_) => {
+                f.write_str("response for block execution results")
             }
-            NetResponse::BlockHeaderByHash(_) => f.write_str("response, block header by hash"),
-            NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
-                f.write_str("response, block header and finality signatures by height")
-            }
-            NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
-            NetResponse::BlockHeadersBatch(_) => f.write_str("response for block-headers-batch"),
-            NetResponse::FinalitySignatures(_) => f.write_str("response for finality signatures"),
         }
+    }
+}
+
+/// A request for a trie.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
+
+impl Display for TrieRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
     }
 }
 
@@ -247,7 +211,7 @@ impl Display for NetResponse {
 pub(crate) struct TrieResponse(pub(crate) Vec<u8>);
 
 impl Display for TrieResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("response, trie")
     }
 }
@@ -260,8 +224,8 @@ mod tests {
     fn unique_id_is_unique_across_variants() {
         let inner_id = b"example".to_vec();
 
-        let a = NetRequest::BlockAndMetadataByHeight(inner_id.clone());
-        let b = NetRequest::BlockHeaderAndFinalitySignaturesByHeight(inner_id);
+        let a = NetRequest::Deploy(inner_id.clone());
+        let b = NetRequest::Block(inner_id);
 
         assert_ne!(a.unique_id(), b.unique_id());
     }

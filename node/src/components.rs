@@ -44,35 +44,54 @@
 //! will usually be dictated by a restriction on a method on an
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
-pub(crate) mod block_proposer;
+pub(crate) mod block_accumulator;
+pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
-pub(crate) mod chain_synchronizer;
-pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
+pub(crate) mod deploy_buffer;
 pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
-pub(crate) mod linear_chain;
-pub(crate) mod rest_server;
-pub mod rpc_server;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
-pub(crate) mod small_network;
+pub(crate) mod network;
+pub(crate) mod rest_server;
+pub mod rpc_server;
+pub(crate) mod shutdown_trigger;
 pub mod storage;
-// TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
-//       remove once the macro is deleted.
-#[cfg(test)]
-pub(crate) use crate::testing::fake_deploy_acceptor;
+pub(crate) mod sync_leaper;
+pub(crate) mod upgrade_watcher;
+
+use datasize::DataSize;
+use serde::Deserialize;
+use std::fmt::{Debug, Display};
+use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
     NodeRng,
 };
+
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     Uninitialized --> Initializing
+///     Initializing --> Initialized
+///     Initializing --> Fatal
+/// ```
+#[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
+pub(crate) enum ComponentState {
+    #[default]
+    Uninitialized,
+    Initializing,
+    Initialized,
+    Fatal(String),
+}
 
 /// Core Component.
 ///
@@ -102,9 +121,6 @@ pub(crate) trait Component<REv> {
     /// The event type that is handled by the component.
     type Event;
 
-    /// Error emitted when constructing the component.
-    type ConstructionError;
-
     /// Processes an event, outputting zero or more effects.
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
@@ -115,4 +131,62 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
+
+    /// Name of the component.
+    fn name(&self) -> &str;
+}
+
+pub(crate) trait InitializedComponent<REv>: Component<REv> {
+    fn state(&self) -> &ComponentState;
+
+    fn is_uninitialized(&self) -> bool {
+        self.state() == &ComponentState::Uninitialized
+    }
+
+    fn is_initialized(&self) -> bool {
+        self.state() == &ComponentState::Initialized
+    }
+
+    fn is_fatal(&self) -> bool {
+        matches!(self.state(), ComponentState::Fatal(_))
+    }
+
+    fn start_initialization(&mut self) {
+        if self.is_uninitialized() {
+            self.set_state(ComponentState::Initializing);
+        } else {
+            info!(name = self.name(), "component must be uninitialized");
+        }
+    }
+
+    fn set_state(&mut self, new_state: ComponentState);
+}
+
+pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
+    type Error: Display + Debug;
+    type ComponentEvent;
+
+    fn bind(
+        &mut self,
+        enabled: bool,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Effects<Self::ComponentEvent>, ComponentState) {
+        if !enabled {
+            return (Effects::new(), ComponentState::Initialized);
+        }
+
+        match self.listen(effect_builder) {
+            Ok(effects) => (effects, ComponentState::Initialized),
+            Err(error) => (Effects::new(), ComponentState::Fatal(format!("{}", error))),
+        }
+    }
+
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
+}
+
+pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
+    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event>;
 }

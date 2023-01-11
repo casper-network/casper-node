@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
+
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
@@ -9,7 +11,7 @@ const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
 const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
 
 /// A component of a proof that an entry exists in the Merkle trie.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrieMerkleProofStep {
     /// Corresponds to [`Trie::Node`]
     Node {
@@ -104,7 +106,7 @@ impl FromBytes for TrieMerkleProofStep {
 
 /// A proof that a node with a specified `key` and `value` is present in the Merkle trie.
 /// Given a state hash `x`, one can validate a proof `p` by checking `x == p.compute_state_hash()`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrieMerkleProof<K, V> {
     key: K,
     value: V,

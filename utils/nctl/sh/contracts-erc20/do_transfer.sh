@@ -61,7 +61,7 @@ function main()
                 --node-address "$NODE_ADDRESS" \
                 --payment-amount "$GAS_PAYMENT" \
                 --secret-key "$CONTRACT_OWNER_SECRET_KEY" \
-                --ttl "1day" \
+                --ttl "5minutes" \
                 --session-hash "$CONTRACT_HASH" \
                 --session-entry-point "transferFrom" \
                 --session-arg "$(get_cl_arg_account_hash 'owner' "$USER_1_ACCOUNT_HASH")" \
