@@ -33,7 +33,7 @@ use crate::types::BlockHash;
 ///     F -->|Yes| BlockIdentifier
 ///     F -->|No| LocalTip
 ///     G -->|Yes| H{is it a switch block?}
-///     G -->|No| J[will check later<br>possibly waiting for genesis]
+///     G -->|No| J[check later<br>possibly waiting for genesis]
 ///     H -->|Yes| I[remember switch block header]
 ///     I --> LocalTip
 ///     H -->|No| LocalTip

@@ -253,6 +253,36 @@ impl MainReactor {
         }
     }
 
+    #[cfg_attr(doc, aquamarine::aquamarine)]
+    /// ```mermaid
+    /// flowchart TD
+    ///     style C fill:#ffcc66,stroke:#333,stroke-width:4px
+    ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+    ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+    ///
+    ///     title[SyncLeap process - top level]
+    ///     title---Start
+    ///     style title fill:#FFF,stroke:#FFF
+    ///     linkStyle 0 stroke-width:0;
+    ///
+    ///     Start --> A[register hash in<br>block synchronizer]
+    ///     A --> B[leap status]
+    ///     B --> Received
+    ///     B --> Idle
+    ///     B --> Awaiting
+    ///     B --> Failed
+    ///     Awaiting --> C[check later]
+    ///     Failed --> D[count reattempts]
+    ///     D --> E
+    ///     Idle --> E[get X fully connected<br>random peers]
+    ///     E --> F{have at least<br>one peer?}
+    ///     F -->|Yes| G[attempt leap]
+    ///     F -->|No| C
+    ///     Received --> H[update highest switch block]
+    ///     H --> I[register leap sync<br>and update local state]
+    ///     I --> End
+    ///     G --> C
+    /// ```
     fn catch_up_leap(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
