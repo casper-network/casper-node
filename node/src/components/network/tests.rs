@@ -27,7 +27,7 @@ use super::{
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        Component,
+        Component, InitializedComponent,
     },
     effect::{
         announcements::{ControlAnnouncement, GossiperAnnouncement, PeerBehaviorAnnouncement},
@@ -191,7 +191,7 @@ impl Reactor for TestReactor {
         rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let secret_key = SecretKey::random(rng);
-        let net = Network::new(
+        let mut net = Network::new(
             cfg,
             our_identity,
             None,
@@ -203,6 +203,7 @@ impl Reactor for TestReactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
 
+        net.start_initialization();
         let effects = smallvec![async { smallvec![Event::Net(NetworkEvent::Initialize)] }.boxed()];
 
         Ok((

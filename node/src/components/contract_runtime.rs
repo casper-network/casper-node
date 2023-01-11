@@ -8,7 +8,7 @@ mod types;
 
 use std::{
     cmp::Ordering,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
@@ -40,18 +40,18 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
-    components::{fetcher::FetchResponse, Component, ComponentStatus},
+    components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement},
+        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, HotBlockAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
     protocol::Message,
     types::{
         BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
-        FinalizedBlock, TrieOrChunk, TrieOrChunkId,
+        FinalizedBlock, HotBlock, HotBlockState, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -63,6 +63,8 @@ use operations::execute_only;
 pub(crate) use types::{
     BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
 };
+
+const COMPONENT_NAME: &str = "contract_runtime";
 
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
 #[derive(Debug, Error, From)]
@@ -161,7 +163,7 @@ impl ExecutionPreState {
     }
 }
 
-type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>)>>>;
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, HotBlockState)>>>;
 
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
@@ -190,7 +192,7 @@ impl Display for Event {
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    status: ComponentStatus,
+    state: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -213,6 +215,8 @@ where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<NetworkRequest<Message>>
+        + From<StorageRequest>
+        + From<HotBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send,
 {
@@ -233,6 +237,10 @@ where
             }
             Event::TrieDemand(demand) => self.handle_trie_demand(demand),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
@@ -314,6 +322,8 @@ impl ContractRuntime {
     where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
+            + From<StorageRequest>
+            + From<HotBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -438,6 +448,7 @@ impl ContractRuntime {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
+                hot_block_state,
             } => {
                 let mut effects = Effects::new();
                 let exec_queue = Arc::clone(&self.exec_queue);
@@ -470,6 +481,7 @@ impl ContractRuntime {
                                 protocol_version,
                                 finalized_block,
                                 deploys,
+                                hot_block_state,
                             )
                             .ignore(),
                         )
@@ -487,7 +499,7 @@ impl ContractRuntime {
                         exec_queue
                             .lock()
                             .expect("components::contract_runtime: couldn't enqueue block for execution; mutex poisoned")
-                            .insert(finalized_block_height, (finalized_block, deploys));
+                            .insert(finalized_block_height, (finalized_block, deploys, hot_block_state));
                     }
                 }
                 self.metrics
@@ -599,7 +611,7 @@ impl ContractRuntime {
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
-            status: ComponentStatus::Initialized,
+            state: ComponentState::Initialized,
             execution_pre_state,
             engine_state,
             metrics,
@@ -713,9 +725,12 @@ impl ContractRuntime {
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        mut hot_block_state: HotBlockState,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
+            + From<StorageRequest>
+            + From<HotBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -744,8 +759,11 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        debug!("ContractRuntime: updating new_execution_pre_state");
         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
+        debug!(
+            next_block_height = new_execution_pre_state.next_block_height,
+            "ContractRuntime: updating new_execution_pre_state",
+        );
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
         debug!("ContractRuntime: updated new_execution_pre_state");
 
@@ -779,9 +797,50 @@ impl ContractRuntime {
                 .await;
         }
 
-        effect_builder
-            .announce_executed_block(block, approvals_hashes, execution_results)
-            .await;
+        info!(
+            block_hash = %block.hash(),
+            height = block.header().height(),
+            era = block.header().era_id().value(),
+            is_switch_block = block.header().is_switch_block(),
+            "executed block"
+        );
+
+        let execution_results_map: HashMap<_, _> = execution_results
+            .iter()
+            .cloned()
+            .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
+            .collect();
+
+        if hot_block_state.register_as_stored().was_updated() {
+            effect_builder
+                .put_executed_block_to_storage(
+                    Arc::clone(&block),
+                    approvals_hashes,
+                    execution_results_map,
+                )
+                .await;
+        } else {
+            effect_builder
+                .put_approvals_hashes_to_storage(approvals_hashes)
+                .await;
+            effect_builder
+                .put_execution_results_to_storage(*block.hash(), execution_results_map)
+                .await;
+        }
+        if hot_block_state
+            .register_as_executed()
+            .was_already_registered()
+        {
+            error!(
+                block_hash = %block.hash(),
+                block_height = block.height(),
+                ?hot_block_state,
+                "should not execute the same block more than once"
+            );
+        }
+
+        let hot_block = HotBlock::new(block, execution_results, hot_block_state);
+        effect_builder.announce_hot_block(hot_block).await;
 
         // If the child is already finalized, start execution.
         let next_block = {
@@ -791,12 +850,12 @@ impl ContractRuntime {
                 .expect("components::contract_runtime: couldn't get next block for execution; mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
-        if let Some((finalized_block, deploys)) = next_block {
+        if let Some((finalized_block, deploys, hot_block_state)) = next_block {
             metrics.exec_queue_size.dec();
             debug!("ContractRuntime: next block enqueue_block_for_execution");
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys)
-                .await
+                .enqueue_block_for_execution(finalized_block, deploys, hot_block_state)
+                .await;
         }
     }
 

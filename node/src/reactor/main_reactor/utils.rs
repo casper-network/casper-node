@@ -15,7 +15,8 @@ pub(super) fn initialize_component(
     initiating_event: MainEvent,
 ) -> Option<Effects<MainEvent>> {
     if component.is_uninitialized() {
-        info!("initialized {}", component.name());
+        component.start_initialization();
+        info!("pending initialization of {}", component.name());
         return Some(smallvec![async { smallvec![initiating_event] }.boxed()]);
     }
     if component.is_fatal() {

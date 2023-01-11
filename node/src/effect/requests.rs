@@ -53,8 +53,8 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
         DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
-        NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, HotBlockState,
+        LegacyDeploy, NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -268,18 +268,9 @@ pub(crate) enum StorageRequest {
     /// Store given block.
     PutBlock {
         /// Block to be stored.
-        block: Box<Block>,
+        block: Arc<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
-        responder: Responder<bool>,
-    },
-    /// Store given block and mark it complete.
-    PutCompleteBlock {
-        /// Block to be stored.
-        block: Box<Block>,
-        /// Responder to call with the result.  Returns true if the block was stored and it
-        /// was inserted into the completed blocks index on this attempt or false if it was
-        /// previously stored.
         responder: Responder<bool>,
     },
     /// Store the approvals hashes.
@@ -291,7 +282,7 @@ pub(crate) enum StorageRequest {
     /// Store the block and approvals hashes.
     PutExecutedBlock {
         /// Block to be stored.
-        block: Box<Block>,
+        block: Arc<Block>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
@@ -350,13 +341,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
-    },
-    /// Checks if a block header at the given height exists in storage.
-    CheckBlockHeaderExistence {
-        /// Height of the block to check.
-        block_height: u64,
-        /// Responder to call with the result.
-        responder: Responder<bool>,
     },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
@@ -501,9 +485,6 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            StorageRequest::PutCompleteBlock { block, .. } => {
-                write!(formatter, "put complete {}", block)
-            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes, ..
             } => {
@@ -529,9 +510,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeaderByHeight { block_height, .. } => {
                 write!(formatter, "get header for height {}", block_height)
-            }
-            StorageRequest::CheckBlockHeaderExistence { block_height, .. } => {
-                write!(formatter, "check existence {}", block_height)
             }
             StorageRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers for {}", block_hash)
@@ -882,6 +860,7 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
+        hot_block_state: HotBlockState,
     },
     /// A query request.
     Query {
@@ -957,8 +936,7 @@ impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ContractRuntimeRequest::EnqueueBlockForExecution {
-                finalized_block,
-                deploys: _,
+                finalized_block, ..
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }

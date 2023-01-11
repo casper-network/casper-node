@@ -256,8 +256,8 @@ function _sync_new_nodes()
         fi
     done
 
-    log "... awaiting auction bid acceptance (3 eras + 1 block)"
-    await_n_eras 3
+    log "... awaiting auction bid acceptance (2 eras + 1 block)"
+    await_n_eras 2
     await_n_blocks 1
 
     log "... starting nodes"

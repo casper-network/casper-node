@@ -21,6 +21,8 @@ use crate::{
     NodeRng,
 };
 
+const COMPONENT_NAME: &str = "fake_deploy_acceptor";
+
 pub(crate) trait ReactorEventT:
     From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
 {
@@ -107,5 +109,9 @@ impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
             } => self.handle_put_to_storage(effect_builder, event_metadata, is_new),
             _ => unimplemented!("unexpected {:?}", event),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

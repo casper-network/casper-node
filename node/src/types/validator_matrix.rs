@@ -24,7 +24,17 @@ pub(crate) enum SignatureWeight {
     /// At least one honest validator has signed the block.
     Weak,
     /// There can be no blocks on other forks that also have this many signatures.
-    Sufficient,
+    Strict,
+}
+
+impl SignatureWeight {
+    pub(crate) fn is_sufficient(&self, requires_strict_finality: bool) -> bool {
+        match self {
+            SignatureWeight::Insufficient => false,
+            SignatureWeight::Weak => false == requires_strict_finality,
+            SignatureWeight::Strict => true,
+        }
+    }
 }
 
 #[derive(Clone, DataSize)]
@@ -174,6 +184,12 @@ impl ValidatorMatrix {
         }
     }
 
+    /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
+    /// information for that era is missing.
+    pub(crate) fn is_self_validator_in_era(&self, era_id: EraId) -> Option<bool> {
+        self.is_validator_in_era(era_id, &self.public_signing_key)
+    }
+
     /// Determine if the active validator is in a current or upcoming set of active validators.
     #[inline]
     pub(crate) fn is_active_or_upcoming_validator(&self, public_key: &PublicKey) -> bool {
@@ -191,7 +207,7 @@ impl ValidatorMatrix {
         block_header: &BlockHeader,
     ) -> Option<FinalitySignature> {
         if self
-            .is_validator_in_era(block_header.era_id(), &self.public_signing_key)
+            .is_self_validator_in_era(block_header.era_id())
             .unwrap_or(false)
         {
             return Some(FinalitySignature::create(
@@ -289,7 +305,7 @@ impl EraValidatorWeights {
         self.validator_weights.contains_key(public_key)
     }
 
-    pub(crate) fn has_sufficient_weight<'a>(
+    pub(crate) fn signature_weight<'a>(
         &self,
         validator_keys: impl Iterator<Item = &'a PublicKey>,
     ) -> SignatureWeight {
@@ -308,7 +324,7 @@ impl EraValidatorWeights {
         if signature_weight * U512::from(*strict.denom())
             >= total_era_weight * U512::from(*strict.numer())
         {
-            return SignatureWeight::Sufficient;
+            return SignatureWeight::Strict;
         }
         if signature_weight * U512::from(*finality_threshold_fraction.denom())
             >= total_era_weight * U512::from(*finality_threshold_fraction.numer())

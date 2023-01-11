@@ -107,6 +107,8 @@ use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt
 use metrics::Metrics;
 use object_pool::ObjectPool;
 
+const COMPONENT_NAME: &str = "storage";
+
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 
@@ -311,6 +313,10 @@ where
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
@@ -754,13 +760,6 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&*block)?).ignore()
             }
-            StorageRequest::PutCompleteBlock { block, responder } => {
-                let wrote = self.write_block(&*block)?;
-                if wrote {
-                    self.mark_block_complete(block.height())?;
-                }
-                responder.respond(wrote).ignore()
-            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
@@ -813,12 +812,6 @@ impl Storage {
                     )?)
                     .ignore()
             }
-            StorageRequest::CheckBlockHeaderExistence {
-                block_height,
-                responder,
-            } => responder
-                .respond(self.block_header_exists(block_height))
-                .ignore(),
             StorageRequest::GetBlockTransfers {
                 block_hash,
                 responder,
@@ -1980,13 +1973,6 @@ impl Storage {
         }))
     }
 
-    /// Checks whether a block at the given height exists in the block height index (and, since the
-    /// index is initialized on startup based on the actual contents of storage, if it exists in
-    /// storage).
-    fn block_header_exists(&self, block_height: u64) -> bool {
-        self.block_height_index.contains_key(&block_height)
-    }
-
     /// Stores block headers in the db and, if successful, updates the in-memory indices.
     /// Returns an error on failure or a boolean indicating whether any of the block headers were
     /// previously known.
@@ -2202,8 +2188,8 @@ impl Storage {
                 return false;
             }
             if let Some(validator_keys) = block_signatures.public_keys() {
-                match era_validator_weights.has_sufficient_weight(validator_keys.iter()) {
-                    SignatureWeight::Sufficient => {
+                match era_validator_weights.signature_weight(validator_keys.iter()) {
+                    SignatureWeight::Strict => {
                         return true;
                     }
                     SignatureWeight::Insufficient | SignatureWeight::Weak => {

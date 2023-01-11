@@ -29,6 +29,8 @@ pub(crate) use event::Event;
 
 use metrics::Metrics;
 
+const COMPONENT_NAME: &str = "sync_leaper";
+
 #[derive(Debug, DataSize)]
 enum PeerState {
     RequestSent,
@@ -38,7 +40,7 @@ enum PeerState {
 }
 
 #[derive(Debug, DataSize)]
-pub(crate) enum LeapStatus {
+pub(crate) enum LeapState {
     Idle,
     Awaiting {
         sync_leap_identifier: SyncLeapIdentifier,
@@ -57,13 +59,13 @@ pub(crate) enum LeapStatus {
     },
 }
 
-impl Display for LeapStatus {
+impl Display for LeapState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LeapStatus::Idle => {
+            LeapState::Idle => {
                 write!(f, "Idle")
             }
-            LeapStatus::Awaiting {
+            LeapState::Awaiting {
                 sync_leap_identifier,
                 in_flight,
             } => {
@@ -74,7 +76,7 @@ impl Display for LeapStatus {
                     sync_leap_identifier.block_hash(),
                 )
             }
-            LeapStatus::Received {
+            LeapState::Received {
                 best_available,
                 from_peers,
                 in_flight,
@@ -87,7 +89,7 @@ impl Display for LeapStatus {
                     in_flight
                 )
             }
-            LeapStatus::Failed {
+            LeapState::Failed {
                 sync_leap_identifier,
                 error,
                 ..
@@ -103,13 +105,13 @@ impl Display for LeapStatus {
     }
 }
 
-impl LeapStatus {
+impl LeapState {
     fn in_flight(&self) -> usize {
         match self {
-            LeapStatus::Idle => 0,
-            LeapStatus::Awaiting { in_flight, .. }
-            | LeapStatus::Received { in_flight, .. }
-            | LeapStatus::Failed { in_flight, .. } => *in_flight,
+            LeapState::Idle => 0,
+            LeapState::Awaiting { in_flight, .. }
+            | LeapState::Received { in_flight, .. }
+            | LeapState::Failed { in_flight, .. } => *in_flight,
         }
     }
 
@@ -126,7 +128,7 @@ struct LeapActivity {
 }
 
 impl LeapActivity {
-    fn status(&self) -> LeapStatus {
+    fn status(&self) -> LeapState {
         let sync_leap_identifier = self.sync_leap_identifier;
         let in_flight = self
             .peers
@@ -135,7 +137,7 @@ impl LeapActivity {
             .count();
         let responsed = self.peers.len() - in_flight;
         if in_flight == 0 && responsed == 0 {
-            return LeapStatus::Failed {
+            return LeapState::Failed {
                 sync_leap_identifier,
                 in_flight,
                 error: LeapActivityError::NoPeers(sync_leap_identifier),
@@ -143,24 +145,24 @@ impl LeapActivity {
             };
         }
         if in_flight > 0 && responsed == 0 {
-            return LeapStatus::Awaiting {
+            return LeapState::Awaiting {
                 sync_leap_identifier,
                 in_flight,
             };
         }
         match self.best_response() {
-            Ok((best_available, from_peers)) => LeapStatus::Received {
+            Ok((best_available, from_peers)) => LeapState::Received {
                 in_flight,
                 best_available: Box::new(best_available),
                 from_peers,
             },
             // `Unobtainable` means we couldn't download it from any peer so far - don't treat it
             // as a failure if there are still requests in flight
-            Err(LeapActivityError::Unobtainable(_, _)) if in_flight > 0 => LeapStatus::Awaiting {
+            Err(LeapActivityError::Unobtainable(_, _)) if in_flight > 0 => LeapState::Awaiting {
                 sync_leap_identifier,
                 in_flight,
             },
-            Err(error) => LeapStatus::Failed {
+            Err(error) => LeapState::Failed {
                 sync_leap_identifier,
                 from_peers: vec![],
                 in_flight,
@@ -242,19 +244,19 @@ impl SyncLeaper {
     }
 
     // called from Reactor control logic to scrape results
-    pub(crate) fn leap_status(&mut self) -> LeapStatus {
+    pub(crate) fn leap_status(&mut self) -> LeapState {
         match &self.leap_activity {
-            None => LeapStatus::Idle,
+            None => LeapState::Idle,
             Some(activity) => {
                 let result = activity.status();
                 if result.active() == false {
                     match result {
-                        LeapStatus::Received { .. } | LeapStatus::Failed { .. } => {
+                        LeapState::Received { .. } | LeapState::Failed { .. } => {
                             self.metrics
                                 .sync_leap_duration
                                 .observe(activity.leap_start.elapsed().as_secs_f64());
                         }
-                        LeapStatus::Idle | LeapStatus::Awaiting { .. } => {
+                        LeapState::Idle | LeapState::Awaiting { .. } => {
                             // should be unreachable
                             error!(status = %result, ?activity, "sync leaper has inconsistent status");
                         }
@@ -457,5 +459,9 @@ where
                 Effects::new()
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

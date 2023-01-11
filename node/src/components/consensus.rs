@@ -35,7 +35,10 @@ use casper_types::{EraId, PublicKey, Timestamp};
 use crate::{
     components::Component,
     effect::{
-        announcements::{ConsensusAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement},
+        announcements::{
+            ConsensusAnnouncement, FatalAnnouncement, HotBlockAnnouncement,
+            PeerBehaviorAnnouncement,
+        },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{ConsensusDemand, ConsensusMessageIncoming},
         requests::{
@@ -62,6 +65,8 @@ pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
 pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use validator_change::ValidatorChange;
+
+const COMPONENT_NAME: &str = "consensus";
 
 /// A message to be handled by the consensus protocol instance in a particular era.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -335,6 +340,7 @@ pub(crate) trait ReactorEventT:
     + From<ContractRuntimeRequest>
     + From<ChainspecRawBytesRequest>
     + From<PeerBehaviorAnnouncement>
+    + From<HotBlockAnnouncement>
     + From<FatalAnnouncement>
 {
 }
@@ -353,6 +359,7 @@ impl<REv> ReactorEventT for REv where
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
         + From<PeerBehaviorAnnouncement>
+        + From<HotBlockAnnouncement>
         + From<FatalAnnouncement>
 {
 }
@@ -440,5 +447,9 @@ where
                 }
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

@@ -596,7 +596,7 @@ mod tests {
         components::{
             diagnostics_port::{self, Config as DiagnosticsPortConfig, DiagnosticsPort},
             network::{self, Identity as NetworkIdentity},
-            Component,
+            Component, InitializedComponent,
         },
         effect::{
             announcements::ControlAnnouncement,
@@ -722,12 +722,14 @@ mod tests {
             _event_queue: EventQueueHandle<Event>,
             _rng: &mut NodeRng,
         ) -> Result<(Self, Effects<Event>), Error> {
-            let diagnostics_console =
+            let mut diagnostics_console =
                 DiagnosticsPort::new(WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port));
+            <DiagnosticsPort as InitializedComponent<Event>>::start_initialization(
+                &mut diagnostics_console,
+            );
             let reactor = Reactor {
                 diagnostics_console,
             };
-
             let effects = reactor::wrap_effects(
                 Event::DiagnosticsConsole,
                 async {}.event(|()| diagnostics_port::Event::Initialize),

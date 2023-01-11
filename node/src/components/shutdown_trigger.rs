@@ -4,7 +4,7 @@
 //! detects a specific spec has been triggered. If so, it instructs the system to shut down through
 //! a [`ControlAnnouncement`].
 
-use std::{fmt::Display, mem};
+use std::{fmt::Display, mem, sync::Arc};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -13,16 +13,40 @@ use tracing::{info, trace};
 
 use crate::{
     effect::{
-        announcements::{ControlAnnouncement, ReactorAnnouncement},
-        requests::SetNodeStopRequest,
-        EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement, requests::SetNodeStopRequest, EffectBuilder, EffectExt,
+        Effects,
     },
-    types::NodeRng,
+    types::{Block, NodeRng},
 };
 
 use super::{diagnostics_port::StopAtSpec, Component};
 
-//// Shutdown trigger component.
+/// The shutdown trigger component's event.
+#[derive(DataSize, Debug, From, Serialize)]
+pub(crate) enum Event {
+    /// An announcement that a block has been completed.
+    CompletedBlock(Arc<Block>),
+    /// A request to trigger a shutdown.
+    #[from]
+    SetNodeStopRequest(SetNodeStopRequest),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::CompletedBlock(block) => {
+                write!(f, "completed block: {}", block)
+            }
+            Event::SetNodeStopRequest(inner) => {
+                write!(f, "set node stop request: {}", inner)
+            }
+        }
+    }
+}
+
+const COMPONENT_NAME: &str = "shutdown_trigger";
+
+/// Shutdown trigger component.
 #[derive(DataSize, Debug)]
 pub(crate) struct ShutdownTrigger {
     /// The currently active spec for shutdown triggers.
@@ -32,17 +56,6 @@ pub(crate) struct ShutdownTrigger {
     /// Constantly kept up to date, so that requests for shutting down on `block:next` can be
     /// answered without additional requests.
     highest_block_height_seen: Option<u64>,
-}
-
-/// The shutdown trigger component's event.
-#[derive(DataSize, Debug, From, Serialize)]
-pub(crate) enum Event {
-    /// A reactor announcement (usually checked for block completion).
-    #[from]
-    ReactorAnnouncement(ReactorAnnouncement),
-    /// A request to trigger a shutdown.
-    #[from]
-    SetNodeStopRequest(SetNodeStopRequest),
 }
 
 impl ShutdownTrigger {
@@ -68,7 +81,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::ReactorAnnouncement(ReactorAnnouncement::CompletedBlock { block }) => {
+            Event::CompletedBlock(block) => {
                 // We ignore every block that is older than one we already possess.
                 let prev_height = self.highest_block_height_seen.unwrap_or_default();
                 if block.height() > prev_height {
@@ -139,17 +152,8 @@ where
             }
         }
     }
-}
 
-impl Display for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Event::ReactorAnnouncement(inner) => {
-                write!(f, "reactor announcement: {}", inner)
-            }
-            Event::SetNodeStopRequest(inner) => {
-                write!(f, "set node stop request: {}", inner)
-            }
-        }
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

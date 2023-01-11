@@ -12,7 +12,7 @@ use crate::{
     },
     types::{
         Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, DeployHash, DeployId,
-        EraValidatorWeights, Item, NodeId, SignatureWeight,
+        EraValidatorWeights, Item, NodeId,
     },
     NodeRng,
 };
@@ -151,27 +151,31 @@ impl BlockAcquisitionAction {
         signature_acquisition: &SignatureAcquisition,
         is_historical: bool,
     ) -> Self {
-        let peers_to_ask = peer_list.qualified_peers(rng);
-        let era_id = block_header.era_id();
         let block_hash = block_header.block_hash();
-        let block_height = block_header.height();
 
-        if let SignatureWeight::Sufficient =
-            validator_weights.has_sufficient_weight(signature_acquisition.have_signatures())
+        let requires_strict_finality =
+            signature_acquisition.requires_strict_finality(is_historical);
+        let validator_keys = signature_acquisition.have_signatures();
+        if validator_weights
+            .signature_weight(validator_keys)
+            .is_sufficient(requires_strict_finality)
         {
             if is_historical {
                 // we have enough signatures; need to make sure we've stored the necessary bits
                 return BlockAcquisitionAction {
                     peers_to_ask: vec![],
-                    need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
+                    need_next: NeedNext::BlockMarkedComplete(block_hash, block_header.height()),
                 };
             }
 
             return BlockAcquisitionAction {
                 peers_to_ask: vec![],
-                need_next: NeedNext::EnqueueForExecution(block_hash, block_height),
+                need_next: NeedNext::EnqueueForExecution(block_hash, block_header.height()),
             };
         }
+
+        let peers_to_ask = peer_list.qualified_peers(rng);
+        let era_id = block_header.era_id();
         // need more signatures
         BlockAcquisitionAction {
             peers_to_ask,

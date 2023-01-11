@@ -35,7 +35,7 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     components::{
-        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentStatus, InitializedComponent,
+        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentState, InitializedComponent,
         PortBoundComponent,
     },
     effect::{
@@ -46,13 +46,15 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::Finalize,
+    reactor::{main_reactor::MainEvent, Finalize},
     types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
 pub use config::Config;
 pub(crate) use event::Event;
+
+const COMPONENT_NAME: &str = "rest_server";
 
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
@@ -102,8 +104,8 @@ pub(crate) struct InnerRestServer {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct RestServer {
-    /// The component status.
-    status: ComponentStatus,
+    /// The component state.
+    state: ComponentState,
     config: Config,
     api_version: ProtocolVersion,
     network_name: String,
@@ -120,7 +122,7 @@ impl RestServer {
         node_startup_instant: Instant,
     ) -> Self {
         RestServer {
-            status: ComponentStatus::Uninitialized,
+            state: ComponentState::Uninitialized,
             config,
             api_version,
             network_name,
@@ -142,95 +144,112 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match (self.status.clone(), event) {
-            (ComponentStatus::Fatal(msg), _) => {
+        match &self.state {
+            ComponentState::Fatal(msg) => {
                 error!(
                     msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
             }
-            (ComponentStatus::Uninitialized, Event::Initialize) => {
-                let (effects, status) = self.bind(self.config.enable_server, effect_builder);
-                self.status = status;
-                effects
-            }
-            (ComponentStatus::Uninitialized, _) => {
-                warn!("should not handle this event when component is uninitialized");
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
                 Effects::new()
             }
-            (ComponentStatus::Initialized, Event::Initialize) => {
-                // noop
-                Effects::new()
-            }
-            (
-                ComponentStatus::Initialized,
-                Event::RestRequest(RestRequest::Status { responder }),
-            ) => {
-                let node_uptime = self.node_startup_instant.elapsed();
-                let network_name = self.network_name.clone();
-                async move {
-                    let (
-                        last_added_block,
-                        peers,
-                        next_upgrade,
-                        consensus_status,
-                        (reactor_state, last_progress),
-                        available_block_range,
-                        block_sync,
-                    ) = join!(
-                        effect_builder.get_highest_complete_block_from_storage(),
-                        effect_builder.network_peers(),
-                        effect_builder.get_next_upgrade(),
-                        effect_builder.consensus_status(),
-                        effect_builder.get_reactor_status(),
-                        effect_builder.get_available_block_range_from_storage(),
-                        effect_builder.get_block_synchronizer_status(),
-                    );
-                    let starting_state_root_hash = effect_builder
-                        .get_block_header_at_height_from_storage(available_block_range.low(), true)
-                        .await
-                        .map(|header| *header.state_root_hash());
-                    let status_feed = StatusFeed::new(
-                        last_added_block,
-                        peers,
-                        ChainspecInfo::new(network_name, next_upgrade),
-                        consensus_status,
-                        node_uptime,
-                        reactor_state,
-                        last_progress,
-                        available_block_range,
-                        block_sync,
-                        starting_state_root_hash,
-                    );
-                    responder.respond(status_feed).await;
+            ComponentState::Initializing => match event {
+                Event::Initialize => {
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+                    effects
                 }
-            }
-            .ignore(),
-            (
-                ComponentStatus::Initialized,
-                Event::RestRequest(RestRequest::Metrics { responder }),
-            ) => effect_builder
-                .get_metrics()
-                .event(move |text| Event::GetMetricsResult {
-                    text,
-                    main_responder: responder,
-                }),
-            (
-                ComponentStatus::Initialized,
-                Event::RestRequest(RestRequest::RpcSchema { responder }),
-            ) => {
-                let schema = OPEN_RPC_SCHEMA.clone();
-                responder.respond(schema).ignore()
-            }
-            (
-                ComponentStatus::Initialized,
+                Event::RestRequest(_) | Event::GetMetricsResult { .. } => {
+                    warn!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "should not handle this event when component is pending initialization"
+                    );
+                    Effects::new()
+                }
+            },
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
+                    Effects::new()
+                }
+                Event::RestRequest(RestRequest::Status { responder }) => {
+                    let node_uptime = self.node_startup_instant.elapsed();
+                    let network_name = self.network_name.clone();
+                    async move {
+                        let (
+                            last_added_block,
+                            peers,
+                            next_upgrade,
+                            consensus_status,
+                            (reactor_state, last_progress),
+                            available_block_range,
+                            block_sync,
+                        ) = join!(
+                            effect_builder.get_highest_complete_block_from_storage(),
+                            effect_builder.network_peers(),
+                            effect_builder.get_next_upgrade(),
+                            effect_builder.consensus_status(),
+                            effect_builder.get_reactor_status(),
+                            effect_builder.get_available_block_range_from_storage(),
+                            effect_builder.get_block_synchronizer_status(),
+                        );
+                        let starting_state_root_hash = effect_builder
+                            .get_block_header_at_height_from_storage(
+                                available_block_range.low(),
+                                true,
+                            )
+                            .await
+                            .map(|header| *header.state_root_hash());
+                        let status_feed = StatusFeed::new(
+                            last_added_block,
+                            peers,
+                            ChainspecInfo::new(network_name, next_upgrade),
+                            consensus_status,
+                            node_uptime,
+                            reactor_state,
+                            last_progress,
+                            available_block_range,
+                            block_sync,
+                            starting_state_root_hash,
+                        );
+                        responder.respond(status_feed).await;
+                    }
+                }
+                .ignore(),
+                Event::RestRequest(RestRequest::Metrics { responder }) => effect_builder
+                    .get_metrics()
+                    .event(move |text| Event::GetMetricsResult {
+                        text,
+                        main_responder: responder,
+                    }),
+                Event::RestRequest(RestRequest::RpcSchema { responder }) => {
+                    let schema = OPEN_RPC_SCHEMA.clone();
+                    responder.respond(schema).ignore()
+                }
                 Event::GetMetricsResult {
                     text,
                     main_responder,
-                },
-            ) => main_responder.respond(text).ignore(),
+                } => main_responder.respond(text).ignore(),
+            },
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
@@ -238,12 +257,18 @@ impl<REv> InitializedComponent<REv> for RestServer
 where
     REv: ReactorEventT,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
-    fn name(&self) -> &str {
-        "rest_server"
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 

@@ -2,10 +2,10 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{BlockHash, BlockValidationError, NodeId};
+use crate::types::{BlockHash, BlockValidationError, HotBlockMergeError, NodeId};
 
 #[derive(Error, Debug)]
-pub enum InvalidGossipError {
+pub(crate) enum InvalidGossipError {
     #[error("received cryptographically invalid block for: {block_hash} from: {peer} with error: {validation_error}")]
     Block {
         block_hash: BlockHash,
@@ -30,7 +30,7 @@ impl InvalidGossipError {
 }
 
 #[derive(Error, Debug)]
-pub enum Bogusness {
+pub(crate) enum Bogusness {
     #[error("peer is not a validator in current era")]
     NotAValidator,
     #[error("peer provided finality signatures from incorrect era")]
@@ -38,7 +38,7 @@ pub enum Bogusness {
 }
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub(crate) enum Error {
     #[error(transparent)]
     InvalidGossip(Box<InvalidGossipError>),
     #[error("invalid configuration")]
@@ -59,4 +59,6 @@ pub enum Error {
     SufficientFinalityWithoutBlock { block_hash: BlockHash },
     #[error("bogus validator detected")]
     BogusValidator(Bogusness),
+    #[error(transparent)]
+    HotBlockMerge(#[from] HotBlockMergeError),
 }

@@ -12,7 +12,10 @@ use std::{
 };
 
 use datasize::DataSize;
+use futures::FutureExt;
+use itertools::Itertools;
 use prometheus::Registry;
+use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::Timestamp;
@@ -20,13 +23,16 @@ use casper_types::Timestamp;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        Component, ComponentStatus, InitializedComponent,
+        Component, ComponentState, InitializedComponent,
     },
     effect::{
         announcements::DeployBufferAnnouncement,
         requests::{DeployBufferRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    fatal,
+    reactor::main_reactor::MainEvent,
+    storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
@@ -40,11 +46,13 @@ pub(crate) use event::Event;
 
 use metrics::Metrics;
 
+const COMPONENT_NAME: &str = "deploy_buffer";
+
 type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
-    status: ComponentStatus,
+    state: ComponentState,
     cfg: Config,
     deploy_config: DeployConfig,
     // Keeps track of all deploys the buffer is currently aware of.
@@ -83,7 +91,7 @@ impl DeployBuffer {
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(DeployBuffer {
-            status: ComponentStatus::Uninitialized,
+            state: ComponentState::Uninitialized,
             cfg,
             deploy_config,
             buffer: HashMap::new(),
@@ -92,6 +100,57 @@ impl DeployBuffer {
             chain_index: BTreeMap::new(),
             metrics: Metrics::new(registry)?,
         })
+    }
+
+    pub(crate) fn initialize_component(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        storage: &Storage,
+    ) -> Option<Effects<MainEvent>> {
+        if <Self as InitializedComponent<MainEvent>>::is_uninitialized(self) {
+            info!(
+                "pending initialization of {}",
+                <Self as Component<MainEvent>>::name(self)
+            );
+            <Self as InitializedComponent<MainEvent>>::set_state(
+                self,
+                ComponentState::Initializing,
+            );
+            let blocks = match storage.read_blocks_for_replay_protection() {
+                Ok(blocks) => blocks,
+                Err(err) => {
+                    return Some(
+                        fatal!(
+                            effect_builder,
+                            "fatal block store error when attempting to read highest blocks: {}",
+                            err
+                        )
+                        .ignore(),
+                    )
+                }
+            };
+            debug!(
+                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
+                "DeployBuffer: initialization"
+            );
+            info!("initialized {}", <Self as Component<MainEvent>>::name(self));
+            let event = Event::Initialize(blocks);
+            return Some(smallvec![async {
+                smallvec![MainEvent::DeployBuffer(event)]
+            }
+            .boxed()]);
+        }
+        if <Self as InitializedComponent<MainEvent>>::is_fatal(self) {
+            return Some(
+                fatal!(
+                    effect_builder,
+                    "{} failed to initialize",
+                    <Self as Component<MainEvent>>::name(self)
+                )
+                .ignore(),
+            );
+        }
+        None
     }
 
     /// Returns `true` if we have enough information to participate in consensus in the era after
@@ -454,12 +513,18 @@ impl<REv> InitializedComponent<REv> for DeployBuffer
 where
     REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
-    fn status(&self) -> ComponentStatus {
-        self.status.clone()
+    fn state(&self) -> &ComponentState {
+        &self.state
     }
 
-    fn name(&self) -> &str {
-        "deploy_buffer"
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
     }
 }
 
@@ -475,35 +540,62 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match &self.status {
-            ComponentStatus::Fatal(msg) => {
-                warn!(
+        match &self.state {
+            ComponentState::Fatal(msg) => {
+                error!(
                     msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
                     "should not handle this event when this component has fatal error"
                 );
                 Effects::new()
             }
-            ComponentStatus::Uninitialized => {
-                if let Event::Initialize(blocks) = event {
-                    for block in blocks {
-                        self.register_block(&block);
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => {
+                match event {
+                    Event::Initialize(blocks) => {
+                        for block in blocks {
+                            self.register_block(&block);
+                        }
+                        <Self as InitializedComponent<MainEvent>>::set_state(
+                            self,
+                            ComponentState::Initialized,
+                        );
+                        // start self-expiry management on initialization
+                        effect_builder
+                            .set_timeout(self.cfg.expiry_check_interval().into())
+                            .event(move |_| Event::Expire)
                     }
-                    self.status = ComponentStatus::Initialized;
-                    // start self-expiry management on initialization
-                    effect_builder
-                        .set_timeout(self.cfg.expiry_check_interval().into())
-                        .event(move |_| Event::Expire)
-                } else {
-                    warn!(
-                        ?event,
-                        "should not handle this event when component is uninitialized"
-                    );
-                    Effects::new()
+                    Event::Request(_)
+                    | Event::ReceiveDeployGossiped(_)
+                    | Event::StoredDeploy(_, _)
+                    | Event::BlockProposed(_)
+                    | Event::Block(_)
+                    | Event::BlockFinalized(_)
+                    | Event::Expire => {
+                        warn!(
+                            ?event,
+                            name = <Self as Component<MainEvent>>::name(self),
+                            "should not handle this event when component is pending initialization"
+                        );
+                        Effects::new()
+                    }
                 }
             }
-            ComponentStatus::Initialized => match event {
+            ComponentState::Initialized => match event {
                 Event::Initialize(_) => {
-                    warn!("deploy buffer already initialized");
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
                     Effects::new()
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {
@@ -539,5 +631,9 @@ where
                 Event::Expire => self.expire(effect_builder),
             },
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

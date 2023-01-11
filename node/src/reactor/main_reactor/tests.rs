@@ -28,7 +28,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{
-        main_reactor::{Config, MainEvent, MainReactor},
+        main_reactor::{Config, MainEvent, MainReactor, ReactorState},
         Runner,
     },
     testing::{
@@ -490,6 +490,8 @@ async fn dont_upgrade_without_switch_block() {
     let mut rng = crate::new_rng();
 
     const NETWORK_SIZE: usize = 2;
+    const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
+
     let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
@@ -499,6 +501,18 @@ async fn dont_upgrade_without_switch_block() {
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
+
+    // Wait until initialization is finished, so upgrade watcher won't reject test requests.
+    net.settle_on(
+        &mut rng,
+        move |nodes: &Nodes| {
+            nodes
+                .values()
+                .all(|runner| !matches!(runner.main_reactor().state, ReactorState::Initialize))
+        },
+        INITIALIZATION_TIMEOUT,
+    )
+    .await;
 
     // An upgrade is scheduled for era 2, after the switch block in era 1 (height 2).
     // We artificially delay the execution of that block.
