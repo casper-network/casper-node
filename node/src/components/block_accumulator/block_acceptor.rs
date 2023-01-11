@@ -222,7 +222,7 @@ impl BlockAcceptor {
             return (ShouldStore::Nothing, Vec::new());
         }
 
-        if self.hot_block.is_none() || self.signatures.is_empty() {
+        if no_block || no_sigs {
             debug!(%block_hash, no_block, no_sigs, "not storing block");
             return (ShouldStore::Nothing, Vec::new());
         }

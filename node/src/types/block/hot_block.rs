@@ -56,6 +56,8 @@ impl HotBlock {
 
 #[cfg(test)]
 mod tests {
+    use std::iter;
+
     use rand::Rng;
 
     use casper_types::testing::TestRng;
@@ -126,7 +128,14 @@ mod tests {
         let mut rng = TestRng::new();
 
         let block1 = Arc::new(Block::random(&mut rng));
-        let block2 = Arc::new(Block::random(&mut rng));
+        let block2 = Arc::new(Block::random_with_specifics(
+            &mut rng,
+            block1.header().era_id().successor(),
+            block1.height() + 1,
+            block1.protocol_version(),
+            true,
+            iter::empty(),
+        ));
         let deploy = Deploy::random(&mut rng);
         let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
         let state = State::new();

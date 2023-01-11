@@ -51,7 +51,7 @@ impl State {
     }
 
     /// Returns a new `State` with all fields set to `false` except for
-    /// `is_immediate_switch_block_for_current_protocol_version`.
+    /// `immediate_switch_block_for_current_protocol_version`.
     pub(crate) fn new_immediate_switch() -> Self {
         State {
             immediate_switch_block_for_current_protocol_version: true,
@@ -59,7 +59,7 @@ impl State {
         }
     }
 
-    /// Returns a new `State` with all fields set to `false` except for `is_stored`.
+    /// Returns a new `State` with all fields set to `false` except for `stored`.
     pub(crate) fn new_synced() -> Self {
         State {
             stored: true,
