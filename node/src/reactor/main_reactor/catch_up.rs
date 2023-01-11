@@ -356,6 +356,43 @@ impl MainReactor {
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }
 
+    #[cfg_attr(doc, aquamarine::aquamarine)]
+    /// ```mermaid
+    /// flowchart TD
+    ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+    ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+    ///     
+    ///     title[SyncLeap process - registering sync leap result]
+    ///     title---Start
+    ///     style title fill:#FFF,stroke:#FFF
+    ///     linkStyle 0 stroke-width:0;
+    ///     
+    ///     Start --> B[update local highest switch block]
+    ///     B --> C[update validator weights]
+    ///     C --> A{is historical or forward<br>sync in progress?}
+    ///     subgraph update block synchronizer
+    ///     A -->|Yes| D{does synchronizer block<br>hash match sync leaps's<br>highest block hash?}
+    ///     A -->|No| G{validator weights for<br>sync leap's highest<br>block era available?}
+    ///     D -->|Yes| E[apply signatures if available]
+    ///     E --> F[update peers]
+    ///     D -->|No| G
+    ///     G -->|Yes| H[create block builder]
+    ///     H --> I[apply signatures if available]
+    ///     I --> J{is execution state needed?}
+    ///     J -->|Yes| K[start historical sync]
+    ///     J -->|No| L[start forward sync]
+    ///     end
+    ///     K --> M
+    ///     L --> M
+    ///     F --> M
+    ///     subgraph update block accumulator
+    ///     G -->|No| M[we might have new validator weights]
+    ///     M --> N{does any acceptor have<br>sufficient finality now?}
+    ///     N -->|Yes| O[store block and finality<br>signatures if not already stored]
+    ///     end
+    ///     O --> End
+    ///     N -->|No| End
+    /// ```
     fn catch_up_leap_received(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
