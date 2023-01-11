@@ -184,10 +184,7 @@ impl DeployBuffer {
         };
 
         // genesis special case
-        if from_height == 0
-            && self.chain_index.len() == 1
-            && self.chain_index.contains_key(&from_height)
-        {
+        if from_height == 0 && self.chain_index.contains_key(&from_height) {
             return true;
         }
 
