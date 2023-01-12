@@ -1040,8 +1040,7 @@ mod tests {
             .flat_map(|chunk| chunk.into_chunk())
             .collect();
 
-        let trie: Trie<Key, StoredValue> =
-            bytesrepr::deserialize(data).expect("trie should deserialize correctly");
+        let trie: Trie = bytesrepr::deserialize(data).expect("trie should deserialize correctly");
 
         // should be deserialized to a leaf
         assert!(matches!(trie, Trie::Leaf { .. }));

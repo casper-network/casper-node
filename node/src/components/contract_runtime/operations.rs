@@ -72,9 +72,6 @@ pub fn execute_finalized_block(
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockCreationError::BytesRepr)?;
 
-    // Create a new EngineState that reads from LMDB but only caches changes in memory.
-    let scratch_state = engine_state.get_scratch_engine_state();
-
     // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
     for deploy in deploys {
         let deploy_hash = *deploy.hash();
@@ -97,7 +94,7 @@ pub fn execute_finalized_block(
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
         let (state_hash, execution_result) = commit_execution_results(
-            &scratch_state,
+            engine_state,
             metrics.clone(),
             state_root_hash,
             deploy_hash.into(),
@@ -129,7 +126,7 @@ pub fn execute_finalized_block(
                 .into(),
         ),
     );
-    scratch_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+    engine_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -143,7 +140,7 @@ pub fn execute_finalized_block(
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
             } = commit_step(
-                &scratch_state, // engine_state
+                engine_state,
                 metrics,
                 protocol_version,
                 state_root_hash,
