@@ -27,6 +27,7 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
             amount,
         }],
         only_listed_validators: false,
+        slash_instead_of_unbonding: false,
     };
 
     let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);

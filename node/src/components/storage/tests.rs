@@ -1,18 +1,21 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::{self, File},
     iter,
+    rc::Rc,
+    sync::Arc,
 };
 
+use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
-    system::auction::UnbondingPurse, testing::TestRng, AccessRights, EraId, ExecutionResult,
-    ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, URef, U512,
 };
 
 use super::{
@@ -20,15 +23,24 @@ use super::{
     Storage,
 };
 use crate::{
+    components::fetcher::FetchResponse,
     effect::{requests::StorageRequest, Multiple},
-    storage::lmdb_ext::{deserialize_internal, serialize_internal},
+    storage::{
+        lmdb_ext::{deserialize_internal, serialize_internal},
+        FORCE_RESYNC_FILE_NAME,
+    },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
+        AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
+        FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
     },
-    utils::WithDir,
+    utils::{Loadable, WithDir},
 };
+
+const RECENT_ERA_COUNT: u64 = 7;
+const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
@@ -45,6 +57,114 @@ fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     }
 }
 
+fn block_headers_into_heights(block_headers: &[BlockHeader]) -> Vec<u64> {
+    block_headers
+        .iter()
+        .map(|block_header| block_header.height())
+        .collect()
+}
+
+fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMetadata]) -> Vec<u64> {
+    signed_block_headers
+        .iter()
+        .map(|signed_block_header| signed_block_header.block_header.height())
+        .collect()
+}
+
+fn create_sync_leap_test_chain(
+    non_signed_blocks: &[u64], // indices of blocks to not be signed
+    include_switch_block_at_tip: bool,
+    maybe_recent_era_count: Option<u64>, // if Some, override default `RECENT_ERA_COUNT`
+) -> (Storage, Chainspec, Vec<Block>) {
+    // Test chain:
+    //      S0      S1 B2 B3 S4 B5 B6 S7 B8 B9 S10 B11 B12
+    //  era 0 | era 1 | era 2  | era 3  | era 4   | era 5 ...
+    //  where
+    //   S - switch block
+    //   B - non-switch block
+
+    // If `include_switch_block_at_tip`, the additional switch block of height 13 will be added at
+    // the tip of the chain.
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture_from_parts(
+        &harness,
+        None,
+        None,
+        Some(chainspec.protocol_version()),
+        None,
+        None,
+        maybe_recent_era_count,
+    );
+
+    let mut trusted_validator_weights = BTreeMap::new();
+
+    let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
+    trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
+
+    let mut blocks: Vec<Block> = vec![];
+    let block_count = 13 + include_switch_block_at_tip as u64;
+    (0_u64..block_count).for_each(|height| {
+        let is_switch = height == 0 || height % 3 == 1;
+        let era_id = EraId::from(match height {
+            0 => 0,
+            1 => 1,
+            _ => (height + 4) / 3,
+        });
+        let parent_hash = if height == 0 {
+            None
+        } else {
+            Some(*blocks.get((height - 1) as usize).unwrap().hash())
+        };
+
+        let block = Block::random_with_specifics_and_parent_and_validator_weights(
+            &mut harness.rng,
+            era_id,
+            height,
+            chainspec.protocol_version(),
+            is_switch,
+            None,
+            parent_hash,
+            if is_switch {
+                trusted_validator_weights.clone()
+            } else {
+                BTreeMap::new()
+            },
+        );
+
+        blocks.push(block);
+    });
+    blocks.iter().for_each(|block| {
+        storage.write_block(block).unwrap();
+
+        let secret_rc = Rc::new(&validator_secret_key);
+        let fs = FinalitySignature::create(
+            *block.hash(),
+            block.header().era_id(),
+            &secret_rc,
+            validator_public_key.clone(),
+        );
+        assert!(fs.is_verified().is_ok());
+
+        let mut proofs = BTreeMap::new();
+        proofs.insert(validator_public_key.clone(), fs.signature);
+
+        let block_signatures = BlockSignatures {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            proofs,
+        };
+
+        if !non_signed_blocks.contains(&block.height()) {
+            storage
+                .write_finality_signatures(&block_signatures)
+                .unwrap();
+            storage.completed_blocks.insert(block.height());
+        }
+    });
+    (storage, chainspec, blocks)
+}
+
 /// Storage component test fixture.
 ///
 /// Creates a storage component in a temporary directory.
@@ -56,9 +176,67 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
+        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
+        MAX_TTL,
+        RECENT_ERA_COUNT,
+        None,
+        false,
+    )
+    .expect("could not create storage component fixture")
+}
+
+/// Storage component test fixture.
+///
+/// Creates a storage component in a temporary directory.
+///
+/// # Panics
+///
+/// Panics if setting up the storage fixture fails.
+fn storage_fixture_from_parts(
+    harness: &ComponentHarness<UnitTestEvent>,
+    fault_tolerance_fraction: Option<Ratio<u64>>,
+    hard_reset_to_start_of_era: Option<EraId>,
+    protocol_version: Option<ProtocolVersion>,
+    network_name: Option<&str>,
+    max_ttl: Option<TimeDiff>,
+    recent_era_count: Option<u64>,
+) -> Storage {
+    let cfg = new_config(harness);
+    Storage::new(
+        &WithDir::new(harness.tmp.path(), cfg),
+        fault_tolerance_fraction.unwrap_or_else(|| Ratio::new(1, 3)),
+        hard_reset_to_start_of_era,
+        protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
+        network_name.unwrap_or("test"),
+        max_ttl.unwrap_or(MAX_TTL),
+        recent_era_count.unwrap_or(RECENT_ERA_COUNT),
+        None,
+        false,
+    )
+    .expect("could not create storage component fixture from parts")
+}
+
+/// Storage component test fixture with force resync enabled.
+///
+/// Creates a storage component in a given temporary directory.
+///
+/// # Panics
+///
+/// Panics if setting up the storage fixture fails.
+fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
+    Storage::new(
+        cfg,
+        Ratio::new(1, 3),
+        None,
+        ProtocolVersion::from_parts(1, 0, 0),
+        "test",
+        MAX_TTL,
+        RECENT_ERA_COUNT,
+        None,
+        true,
     )
     .expect("could not create storage component fixture")
 }
@@ -74,14 +252,15 @@ fn storage_fixture_with_hard_reset(
     harness: &ComponentHarness<UnitTestEvent>,
     reset_era_id: EraId,
 ) -> Storage {
-    let cfg = new_config(harness);
-    Storage::new(
-        &WithDir::new(harness.tmp.path(), cfg),
+    storage_fixture_from_parts(
+        harness,
+        None,
         Some(reset_era_id),
-        ProtocolVersion::from_parts(1, 1, 0),
-        "test",
+        Some(ProtocolVersion::from_parts(1, 1, 0)),
+        None,
+        None,
+        None,
     )
-    .expect("could not create storage component fixture")
 }
 
 /// Creates 3 random signatures for the given block.
@@ -91,7 +270,7 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
     let mut block_signatures = BlockSignatures::new(block_hash, era_id);
     for _ in 0..3 {
         let secret_key = SecretKey::random(rng);
-        let signature = FinalitySignature::new(
+        let signature = FinalitySignature::create(
             block_hash,
             era_id,
             &secret_key,
@@ -154,20 +333,9 @@ fn get_block_header_by_height(
 }
 
 /// Loads a block's signatures from a storage component.
-fn get_block_signatures(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    block_hash: BlockHash,
-) -> Option<BlockSignatures> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetBlockSignatures {
-            block_hash,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
-    response
+fn get_block_signatures(storage: &mut Storage, block_hash: BlockHash) -> Option<BlockSignatures> {
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    storage.get_block_signatures(&mut txn, &block_hash).unwrap()
 }
 
 /// Loads a set of deploys from a storage component.
@@ -213,38 +381,38 @@ fn get_naive_deploy_and_metadata(
     })
 }
 
-/// Requests the highest block from a storage component.
-fn get_highest_block(
+/// Requests the highest complete block from a storage component.
+fn get_highest_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
 ) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetHighestBlock { responder }.into()
+        StorageRequest::GetHighestCompleteBlock { responder }.into()
     });
     assert!(harness.is_idle());
     response
 }
 
-/// Requests the highest block header from a storage component.
-fn get_highest_block_header(
+/// Requests the highest complete block header from a storage component.
+fn get_highest_complete_block_header(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
 ) -> Option<BlockHeader> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetHighestBlockHeader { responder }.into()
+        StorageRequest::GetHighestCompleteBlockHeader { responder }.into()
     });
     assert!(harness.is_idle());
     response
 }
 
 /// Stores a block in a storage component.
-fn put_block(
+fn put_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block: Box<Block>,
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutBlock { block, responder }.into()
+        StorageRequest::PutCompleteBlock { block, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -287,7 +455,7 @@ fn insert_to_deploy_index(
 ) -> bool {
     storage
         .deploy_hash_index
-        .insert(*deploy.id(), block_hash_and_height)
+        .insert(*deploy.hash(), block_hash_and_height)
         .is_none()
 }
 
@@ -356,8 +524,8 @@ fn can_retrieve_block_by_height() {
     // Both block at ID and highest block should return `None` initially.
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0).is_none());
-    assert!(get_highest_block(&mut harness, &mut storage).is_none());
-    assert!(get_highest_block_header(&mut harness, &mut storage).is_none());
+    assert!(get_highest_complete_block(&mut harness, &mut storage).is_none());
+    assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
     assert!(get_block_header_at_height(&mut storage, 14).is_none());
     assert!(get_block_at_height(&mut storage, 33).is_none());
@@ -366,15 +534,15 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting 33 changes this.
-    let was_new = put_block(&mut harness, &mut storage, block_33.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
 
     assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
-        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
         Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
@@ -393,15 +561,15 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting block with height 14, no change in highest.
-    let was_new = put_block(&mut harness, &mut storage, block_14.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
 
     assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
-        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
         Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
@@ -426,15 +594,17 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_block(&mut harness, &mut storage, block_99.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
+    // Mark block 99 as complete.
+    storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
     assert_eq!(
-        get_highest_block_header(&mut harness, &mut storage).as_ref(),
+        get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
         Some(block_99.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
@@ -489,14 +659,14 @@ fn different_block_at_height_is_fatal() {
         None,
     ));
 
-    let was_new = put_block(&mut harness, &mut storage, block_44_a.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
 
-    let was_new = put_block(&mut harness, &mut storage, block_44_a);
+    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a);
     assert!(was_new);
 
     // Putting a different block with the same height should now crash.
-    put_block(&mut harness, &mut storage, block_44_b);
+    put_complete_block(&mut harness, &mut storage, block_44_b);
 }
 
 #[test]
@@ -545,7 +715,7 @@ fn can_retrieve_store_and_load_deploys() {
     ));
 
     // Retrieve the stored deploy.
-    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
+    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
 
     // Finally try to get the metadata as well. Since we did not store any, we expect to get the
@@ -553,7 +723,7 @@ fn can_retrieve_store_and_load_deploys() {
     let (deploy_response, metadata_response) = harness
         .send_request(&mut storage, |responder| {
             StorageRequest::GetDeployAndMetadata {
-                deploy_hash: *deploy.id(),
+                deploy_hash: *deploy.hash(),
                 responder,
             }
             .into()
@@ -583,7 +753,7 @@ fn can_retrieve_store_and_load_deploys() {
     let (deploy_response, metadata_response) = harness
         .send_request(&mut storage, |responder| {
             StorageRequest::GetDeployAndMetadata {
-                deploy_hash: *deploy.id(),
+                deploy_hash: *deploy.hash(),
                 responder,
             }
             .into()
@@ -616,7 +786,7 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 
     for _ in 0..total {
         let deploy = Box::new(Deploy::random(&mut harness.rng));
-        deploy_hashes.push(*deploy.id());
+        deploy_hashes.push(*deploy.hash());
         put_deploy(&mut harness, &mut storage, deploy);
     }
 
@@ -645,19 +815,19 @@ fn store_execution_results_for_two_blocks() {
 
     // Ensure deploy exists.
     assert_eq!(
-        get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]),
+        get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]),
         vec![Some(deploy.clone())]
     );
 
     // Put first execution result.
     let first_result: ExecutionResult = harness.rng.gen();
     let mut first_results = HashMap::new();
-    first_results.insert(*deploy.id(), first_result.clone());
+    first_results.insert(*deploy.hash(), first_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
 
     // Retrieve and check if correct.
     let (first_deploy, first_metadata) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
             .expect("missing on first attempt");
     assert_eq!(first_deploy, deploy);
     let mut expected_per_block_results = HashMap::new();
@@ -672,12 +842,12 @@ fn store_execution_results_for_two_blocks() {
     // Add second result for the same deploy, different block.
     let second_result: ExecutionResult = harness.rng.gen();
     let mut second_results = HashMap::new();
-    second_results.insert(*deploy.id(), second_result.clone());
+    second_results.insert(*deploy.hash(), second_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
 
     // Retrieve the deploy again, should now contain both.
     let (second_deploy, second_metadata) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
             .expect("missing on second attempt");
     assert_eq!(second_deploy, deploy);
     expected_per_block_results.insert(block_hash_b, second_result);
@@ -738,10 +908,10 @@ fn store_random_execution_results() {
             // Insert deploy results for the unique block-deploy combination.
             let mut map = HashMap::new();
             map.insert(*block_hash, execution_result.clone());
-            expected_outcome.insert(*deploy.id(), map);
+            expected_outcome.insert(*deploy.hash(), map);
 
             // Add to our expected outcome.
-            block_results.insert(*deploy.id(), execution_result);
+            block_results.insert(*deploy.hash(), execution_result);
         }
 
         // Insert the shared deploys as well.
@@ -749,11 +919,11 @@ fn store_random_execution_results() {
             let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert the new result and ensure it is not present yet.
-            let result = block_results.insert(*shared_deploy.id(), execution_result.clone());
+            let result = block_results.insert(*shared_deploy.hash(), execution_result.clone());
             assert!(result.is_none());
 
             // Insert into expected outcome.
-            let deploy_expected = expected_outcome.entry(*shared_deploy.id()).or_default();
+            let deploy_expected = expected_outcome.entry(*shared_deploy.hash()).or_default();
             let prev = deploy_expected.insert(*block_hash, execution_result.clone());
             // Ensure we are not replacing something.
             assert!(prev.is_none());
@@ -789,7 +959,7 @@ fn store_random_execution_results() {
             get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy_hash)
                 .expect("missing deploy");
 
-        assert_eq!(deploy_hash, deploy.id());
+        assert_eq!(deploy_hash, deploy.hash());
 
         assert_eq!(
             metadata,
@@ -854,12 +1024,14 @@ fn test_legacy_interface() {
     assert!(was_new);
 
     // Ensure we get the deploy we expect.
-    let result = storage.get_deploy(*deploy.id()).expect("should get deploy");
-    assert_eq!(result, Some(*deploy));
+    let result = storage
+        .get_legacy_deploy(*deploy.hash())
+        .expect("should get deploy");
+    assert_eq!(result, Some(LegacyDeploy::from(*deploy)));
 
     // A non-existent deploy should simply return `None`.
     assert!(storage
-        .get_deploy(DeployHash::random(&mut harness.rng))
+        .get_legacy_deploy(DeployHash::random(&mut harness.rng))
         .expect("should get deploy")
         .is_none())
 }
@@ -869,20 +1041,16 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let mut block = Block::random(&mut harness.rng);
+    let block = Block::random(&mut harness.rng);
     let block_height = block.height();
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let execution_result: ExecutionResult = harness.rng.gen();
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
-    put_block(
-        &mut harness,
-        &mut storage,
-        Box::new(block.disable_switch_block().clone()),
-    );
+    put_complete_block(&mut harness, &mut storage, Box::new(block.clone()));
     let mut execution_results = HashMap::new();
-    execution_results.insert(*deploy.id(), execution_result.clone());
+    execution_results.insert(*deploy.hash(), execution_result.clone());
     put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block not indexed properly"),
@@ -901,11 +1069,11 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let actual_block = get_block(&mut harness, &mut storage, *block.hash())
         .expect("missing block we stored earlier");
     assert_eq!(actual_block, block);
-    let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.id()]);
+    let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
     let (_, deploy_metadata_ext) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id())
+        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
             .expect("missing deploy we stored earlier");
 
     let execution_results = match deploy_metadata_ext {
@@ -948,7 +1116,7 @@ fn should_hard_reset() {
         .collect();
 
     for block in &blocks {
-        assert!(put_block(
+        assert!(put_complete_block(
             &mut harness,
             &mut storage,
             Box::new(block.clone())
@@ -974,7 +1142,7 @@ fn should_hard_reset() {
         let execution_result: ExecutionResult = harness.rng.gen();
         put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
         let mut exec_results = HashMap::new();
-        exec_results.insert(*deploy.id(), execution_result);
+        exec_results.insert(*deploy.hash(), execution_result);
         put_execution_results(
             &mut harness,
             &mut storage,
@@ -988,7 +1156,7 @@ fn should_hard_reset() {
     // Check the highest block is #7.
     assert_eq!(
         Some(blocks[blocks_count - 1].clone()),
-        get_highest_block(&mut harness, &mut storage)
+        get_highest_complete_block(&mut harness, &mut storage)
     );
 
     // The closure doing the actual checks.
@@ -998,7 +1166,7 @@ fn should_hard_reset() {
         let mut storage = storage_fixture_with_hard_reset(&harness, EraId::from(reset_era as u64));
 
         // Check highest block is the last from the previous era, or `None` if resetting to era 0.
-        let highest_block = get_highest_block(&mut harness, &mut storage);
+        let highest_block = get_highest_complete_block(&mut harness, &mut storage);
         if reset_era > 0 {
             assert_eq!(
                 blocks[blocks_per_era * reset_era - 1],
@@ -1017,7 +1185,7 @@ fn should_hard_reset() {
 
         // Check signatures of deleted blocks can't be retrieved.
         for (index, block) in blocks.iter().enumerate() {
-            let result = get_block_signatures(&mut harness, &mut storage, *block.hash());
+            let result = get_block_signatures(&mut storage, *block.hash());
             let should_get_sigs = index < blocks_per_era * reset_era;
             assert_eq!(should_get_sigs, result.is_some());
         }
@@ -1025,7 +1193,7 @@ fn should_hard_reset() {
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
             let (_, deploy_metadata_ext) =
-                get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.id()).unwrap();
+                get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash()).unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
             match deploy_metadata_ext {
                 DeployMetadataExt::Metadata(_metadata) => assert!(should_have_exec_results),
@@ -1053,9 +1221,14 @@ fn should_create_subdir_named_after_network() {
     let network_name = "test";
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
+        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
+        MAX_TTL,
+        RECENT_ERA_COUNT,
+        None,
+        false,
     )
     .unwrap();
 
@@ -1166,11 +1339,11 @@ fn can_put_and_get_block() {
 
     let mut storage = storage_fixture(&harness);
 
-    let was_new = put_block(&mut harness, &mut storage, block.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
 
     // Storing the same block again should work, but yield a result of `true`.
-    let was_new_second_time = put_block(&mut harness, &mut storage, block.clone());
+    let was_new_second_time = put_complete_block(&mut harness, &mut storage, block.clone());
     assert!(
         was_new_second_time,
         "storing block the second time should have returned `true`"
@@ -1190,6 +1363,215 @@ fn can_put_and_get_block() {
     });
 
     assert_eq!(response.as_ref(), Some(block.header()));
+}
+
+#[test]
+fn should_get_trusted_ancestor_headers() {
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
+
+    let get_results = |requested_height: usize| -> Vec<u64> {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let requested_block_header = blocks.get(requested_height).unwrap().header();
+        storage
+            .get_trusted_ancestor_headers(&mut txn, requested_block_header)
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|block_header| block_header.height())
+            .collect()
+    };
+
+    assert_eq!(get_results(7), &[6, 5, 4]);
+    assert_eq!(get_results(9), &[8, 7]);
+    assert_eq!(get_results(5), &[4]);
+}
+
+#[test]
+fn should_get_signed_block_headers() {
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
+
+    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let highest_block_header_with_sufficient_signatures = storage
+            .get_header_with_metadata_of_highest_complete_block(&mut txn)
+            .unwrap()
+            .unwrap();
+        let previous_switch_block_header = storage
+            .get_block_by_height(&mut txn, previous_switch_block as u64)
+            .unwrap()
+            .unwrap()
+            .header()
+            .clone();
+        storage
+            .get_signed_block_headers(
+                &mut txn,
+                requested_block_header,
+                &highest_block_header_with_sufficient_signatures,
+                previous_switch_block_header,
+            )
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|block_header_with_metadata| block_header_with_metadata.block_header.height())
+            .collect()
+    };
+
+    assert!(
+        get_results(12, 10).is_empty(),
+        "should return empty set if asked for a most recent signed block"
+    );
+    assert_eq!(get_results(5, 4), &[7, 10, 12]);
+    assert_eq!(get_results(2, 1), &[4, 7, 10, 12]);
+    assert_eq!(get_results(1, 0), &[4, 7, 10, 12]);
+    assert_eq!(
+        get_results(10, 7),
+        &[12],
+        "should return only tip if asked for a most recent switch block"
+    );
+    assert_eq!(
+        get_results(7, 4),
+        &[10, 12],
+        "should not include switch block that was directly requested"
+    );
+}
+
+#[test]
+fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[12], false, None);
+
+    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let highest_block_header_with_sufficient_signatures = storage
+            .get_header_with_metadata_of_highest_complete_block(&mut txn)
+            .unwrap()
+            .unwrap();
+
+        let previous_switch_block_header = storage
+            .get_block_by_height(&mut txn, previous_switch_block as u64)
+            .unwrap()
+            .unwrap()
+            .header()
+            .clone();
+        storage
+            .get_signed_block_headers(
+                &mut txn,
+                requested_block_header,
+                &highest_block_header_with_sufficient_signatures,
+                previous_switch_block_header,
+            )
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|block_header_with_metadata| block_header_with_metadata.block_header.height())
+            .collect()
+    };
+
+    assert!(
+        get_results(11, 10).is_empty(),
+        "should return empty set if asked for a most recent signed block",
+    );
+    assert_eq!(get_results(5, 4), &[7, 10, 11]);
+    assert_eq!(get_results(2, 1), &[4, 7, 10, 11]);
+    assert_eq!(get_results(1, 0), &[4, 7, 10, 11]);
+    assert_eq!(
+        get_results(10, 7),
+        &[11],
+        "should return only tip if asked for a most recent switch block"
+    );
+    assert_eq!(
+        get_results(7, 4),
+        &[10, 11],
+        "should not include switch block that was directly requested"
+    );
+}
+
+#[test]
+fn should_get_sync_leap() {
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
+
+    let requested_block_hash = blocks.get(6).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(sync_leap.trusted_block_header.height(), 6);
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![5, 4],
+    );
+    assert_eq!(
+        signed_block_headers_into_heights(&sync_leap.signed_block_headers),
+        vec![7, 10, 12]
+    );
+
+    sync_leap.validate(&Arc::new(chainspec)).unwrap();
+}
+
+#[test]
+fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
+
+    let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(sync_leap.trusted_block_header.height(), 12);
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![11, 10],
+    );
+    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
+
+    sync_leap.validate(&Arc::new(chainspec)).unwrap();
+}
+
+#[test]
+fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], true, None);
+
+    let requested_block_hash = blocks.get(13).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+
+    assert_eq!(sync_leap.trusted_block_header.height(), 13);
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![12, 11, 10],
+    );
+    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
+
+    sync_leap.validate(&Arc::new(chainspec)).unwrap();
+}
+
+#[test]
+fn should_respect_allowed_era_diff_in_get_sync_leap() {
+    let maybe_recent_era_count = Some(1);
+    let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, maybe_recent_era_count);
+
+    let requested_block_hash = blocks.get(6).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+
+    assert!(
+        matches!(sync_leap_result, FetchResponse::NotProvided(_)),
+        "should not have sync leap"
+    );
 }
 
 #[test]
@@ -1272,13 +1654,89 @@ fn should_get_block_header_by_height() {
     // Requesting the block header before it is in storage should return None.
     assert!(get_block_header_by_height(&mut harness, &mut storage, height).is_none());
 
-    let was_new = put_block(&mut harness, &mut storage, Box::new(block));
+    let was_new = put_complete_block(&mut harness, &mut storage, Box::new(block));
     assert!(was_new);
 
     // Requesting the block header after it is in storage should return the block header.
     let maybe_block_header = get_block_header_by_height(&mut harness, &mut storage, height);
     assert!(maybe_block_header.is_some());
     assert_eq!(expected_header, maybe_block_header.unwrap());
+}
+
+#[test]
+fn check_force_resync_with_marker_file() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+    let cfg = WithDir::new(harness.tmp.path(), new_config(&harness));
+    let force_resync_file_path = storage.root_path().join(FORCE_RESYNC_FILE_NAME);
+    assert!(!force_resync_file_path.exists());
+
+    // Add a couple of blocks into storage.
+    let first_block = Block::random(&mut harness.rng);
+    put_complete_block(&mut harness, &mut storage, Box::new(first_block.clone()));
+    let second_block = loop {
+        // We need to make sure that the second random block has different height than the first
+        // one.
+        let block = Block::random(&mut harness.rng);
+        if block.height() != first_block.height() {
+            break block;
+        }
+    };
+    put_complete_block(&mut harness, &mut storage, Box::new(second_block));
+    // Make sure the completed blocks are not the default anymore.
+    assert_ne!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::RANGE_0_0
+    );
+    storage.persist_completed_blocks().unwrap();
+    drop(storage);
+
+    // The force resync marker file should not exist yet.
+    assert!(!force_resync_file_path.exists());
+    // Reinitialize storage with force resync enabled.
+    let mut storage = storage_fixture_with_force_resync(&cfg);
+    // The marker file should be there now.
+    assert!(force_resync_file_path.exists());
+    // Completed blocks has now been defaulted.
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::RANGE_0_0
+    );
+    let first_block_height = first_block.height();
+    // Add a block into storage.
+    put_complete_block(&mut harness, &mut storage, Box::new(first_block));
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(first_block_height, first_block_height)
+    );
+    storage.persist_completed_blocks().unwrap();
+    drop(storage);
+
+    // We didn't remove the marker file, so it should still be there.
+    assert!(force_resync_file_path.exists());
+    // Reinitialize storage with force resync enabled.
+    let storage = storage_fixture_with_force_resync(&cfg);
+    assert!(force_resync_file_path.exists());
+    // The completed blocks didn't default this time as the marker file was
+    // present.
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(first_block_height, first_block_height)
+    );
+    drop(storage);
+    // Remove the marker file.
+    std::fs::remove_file(&force_resync_file_path).unwrap();
+    assert!(!force_resync_file_path.exists());
+
+    // Reinitialize storage with force resync enabled.
+    let storage = storage_fixture_with_force_resync(&cfg);
+    // The marker file didn't exist, so it was created.
+    assert!(force_resync_file_path.exists());
+    // Completed blocks was defaulted again.
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::RANGE_0_0
+    );
 }
 
 #[test]

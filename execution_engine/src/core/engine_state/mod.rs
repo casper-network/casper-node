@@ -1,6 +1,7 @@
 //!  This module contains all the execution related code.
 pub mod balance;
 pub mod chainspec_registry;
+pub mod checksum_registry;
 pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
@@ -46,7 +47,7 @@ use casper_storage::{
 
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{Bytes, ToBytes},
+    bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::{
         auction::{
@@ -66,6 +67,7 @@ use casper_types::{
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     chainspec_registry::ChainspecRegistry,
+    checksum_registry::ChecksumRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
@@ -1639,58 +1641,34 @@ where
             .map_err(|err| Error::Exec(err.into()))
     }
 
-    /// Gets a trie (or chunk) object for given state root hash.
-    pub fn get_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        Ok(self.state.get_trie(correlation_id, trie_or_chunk_id)?)
-    }
-
     /// Gets a trie object for given state root hash.
     pub fn get_trie_full(
         &self,
         correlation_id: CorrelationId,
         trie_key: Digest,
-    ) -> Result<Option<Bytes>, Error>
+    ) -> Result<Option<TrieRaw>, Error>
     where
         Error: From<S::Error>,
     {
         Ok(self.state.get_trie_full(correlation_id, &trie_key)?)
     }
 
-    /// Puts a trie and finds missing descendant trie keys.
-    pub fn put_trie_and_find_missing_descendant_trie_keys(
+    /// Puts a trie if no children are missing from the global state; otherwise reports the missing
+    /// children hashes via the `Error` enum.
+    pub fn put_trie_if_all_children_present(
         &self,
         correlation_id: CorrelationId,
         trie_bytes: &[u8],
-    ) -> Result<Vec<Digest>, Error>
+    ) -> Result<Digest, Error>
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
-        let missing_descendant_trie_keys = self
-            .state
-            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
-        Ok(missing_descendant_trie_keys)
-    }
-
-    /// Performs a lookup for a list of missing root hashes.
-    pub fn missing_trie_keys(
-        &self,
-        correlation_id: CorrelationId,
-        trie_keys: Vec<Digest>,
-    ) -> Result<Vec<Digest>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        self.state
-            .missing_trie_keys(correlation_id, trie_keys)
-            .map_err(Error::from)
+        let missing_children = self.state.missing_children(correlation_id, trie_bytes)?;
+        if missing_children.is_empty() {
+            Ok(self.state.put_trie(correlation_id, trie_bytes)?)
+        } else {
+            Err(Error::MissingTrieNodeChildren(missing_children))
+        }
     }
 
     /// Obtains validator weights for given era.
@@ -2085,6 +2063,43 @@ where
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
     }
+
+    /// Returns the checksum registry at the given state root hash.
+    pub fn get_checksum_registry(
+        &self,
+        correlation_id: CorrelationId,
+        state_root_hash: Digest,
+    ) -> Result<Option<ChecksumRegistry>, Error> {
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+            None => return Err(Error::RootNotFound(state_root_hash)),
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+        };
+        let maybe_checksum_registry = tracking_copy
+            .borrow_mut()
+            .get_checksum_registry(correlation_id)
+            .map_err(Error::Exec);
+        maybe_checksum_registry
+    }
+
+    /// Returns the Merkle proof for the checksum registry at the given state root hash.
+    pub fn get_checksum_registry_proof(
+        &self,
+        correlation_id: CorrelationId,
+        state_root_hash: Digest,
+    ) -> Result<TrieMerkleProof<Key, StoredValue>, Error> {
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+            None => return Err(Error::RootNotFound(state_root_hash)),
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+        };
+
+        let key = Key::ChecksumRegistry;
+        let maybe_proof = tracking_copy
+            .borrow_mut()
+            .reader()
+            .read_with_proof(correlation_id, &key)
+            .map_err(Into::into)?;
+        maybe_proof.ok_or(Error::MissingChecksumRegistry)
+    }
 }
 
 fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool {
@@ -2164,12 +2179,14 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::CommitError(_)
             | Error::MissingSystemContractRegistry
             | Error::MissingSystemContractHash(_)
+            | Error::MissingChecksumRegistry
             | Error::RuntimeStackOverflow
             | Error::FailedToGetWithdrawKeys
             | Error::FailedToGetStoredWithdraws
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
-            | Error::FailedToRetrieveEraId => false,
+            | Error::FailedToRetrieveEraId
+            | Error::MissingTrieNodeChildren(_) => false,
         },
         ExecutionResult::Success { .. } => false,
     }

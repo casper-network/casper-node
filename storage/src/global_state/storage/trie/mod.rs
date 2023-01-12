@@ -8,18 +8,18 @@ use std::{
     slice,
 };
 
+use datasize::DataSize;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeMap,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_hashing::{ChunkWithProof, Digest};
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Key, StoredValue,
 };
-use datasize::DataSize;
 
 #[cfg(test)]
 pub mod gens;
@@ -352,124 +352,41 @@ impl ::std::fmt::Debug for PointerBlock {
     }
 }
 
-/// Represents a Merkle Tree or a chunk of data with attached proof.
-/// Chunk with attached proof is used when the requested
-/// trie is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TrieOrChunk {
-    /// Represents a Merkle Trie.
-    Trie(Bytes),
-    /// Represents a chunk of data with attached proof.
-    ChunkWithProof(ChunkWithProof),
-}
+/// Newtype representing a trie node in its raw form without deserializing into `Trie`.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, DataSize)]
+pub struct TrieRaw(Bytes);
 
-impl Display for TrieOrChunk {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            TrieOrChunk::Trie(trie) => f.debug_tuple("Trie").field(trie).finish(),
-            TrieOrChunk::ChunkWithProof(chunk) => f
-                .debug_struct("ChunkWithProof")
-                .field("index", &chunk.proof().index())
-                .field("hash", &chunk.proof().root_hash())
-                .finish(),
-        }
+impl TrieRaw {
+    /// Constructs an instance of [`TrieRaw`].
+    pub fn new(bytes: Bytes) -> Self {
+        TrieRaw(bytes)
+    }
+
+    /// Consumes self and returns inner bytes.
+    pub fn into_inner(self) -> Bytes {
+        self.0
+    }
+
+    /// Returns a reference inner bytes.
+    pub fn inner(&self) -> &Bytes {
+        &self.0
     }
 }
 
-impl TrieOrChunk {
-    const TRIE_TAG: u8 = 0;
-    const CHUNK_TAG: u8 = 1;
-
-    fn tag(&self) -> u8 {
-        match self {
-            TrieOrChunk::Trie(_) => Self::TRIE_TAG,
-            TrieOrChunk::ChunkWithProof(_) => Self::CHUNK_TAG,
-        }
-    }
-}
-
-impl ToBytes for TrieOrChunk {
-    fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        buf.push(self.tag());
-
-        match self {
-            TrieOrChunk::Trie(trie) => {
-                buf.append(&mut trie.to_bytes()?);
-            }
-            TrieOrChunk::ChunkWithProof(chunk) => {
-                buf.append(&mut chunk.to_bytes()?);
-            }
-        }
-
-        Ok(())
-    }
-
+impl ToBytes for TrieRaw {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut ret)?;
-        Ok(ret)
+        self.0.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TrieOrChunk::Trie(trie) => trie.serialized_length(),
-                TrieOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
-            }
+        self.0.serialized_length()
     }
 }
 
-impl FromBytes for TrieOrChunk {
+impl FromBytes for TrieRaw {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, rem) = u8::from_bytes(bytes)?;
-        match tag {
-            Self::TRIE_TAG => {
-                let (trie_bytes, rem) = Bytes::from_bytes(rem)?;
-                Ok((TrieOrChunk::Trie(trie_bytes), rem))
-            }
-            Self::CHUNK_TAG => {
-                let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
-                Ok((TrieOrChunk::ChunkWithProof(chunk), rem))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-/// Represents the ID of a `TrieOrChunk` - containing the index and the root hash.
-/// The root hash is the hash of the trie node as a whole.
-/// The index is the index of a chunk if the node's size is too large and requires chunking. For
-/// small nodes, it's always 0.
-#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TrieOrChunkId(pub u64, pub Digest);
-
-impl TrieOrChunkId {
-    /// Returns the trie key part of the ID.
-    pub fn digest(&self) -> &Digest {
-        &self.1
-    }
-
-    /// Given a serialized ID, deserializes it for display purposes.
-    pub fn fmt_serialized(f: &mut Formatter, serialized_id: &[u8]) -> fmt::Result {
-        match bincode::deserialize::<Self>(serialized_id) {
-            Ok(ref trie_or_chunk_id) => Display::fmt(trie_or_chunk_id, f),
-            Err(_) => f.write_str("<invalid>"),
-        }
-    }
-}
-
-/// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
-pub struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
-
-impl<'a> Display for TrieOrChunkIdDisplay<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        TrieOrChunkId::fmt_serialized(f, self.0)
-    }
-}
-
-impl Display for TrieOrChunkId {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "({}, {})", self.0, self.1)
+        let (bytes, rem) = Bytes::from_bytes(bytes)?;
+        Ok((TrieRaw(bytes), rem))
     }
 }
 
@@ -551,7 +468,7 @@ impl Trie {
         Self: ToBytes,
     {
         self.to_bytes()
-            .map(|bytes| Digest::hash_bytes_into_chunks_if_necessary(&bytes))
+            .map(|bytes| Digest::hash_into_chunks_if_necessary(&bytes))
     }
 
     /// Returns a pointer block, if possible.

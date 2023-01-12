@@ -7,7 +7,6 @@ use std::{
     time::Duration,
 };
 
-use datasize::DataSize;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -17,12 +16,15 @@ use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
-        chain_synchronizer::Progress,
-        chainspec_loader::NextUpgrade,
+        block_synchronizer::BlockSynchronizerStatus,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+        upgrade_watcher::NextUpgrade,
     },
+    reactor::main_reactor::ReactorState,
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap},
 };
+
+use super::AvailableBlockRange;
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
     let next_upgrade = NextUpgrade::new(
@@ -45,10 +47,14 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
         our_public_signing_key: Some(PublicKey::doc_example().clone()),
-        round_length: Some(TimeDiff::from(1 << 16)),
+        round_length: Some(TimeDiff::from_millis(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
         node_uptime: Duration::from_secs(13),
-        node_state: NodeState::Participating,
+        reactor_state: ReactorState::Initialize,
+        last_progress: Timestamp::from(0),
+        available_block_range: AvailableBlockRange::RANGE_0_0,
+        block_sync: BlockSynchronizerStatus::doc_example().clone(),
+        starting_state_root_hash: None,
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
@@ -76,21 +82,6 @@ impl ChainspecInfo {
     }
 }
 
-/// The various possible states of operation for the node.
-#[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum NodeState {
-    /// The node is currently in joining mode.
-    Joining(Progress),
-    /// The node is currently in participating mode, but also syncing to genesis in the background.
-    ParticipatingAndSyncingToGenesis {
-        /// The progress of the chain sync-to-genesis task.
-        sync_progress: Progress,
-    },
-    /// The node is currently in the participating state.
-    Participating,
-}
-
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
 pub struct StatusFeed {
@@ -108,18 +99,31 @@ pub struct StatusFeed {
     pub version: &'static str,
     /// Time that passed since the node has started.
     pub node_uptime: Duration,
-    /// The current state of node.
-    pub node_state: NodeState,
+    /// The current state of node reactor.
+    pub reactor_state: ReactorState,
+    /// Timestamp of the last recorded progress in the reactor.
+    pub last_progress: Timestamp,
+    /// The available block range in storage.
+    pub available_block_range: AvailableBlockRange,
+    /// The status of the block synchronizer builders.
+    pub block_sync: BlockSynchronizerStatus,
+    /// The state root hash of the lowest block in the available block range.
+    pub starting_state_root_hash: Option<Digest>,
 }
 
 impl StatusFeed {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         last_added_block: Option<Block>,
         peers: BTreeMap<NodeId, String>,
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
         node_uptime: Duration,
-        node_state: NodeState,
+        reactor_state: ReactorState,
+        last_progress: Timestamp,
+        available_block_range: AvailableBlockRange,
+        block_sync: BlockSynchronizerStatus,
+        starting_state_root_hash: Option<Digest>,
     ) -> Self {
         let (our_public_signing_key, round_length) = match consensus_status {
             Some((public_key, round_length)) => (Some(public_key), round_length),
@@ -133,7 +137,11 @@ impl StatusFeed {
             round_length,
             version: crate::VERSION_STRING.as_str(),
             node_uptime,
-            node_state,
+            reactor_state,
+            last_progress,
+            available_block_range,
+            block_sync,
+            starting_state_root_hash,
         }
     }
 }
@@ -167,16 +175,17 @@ impl From<Block> for MinimalBlockInfo {
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
+    /// The node ID and network address of each connected peer.
+    pub peers: PeersMap,
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
+    /// The compiled node version.
+    pub build_version: String,
     /// The chainspec name.
     pub chainspec_name: String,
-    /// The state root hash used at the start of the current session.
-    #[deprecated(since = "1.5.0")]
-    pub starting_state_root_hash: Digest,
-    /// The node ID and network address of each connected peer.
-    pub peers: PeersMap,
+    /// The state root hash of the lowest block in the available block range.
+    pub starting_state_root_hash: Option<Digest>,
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
     /// Our public signing key.
@@ -185,28 +194,35 @@ pub struct GetStatusResult {
     pub round_length: Option<TimeDiff>,
     /// Information about the next scheduled upgrade.
     pub next_upgrade: Option<NextUpgrade>,
-    /// The compiled node version.
-    pub build_version: String,
     /// Time that passed since the node has started.
     pub uptime: TimeDiff,
-    /// The current state of node.
-    pub node_state: NodeState,
+    /// The current state of node reactor.
+    pub reactor_state: ReactorState,
+    /// Timestamp of the last recorded progress in the reactor.
+    pub last_progress: Timestamp,
+    /// The available block range in storage.
+    pub available_block_range: AvailableBlockRange,
+    /// The status of the block synchronizer builders.
+    pub block_sync: BlockSynchronizerStatus,
 }
 
 impl GetStatusResult {
     #[allow(deprecated)]
     pub(crate) fn new(status_feed: StatusFeed, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
+            peers: PeersMap::from(status_feed.peers),
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
-            starting_state_root_hash: Digest::from([0u8; 32]),
-            peers: PeersMap::from(status_feed.peers),
+            starting_state_root_hash: status_feed.starting_state_root_hash,
             last_added_block_info: status_feed.last_added_block.map(Into::into),
             our_public_signing_key: status_feed.our_public_signing_key,
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
             uptime: status_feed.node_uptime.into(),
-            node_state: status_feed.node_state,
+            reactor_state: status_feed.reactor_state,
+            last_progress: status_feed.last_progress,
+            available_block_range: status_feed.available_block_range,
+            block_sync: status_feed.block_sync,
             #[cfg(not(test))]
             build_version: crate::VERSION_STRING.clone(),
 

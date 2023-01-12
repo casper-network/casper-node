@@ -3,10 +3,13 @@ use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use itertools::Itertools;
 use tracing::{debug, trace, warn};
 
-use casper_execution_engine::core::engine_state::{
-    self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-    ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
-    StepRequest, StepSuccess,
+use casper_execution_engine::core::{
+    engine_state::{
+        self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
+        EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+        GetEraValidatorsRequest, RewardItem, StepError, StepRequest, StepSuccess,
+    },
+    execution,
 };
 use casper_storage::{
     data_access_layer::DataAccessLayer,
@@ -18,23 +21,24 @@ use casper_storage::{
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, U512,
+    CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
+use super::SpeculativeExecutionState;
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionEffects, ExecutionPreState, Metrics,
+            BlockAndExecutionResults, ExecutionPreState, Metrics,
         },
     },
-    types::{error::BlockCreationError, Block, Deploy, DeployHeader, FinalizedBlock},
+    contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
+    types::{
+        self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, Deploy, DeployHeader,
+        FinalizedBlock, Item,
+    },
 };
-use casper_execution_engine::core::{engine_state::execution_result::ExecutionResults, execution};
-
-use super::SpeculativeExecutionState;
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
@@ -45,8 +49,7 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
-    transfers: Vec<Deploy>,
-) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
+) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
             finalized_block: Box::new(finalized_block),
@@ -61,14 +64,21 @@ pub fn execute_finalized_block(
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
-        Vec::with_capacity(deploys.len() + transfers.len());
+        Vec::with_capacity(deploys.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
+    let deploy_ids = deploys.iter().map(|deploy| deploy.id()).collect_vec();
+    let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
+        .map_err(BlockCreationError::BytesRepr)?;
+
+    // Create a new EngineState that reads from LMDB but only caches changes in memory.
+    let scratch_state = engine_state.get_scratch_engine_state();
     let maybe_deploy_approvals_root_hash = compute_approvals_root_hash(&deploys, &transfers)?;
 
-    for deploy in deploys.into_iter().chain(transfers) {
-        let deploy_hash = *deploy.id();
+    // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
+    for deploy in deploys {
+        let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
             state_root_hash,
@@ -87,8 +97,8 @@ pub fn execute_finalized_block(
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) = commit_execution_effects(
-            engine_state,
+        let (state_hash, execution_result) = commit_execution_results(
+            &scratch_state,
             metrics.clone(),
             state_root_hash,
             deploy_hash.into(),
@@ -100,31 +110,27 @@ pub fn execute_finalized_block(
 
     // Write the deploy approvals and execution results Merkle root hashes to global state if there
     // were any deploys.
-    let block_height = finalized_block.height();
-    if let Some(deploy_approvals_root_hash) = maybe_deploy_approvals_root_hash {
-        let execution_results_root_hash = compute_execution_results_root_hash(
-            &mut execution_results.iter().map(|(_, _, result)| result),
-        )?;
+    let execution_results_checksum = compute_execution_results_checksum(
+        &execution_results
+            .iter()
+            .map(|(_, _, result)| result)
+            .cloned()
+            .collect(),
+    )?;
 
-        let mut effects = AdditiveMap::new();
-        let _ = effects.insert(
-            Key::DeployApprovalsRootHash { block_height },
-            Transform::Write(
-                CLValue::from_t(deploy_approvals_root_hash)
-                    .map_err(BlockCreationError::CLValue)?
-                    .into(),
-            ),
-        );
-        let _ = effects.insert(
-            Key::BlockEffectsRootHash { block_height },
-            Transform::Write(
-                CLValue::from_t(execution_results_root_hash)
-                    .map_err(BlockCreationError::CLValue)?
-                    .into(),
-            ),
-        );
-        engine_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
-    }
+    let mut effects = AdditiveMap::new();
+    let mut checksum_registry = ChecksumRegistry::new();
+    checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
+    checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
+    let _ = effects.insert(
+        Key::ChecksumRegistry,
+        Transform::Write(
+            CLValue::from_t(checksum_registry)
+                .map_err(BlockCreationError::CLValue)?
+                .into(),
+        ),
+    );
+    scratch_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -138,8 +144,8 @@ pub fn execute_finalized_block(
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
             } = commit_step(
-                engine_state, // engine_state
-                metrics.clone(),
+                &scratch_state, // engine_state
+                metrics,
                 protocol_version,
                 state_root_hash,
                 era_report,
@@ -173,6 +179,11 @@ pub fn execute_finalized_block(
     if let Some(metrics) = metrics.as_ref() {
         metrics.chain_height.set(block_height as i64);
     }
+    // Flush once, after all deploys have been executed.
+    engine_state.flush_environment()?;
+
+    let proof_of_checksum_registry =
+        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
 
     let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators
@@ -196,15 +207,26 @@ pub fn execute_finalized_block(
         protocol_version,
     )?);
 
-    Ok(BlockAndExecutionEffects {
+    let approvals_hashes = deploy_ids
+        .into_iter()
+        .map(|id| id.destructure().1)
+        .collect();
+    let approvals_hashes = Box::new(ApprovalsHashes::new(
+        block.hash(),
+        approvals_hashes,
+        proof_of_checksum_registry,
+    ));
+
+    Ok(BlockAndExecutionResults {
         block,
+        approvals_hashes,
         execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })
 }
 
-/// Commits the execution effects.
-fn commit_execution_effects<S>(
+/// Commits the execution results.
+fn commit_execution_results<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
@@ -397,33 +419,11 @@ where
 /// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
 ///
 /// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
-/// node receives the chunks of *full data* it has to be able to verify it against the merkle root.
-fn compute_execution_results_root_hash<'a>(
-    results: &mut impl Iterator<Item = &'a ExecutionResult>,
+/// node receives the chunks of *full data* it has to be able to verify it against the Merkle root.
+fn compute_execution_results_checksum(
+    execution_results: &Vec<ExecutionResult>,
 ) -> Result<Digest, BlockCreationError> {
-    let execution_results_bytes = results
-        .cloned()
-        .collect::<Vec<_>>()
-        .to_bytes()
-        .map_err(BlockCreationError::BytesRepr)?;
-    Ok(Digest::hash_bytes_into_chunks_if_necessary(
-        &execution_results_bytes,
-    ))
-}
-
-/// Returns the computed root hash for a Merkle tree constructed from the hashes of deploy
-/// approvals if the combined set of deploys is non-empty, or `None` if the set is empty.
-fn compute_approvals_root_hash(
-    deploys: &[Deploy],
-    transfers: &[Deploy],
-) -> Result<Option<Digest>, BlockCreationError> {
-    let mut approval_hashes = vec![];
-    for deploy in deploys.iter().chain(transfers) {
-        let bytes = deploy
-            .approvals()
-            .to_bytes()
-            .map_err(BlockCreationError::BytesRepr)?;
-        approval_hashes.push(Digest::hash(bytes));
-    }
-    Ok((!approval_hashes.is_empty()).then(|| Digest::hash_merkle_tree(approval_hashes)))
+    execution_results
+        .hash()
+        .map_err(BlockCreationError::BytesRepr)
 }

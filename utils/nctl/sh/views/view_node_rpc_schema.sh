@@ -7,7 +7,7 @@ source "$NCTL"/sh/utils/main.sh
 #######################################
 function main()
 {
-    curl -s --header 'Content-Type: application/json' \
+    curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES --header 'Content-Type: application/json' \
         --request POST "$(get_node_address_rpc_for_curl)" \
         --data-raw '{
             "id": 1,

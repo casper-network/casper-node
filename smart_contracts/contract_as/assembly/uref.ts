@@ -1,7 +1,7 @@
 import {Ref} from "./ref";
 import {Error, Result} from "./bytesrepr";
 import {UREF_ADDR_LENGTH} from "./constants";
-import {checkTypedArrayEqual, typedToArray} from "./utils";
+import {checkArraysEqual, checkTypedArrayEqual, typedToArray} from "./utils";
 import {is_valid_uref, revert} from "./externals";
 
 /**
@@ -52,7 +52,7 @@ export class URef {
     /**
      * Representation of URef address.
      */
-    private bytes: Uint8Array;
+    private bytes: StaticArray<u8>;
     private accessRights: AccessRights
 
     /**
@@ -60,7 +60,7 @@ export class URef {
      * @param bytes Bytes representing address of the URef.
      * @param accessRights Access rights flag. Use [[AccessRights.NONE]] to indicate no permissions.
      */
-    constructor(bytes: Uint8Array, accessRights: AccessRights) {
+    constructor(bytes: StaticArray<u8>, accessRights: AccessRights) {
         this.bytes = bytes;
         this.accessRights = accessRights;
     }
@@ -70,7 +70,7 @@ export class URef {
      *
      * @returns A byte array with a length of 32.
      */
-    public getBytes(): Uint8Array {
+    public getBytes(): StaticArray<u8> {
         return this.bytes;
     }
 
@@ -111,16 +111,16 @@ export class URef {
      * Deserializes a new [[URef]] from bytes.
      * @param bytes Input bytes. Requires at least 33 bytes to properly deserialize an [[URef]].
      */
-    static fromBytes(bytes: Uint8Array): Result<URef> {
+    static fromBytes(bytes: StaticArray<u8>): Result<URef> {
         if (bytes.length < 33) {
             return new Result<URef>(null, Error.EarlyEndOfStream, 0);
         }
 
-        let urefBytes = bytes.subarray(0, UREF_ADDR_LENGTH);
+        let urefBytes = bytes.slice(0, UREF_ADDR_LENGTH);
         let currentPos = 33;
 
 		let accessRights = bytes[UREF_ADDR_LENGTH];
-		let uref = new URef(urefBytes, accessRights);
+		let uref = new URef(StaticArray.fromArray(urefBytes), accessRights);
 		let ref = new Ref<URef>(uref);
 		return new Result<URef>(ref, Error.Ok, currentPos);
     }
@@ -130,9 +130,7 @@ export class URef {
      * format.
      */
     toBytes(): Array<u8> {
-        let result = typedToArray(this.bytes);
-        result.push(<u8>this.accessRights);
-        return result;
+        return this.bytes.concat([<u8>this.accessRights]);
     }
 
     /**
@@ -142,7 +140,7 @@ export class URef {
      */
     @operator("==")
     equalsTo(other: URef): bool {
-        return checkTypedArrayEqual(this.bytes, other.bytes) && this.accessRights == other.accessRights;
+        return checkArraysEqual<u8, StaticArray<u8>>(this.bytes, other.bytes) && this.accessRights == other.accessRights;
     }
 
     /**

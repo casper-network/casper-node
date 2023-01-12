@@ -9,9 +9,9 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher::FetcherError},
+    components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, ChainspecRawBytes, DeployWithApprovals},
+    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals},
     utils::{self, Loadable},
 };
 
@@ -22,7 +22,7 @@ enum ReactorEvent {
     #[from]
     BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<Deploy>),
+    Fetcher(FetcherRequest<LegacyDeploy>),
     #[from]
     Storage(StorageRequest),
 }
@@ -55,23 +55,24 @@ impl MockReactor {
 
     async fn expect_fetch_deploy<T>(&self, deploy: T)
     where
-        T: Into<Option<Deploy>>,
+        T: Into<Option<LegacyDeploy>>,
     {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         if let ReactorEvent::Fetcher(FetcherRequest {
             id,
             peer,
+            validation_metadata: _,
             responder,
         }) = reactor_event
         {
             match deploy.into() {
                 None => {
                     responder
-                        .respond(Err(FetcherError::Absent { id, peer }))
+                        .respond(Err(fetcher::Error::Absent { id, peer }))
                         .await
                 }
                 Some(deploy) => {
-                    assert_eq!(id, *deploy.id());
+                    assert_eq!(id, deploy.inner().hash().clone());
                     let response = FetchedData::FromPeer {
                         item: Box::new(deploy),
                         peer,
@@ -87,8 +88,8 @@ impl MockReactor {
 
 fn new_proposed_block(
     timestamp: Timestamp,
-    deploys: Vec<DeployWithApprovals>,
-    transfers: Vec<DeployWithApprovals>,
+    deploys: Vec<DeployHashWithApprovals>,
+    transfers: Vec<DeployHashWithApprovals>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
@@ -129,7 +130,7 @@ fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deplo
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: runtime_args! { ARG_AMOUNT => 1 },
+        args: runtime_args! { ARG_AMOUNT => U512::from(1) },
     };
     let session = ExecutableDeployItem::Transfer {
         args: RuntimeArgs::new(),
@@ -158,10 +159,13 @@ async fn validate_block(
     transfers: Vec<Deploy>,
 ) -> bool {
     // Assemble the block to be validated.
-    let deploys_for_block = deploys.iter().map(DeployWithApprovals::from).collect_vec();
+    let deploys_for_block = deploys
+        .iter()
+        .map(DeployHashWithApprovals::from)
+        .collect_vec();
     let transfers_for_block = transfers
         .iter()
-        .map(DeployWithApprovals::from)
+        .map(DeployHashWithApprovals::from)
         .collect_vec();
     let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
 
@@ -193,7 +197,7 @@ async fn validate_block(
 
     // We make our mock reactor answer with the expected deploys and transfers:
     for deploy in deploys.into_iter().chain(transfers) {
-        reactor.expect_fetch_deploy(deploy).await;
+        reactor.expect_fetch_deploy(Some(deploy.into())).await;
     }
 
     // The resulting `FetchResult`s are passed back into the component. When any deploy turns out
@@ -227,7 +231,7 @@ async fn ttl() {
     // The ttl is 200, and our deploys and transfers have timestamps 900 and 1000. So the block
     // timestamp must be at least 1000 and at most 1100.
     let mut rng = TestRng::new();
-    let ttl = TimeDiff::from(200);
+    let ttl = TimeDiff::from_millis(200);
     let deploys = vec![
         new_deploy(&mut rng, 1000.into(), ttl),
         new_deploy(&mut rng, 900.into(), ttl),
@@ -257,7 +261,7 @@ async fn ttl() {
 #[tokio::test]
 async fn transfer_deploy_mixup_and_replay() {
     let mut rng = TestRng::new();
-    let ttl = TimeDiff::from(200);
+    let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
     let deploy1 = new_deploy(&mut rng, timestamp, ttl);
     let deploy2 = new_deploy(&mut rng, timestamp, ttl);

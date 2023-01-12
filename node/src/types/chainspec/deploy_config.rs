@@ -35,12 +35,28 @@ pub struct DeployConfig {
     pub(crate) native_transfer_minimum_motes: u64,
 }
 
+impl DeployConfig {
+    /// Validates `DeployConfig` parameters
+    pub fn is_valid(&self) -> bool {
+        // the total number of deploys + transfers should not exceed the number of approvals because
+        // each deploy or transfer needs at least one approval to be valid
+        if let Some(total_deploy_and_transfer_slots) = self
+            .block_max_deploy_count
+            .checked_add(self.block_max_transfer_count)
+        {
+            self.block_max_approval_count >= total_deploy_and_transfer_slots
+        } else {
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let max_payment_cost = Motes::new(U512::from(rng.gen_range(1_000_000..1_000_000_000)));
-        let max_ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        let max_ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let max_deploy_size = rng.gen_range(100_000..1_000_000);
@@ -175,5 +191,32 @@ mod tests {
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
+    }
+
+    #[test]
+    fn deploy_and_transfer_counts_valid() {
+        let config = DeployConfig {
+            block_max_approval_count: 100,
+            block_max_deploy_count: 100,
+            block_max_transfer_count: 100,
+            ..Default::default()
+        };
+        assert!(!config.is_valid());
+
+        let config = DeployConfig {
+            block_max_approval_count: 200,
+            block_max_deploy_count: 100,
+            block_max_transfer_count: 100,
+            ..Default::default()
+        };
+        assert!(config.is_valid());
+
+        let config = DeployConfig {
+            block_max_approval_count: 200,
+            block_max_deploy_count: 10,
+            block_max_transfer_count: 100,
+            ..Default::default()
+        };
+        assert!(config.is_valid());
     }
 }

@@ -14,7 +14,7 @@ use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    file_utils,
+    file_utils, PublicKey,
 };
 
 use super::error::ChainspecAccountsLoadError;
@@ -56,6 +56,12 @@ impl AccountsConfig {
 
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
+    }
+
+    pub fn account(&self, public_key: &PublicKey) -> Option<&AccountConfig> {
+        self.accounts
+            .iter()
+            .find(|account| &account.public_key == public_key)
     }
 
     /// Returns `Self` and the raw bytes of the file.

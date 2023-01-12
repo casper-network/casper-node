@@ -1,6 +1,6 @@
 [package]
 name = "global-state-update-gen"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Bartłomiej Kamiński <bart@casperlabs.io>"]
 edition = "2018"
 license-file = "../../LICENSE"

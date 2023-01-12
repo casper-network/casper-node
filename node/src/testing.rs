@@ -4,9 +4,8 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
-pub(crate) mod fake_deploy_acceptor;
+mod fake_deploy_acceptor;
 pub(crate) mod filter_reactor;
-mod multi_stage_test_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
 mod test_rng;
@@ -24,23 +23,24 @@ use std::{
 
 use anyhow::Context;
 use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
-use casper_types::testing::TestRng;
 use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
 use rand::Rng;
+use schemars::schema::RootSchema;
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{testing::TestRng, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
     effect::{
-        announcements::ControlAnnouncement, requests::NetworkRequest, EffectBuilder, Effects,
-        Responder,
+        announcements::{ControlAnnouncement, FatalAnnouncement},
+        requests::NetworkRequest,
+        EffectBuilder, Effects, Responder,
     },
     logging,
     protocol::Message,
@@ -48,8 +48,7 @@ use crate::{
     types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
-// pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
-use schemars::schema::RootSchema;
+pub(crate) use fake_deploy_acceptor::FakeDeployAcceptor;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.
@@ -274,20 +273,26 @@ impl<REv: 'static> ComponentHarness<REv> {
             for _ in 0..(self.scheduler.item_count()) {
                 let ((_ancestor, ev), _queue_kind) = self.runtime.block_on(self.scheduler.pop());
 
-                if let Some(ctrl_ann) = ev.as_control() {
-                    match ctrl_ann {
-                        fatal @ ControlAnnouncement::FatalError { .. } => {
-                            panic!(
-                                "a control announcement requesting a fatal error was received: {}",
-                                fatal
-                            )
-                        }
-                        ControlAnnouncement::QueueDumpRequest { .. } => {
-                            panic!("queue dumps are not supported in the test harness")
-                        }
+                if !ev.is_control() {
+                    debug!(?ev, "ignoring event while looking for a fatal");
+                    continue;
+                }
+                match ev.try_into_control().unwrap() {
+                    ControlAnnouncement::ShutdownDueToUserRequest { .. } => {
+                        panic!("a control announcement requesting a shutdown due to user request was received")
                     }
-                } else {
-                    debug!(?ev, "ignoring event while looking for a fatal")
+                    ControlAnnouncement::ShutdownForUpgrade { .. } => {
+                        panic!("a control announcement requesting a shutdown for upgrade was received")
+                    }
+                    fatal @ ControlAnnouncement::FatalError { .. } => {
+                        panic!(
+                            "a control announcement requesting a fatal error was received: {}",
+                            fatal
+                        )
+                    }
+                    ControlAnnouncement::QueueDumpRequest { .. } => {
+                        panic!("queue dumps are not supported in the test harness")
+                    }
                 }
             }
 
@@ -325,22 +330,27 @@ pub(crate) enum UnitTestEvent {
     /// A preserved control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
     /// A network request made by the component under test.
     #[from]
     NetworkRequest(NetworkRequest<Message>),
 }
 
 impl ReactorEvent for UnitTestEvent {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
+    fn is_control(&self) -> bool {
         match self {
-            UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
-            _ => None,
+            UnitTestEvent::ControlAnnouncement(_) | UnitTestEvent::FatalAnnouncement(_) => true,
+            UnitTestEvent::NetworkRequest(_) => false,
         }
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            UnitTestEvent::FatalAnnouncement(FatalAnnouncement { file, line, msg }) => {
+                Some(ControlAnnouncement::FatalError { file, line, msg })
+            }
             UnitTestEvent::NetworkRequest(_) => None,
         }
     }
@@ -374,6 +384,8 @@ pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> D
     )
 }
 
+// TODO - remove `allow` once used in tests again.
+#[allow(dead_code)]
 /// Creates a random deploy that is considered not expired.
 pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
     create_test_deploy(

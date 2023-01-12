@@ -7,15 +7,22 @@ use std::{
 use tracing::error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use casper_types::{Key, StoredValue};
 
 use crate::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
         error,
         state::{CommitError, CommitProvider, StateProvider, StateReader},
-        trie::{merkle_proof::TrieMerkleProof, TrieOrChunk, TrieOrChunkId},
-        trie_store::operations::{self, ReadResult},
+        store::Store,
+        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie_store::{
+            lmdb::LmdbTrieStore,
+            operations::{
+                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
+            },
+        },
     },
 };
 
@@ -225,14 +232,6 @@ impl StateProvider for ScratchGlobalState {
         self.state.empty_root_hash
     }
 
-    fn get_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Self::Error> {
-        self.state.get_trie(correlation_id, trie_or_chunk_id)
-    }
-
     fn get_trie_full(
         &self,
         correlation_id: CorrelationId,
@@ -246,13 +245,13 @@ impl StateProvider for ScratchGlobalState {
         self.state.put_trie(correlation_id, trie)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
-    fn missing_trie_keys(
+    /// Finds all of the keys of missing directly descendant `Trie<K,V>` values
+    fn missing_children(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Digest>,
+        trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error> {
-        self.state.missing_trie_keys(correlation_id, trie_keys)
+        self.state.missing_children(correlation_id, trie_keys)
     }
 }
 

@@ -23,8 +23,6 @@
 //!    prevent any actual logic depending on them. If a counter is being increment as a metric and
 //!    also required for business logic, a second counter should be kept in the component's state.
 
-use std::convert::Infallible;
-
 use datasize::DataSize;
 use prometheus::{Encoder, Registry, TextEncoder};
 use tracing::error;
@@ -34,6 +32,8 @@ use crate::{
     effect::{requests::MetricsRequest, EffectBuilder, EffectExt, Effects},
     NodeRng,
 };
+
+const COMPONENT_NAME: &str = "metrics";
 
 /// The metrics component.
 #[derive(DataSize, Debug)]
@@ -45,7 +45,6 @@ pub(crate) struct Metrics {
 
 impl<REv> Component<REv> for Metrics {
     type Event = MetricsRequest;
-    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -71,6 +70,10 @@ impl<REv> Component<REv> for Metrics {
                 }
             }
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }
 
