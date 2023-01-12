@@ -268,7 +268,7 @@ impl SyncLeaper {
         }
     }
 
-    /// ```mermaid - DROP
+    /// ```mermaid
     /// flowchart TD
     ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
     ///     style End fill:#66ccff,stroke:#333,stroke-width:4px

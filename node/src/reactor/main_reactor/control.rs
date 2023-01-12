@@ -25,7 +25,61 @@ use crate::{
 const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
 
 /// Allow the runner to shut down cleanly before shutting down the reactor.
-
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     G((Network))
+///     E((BlockAccumulator))
+///     F((DeployBuffer))
+///     H[(Storage)]
+///     I((SyncLeaper))
+///     A(("Reactor<br/>(control logic)"))
+///     J((Fetcher))
+///     B((ContractRuntime))
+///     C((BlockSynchronizer))
+///     D((Consensus))
+///     K((Gossiper))
+/// 
+///     A -->|"Execute block (after<br/>genesis or upgrade)"| B
+///     A -->|Attempt Leap| I    
+///     B -->|Put executed block<br/>Put approvals hashes<br/>Put execution results| H
+///     C -->|Execute completed block<br/>Get execution results checksum<br/>Enqueue block for execution| B
+///     C -->|Fetch block data| J
+///     C -->|Make block executable<br/>Mark block completed<br/>Put execution results| H
+///     C -->|Get fully connected peers| G
+///     C -->|Get peers for block| E
+///     D -->|Get fully connected peers| G
+///     D -->|Store finalized approvals<br/>Get deploys<br/>Get block header| H
+///     D -->|Enqueue block for execution<br/>Execute finalized block| B
+///     D -->|Get appendable block| F
+///     E -->|Mark block complete<br/>Put signatures<br/>Put block| H
+///     F -->|Get deploy| H
+///     I -->|Fetch SyncLeap| J
+///     K -->|Register block details| E
+///     A -->|Created finality signature<br/>Executed block| E
+/// ```
+/// ```mermaid
+/// sequenceDiagram
+///     Note over Control Logic, ContractRuntime: this diagram does NOT<br/>reflect time sequence.<br/>It only shows interactions<br/>between components and<br/>should be replaced by<br/>"Component Diagram"<br/>once it's available in Mermaid.
+///     Control Logic ->> ContractRuntime: Execute block (after<br/>genesis or upgrade)
+///     Control Logic ->> SyncLeaper: Attempt Leap
+///     ContractRuntime ->> Storage: Put executed block<br/>Put approvals hashes<br/>Put execution results
+///     BlockSynchronizer ->> ContractRuntime: Execute completed block<br/>Get execution results checksum<br/>Enqueue block for execution
+///     BlockSynchronizer ->> Fetcher: Fetch block details
+///     BlockSynchronizer ->> Storage: Make block executable<br/>Mark block completed<br/>Put execution results
+///     BlockSynchronizer ->> Network: Get fully connected peers
+///     BlockSynchronizer ->> BlockAccumulator: Get peers for block
+///     Consensus ->> Network: Get fully connected peers
+///     Consensus ->> Storage: Store finalized approvals<br/>Get deploys<br/>Get block header
+///     Consensus ->> ContractRuntime: Enqueue block for execution</br>Execute finalized block
+///     Consensus ->> DeployBuffer: Get appendable block
+///     Consensus ->> DeployBuffer: Get appendable block
+///     BlockAccumulator ->> Storage: Mark block complete<br/>Put signatures<br/>Put block
+///     DeployBuffer ->> Storage: Get deploy
+///     SyncLeaper ->> Fetcher: Fetch SyncLeap
+///     Gossiper ->> BlockAccumulator: Register block details
+///     Control Logic ->> BlockAccumulator: Created finality signature<br/>Executed block
+/// ```
 impl MainReactor {
     pub(super) fn crank(
         &mut self,
