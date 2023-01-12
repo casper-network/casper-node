@@ -104,6 +104,7 @@ proptest = "1.0.0"
 proptest-derive = "0.3.0"
 rand_core = "0.6.2"
 reqwest = { version = "0.11.3", features = ["stream"] }
+strum = { version = "0.24.1", features = ["strum_macros", "derive"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]

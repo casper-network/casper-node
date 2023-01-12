@@ -15,8 +15,6 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-#[cfg(test)]
-use crate::testing::specimen::LargestSpecimen;
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
 use super::{counting_format::ConnectionId, health::Nonce};
@@ -28,6 +26,8 @@ fn default_protocol_version() -> ProtocolVersion {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
     Handshake {
@@ -419,9 +419,54 @@ pub struct EstimatorWeights {
 }
 
 #[cfg(test)]
-impl<P> LargestSpecimen for Message<P> {
-    fn largest_specimen() -> Self {
-        todo!()
+mod specimen_support {
+    use itertools::Itertools;
+    use serde::Serialize;
+    use strum::IntoEnumIterator;
+
+    use crate::testing::specimen::{LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT};
+
+    use super::{Message, MessageDiscriminants};
+
+    impl<P> LargestSpecimen for Message<P>
+    where
+        P: Serialize,
+    {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            let mut candidates = vec![];
+            let largest_network_name = estimator.require_parameter("network_name_limit") as usize;
+            for variant in MessageDiscriminants::iter() {
+                candidates.push(match variant {
+                    MessageDiscriminants::Handshake => {
+                        let mut network_name = String::new();
+                        for _ in 0..largest_network_name {
+                            network_name.push(HIGHEST_UNICODE_CODEPOINT);
+                        }
+
+                        Message::Handshake {
+                            network_name: String::new(),
+                            public_addr: LargestSpecimen::largest_specimen(estimator),
+                            protocol_version: LargestSpecimen::largest_specimen(estimator),
+                            consensus_certificate: todo!(),
+                            is_syncing: LargestSpecimen::largest_specimen(estimator),
+                            chainspec_hash: todo!(),
+                        }
+                    }
+                    MessageDiscriminants::Ping => todo!(),
+                    MessageDiscriminants::Pong => todo!(),
+                    MessageDiscriminants::Payload => todo!(),
+                });
+            }
+
+            // TODO: Factor out into function and add a test.
+            candidates
+                .into_iter()
+                .map(|c| (estimator.estimate(&c), c))
+                .sorted_by_key(|(sz, _)| *sz)
+                .next()
+                .map(|(_, candidate)| candidate)
+                .expect("should have at least one candidate")
+        }
     }
 }
 
@@ -437,16 +482,33 @@ mod tests {
     use tokio_serde::{Deserializer, Serializer};
 
     use crate::{
-        components::network::message_pack_format::MessagePackFormat, protocol,
-        testing::specimen::LargestSpecimen,
+        components::network::message_pack_format::MessagePackFormat,
+        protocol,
+        testing::specimen::{LargestSpecimen, SizeEstimator},
     };
 
     use super::*;
 
+    /// An estimator that uses the serialized network representation as a measure of size.
+    #[derive(Copy, Clone, Debug)]
+    pub(crate) struct NetworkMessageEstimator;
+
+    impl SizeEstimator for NetworkMessageEstimator {
+        fn estimate<T: Serialize>(&self, val: &T) -> usize {
+            todo!()
+        }
+
+        fn get_parameter(&self, name: &'static str) -> Option<i64> {
+            todo!()
+        }
+    }
+
     #[test]
     fn serialized_message_does_not_exceed_maximum_size() {
+        let estimator = NetworkMessageEstimator;
+
         // Note: In theory, this check could be moved into chainspec validation.
-        let specimen = Message::<protocol::Message>::largest_specimen();
+        let specimen = Message::<protocol::Message>::largest_specimen(&estimator);
 
         let serialized = serialize_message(&specimen);
 
