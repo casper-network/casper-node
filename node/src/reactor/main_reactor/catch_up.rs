@@ -253,36 +253,6 @@ impl MainReactor {
         }
     }
 
-    #[cfg_attr(doc, aquamarine::aquamarine)]
-    /// ```mermaid
-    /// flowchart TD
-    ///     style C fill:#ffcc66,stroke:#333,stroke-width:4px
-    ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
-    ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
-    ///
-    ///     title[SyncLeap process - top level]
-    ///     title---Start
-    ///     style title fill:#FFF,stroke:#FFF
-    ///     linkStyle 0 stroke-width:0;
-    ///
-    ///     Start --> A[register hash in<br>block synchronizer]
-    ///     A --> B[leap status]
-    ///     B --> Received
-    ///     B --> Idle
-    ///     B --> Awaiting
-    ///     B --> Failed
-    ///     Awaiting --> C[check later]
-    ///     Failed --> D[count reattempts]
-    ///     D --> E
-    ///     Idle --> E[get X fully connected<br>random peers]
-    ///     E --> F{have at least<br>one peer?}
-    ///     F -->|Yes| G[attempt leap]
-    ///     F -->|No| C
-    ///     Received --> H[update highest switch block]
-    ///     H --> I[register leap sync<br>and update local state]
-    ///     I --> End
-    ///     G --> C
-    /// ```
     fn catch_up_leap(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -356,43 +326,6 @@ impl MainReactor {
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }
 
-    #[cfg_attr(doc, aquamarine::aquamarine)]
-    /// ```mermaid
-    /// flowchart TD
-    ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
-    ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
-    ///     
-    ///     title[SyncLeap process - registering sync leap result]
-    ///     title---Start
-    ///     style title fill:#FFF,stroke:#FFF
-    ///     linkStyle 0 stroke-width:0;
-    ///     
-    ///     Start --> B[update local highest switch block]
-    ///     B --> C[update validator weights]
-    ///     C --> A{is historical or forward<br>sync in progress?}
-    ///     subgraph update block synchronizer
-    ///     A -->|Yes| D{does synchronizer block<br>hash match sync leaps's<br>highest block hash?}
-    ///     A -->|No| G{validator weights for<br>sync leap's highest<br>block era available?}
-    ///     D -->|Yes| E[apply signatures if available]
-    ///     E --> F[update peers]
-    ///     D -->|No| G
-    ///     G -->|Yes| H[create block builder]
-    ///     H --> I[apply signatures if available]
-    ///     I --> J{is execution state needed?}
-    ///     J -->|Yes| K[start historical sync]
-    ///     J -->|No| L[start forward sync]
-    ///     end
-    ///     K --> M
-    ///     L --> M
-    ///     F --> M
-    ///     subgraph update block accumulator
-    ///     G -->|No| M[we might have new validator weights]
-    ///     M --> N{does any acceptor have<br>sufficient finality now?}
-    ///     N -->|Yes| O[store block and finality<br>signatures if not already stored]
-    ///     end
-    ///     O --> End
-    ///     N -->|No| End
-    /// ```
     fn catch_up_leap_received(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,

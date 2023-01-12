@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     
+///     Start --> Initialize
 ///     Initialize --> CatchUp
 ///     CatchUp --> KeepUp
 ///     KeepUp --> CatchUp
@@ -16,8 +20,37 @@ use serde::{Deserialize, Serialize};
 ///     KeepUp --> ShutdownForUpgrade
 ///     Validate --> ShutdownForUpgrade
 ///     CatchUp --> Upgrading
-///     CatchUp --> Validate
+///     CatchUp -->|at genesis| Validate
 ///     Upgrading --> CatchUp
+///     ShutdownForUpgrade --> End
+/// ```
+/// ```mermaid
+/// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     style F fill:#ffcc66,stroke:#333,stroke-width:4px
+///     style G fill:#ffcc66,stroke:#333,stroke-width:4px
+///     title[CatchUP process]
+///     title---Start
+///     style title fill:#FFF,stroke:#FFF
+///     linkStyle 0 stroke-width:0;
+///
+///     Start --> A["get sync identifier (sync starting point)"]
+///     A --> BlockHash
+///     A --> BlockIdentifier
+///     A --> SyncedBlockIdentifier
+///     A --> LocalTip
+///     BlockHash --> E[process identifier in<br/>block accumulator]
+///     BlockIdentifier --> E
+///     SyncedBlockIdentifier --> E
+///     LocalTip --> E
+///     CaughtUp --> H[handle upgrade<br/>if needed]
+///     H --> End
+///     E -->|more data needed<br/>from network| Leap
+///     E -->|block represneted by<br/>identifier is not stored<br/>locally, sync it| BlockSync
+///     E -->|we think we're close<br/>enough to the tip|CaughtUp
+///     Leap --> F[initiate SyncLeap<br/>and retry later]
+///     BlockSync --> G[initiate BlockSync<br/>and retry later]
 /// ```
 #[derive(
     Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,

@@ -148,6 +148,37 @@ impl<REv> ReactorEventT for REv where
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     style Z fill:#ff8a8a,stroke:#333,stroke-width:4px
+///     style ZZ fill:#8aff94,stroke:#333,stroke-width:4px
+///     title[Deploy Acceptance process]
+///     title---Start
+///     style title fill:#FFF,stroke:#FFF
+///     linkStyle 0 stroke-width:0;
+///
+///     Start --> A{has valid size?}
+///     A -->|Yes| B{"is compliant with config?<br/>(size, chain name, ttl, etc.)"}    
+///     G -->|Yes| ZZ[Accept]
+///     B -->|Yes| C{is from<br/>client?}
+///     C -->|Yes| CLIENT{has expired?}
+///     B -->|No| Z[Reject]
+///     C -->|No| E
+///     CLIENT -->|Yes| Z
+///     CLIENT -->|No| D{"is client<br/>account correct?<br/>(authorization, weight,<br/>balance, etc.)"}
+///     D -->|Yes| E{"is payment and<br/>session logic correct?<br/>(module bytes,<br/>payment amount)"}
+///     E -->|No| Z
+///     E -->|Yes| F{is contract valid?}
+///     F -->|Yes| G{is deploy<br/>cryptographically<br/>valid?}
+///     F -->|No| Z
+///     D -->|No| Z
+///     G -->|No| Z
+///     ZZ --> End
+///     Z --> End
+/// ```
 #[derive(Debug, DataSize)]
 pub struct DeployAcceptor {
     chain_name: String,
