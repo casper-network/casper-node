@@ -496,11 +496,15 @@ mod tests {
 
     impl SizeEstimator for NetworkMessageEstimator {
         fn estimate<T: Serialize>(&self, val: &T) -> usize {
-            todo!()
+            serialize_message(&val).len()
         }
 
         fn get_parameter(&self, name: &'static str) -> Option<i64> {
-            todo!()
+            match name {
+                // Limit to a network name of a thousand characters for now.
+                "network_name_limit" => Some(1000),
+                _ => None,
+            }
         }
     }
 

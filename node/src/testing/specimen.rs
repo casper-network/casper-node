@@ -164,7 +164,7 @@ impl LargestSpecimen for Signature {
 
 // impls for `casper_hashing`, which is technically a foreign crate -- so we put them here.
 impl LargestSpecimen for Digest {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+    fn largest_specimen<E: SizeEstimator>(_estimator: &E) -> Self {
         // Hashes are fixed size by definition, so any value will do.
         Digest::hash("")
     }
