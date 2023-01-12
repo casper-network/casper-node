@@ -301,12 +301,13 @@ impl GlobalStateSynchronizer {
             Ok(trie_raw) => trie_raw,
             Err(error) => {
                 debug!(%error, "error fetching a trie");
-                return request_root_hashes
-                    .into_iter()
-                    .flat_map(|root_hash| {
-                        self.cancel_request(root_hash, Error::TrieAccumulator(error.clone()))
-                    })
-                    .collect();
+                let mut effects = Effects::new();
+                effects.extend(request_root_hashes.into_iter().flat_map(|root_hash| {
+                    self.cancel_request(root_hash, Error::TrieAccumulator(error.clone()))
+                }));
+                // continue fetching other requests if any
+                effects.extend(self.parallel_fetch(effect_builder));
+                return effects;
             }
         };
 
