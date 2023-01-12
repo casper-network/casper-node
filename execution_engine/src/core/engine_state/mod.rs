@@ -39,8 +39,8 @@ use casper_storage::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
         storage::{
             lmdb,
-            state::{CommitProvider, StateProvider},
-            trie::{TrieOrChunk, TrieOrChunkId},
+            state::{CommitProvider, StateProvider, StateReader},
+            trie::{merkle_proof::TrieMerkleProof, TrieRaw},
         },
     },
 };
@@ -2086,7 +2086,7 @@ where
         &self,
         correlation_id: CorrelationId,
         state_root_hash: Digest,
-    ) -> Result<TrieMerkleProof<Key, StoredValue>, Error> {
+    ) -> Result<TrieMerkleProof, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),

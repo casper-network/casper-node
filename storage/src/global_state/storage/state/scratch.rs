@@ -14,15 +14,8 @@ use crate::global_state::{
     storage::{
         error,
         state::{CommitError, CommitProvider, StateProvider, StateReader},
-        store::Store,
-        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
-        trie_store::{
-            lmdb::LmdbTrieStore,
-            operations::{
-                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
-            },
-        },
+        trie::{merkle_proof::TrieMerkleProof, TrieRaw},
+        trie_store::operations::{read, ReadResult},
     },
 };
 
@@ -169,7 +162,7 @@ impl CommitProvider for ScratchGlobalState {
                 (None, transform) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
-                    match operations::read::<_, _, Self::Error>(
+                    match read::<_, _, Self::Error>(
                         correlation_id,
                         &scratch_trie,
                         &scratch_trie,
@@ -236,7 +229,7 @@ impl StateProvider for ScratchGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         self.state.get_trie_full(correlation_id, trie_key)
     }
 
@@ -251,7 +244,7 @@ impl StateProvider for ScratchGlobalState {
         correlation_id: CorrelationId,
         trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error> {
-        self.state.missing_children(correlation_id, trie_keys)
+        self.state.missing_children(correlation_id, trie_raw)
     }
 }
 

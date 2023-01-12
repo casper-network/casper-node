@@ -74,7 +74,6 @@ pub fn execute_finalized_block(
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
-    let maybe_deploy_approvals_root_hash = compute_approvals_root_hash(&deploys, &transfers)?;
 
     // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
     for deploy in deploys {
@@ -175,10 +174,6 @@ pub fn execute_finalized_block(
             None
         };
 
-    // Update the metric.
-    if let Some(metrics) = metrics.as_ref() {
-        metrics.chain_height.set(block_height as i64);
-    }
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 

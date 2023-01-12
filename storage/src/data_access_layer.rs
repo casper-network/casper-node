@@ -3,7 +3,11 @@ use casper_types::EraId;
 use crate::global_state::{
     shared,
     storage::{
-        state::{CommitProvider, StateProvider},
+        error,
+        state::{
+            scratch::{ScratchGlobalState, ScratchGlobalStateView},
+            CommitProvider, StateProvider,
+        },
         trie::TrieRaw,
     },
 };

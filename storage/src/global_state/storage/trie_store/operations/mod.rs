@@ -260,7 +260,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     // Optimization: Don't deserialize leaves as they have no descendants.
-    if let Some(&Trie::<K, V>::LEAF_TAG) = trie_raw.first() {
+    if let Some(&Trie::LEAF_TAG) = trie_raw.first() {
         return Ok(vec![]);
     }
 

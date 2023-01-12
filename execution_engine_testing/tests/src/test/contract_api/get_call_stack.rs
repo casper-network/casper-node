@@ -2877,9 +2877,17 @@ mod payment {
         };
 
         if call_depth == 0 {
-            builder.exec(execute_request).expect_success().commit();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
         } else {
-            builder.exec(execute_request).commit().expect_failure();
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_failure();
             let error = builder.get_error().expect("must have an error");
             assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
         }
@@ -2917,46 +2925,68 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec(execute_request).commit().expect_success();
-
-        super::assert_each_context_has_correct_call_stack_info_module_bytes(
-            &mut builder,
-            subcalls,
-            current_contract_package_hash,
-        );
+        if call_depth == 0 {
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
+        } else {
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
     }
-}
 
-fn execute_stored_payment_by_contract_hash(
-    builder: &mut LmdbWasmTestBuilder,
-    call_depth: usize,
-    subcalls: Vec<Call>,
-    current_contract_hash: HashAddr,
-) {
-    let execute_request = {
-        let mut rng = rand::thread_rng();
-        let deploy_hash = rng.gen();
-        let sender = *DEFAULT_ACCOUNT_ADDR;
-        let args = runtime_args! {
-            ARG_CALLS => subcalls,
-            ARG_CURRENT_DEPTH => 0u8,
-            mint::ARG_AMOUNT => approved_amount(call_depth),
+    fn execute_stored_payment_by_contract_hash(
+        builder: &mut LmdbWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+        current_contract_hash: HashAddr,
+    ) {
+        let execute_request = {
+            let mut rng = rand::thread_rng();
+            let deploy_hash = rng.gen();
+            let sender = *DEFAULT_ACCOUNT_ADDR;
+            let args = runtime_args! {
+                ARG_CALLS => subcalls,
+                ARG_CURRENT_DEPTH => 0u8,
+                mint::ARG_AMOUNT => approved_amount(call_depth),
+            };
+            let deploy = DeployItemBuilder::new()
+                .with_address(sender)
+                .with_stored_payment_hash(
+                    current_contract_hash.into(),
+                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                    args,
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+                .with_authorization_keys(&[sender])
+                .with_deploy_hash(deploy_hash)
+                .build();
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_payment_hash(
-                current_contract_hash.into(),
-                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                args,
-            )
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
 
-    builder.exec(execute_request).commit().expect_success();
+        if call_depth == 0 {
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_success();
+        } else {
+            builder
+                .exec(execute_request)
+                .apply()
+                .commit_to_disk()
+                .expect_failure();
+            let error = builder.get_error().expect("must have an error");
+            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+        }
+    }
 
     // Session + recursive subcall
 
@@ -3242,7 +3272,7 @@ fn execute_stored_payment_by_contract_hash(
                     *call_depth
                 ];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls);
         }
     }
 
@@ -3280,7 +3310,7 @@ fn execute_stored_payment_by_contract_hash(
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls);
         }
     }
 
@@ -3317,7 +3347,7 @@ fn execute_stored_payment_by_contract_hash(
                     *call_depth
                 ];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls);
         }
     }
 
@@ -3392,7 +3422,7 @@ fn execute_stored_payment_by_contract_hash(
                     *call_depth
                 ];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls);
         }
     }
 

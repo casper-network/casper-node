@@ -924,10 +924,9 @@ mod tests {
 
     fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
         let next_hash = if let TrieOrChunk::Value(trie_bytes) = trie_or_chunk {
-            if let Trie::Node { pointer_block } = bytesrepr::deserialize::<Trie<Key, StoredValue>>(
-                trie_bytes.into_inner().into_inner().into(),
-            )
-            .expect("Could not parse trie bytes")
+            if let Trie::Node { pointer_block } =
+                bytesrepr::deserialize::<Trie>(trie_bytes.into_inner().into_inner().into())
+                    .expect("Could not parse trie bytes")
             {
                 if pointer_block.child_count() == 0 {
                     panic!("expected children");

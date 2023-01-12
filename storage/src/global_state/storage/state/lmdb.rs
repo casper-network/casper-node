@@ -89,7 +89,6 @@ impl LmdbGlobalState {
                     environment: self.environment.clone(),
                     trie_store: self.trie_store.clone(),
                     empty_root_hash: self.empty_root_hash,
-                    digests_without_missing_descendants: RwLock::new(HashSet::new()),
                 }
             }
         }
@@ -255,8 +254,7 @@ impl StateProvider for LmdbGlobalState {
     ) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<TrieRaw> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(TrieRaw::new);
+            Store::<Digest, Trie>::get_raw(&*self.trie_store, &txn, trie_key)?.map(TrieRaw::new);
         txn.commit()?;
         Ok(ret)
     }
@@ -281,13 +279,12 @@ impl StateProvider for LmdbGlobalState {
         trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_hashes = missing_children::<
-            Key,
-            StoredValue,
-            lmdb::RoTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
+        let missing_hashes = missing_children::<lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+            correlation_id,
+            &txn,
+            self.trie_store.deref(),
+            trie_raw,
+        )?;
         txn.commit()?;
         Ok(missing_hashes)
     }

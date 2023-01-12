@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, Key};
 
 use super::{Block, BlockHash};
 use crate::{
@@ -29,7 +29,7 @@ pub(crate) struct ApprovalsHashes {
     /// The Merkle proof of the checksum registry containing the checksum of
     /// the finalized approvals.
     #[data_size(skip)]
-    merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    merkle_proof_approvals: TrieMerkleProof,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     is_verified: OnceCell<Result<(), ApprovalsHashesValidationError>>,
@@ -39,7 +39,7 @@ impl ApprovalsHashes {
     pub(crate) fn new(
         block_hash: &BlockHash,
         approvals_hashes: Vec<ApprovalsHash>,
-        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+        merkle_proof_approvals: TrieMerkleProof,
     ) -> Self {
         Self {
             block_hash: *block_hash,

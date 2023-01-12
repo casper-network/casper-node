@@ -1250,7 +1250,9 @@ impl Storage {
             .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
         let maybe_block = self.get_highest_complete_block(&mut txn)?;
-        txn.commit().expect("Could not commit transaction");
+        txn.apply()
+            .commit_to_disk()
+            .expect("Could not commit transaction");
         Ok(maybe_block)
     }
 
@@ -2849,7 +2851,9 @@ impl Storage {
         let switch_block = self
             .get_switch_block_by_era_id(&mut txn, EraId::from(switch_block_era_num))
             .expect("LMDB panicked trying to get switch block");
-        txn.commit().expect("Could not commit transaction");
+        txn.apply()
+            .commit_to_disk()
+            .expect("Could not commit transaction");
         Ok(switch_block)
     }
 }
