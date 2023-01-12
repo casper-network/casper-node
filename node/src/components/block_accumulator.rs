@@ -222,12 +222,12 @@ impl BlockAccumulator {
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
     pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
-        self.purge();
         let new_local_tip = match self.local_tip {
             Some(current) => current.height < height && current.era_id <= era_id,
             None => true,
         };
         if new_local_tip {
+            self.purge();
             self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
             info!(local_tip=?self.local_tip, "new local tip detected");
         }
@@ -811,9 +811,6 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::ExecutedBlock { hot_block } => {
                 let height = hot_block.block.header().height();
                 let era_id = hot_block.block.header().era_id();
-                // Logically it makes sense to purge the acceptors here or in
-                // `register_local_tip`, but only on the path where a new tip
-                // is accepted.
                 self.register_local_tip(height, era_id);
                 self.register_block(effect_builder, hot_block, None)
             }

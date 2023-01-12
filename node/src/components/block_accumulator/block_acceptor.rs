@@ -418,7 +418,6 @@ impl BlockAcceptor {
         &self.signatures
     }
 
-    #[allow(unused)]
     pub(super) fn signatures_mut(
         &mut self,
     ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
