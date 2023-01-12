@@ -8,7 +8,7 @@ use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use casper_hashing::Digest;
 use casper_types::{
     crypto::{PublicKey, PublicKeyDiscriminants, Signature},
-    AsymmetricType, ProtocolVersion, SemVer, SignatureDiscriminants,
+    AsymmetricType, EraId, ProtocolVersion, SemVer, SignatureDiscriminants,
 };
 use serde::Serialize;
 use strum::IntoEnumIterator;
@@ -112,6 +112,12 @@ impl LargestSpecimen for u32 {
     }
 }
 
+impl LargestSpecimen for u64 {
+    fn largest_specimen<E: SizeEstimator>(_estimator: &E) -> Self {
+        u64::MAX
+    }
+}
+
 impl<T> LargestSpecimen for Option<T>
 where
     T: LargestSpecimen,
@@ -159,6 +165,12 @@ impl LargestSpecimen for Signature {
             SignatureDiscriminants::Secp256k1 => Signature::secp256k1([0xFFu8; 64])
                 .expect("fixed specimen should be valid Secp256k1 signature"),
         })
+    }
+}
+
+impl LargestSpecimen for EraId {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        EraId::new(LargestSpecimen::largest_specimen(estimator))
     }
 }
 

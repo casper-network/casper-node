@@ -31,6 +31,8 @@ use crate::{
 
 /// Reactor message.
 #[derive(Clone, From, Serialize, Deserialize)]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum Message {
     /// Consensus component message.
     #[from]
@@ -213,6 +215,32 @@ impl Debug for Message {
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+
+    use super::{Message, MessageDiscriminants};
+
+    impl LargestSpecimen for Message {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    MessageDiscriminants::Consensus => todo!(),
+                    MessageDiscriminants::ConsensusRequest => todo!(),
+                    MessageDiscriminants::BlockGossiper => todo!(),
+                    MessageDiscriminants::DeployGossiper => todo!(),
+                    MessageDiscriminants::FinalitySignatureGossiper => todo!(),
+                    MessageDiscriminants::AddressGossiper => todo!(),
+                    MessageDiscriminants::GetRequest => todo!(),
+                    MessageDiscriminants::GetResponse => todo!(),
+                    MessageDiscriminants::FinalitySignature => todo!(),
+                },
+            )
         }
     }
 }

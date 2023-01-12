@@ -70,6 +70,8 @@ const COMPONENT_NAME: &str = "consensus";
 
 /// A message to be handled by the consensus protocol instance in a particular era.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum EraMessage<C>
 where
     C: Context,
@@ -128,6 +130,8 @@ impl<C: Context> EraRequest<C> {
 }
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol {
@@ -362,6 +366,46 @@ impl<REv> ReactorEventT for REv where
         + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
 {
+}
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+
+    use super::{
+        ClContext, ConsensusMessage, ConsensusMessageDiscriminants, EraMessage,
+        EraMessageDiscriminants,
+    };
+
+    impl LargestSpecimen for ConsensusMessage {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            largest_variant::<Self, ConsensusMessageDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    ConsensusMessageDiscriminants::Protocol => ConsensusMessage::Protocol {
+                        era_id: LargestSpecimen::largest_specimen(estimator),
+                        payload: LargestSpecimen::largest_specimen(estimator),
+                    },
+                    ConsensusMessageDiscriminants::EvidenceRequest => {
+                        ConsensusMessage::EvidenceRequest {
+                            era_id: LargestSpecimen::largest_specimen(estimator),
+                            pub_key: LargestSpecimen::largest_specimen(estimator),
+                        }
+                    }
+                }
+            })
+        }
+    }
+
+    impl LargestSpecimen for EraMessage<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            largest_variant::<Self, EraMessageDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    EraMessageDiscriminants::Zug => EraMessage::Zug(todo!()),
+                    EraMessageDiscriminants::Highway => EraMessage::Highway(todo!()),
+                }
+            })
+        }
+    }
 }
 
 impl<REv> Component<REv> for EraSupervisor

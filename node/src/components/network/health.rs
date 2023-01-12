@@ -262,11 +262,18 @@ mod tests {
     use assert_matches::assert_matches;
     use rand::Rng;
 
-    use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig};
+    use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig, Nonce};
     use crate::{
-        components::network::health::TaggedTimestamp, testing::test_clock::TestClock,
+        components::network::health::TaggedTimestamp,
+        testing::{specimen::LargestSpecimen, test_clock::TestClock},
         types::NodeRng,
     };
+
+    impl LargestSpecimen for Nonce {
+        fn largest_specimen<E: crate::testing::specimen::SizeEstimator>(estimator: &E) -> Self {
+            Self(LargestSpecimen::largest_specimen(estimator))
+        }
+    }
 
     impl HealthConfig {
         pub(crate) fn test_config() -> Self {

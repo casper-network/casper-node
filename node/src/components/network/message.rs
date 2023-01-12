@@ -430,7 +430,7 @@ mod specimen_support {
 
     impl<P> LargestSpecimen for Message<P>
     where
-        P: Serialize,
+        P: Serialize + LargestSpecimen,
     {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
             let largest_network_name = estimator.require_parameter("network_name_limit") as usize;
@@ -453,9 +453,15 @@ mod specimen_support {
                             chainspec_hash: LargestSpecimen::largest_specimen(estimator),
                         }
                     }
-                    MessageDiscriminants::Ping => todo!(),
-                    MessageDiscriminants::Pong => todo!(),
-                    MessageDiscriminants::Payload => todo!(),
+                    MessageDiscriminants::Ping => Message::Ping {
+                        nonce: LargestSpecimen::largest_specimen(estimator),
+                    },
+                    MessageDiscriminants::Pong => Message::Pong {
+                        nonce: LargestSpecimen::largest_specimen(estimator),
+                    },
+                    MessageDiscriminants::Payload => {
+                        Message::Payload(LargestSpecimen::largest_specimen(estimator))
+                    }
                 },
             )
         }
