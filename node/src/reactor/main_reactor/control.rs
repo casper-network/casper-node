@@ -39,7 +39,7 @@ const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_se
 ///     C((BlockSynchronizer))
 ///     D((Consensus))
 ///     K((Gossiper))
-/// 
+///
 ///     A -->|"Execute block (after<br/>genesis or upgrade)"| B
 ///     A -->|Attempt Leap| I    
 ///     B -->|Put executed block<br/>Put approvals hashes<br/>Put execution results| H
