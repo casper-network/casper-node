@@ -5,8 +5,10 @@
 
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 
-use casper_types::{ProtocolVersion, SemVer};
+use casper_hashing::Digest;
+use casper_types::{crypto::Signature, ProtocolVersion, PublicKey, SemVer};
 use serde::Serialize;
+use strum::IntoEnumIterator;
 
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
@@ -41,6 +43,26 @@ pub(crate) trait SizeEstimator {
 pub(crate) trait LargestSpecimen {
     /// Returns the largest possible specimen for this type.
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self;
+}
+
+/// Produces the largest variant of a specific `enum` using an estimator and a generation function.
+pub(crate) fn largest_variant<T, D, E, F>(estimator: &E, generator: F) -> T
+where
+    T: Serialize,
+    D: IntoEnumIterator,
+    E: SizeEstimator,
+    F: Fn(D) -> T,
+{
+    let mut candidates = vec![];
+    for variant in D::iter() {
+        candidates.push(generator(variant))
+    }
+    candidates.sort_by_key(|candidate| estimator.estimate(candidate));
+
+    candidates
+        .into_iter()
+        .next()
+        .expect("should have at least one candidate")
 }
 
 impl LargestSpecimen for SocketAddr {
@@ -110,5 +132,25 @@ impl LargestSpecimen for SemVer {
             minor: LargestSpecimen::largest_specimen(estimator),
             patch: LargestSpecimen::largest_specimen(estimator),
         }
+    }
+}
+
+impl LargestSpecimen for PublicKey {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        todo!()
+    }
+}
+
+impl LargestSpecimen for Signature {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        todo!()
+    }
+}
+
+// impls for `casper_hashing`, which is technically a foreign crate -- so we put them here.
+impl LargestSpecimen for Digest {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        // Hashes are fixed size by definition, so any value will do.
+        Digest::hash("")
     }
 }

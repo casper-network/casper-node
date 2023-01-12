@@ -420,23 +420,24 @@ pub struct EstimatorWeights {
 
 #[cfg(test)]
 mod specimen_support {
-    use itertools::Itertools;
     use serde::Serialize;
-    use strum::IntoEnumIterator;
 
-    use crate::testing::specimen::{LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT};
+    use crate::testing::specimen::{
+        largest_variant, LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT,
+    };
 
-    use super::{Message, MessageDiscriminants};
+    use super::{ConsensusCertificate, Message, MessageDiscriminants};
 
     impl<P> LargestSpecimen for Message<P>
     where
         P: Serialize,
     {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            let mut candidates = vec![];
             let largest_network_name = estimator.require_parameter("network_name_limit") as usize;
-            for variant in MessageDiscriminants::iter() {
-                candidates.push(match variant {
+
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
                     MessageDiscriminants::Handshake => {
                         let mut network_name = String::new();
                         for _ in 0..largest_network_name {
@@ -447,25 +448,25 @@ mod specimen_support {
                             network_name: String::new(),
                             public_addr: LargestSpecimen::largest_specimen(estimator),
                             protocol_version: LargestSpecimen::largest_specimen(estimator),
-                            consensus_certificate: todo!(),
+                            consensus_certificate: LargestSpecimen::largest_specimen(estimator),
                             is_syncing: LargestSpecimen::largest_specimen(estimator),
-                            chainspec_hash: todo!(),
+                            chainspec_hash: LargestSpecimen::largest_specimen(estimator),
                         }
                     }
                     MessageDiscriminants::Ping => todo!(),
                     MessageDiscriminants::Pong => todo!(),
                     MessageDiscriminants::Payload => todo!(),
-                });
-            }
+                },
+            )
+        }
+    }
 
-            // TODO: Factor out into function and add a test.
-            candidates
-                .into_iter()
-                .map(|c| (estimator.estimate(&c), c))
-                .sorted_by_key(|(sz, _)| *sz)
-                .next()
-                .map(|(_, candidate)| candidate)
-                .expect("should have at least one candidate")
+    impl LargestSpecimen for ConsensusCertificate {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            ConsensusCertificate {
+                public_key: LargestSpecimen::largest_specimen(estimator),
+                signature: LargestSpecimen::largest_specimen(estimator),
+            }
         }
     }
 }
