@@ -1300,7 +1300,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                                     .enqueue_block_for_execution(
                                         finalized_block,
                                         deploys,
-                                        MetaBlockState::new_synced(),
+                                        MetaBlockState::new_already_stored(),
                                     )
                                     .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
                             );

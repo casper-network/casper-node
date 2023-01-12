@@ -13,6 +13,13 @@ use crate::types::{Block, DeployHash, DeployHeader};
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
 
+/// A block along with its execution results and state recording which actions have been taken
+/// related to the block.
+///
+/// Some or all of these actions should be taken after a block is formed on a node via:
+/// * execution (ContractRuntime executing a FinalizedBlock)
+/// * accumulation (BlockAccumulator receiving a gossiped block and its finality signatures)
+/// * historical sync (BlockSynchronizer fetching all data relating to a block)
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct MetaBlock {
     pub(crate) block: Arc<Block>,
@@ -72,7 +79,7 @@ mod tests {
         let block = Arc::new(Block::random(&mut rng));
         let deploy = Deploy::random(&mut rng);
         let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
-        let state = State::new_synced();
+        let state = State::new_already_stored();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
         let meta_block2 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
@@ -81,7 +88,7 @@ mod tests {
 
         assert_eq!(merged.block, block);
         assert_eq!(merged.execution_results, execution_results);
-        assert_eq!(merged.state, State::new_synced());
+        assert_eq!(merged.state, State::new_already_stored());
         assert_eq!(meta_block2.merge(meta_block1).unwrap(), merged)
     }
 
@@ -110,7 +117,7 @@ mod tests {
         let block = Arc::new(Block::random(&mut rng));
         let deploy = Deploy::random(&mut rng);
         let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
-        let state = State::new_immediate_switch();
+        let state = State::new_not_to_be_gossiped();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
         let meta_block2 = MetaBlock::new(Arc::clone(&block), vec![], state);

@@ -1110,10 +1110,7 @@ impl MainReactor {
             }
         }
 
-        if state
-            .register_as_sent_to_consensus_post_execution()
-            .was_updated()
-        {
+        if state.register_as_consensus_notified().was_updated() {
             effects.extend(reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(
@@ -1127,10 +1124,7 @@ impl MainReactor {
             ));
         }
 
-        if state
-            .register_as_sent_to_accumulator_post_execution()
-            .was_updated()
-        {
+        if state.register_as_accumulator_notified().was_updated() {
             let meta_block = MetaBlock {
                 block,
                 execution_results,

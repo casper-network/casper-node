@@ -342,7 +342,7 @@ impl MainReactor {
             .enqueue_block_for_execution(
                 finalized_block,
                 vec![],
-                MetaBlockState::new_immediate_switch(),
+                MetaBlockState::new_not_to_be_gossiped(),
             )
             .ignore())
     }
@@ -401,7 +401,7 @@ impl MainReactor {
                         .enqueue_block_for_execution(
                             finalized_block,
                             vec![],
-                            MetaBlockState::new_immediate_switch(),
+                            MetaBlockState::new_not_to_be_gossiped(),
                         )
                         .ignore())
                 }

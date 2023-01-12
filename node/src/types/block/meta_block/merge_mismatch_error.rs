@@ -7,6 +7,4 @@ pub(crate) enum MergeMismatchError {
     Block,
     #[error("execution results mismatch when merging meta blocks")]
     ExecutionResults,
-    #[error("state mismatch when merging meta blocks")]
-    State,
 }
