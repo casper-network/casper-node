@@ -51,8 +51,8 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
+        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
         FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, HotBlockState,
         LegacyDeploy, NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
@@ -390,6 +390,10 @@ pub(crate) enum StorageRequest {
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
+    GetExecutionResults {
+        block_hash: BlockHash,
+        responder: Responder<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>>,
+    },
     GetBlockExecutionResultsOrChunk {
         /// Request ID.
         id: BlockExecutionResultsOrChunkId,
@@ -527,8 +531,11 @@ impl Display for StorageRequest {
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
+            StorageRequest::GetExecutionResults { block_hash, .. } => {
+                write!(formatter, "get execution results for {}", block_hash)
+            }
             StorageRequest::GetBlockExecutionResultsOrChunk { id, .. } => {
-                write!(formatter, "get execution results for {}", id)
+                write!(formatter, "get block execution results or chunk for {}", id)
             }
 
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {

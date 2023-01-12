@@ -7,7 +7,6 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -26,8 +25,7 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, FinalitySignature, FinalizedBlock, GossiperItem, HotBlock, Item,
-        NodeId,
+        Deploy, DeployHash, FinalitySignature, FinalizedBlock, GossiperItem, HotBlock, Item, NodeId,
     },
     utils::Source,
 };
@@ -401,22 +399,6 @@ impl Display for BlockAccumulatorAnnouncement {
         match self {
             BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
                 write!(f, "finality signature {} accepted", finality_signature.id())
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) enum BlockSynchronizerAnnouncement {
-    /// A block which wasn't previously stored on this node has been accepted and stored.
-    CompletedBlock { block: Arc<Block> },
-}
-
-impl Display for BlockSynchronizerAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockSynchronizerAnnouncement::CompletedBlock { block } => {
-                write!(f, "block {} completed", block.hash())
             }
         }
     }

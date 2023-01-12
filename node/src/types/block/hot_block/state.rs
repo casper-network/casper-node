@@ -67,6 +67,24 @@ impl State {
         }
     }
 
+    /// Returns a new `State` with all fields set to `true` except for `sent_to_deploy_buffer` and
+    /// `sent_to_consensus_post_execution`.
+    pub(crate) fn new_after_historical_sync() -> Self {
+        State {
+            immediate_switch_block_for_current_protocol_version: false,
+            stored: true,
+            sent_to_deploy_buffer: false,
+            updated_validator_matrix: true,
+            gossiped: true,
+            executed: true,
+            tried_to_sign: true,
+            sent_to_consensus_post_execution: false,
+            sent_to_accumulator_post_execution: true,
+            sufficient_finality: true,
+            marked_complete: true,
+        }
+    }
+
     pub(crate) fn is_stored(&self) -> bool {
         self.stored
     }

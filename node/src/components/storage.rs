@@ -92,10 +92,10 @@ use crate::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, DeployId, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
-        SyncLeapIdentifier, ValueOrChunk,
+        BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
+        DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem,
+        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId,
+        SignatureWeight, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{self, display_error, WithDir},
     NodeRng,
@@ -866,6 +866,12 @@ impl Storage {
                 };
                 responder.respond(maybe_deploy).ignore()
             }
+            StorageRequest::GetExecutionResults {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_execution_results(&block_hash)?)
+                .ignore(),
             StorageRequest::GetBlockExecutionResultsOrChunk { id, responder } => responder
                 .respond(self.read_block_execution_results_or_chunk(&id)?)
                 .ignore(),
@@ -2435,10 +2441,11 @@ impl Storage {
         None
     }
 
-    fn read_block_execution_results_or_chunk(
+    fn get_execution_results<Tx: Transaction>(
         &self,
-        request: &BlockExecutionResultsOrChunkId,
-    ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
         // There's no mapping between block_hash -> execution results.
         // We store execution results under the deploy hash for the txn.
         // In order to pull it out, we have to:
@@ -2447,20 +2454,18 @@ impl Storage {
         // 3. For every txns in the block's body, we load its deploy metadata.
         // 4. We extract txn's execution results from the `deploy_metadata` for the block
         // we're interested in.
-        let block_hash = request.block_hash();
-        let mut txn = self.env.begin_rw_txn()?;
-        let block_header: BlockHeader = match self.get_single_block_header(&mut txn, block_hash)? {
+        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_for_block_header(&mut txn, block_header.body_hash(), self.block_body_db);
+            get_body_for_block_header(txn, block_header.body_hash(), self.block_body_db);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
-                info!(
+                debug!(
                     %block_hash,
-                    "read_block_execution_results_or_chunk: retrieved block header but block body is missing from database"
+                    "retrieved block header but block body is absent"
                 );
                 return Ok(None);
             }
@@ -2468,27 +2473,28 @@ impl Storage {
 
         let mut execution_results = vec![];
         for deploy_hash in block_body.deploy_and_transfer_hashes() {
-            match self.get_deploy_metadata(&mut txn, deploy_hash)? {
+            match self.get_deploy_metadata(txn, deploy_hash)? {
                 None => {
-                    // We have the block and the body but not the deploy. This could happen
-                    // for a node that is still syncing and probably shouldn't be a fatal
-                    // error.
+                    debug!(
+                        %block_hash,
+                        %deploy_hash,
+                        "retrieved block but deploy is absent"
+                    );
                     return Ok(None);
                 }
                 Some(mut metadata) => {
-                    match metadata.execution_results.remove(request.block_hash()) {
-                        Some(results) => {
-                            execution_results.push(results);
+                    match metadata.execution_results.remove(block_hash) {
+                        Some(execution_result) => {
+                            execution_results.push((*deploy_hash, execution_result));
                         }
                         None => {
-                            // We have the block, we've got the deploy but its metadata
-                            // doesn't include the reference to the block.
-                            // This is an error b/c even though types seem to allow for a
-                            // single deploy map to multiple blocks, it shouldn't happen in
-                            // practice.
+                            // We have the block, we've got the deploy but its metadata doesn't
+                            // include the reference to the block. This is an error b/c even though
+                            // types seem to allow for a single deploy map to multiple blocks, it
+                            // shouldn't happen in practice.
                             error!(
                                 %block_hash,
-                                ?deploy_hash,
+                                %deploy_hash,
                                 "missing execution results for a deploy in particular block"
                             );
                             return Ok(None);
@@ -2497,13 +2503,55 @@ impl Storage {
                 }
             }
         }
+        Ok(Some(execution_results))
+    }
 
+    #[allow(clippy::type_complexity)]
+    fn read_execution_results(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>, FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let execution_results = match self.get_execution_results(&mut txn, block_hash)? {
+            Some(execution_results) => execution_results,
+            None => return Ok(None),
+        };
+
+        let mut ret = Vec::with_capacity(execution_results.len());
+        for (deploy_hash, execution_result) in execution_results {
+            match txn.get_value::<_, Deploy>(self.deploy_db, &deploy_hash)? {
+                None => {
+                    error!(
+                        %block_hash,
+                        %deploy_hash,
+                        "missing deploy"
+                    );
+                    return Ok(None);
+                }
+                Some(deploy) => ret.push((deploy_hash, deploy.take_header(), execution_result)),
+            };
+        }
+        Ok(Some(ret))
+    }
+
+    fn read_block_execution_results_or_chunk(
+        &self,
+        request: &BlockExecutionResultsOrChunkId,
+    ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let execution_results = match self.get_execution_results(&mut txn, request.block_hash())? {
+            Some(execution_results) => execution_results
+                .into_iter()
+                .map(|(_deploy_hash, execution_result)| execution_result)
+                .collect(),
+            None => return Ok(None),
+        };
         let value_or_chunk = match ValueOrChunk::new(execution_results, request.chunk_index()) {
             Ok(value_or_chunk) => value_or_chunk,
             Err(error) => {
                 // Failure shouldn't be fatal as the node can continue operating but won't be able
-                // to answer this particular query. We choose to return `None`
-                // instead, signaling other nodes to not query this one for that data.
+                // to answer this particular query. We choose to return `None` instead, signaling
+                // other nodes to not query this one for that data.
                 error!(
                     ?request,
                     ?error,

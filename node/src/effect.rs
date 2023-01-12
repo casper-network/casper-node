@@ -147,18 +147,18 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
+        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
         FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, HotBlock,
         HotBlockState, LegacyDeploy, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
-    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-    DeployBufferAnnouncement, FatalAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
-    PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+    BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
+    GossiperAnnouncement, HotBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
+    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -858,18 +858,6 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// The block synchronizer has ensured that all the parts of this block are stored
-    pub(crate) async fn announce_completed_block(self, block: Arc<Block>)
-    where
-        REv: From<BlockSynchronizerAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                BlockSynchronizerAnnouncement::CompletedBlock { block },
-                QueueKind::Validation,
-            )
-            .await;
-    }
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
@@ -1206,6 +1194,23 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::GetBlockSignature {
                 block_hash,
                 public_key: Box::new(public_key),
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_execution_results_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetExecutionResults {
+                block_hash,
                 responder,
             },
             QueueKind::FromStorage,

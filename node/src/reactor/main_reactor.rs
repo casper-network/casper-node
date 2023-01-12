@@ -50,10 +50,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            DeployBufferAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            GossiperAnnouncement, HotBlockAnnouncement, PeerBehaviorAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -609,39 +609,6 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockSynchronizerAnnouncement(
-                BlockSynchronizerAnnouncement::CompletedBlock { block },
-            ) => {
-                let mut effects = reactor::wrap_effects(
-                    MainEvent::DeployBuffer,
-                    self.deploy_buffer.handle_event(
-                        effect_builder,
-                        rng,
-                        deploy_buffer::Event::Block(Arc::clone(&block)),
-                    ),
-                );
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Consensus,
-                    self.consensus.handle_event(
-                        effect_builder,
-                        rng,
-                        consensus::Event::BlockAdded {
-                            header: Box::new(block.header().clone()),
-                            header_hash: *block.hash(),
-                        },
-                    ),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::BlockAdded(Arc::clone(&block)),
-                    ),
-                ));
-                // TODO - fetch execution results from storage and send to event stream
-                effects
-            }
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
             ) => {
