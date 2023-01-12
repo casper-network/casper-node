@@ -781,19 +781,18 @@ async fn empty_block_validation_regression() {
         .set_filter(move |event| match event {
             MainEvent::Consensus(consensus::Event::NewBlockPayload(NewBlockPayload {
                 era_id,
-                block_payload,
+                block_payload: _,
                 block_context,
             })) => {
                 info!("Accusing everyone else!");
-                // We hook into the NewBlockPayload event to replace the accusations in the block
-                // being proposed by the list of all the validators, except the malicious
-                // validator.
+                // We hook into the NewBlockPayload event to replace the block being proposed with
+                // an empty one that accuses all the validators, except the malicious validator.
                 Either::Right(MainEvent::Consensus(consensus::Event::NewBlockPayload(
                     NewBlockPayload {
                         era_id,
                         block_payload: Arc::new(BlockPayload::new(
-                            block_payload.deploys().clone(),
-                            block_payload.transfers().clone(),
+                            vec![],
+                            vec![],
                             everyone_else.clone(),
                             false,
                         )),
