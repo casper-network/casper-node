@@ -16,7 +16,7 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            FatalAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
+            FatalAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
             PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
@@ -223,7 +223,7 @@ pub(crate) enum MainEvent {
     #[from]
     MainReactorRequest(ReactorStatusRequest),
     #[from]
-    HotBlockAnnouncement(HotBlockAnnouncement),
+    MetaBlockAnnouncement(MetaBlockAnnouncement),
 }
 
 impl ReactorEvent for MainEvent {
@@ -330,7 +330,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::SetNodeStopRequest(_) => "SetNodeStopRequest",
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
-            MainEvent::HotBlockAnnouncement(_) => "HotBlockAnnouncement",
+            MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
         }
     }
 }
@@ -504,7 +504,7 @@ impl Display for MainEvent {
             MainEvent::SetNodeStopRequest(inner) => Display::fmt(inner, f),
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
-            MainEvent::HotBlockAnnouncement(inner) => Display::fmt(inner, f),
+            MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
         }
     }
 }

@@ -36,7 +36,7 @@ use crate::{
         Component, ComponentState, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
-        announcements::{HotBlockAnnouncement, PeerBehaviorAnnouncement},
+        announcements::{MetaBlockAnnouncement, PeerBehaviorAnnouncement},
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
             ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
@@ -49,7 +49,7 @@ use crate::{
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
-        HotBlock, HotBlockState, Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
+        Item, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap, TrieOrChunk,
         ValidatorMatrix,
     },
     NodeRng,
@@ -116,7 +116,7 @@ pub(crate) trait ReactorEvent:
     + From<SyncGlobalStateRequest>
     + From<BlockCompleteConfirmationRequest>
     + From<MakeBlockExecutableRequest>
-    + From<HotBlockAnnouncement>
+    + From<MetaBlockAnnouncement>
     + Send
     + 'static
 {
@@ -140,7 +140,7 @@ impl<REv> ReactorEvent for REv where
         + From<SyncGlobalStateRequest>
         + From<BlockCompleteConfirmationRequest>
         + From<MakeBlockExecutableRequest>
-        + From<HotBlockAnnouncement>
+        + From<MetaBlockAnnouncement>
         + Send
         + 'static
 {
@@ -401,7 +401,7 @@ impl BlockSynchronizer {
     ) -> Effects<Event>
     where
         REv: From<StorageRequest>
-            + From<HotBlockAnnouncement>
+            + From<MetaBlockAnnouncement>
             + From<BlockCompleteConfirmationRequest>
             + Send,
     {
@@ -424,12 +424,12 @@ impl BlockSynchronizer {
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
                                     Some(execution_results) => {
-                                        let hot_block = HotBlock::new(
+                                        let meta_block = MetaBlock::new(
                                             Arc::new(*block),
                                             execution_results,
-                                            HotBlockState::new_after_historical_sync(),
+                                            MetaBlockState::new_after_historical_sync(),
                                         );
-                                        effect_builder.announce_hot_block(hot_block).await
+                                        effect_builder.announce_meta_block(meta_block).await
                                     }
                                     None => {
                                         error!(
@@ -1300,7 +1300,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                                     .enqueue_block_for_execution(
                                         finalized_block,
                                         deploys,
-                                        HotBlockState::new_synced(),
+                                        MetaBlockState::new_synced(),
                                     )
                                     .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
                             );

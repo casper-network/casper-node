@@ -149,15 +149,15 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
         DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, HotBlock,
-        HotBlockState, LegacyDeploy, NodeId, TrieOrChunk, TrieOrChunkId,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
+        MetaBlock, MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-    GossiperAnnouncement, HotBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
+    GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
     RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
@@ -1681,7 +1681,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-        hot_block_state: HotBlockState,
+        meta_block_state: MetaBlockState,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1690,7 +1690,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
-                    hot_block_state,
+                    meta_block_state,
                 },
                 QueueKind::ContractRuntime,
             )
@@ -1744,13 +1744,13 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announces that a hot block has been created or its state has changed.
-    pub(crate) async fn announce_hot_block(self, hot_block: HotBlock)
+    /// Announces that a meta block has been created or its state has changed.
+    pub(crate) async fn announce_meta_block(self, meta_block: MetaBlock)
     where
-        REv: From<HotBlockAnnouncement>,
+        REv: From<MetaBlockAnnouncement>,
     {
         self.event_queue
-            .schedule(HotBlockAnnouncement(hot_block), QueueKind::Regular)
+            .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
             .await
     }
 

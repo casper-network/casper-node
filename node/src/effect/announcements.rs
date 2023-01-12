@@ -25,7 +25,8 @@ use crate::{
     },
     effect::Responder,
     types::{
-        Deploy, DeployHash, FinalitySignature, FinalizedBlock, GossiperItem, HotBlock, Item, NodeId,
+        Deploy, DeployHash, FinalitySignature, FinalizedBlock, GossiperItem, Item, MetaBlock,
+        NodeId,
     },
     utils::Source,
 };
@@ -118,13 +119,13 @@ impl Display for FatalAnnouncement {
 }
 
 #[derive(DataSize, Serialize, Debug)]
-pub(crate) struct HotBlockAnnouncement(pub(crate) HotBlock);
+pub(crate) struct MetaBlockAnnouncement(pub(crate) MetaBlock);
 
-impl Display for HotBlockAnnouncement {
+impl Display for MetaBlockAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "announcement for hot block {} at height {}",
+            "announcement for meta block {} at height {}",
             self.0.block.hash(),
             self.0.block.height(),
         )

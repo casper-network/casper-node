@@ -17,7 +17,7 @@ use crate::{
         upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
         utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, HotBlockState, Item},
+    types::{BlockHash, BlockPayload, FinalizedBlock, Item, MetaBlockState},
     NodeRng,
 };
 
@@ -342,7 +342,7 @@ impl MainReactor {
             .enqueue_block_for_execution(
                 finalized_block,
                 vec![],
-                HotBlockState::new_immediate_switch(),
+                MetaBlockState::new_immediate_switch(),
             )
             .ignore())
     }
@@ -401,7 +401,7 @@ impl MainReactor {
                         .enqueue_block_for_execution(
                             finalized_block,
                             vec![],
-                            HotBlockState::new_immediate_switch(),
+                            MetaBlockState::new_immediate_switch(),
                         )
                         .ignore())
                 }
