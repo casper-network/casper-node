@@ -468,6 +468,8 @@ impl Tagged<u8> for SecretKey {
 /// A public asymmetric key.
 #[derive(Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "testing", derive(strum::EnumDiscriminants))]
+#[cfg_attr(feature = "testing", strum_discriminants(derive(strum::EnumIter)))]
 #[non_exhaustive]
 pub enum PublicKey {
     /// System public key.
@@ -881,6 +883,8 @@ impl CLTyped for PublicKey {
 /// A signature of given data.
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "testing", derive(strum::EnumDiscriminants))]
+#[cfg_attr(feature = "testing", strum_discriminants(derive(strum::EnumIter)))]
 #[non_exhaustive]
 pub enum Signature {
     /// System signature.  Cannot be verified.

@@ -6,7 +6,10 @@
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 
 use casper_hashing::Digest;
-use casper_types::{crypto::Signature, ProtocolVersion, PublicKey, SemVer};
+use casper_types::{
+    crypto::{PublicKey, PublicKeyDiscriminants, Signature},
+    AsymmetricType, ProtocolVersion, SemVer, SignatureDiscriminants,
+};
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
@@ -137,13 +140,25 @@ impl LargestSpecimen for SemVer {
 
 impl LargestSpecimen for PublicKey {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        todo!()
+        largest_variant::<Self, PublicKeyDiscriminants, _, _>(estimator, |variant| match variant {
+            PublicKeyDiscriminants::System => PublicKey::system(),
+            PublicKeyDiscriminants::Ed25519 => PublicKey::ed25519_from_bytes(&[0xFFu8, 32])
+                .expect("fixed specimen should be valid Ed25519 public key"),
+            PublicKeyDiscriminants::Secp256k1 => PublicKey::secp256k1_from_bytes(&[0xFFu8, 32])
+                .expect("fixed specimen should be valid Secp256k1 public key"),
+        })
     }
 }
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        todo!()
+        largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| match variant {
+            SignatureDiscriminants::System => Signature::system(),
+            SignatureDiscriminants::Ed25519 => Signature::ed25519([0xFFu8; 64])
+                .expect("fixed specimen should be valid Ed25519 signature"),
+            SignatureDiscriminants::Secp256k1 => Signature::secp256k1([0xFFu8; 64])
+                .expect("fixed specimen should be valid Secp256k1 signature"),
+        })
     }
 }
 

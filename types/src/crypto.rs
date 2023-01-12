@@ -14,8 +14,8 @@ pub use asymmetric_key::generate_ed25519_keypair;
 #[cfg(any(feature = "testing", test))]
 pub use asymmetric_key::gens;
 pub use asymmetric_key::{
-    sign, verify, AsymmetricType, PublicKey, SecretKey, Signature, ED25519_TAG, SECP256K1_TAG,
-    SYSTEM_ACCOUNT, SYSTEM_TAG,
+    sign, verify, AsymmetricType, PublicKey, PublicKeyDiscriminants, SecretKey, Signature,
+    SignatureDiscriminants, ED25519_TAG, SECP256K1_TAG, SYSTEM_ACCOUNT, SYSTEM_TAG,
 };
 pub use error::Error;
 #[cfg(any(feature = "std", test))]
