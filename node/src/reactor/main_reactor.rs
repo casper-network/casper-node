@@ -1188,6 +1188,18 @@ impl MainReactor {
                 ?state,
                 "should be a complete block after passing to accumulator"
             );
+        } else if state
+            .register_as_sent_to_synchronizer_post_execution()
+            .was_updated()
+        {
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockSynchronizer,
+                self.block_synchronizer.handle_event(
+                    effect_builder,
+                    rng,
+                    block_synchronizer::Event::ExecutedBlock(*block.hash()),
+                ),
+            ));
         }
 
         self.update_hot_block_gossip_state(

@@ -392,6 +392,26 @@ impl BlockSynchronizer {
         }
     }
 
+    fn register_block_executed(&mut self, block_hash: &BlockHash) {
+        if let Some(builder) = &self.historical {
+            if builder.block_hash() == *block_hash {
+                error!(%block_hash, "historical block should not be executed");
+            }
+        }
+
+        match &mut self.forward {
+            Some(builder) if builder.block_hash() == *block_hash => {
+                builder.register_block_executed();
+                self.metrics
+                    .forward_block_sync_duration
+                    .observe(builder.sync_start_time().elapsed().as_secs_f64());
+            }
+            _ => {
+                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
+            }
+        }
+    }
+
     fn register_marked_complete<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -990,11 +1010,22 @@ impl BlockSynchronizer {
                     error!("BlockSynchronizer: finished builder should have block height and era")
                 }
                 Some((block_height, era_id)) => {
+                    // If the block is currently being executed, we will not
+                    // purge the builder and instead wait for it to be
+                    // executed and marked complete.
+                    if builder.is_executing() {
+                        return BlockSynchronizerProgress::Executing(
+                            builder.block_hash(),
+                            block_height,
+                            era_id,
+                        );
+                    }
+
                     return BlockSynchronizerProgress::Synced(
                         builder.block_hash(),
                         block_height,
                         era_id,
-                    )
+                    );
                 }
             }
         }
@@ -1089,6 +1120,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     | Event::DisconnectFromPeer(_)
                     | Event::MadeFinalizedBlock { .. }
                     | Event::MarkBlockExecutionEnqueued(_)
+                    | Event::ExecutedBlock(_)
                     | Event::MarkBlockCompleted(_)
                     | Event::ValidatorMatrixUpdated
                     | Event::BlockHeaderFetched(_)
@@ -1290,6 +1322,13 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     // when syncing a forward block the synchronizer considers it
                     // finished after it has been successfully enqueued for execution
                     self.register_block_execution_enqueued(&block_hash);
+                    Effects::new()
+                }
+                Event::ExecutedBlock(block_hash) => {
+                    // when syncing a forward block the synchronizer considers it
+                    // synced after it has been successfully executed and marked
+                    // complete in storage.
+                    self.register_block_executed(&block_hash);
                     Effects::new()
                 }
                 Event::MarkBlockCompleted(block_hash) => {

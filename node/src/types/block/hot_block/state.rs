@@ -40,6 +40,7 @@ pub(crate) struct State {
     pub(super) tried_to_sign: bool,
     pub(super) sent_to_consensus_post_execution: bool,
     pub(super) sent_to_accumulator_post_execution: bool,
+    pub(super) sent_to_synchronizer_post_execution: bool,
     pub(super) sufficient_finality: bool,
     pub(super) marked_complete: bool,
 }
@@ -135,6 +136,12 @@ impl State {
         outcome
     }
 
+    pub(crate) fn register_as_sent_to_synchronizer_post_execution(&mut self) -> StateChange {
+        let outcome = StateChange::from(self.sent_to_synchronizer_post_execution);
+        self.sent_to_synchronizer_post_execution = true;
+        outcome
+    }
+
     pub(crate) fn register_has_sufficient_finality(&mut self) -> StateChange {
         let outcome = StateChange::from(self.sufficient_finality);
         self.sufficient_finality = true;
@@ -158,6 +165,7 @@ impl State {
             ref mut tried_to_sign,
             ref mut sent_to_consensus_post_execution,
             ref mut sent_to_accumulator_post_execution,
+            ref mut sent_to_synchronizer_post_execution,
             ref mut sufficient_finality,
             ref mut marked_complete,
         } = self;
@@ -176,6 +184,7 @@ impl State {
         *tried_to_sign |= other.tried_to_sign;
         *sent_to_consensus_post_execution |= other.sent_to_consensus_post_execution;
         *sent_to_accumulator_post_execution |= other.sent_to_accumulator_post_execution;
+        *sent_to_synchronizer_post_execution |= other.sent_to_synchronizer_post_execution;
         *sufficient_finality |= other.sufficient_finality;
         *marked_complete |= other.marked_complete;
 
@@ -211,6 +220,7 @@ mod tests {
             executed: true,
             tried_to_sign: true,
             sent_to_consensus_post_execution: true,
+            sent_to_synchronizer_post_execution: true,
             sent_to_accumulator_post_execution: true,
             sufficient_finality: true,
             marked_complete: true,

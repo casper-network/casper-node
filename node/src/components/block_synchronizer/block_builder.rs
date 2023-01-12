@@ -44,6 +44,29 @@ impl Display for Error {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
+enum ExecutionProgress {
+    Idle,
+    Started,
+    Done,
+}
+
+impl ExecutionProgress {
+    fn start(self) -> Option<Self> {
+        match self {
+            Self::Idle => Some(Self::Started),
+            _ => None,
+        }
+    }
+
+    fn finish(self) -> Option<Self> {
+        match self {
+            Self::Started => Some(Self::Done),
+            _ => None,
+        }
+    }
+}
+
 #[derive(DataSize, Debug)]
 pub(super) struct BlockBuilder {
     // imputed
@@ -54,6 +77,7 @@ pub(super) struct BlockBuilder {
 
     // progress tracking
     sync_start: Instant,
+    execution_progress: ExecutionProgress,
     last_progress: Timestamp,
     in_flight_latch: Option<Timestamp>,
 
@@ -95,6 +119,7 @@ impl BlockBuilder {
             should_fetch_execution_state,
             requires_strict_finality,
             sync_start: Instant::now(),
+            execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
             in_flight_latch: None,
         }
@@ -138,6 +163,7 @@ impl BlockBuilder {
             should_fetch_execution_state,
             requires_strict_finality,
             sync_start: Instant::now(),
+            execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
             in_flight_latch: None,
         }
@@ -219,6 +245,10 @@ impl BlockBuilder {
         )
     }
 
+    pub(super) fn is_executing(&self) -> bool {
+        matches!(self.execution_progress, ExecutionProgress::Started)
+    }
+
     pub(super) fn register_block_execution_not_enqueued(&mut self) {
         warn!("failed to enqueue block for execution");
         // reset latch and try again
@@ -233,7 +263,47 @@ impl BlockBuilder {
             error!(%error, "register block execution enqueued failed");
             self.abort()
         } else {
-            self.touch();
+            match (
+                self.should_fetch_execution_state,
+                self.execution_progress.start(),
+            ) {
+                (true, _) => {
+                    let block_hash = self.block_hash();
+                    error!(%block_hash, "invalid attempt to start block execution on historical block");
+                    self.abort();
+                }
+                (false, None) => {
+                    let block_hash = self.block_hash();
+                    error!(%block_hash, "invalid attempt to start block execution");
+                    self.abort();
+                }
+                (false, Some(executing_progress)) => {
+                    self.touch();
+                    self.execution_progress = executing_progress;
+                }
+            }
+        }
+    }
+
+    pub(super) fn register_block_executed(&mut self) {
+        match (
+            self.should_fetch_execution_state,
+            self.execution_progress.finish(),
+        ) {
+            (true, _) => {
+                let block_hash = self.block_hash();
+                error!(%block_hash, "invalid attempt to finish block execution on historical block");
+                self.abort();
+            }
+            (false, None) => {
+                let block_hash = self.block_hash();
+                error!(%block_hash, "invalid attempt to finish block execution");
+                self.abort();
+            }
+            (false, Some(executing_progress)) => {
+                self.touch();
+                self.execution_progress = executing_progress;
+            }
         }
     }
 
