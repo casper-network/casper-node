@@ -1230,6 +1230,13 @@ impl Storage {
         self.read_block_header_by_hash(highest_block_hash)
     }
 
+    /// Retrieves the height of the highest complete block (if any).
+    pub(crate) fn highest_complete_block_height(&self) -> Option<u64> {
+        self.completed_blocks
+            .highest_sequence()
+            .map(|sequence| sequence.high())
+    }
+
     /// Retrieves the highest complete block from the storage, if one exists.
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
@@ -1747,8 +1754,8 @@ impl Storage {
         &self,
         txn: &mut Tx,
     ) -> Result<Option<Block>, FatalStorageError> {
-        let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
-            Some(sequence) => sequence.high(),
+        let highest_complete_block_height = match self.highest_complete_block_height() {
+            Some(height) => height,
             None => {
                 return Ok(None);
             }
