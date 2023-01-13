@@ -28,6 +28,10 @@ impl SignatureGossipTracker {
     }
 
     pub(super) fn register_signature(&mut self, signature_id: FinalitySignatureId) {
+        // ignore the signature if it's from an older era
+        if signature_id.era_id < self.era_id {
+            return;
+        }
         // if we registered a signature in a higher era, reset the cache
         if signature_id.era_id > self.era_id {
             self.era_id = signature_id.era_id;
