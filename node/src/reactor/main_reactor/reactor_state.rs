@@ -55,6 +55,7 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,
 )]
+#[schemars(description = "The state of the reactor.")]
 pub enum ReactorState {
     /// Get all components and reactor state set up on start.
     Initialize,
