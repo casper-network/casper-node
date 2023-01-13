@@ -967,10 +967,11 @@ mod tests {
         for TestPair(key, value) in test_pair {
             assert!(effects.insert(key, Transform::Write(value)).is_none());
         }
-        let post_state_hash = contract_runtime
-            .engine_state()
+        let engine_state = contract_runtime.engine_state();
+        let post_state_hash = engine_state
             .apply_effect(CorrelationId::new(), empty_state_root, effects)
             .expect("applying effects to succeed");
+        let post_state_hash = engine_state.commit_to_disk(post_state_hash).unwrap();
         (contract_runtime, post_state_hash)
     }
 

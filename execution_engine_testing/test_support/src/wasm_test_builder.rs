@@ -610,6 +610,8 @@ impl WasmTestBuilder {
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
+    /// Changes will not be reflected on disk until
+    /// `commit_to_disk` is called.
     pub fn apply_transforms(
         &mut self,
         pre_state_hash: Digest,
@@ -624,7 +626,8 @@ impl WasmTestBuilder {
         self
     }
 
-    /// Commit cached changes to disk. This must be called for executed changes to be persisted.
+    /// Commit cached changes to disk. This *must* be called for
+    /// executed changes to be persisted.
     pub fn commit_to_disk(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         let new_state_root = self.engine_state.commit_to_disk(prestate_hash).unwrap();
