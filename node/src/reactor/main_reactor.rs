@@ -50,10 +50,10 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            DeployBufferAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -67,7 +67,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        HotBlock, HotBlockState, Item, TrieOrChunk, ValidatorMatrix,
+        Item, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -395,8 +395,8 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::HotBlockAnnouncement(HotBlockAnnouncement(hot_block)) => {
-                self.handle_hot_block(effect_builder, rng, hot_block)
+            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
+                self.handle_meta_block(effect_builder, rng, meta_block)
             }
 
             // LOCAL I/O BOUND COMPONENTS
@@ -609,39 +609,6 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockSynchronizerAnnouncement(
-                BlockSynchronizerAnnouncement::CompletedBlock { block },
-            ) => {
-                let mut effects = reactor::wrap_effects(
-                    MainEvent::DeployBuffer,
-                    self.deploy_buffer.handle_event(
-                        effect_builder,
-                        rng,
-                        deploy_buffer::Event::Block(Arc::clone(&block)),
-                    ),
-                );
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Consensus,
-                    self.consensus.handle_event(
-                        effect_builder,
-                        rng,
-                        consensus::Event::BlockAdded {
-                            header: Box::new(block.header().clone()),
-                            header_hash: *block.hash(),
-                        },
-                    ),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::BlockAdded(Arc::clone(&block)),
-                    ),
-                ));
-                // TODO - fetch execution results from storage and send to event stream
-                effects
-            }
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
             ) => {
@@ -1007,18 +974,18 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
-    fn handle_hot_block(
+    fn handle_meta_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-        HotBlock {
+        MetaBlock {
             block,
             execution_results,
             mut state,
-        }: HotBlock,
+        }: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
-            "handling hot block {} {} {:?}",
+            "handling meta block {} {} {:?}",
             block.height(),
             block.hash(),
             state
@@ -1101,7 +1068,7 @@ impl MainReactor {
             .validator_matrix
             .is_self_validator_in_era(block.header().era_id())
         {
-            self.update_hot_block_gossip_state(
+            self.update_meta_block_gossip_state(
                 effect_builder,
                 rng,
                 block.hash(),
@@ -1143,10 +1110,7 @@ impl MainReactor {
             }
         }
 
-        if state
-            .register_as_sent_to_consensus_post_execution()
-            .was_updated()
-        {
+        if state.register_as_consensus_notified().was_updated() {
             effects.extend(reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(
@@ -1160,11 +1124,8 @@ impl MainReactor {
             ));
         }
 
-        if state
-            .register_as_sent_to_accumulator_post_execution()
-            .was_updated()
-        {
-            let hot_block = HotBlock {
+        if state.register_as_accumulator_notified().was_updated() {
+            let meta_block = MetaBlock {
                 block,
                 execution_results,
                 state,
@@ -1174,7 +1135,7 @@ impl MainReactor {
                 self.block_accumulator.handle_event(
                     effect_builder,
                     rng,
-                    block_accumulator::Event::ExecutedBlock { hot_block },
+                    block_accumulator::Event::ExecutedBlock { meta_block },
                 ),
             ));
             // We've done as much as we can for now, we need to wait for the block
@@ -1190,7 +1151,7 @@ impl MainReactor {
             );
         }
 
-        self.update_hot_block_gossip_state(
+        self.update_meta_block_gossip_state(
             effect_builder,
             rng,
             block.hash(),
@@ -1200,7 +1161,7 @@ impl MainReactor {
 
         debug_assert!(
             state.verify_complete(),
-            "hot block {} at height {} has invalid state: {:?}",
+            "meta block {} at height {} has invalid state: {:?}",
             block.hash(),
             block.height(),
             state
@@ -1240,12 +1201,12 @@ impl MainReactor {
         effects
     }
 
-    fn update_hot_block_gossip_state(
+    fn update_meta_block_gossip_state(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         block_hash: &BlockHash,
-        state: &mut HotBlockState,
+        state: &mut MetaBlockState,
         effects: &mut Effects<MainEvent>,
     ) {
         if state.register_as_gossiped().was_updated() {
