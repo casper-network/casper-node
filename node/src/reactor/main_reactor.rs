@@ -62,7 +62,9 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::{
-        self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
+        self,
+        event_queue_metrics::EventQueueMetrics,
+        main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
         EventQueueHandle, QueueKind,
     },
     types::{
@@ -138,6 +140,7 @@ pub(crate) struct MainReactor {
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
     sync_to_genesis: bool,
+    signature_gossip_tracker: SignatureGossipTracker,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -340,6 +343,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix,
             switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
+            signature_gossip_tracker: SignatureGossipTracker::new(),
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -791,8 +795,12 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::FinalitySignatureGossiperAnnouncement(
-                GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
-            ) => Effects::new(),
+                GossiperAnnouncement::FinishedGossiping(gossiped_finality_signature_id),
+            ) => {
+                self.signature_gossip_tracker
+                    .register_signature(gossiped_finality_signature_id);
+                Effects::new()
+            }
 
             // DEPLOYS
             MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
