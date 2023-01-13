@@ -65,8 +65,7 @@ impl State {
         }
     }
 
-    /// Returns a new `State` with all fields set to `true` except for `sent_to_deploy_buffer` and
-    /// `sent_to_consensus_post_execution`.
+    /// Returns a new `State` which a historical block is expected to have after it has been synced.
     pub(crate) fn new_after_historical_sync() -> Self {
         State {
             stored: true,
