@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 ///     CaughtUp --> H[handle upgrade<br/>if needed]
 ///     H --> End
 ///     E -->|more data needed<br/>from network| Leap
-///     E -->|block represneted by<br/>identifier is not stored<br/>locally, sync it| BlockSync
+///     E -->|block represented by<br/>identifier is not stored<br/>locally, sync it| BlockSync
 ///     E -->|we think we're close<br/>enough to the tip|CaughtUp
 ///     Leap --> F[initiate SyncLeap<br/>and retry later]
 ///     BlockSync --> G[initiate BlockSync<br/>and retry later]
