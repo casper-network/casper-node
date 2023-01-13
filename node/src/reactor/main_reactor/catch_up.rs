@@ -78,14 +78,14 @@ impl MainReactor {
                 // working on syncing a block
                 self.catch_up_syncing(block_hash, maybe_block_height, last_progress)
             }
-            BlockSynchronizerProgress::Executing(_, _, _) => {
+            BlockSynchronizerProgress::Executing(block_hash, _, _) => {
                 // this code path should be unreachable because we're not
                 // supposed to enqueue historical blocks for execution.
-                Either::Right(CatchUpInstruction::Fatal(
+                Either::Right(CatchUpInstruction::Fatal(format!(
                     "CatchUp: block synchronizer attempted to execute \
-                                        block: {}"
-                        .to_string(),
-                ))
+                                        block: {}",
+                    block_hash
+                )))
             }
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => Either::Left(
                 // for a synced CatchUp block -> we have header, body, global state, any execution

@@ -1220,7 +1220,7 @@ impl MainReactor {
             self.block_synchronizer.handle_event(
                 effect_builder,
                 rng,
-                block_synchronizer::Event::ExecutedBlock(*block.hash()),
+                block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
             ),
         ));
 

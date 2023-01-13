@@ -1120,7 +1120,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     | Event::DisconnectFromPeer(_)
                     | Event::MadeFinalizedBlock { .. }
                     | Event::MarkBlockExecutionEnqueued(_)
-                    | Event::ExecutedBlock(_)
+                    | Event::MarkBlockExecuted(_)
                     | Event::MarkBlockCompleted(_)
                     | Event::ValidatorMatrixUpdated
                     | Event::BlockHeaderFetched(_)
@@ -1324,7 +1324,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.register_block_execution_enqueued(&block_hash);
                     Effects::new()
                 }
-                Event::ExecutedBlock(block_hash) => {
+                Event::MarkBlockExecuted(block_hash) => {
                     // when syncing a forward block the synchronizer considers it
                     // synced after it has been successfully executed and marked
                     // complete in storage.

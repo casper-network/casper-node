@@ -13,6 +13,9 @@ pub(crate) enum SyncIdentifier {
     // including sufficient finality; this may be a historical
     // block and / or potentially the new highest block
     SyncedBlockIdentifier(BlockHash, u64, EraId),
+    // we acquired the necessary data for the block, including
+    // sufficient finality and it has been enqueued for
+    // execution; this state is valid for forward blocks only
     ExecutingBlockIdentifier(BlockHash, u64, EraId),
     // we read this block from disk, and have all the parts
     // we need to discover its descendent (if any) to continue.

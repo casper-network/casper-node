@@ -29,7 +29,7 @@ pub(crate) enum Event {
         result: Option<(FinalizedBlock, Vec<Deploy>)>,
     },
     MarkBlockExecutionEnqueued(BlockHash),
-    ExecutedBlock(BlockHash),
+    MarkBlockExecuted(BlockHash),
     MarkBlockCompleted(BlockHash),
     ValidatorMatrixUpdated,
     #[from]
@@ -154,7 +154,7 @@ impl Display for Event {
             Event::MarkBlockExecutionEnqueued(..) => {
                 write!(f, "mark block enqueued for execution")
             }
-            Event::ExecutedBlock(..) => {
+            Event::MarkBlockExecuted(..) => {
                 write!(f, "block execution complete")
             }
             Event::MarkBlockCompleted(..) => {
