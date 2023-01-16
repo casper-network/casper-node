@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
 ///     style F fill:#ffcc66,stroke:#333,stroke-width:4px
 ///     style G fill:#ffcc66,stroke:#333,stroke-width:4px
-///     title[CatchUP process]
+///     title[CatchUp process]
 ///     title---Start
 ///     style title fill:#FFF,stroke:#FFF
 ///     linkStyle 0 stroke-width:0;
@@ -46,7 +46,7 @@ use serde::{Deserialize, Serialize};
 ///     LocalTip --> E
 ///     CaughtUp --> H[handle upgrade<br/>if needed]
 ///     H --> End
-///     E -->|more data needed<br/>from network| Leap
+///     E -->|more data needed<br/>from network<br/>to let us sync near tip| Leap
 ///     E -->|block represented by<br/>identifier is not stored<br/>locally, sync it| BlockSync
 ///     E -->|we think we're close<br/>enough to the tip|CaughtUp
 ///     Leap --> F[initiate SyncLeap<br/>and retry later]

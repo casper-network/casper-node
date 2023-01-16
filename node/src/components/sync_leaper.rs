@@ -287,7 +287,7 @@ impl SyncLeaper {
     ///     C -->|Yes| D[fetch SyncLeap from potentially<br>newly learned peers]
     ///     B -->|No| G[fetch SyncLeap<br>from all peers]
     ///     G --> E
-    ///     D -.- E[SyncLeap arrives]
+    ///     D --> E[SyncLeap arrives]
     ///     E --> F[SyncLeap is stored]
     ///     F --> End
     /// ```
