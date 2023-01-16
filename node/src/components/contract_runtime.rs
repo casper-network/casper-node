@@ -42,7 +42,7 @@ use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, HotBlockAnnouncement},
+        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -51,7 +51,7 @@ use crate::{
     protocol::Message,
     types::{
         BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
-        FinalizedBlock, HotBlock, HotBlockState, TrieOrChunk, TrieOrChunkId,
+        FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -163,7 +163,7 @@ impl ExecutionPreState {
     }
 }
 
-type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, HotBlockState)>>>;
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, MetaBlockState)>>>;
 
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
@@ -216,7 +216,7 @@ where
         + From<ContractRuntimeAnnouncement>
         + From<NetworkRequest<Message>>
         + From<StorageRequest>
-        + From<HotBlockAnnouncement>
+        + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send,
 {
@@ -323,7 +323,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<StorageRequest>
-            + From<HotBlockAnnouncement>
+            + From<MetaBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -448,7 +448,7 @@ impl ContractRuntime {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
-                hot_block_state,
+                meta_block_state,
             } => {
                 let mut effects = Effects::new();
                 let exec_queue = Arc::clone(&self.exec_queue);
@@ -481,7 +481,7 @@ impl ContractRuntime {
                                 protocol_version,
                                 finalized_block,
                                 deploys,
-                                hot_block_state,
+                                meta_block_state,
                             )
                             .ignore(),
                         )
@@ -499,7 +499,7 @@ impl ContractRuntime {
                         exec_queue
                             .lock()
                             .expect("components::contract_runtime: couldn't enqueue block for execution; mutex poisoned")
-                            .insert(finalized_block_height, (finalized_block, deploys, hot_block_state));
+                            .insert(finalized_block_height, (finalized_block, deploys, meta_block_state));
                     }
                 }
                 self.metrics
@@ -725,12 +725,12 @@ impl ContractRuntime {
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-        mut hot_block_state: HotBlockState,
+        mut meta_block_state: MetaBlockState,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<StorageRequest>
-            + From<HotBlockAnnouncement>
+            + From<MetaBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -811,7 +811,7 @@ impl ContractRuntime {
             .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
             .collect();
 
-        if hot_block_state.register_as_stored().was_updated() {
+        if meta_block_state.register_as_stored().was_updated() {
             effect_builder
                 .put_executed_block_to_storage(
                     Arc::clone(&block),
@@ -827,20 +827,20 @@ impl ContractRuntime {
                 .put_execution_results_to_storage(*block.hash(), execution_results_map)
                 .await;
         }
-        if hot_block_state
+        if meta_block_state
             .register_as_executed()
             .was_already_registered()
         {
             error!(
                 block_hash = %block.hash(),
                 block_height = block.height(),
-                ?hot_block_state,
+                ?meta_block_state,
                 "should not execute the same block more than once"
             );
         }
 
-        let hot_block = HotBlock::new(block, execution_results, hot_block_state);
-        effect_builder.announce_hot_block(hot_block).await;
+        let meta_block = MetaBlock::new(block, execution_results, meta_block_state);
+        effect_builder.announce_meta_block(meta_block).await;
 
         // If the child is already finalized, start execution.
         let next_block = {
@@ -850,11 +850,11 @@ impl ContractRuntime {
                 .expect("components::contract_runtime: couldn't get next block for execution; mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
-        if let Some((finalized_block, deploys, hot_block_state)) = next_block {
+        if let Some((finalized_block, deploys, meta_block_state)) = next_block {
             metrics.exec_queue_size.dec();
             debug!("ContractRuntime: next block enqueue_block_for_execution");
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys, hot_block_state)
+                .enqueue_block_for_execution(finalized_block, deploys, meta_block_state)
                 .await;
         }
     }

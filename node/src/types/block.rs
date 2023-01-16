@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 mod approvals_hashes;
-mod hot_block;
+mod meta_block;
 
 use std::{
     array::TryFromSliceError,
@@ -47,8 +47,8 @@ use crate::{
     utils::{ds, DisplayIter},
 };
 pub(crate) use approvals_hashes::ApprovalsHashes;
-pub(crate) use hot_block::{
-    HotBlock, MergeMismatchError as HotBlockMergeError, State as HotBlockState,
+pub(crate) use meta_block::{
+    MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
