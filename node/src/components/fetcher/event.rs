@@ -1,4 +1,7 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    sync::Arc,
+};
 
 use serde::Serialize;
 use tracing::error;
@@ -26,9 +29,9 @@ pub(crate) enum Event<T: FetcherItem> {
         responder: FetchResponder<T>,
     },
     /// An announcement from a different component that we have accepted and stored the given item.
-    GotRemotely { item: Box<T>, source: Source },
+    GotRemotely { item: Arc<T>, source: Source },
     /// The result of putting the item to storage.
-    PutToStorage { item: Box<T>, peer: NodeId },
+    PutToStorage { item: Arc<T>, peer: NodeId },
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
@@ -48,7 +51,7 @@ impl<T: FetcherItem> Event<T> {
     ) -> Option<Self> {
         match bincode::deserialize::<FetchResponse<T, T::Id>>(serialized_item) {
             Ok(FetchResponse::Fetched(item)) => Some(Event::GotRemotely {
-                item: Box::new(item),
+                item: Arc::new(item),
                 source: Source::Peer(peer),
             }),
             Ok(FetchResponse::NotFound(id)) => Some(Event::AbsentRemotely { id, peer }),

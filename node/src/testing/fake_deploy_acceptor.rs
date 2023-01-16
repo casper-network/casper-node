@@ -5,6 +5,8 @@
 //! `FakeDeployAcceptor` puts the deploy to storage, and once that has completed, announces the
 //! deploy if the storage result indicates it's a new deploy.
 
+use std::sync::Arc;
+
 use tracing::debug;
 
 use casper_types::Timestamp;
@@ -44,14 +46,14 @@ impl FakeDeployAcceptor {
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let verification_start_timestamp = Timestamp::now();
         let event_metadata = EventMetadata::new(deploy.clone(), source, maybe_responder);
         effect_builder
-            .put_deploy_to_storage(Box::new(*deploy))
+            .put_deploy_to_storage(deploy)
             .event(move |is_new| Event::PutToStorageResult {
                 event_metadata,
                 is_new,

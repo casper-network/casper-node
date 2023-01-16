@@ -79,7 +79,7 @@ pub(crate) type ConsensusDemand = DemandIncoming<consensus::ConsensusRequestMess
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 
 /// A new finality signature arrived over the network.
-pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
+pub(crate) type FinalitySignatureIncoming = MessageIncoming<Arc<FinalitySignature>>;
 
 /// A request for an object out of storage arrived.
 ///

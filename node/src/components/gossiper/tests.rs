@@ -282,7 +282,7 @@ impl NetworkedReactor for Reactor {
 }
 
 fn announce_deploy_received(
-    deploy: Box<Deploy>,
+    deploy: Arc<Deploy>,
     responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -304,7 +304,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+        let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
         (*deploy.hash(), deploy)
     })
     .take(deploy_count)
@@ -361,7 +361,7 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
+    let deploy = Arc::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.hash();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
@@ -440,7 +440,7 @@ async fn should_timeout_gossip_response() {
         .await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
+    let deploy = Arc::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.hash();
 
     // Give the deploy to node 0 to be gossiped.

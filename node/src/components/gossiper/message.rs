@@ -1,6 +1,6 @@
 use std::{
-    boxed::Box,
     fmt::{self, Display, Formatter},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub(crate) enum Message<T: GossiperItem> {
     GetItem(T::Id),
     // Response to either a `GossipResponse` with `is_already_held` set to `false` or to a
     // `GetItem` message. Contains the actual item requested.
-    Item(Box<T>),
+    Item(Arc<T>),
 }
 
 impl<T: GossiperItem> Display for Message<T> {

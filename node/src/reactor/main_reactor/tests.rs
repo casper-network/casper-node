@@ -648,7 +648,7 @@ async fn should_store_finalized_approvals() {
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .put_deploy_to_storage(Box::new(deploy_alice_bob.clone()))
+                        .put_deploy_to_storage(Arc::new(deploy_alice_bob.clone()))
                         .ignore()
                 })
                 .await;
@@ -656,7 +656,7 @@ async fn should_store_finalized_approvals() {
                 .process_injected_effects(|effect_builder| {
                     effect_builder
                         .announce_new_deploy_accepted(
-                            Box::new(deploy_alice_bob.clone()),
+                            Arc::new(deploy_alice_bob.clone()),
                             Source::Client,
                         )
                         .ignore()
@@ -667,7 +667,7 @@ async fn should_store_finalized_approvals() {
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .put_deploy_to_storage(Box::new(deploy_alice_bob_charlie.clone()))
+                        .put_deploy_to_storage(Arc::new(deploy_alice_bob_charlie.clone()))
                         .ignore()
                 })
                 .await;
@@ -675,7 +675,7 @@ async fn should_store_finalized_approvals() {
                 .process_injected_effects(|effect_builder| {
                     effect_builder
                         .announce_new_deploy_accepted(
-                            Box::new(deploy_alice_bob_charlie.clone()),
+                            Arc::new(deploy_alice_bob_charlie.clone()),
                             Source::Client,
                         )
                         .ignore()

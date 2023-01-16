@@ -302,7 +302,7 @@ impl Reactor {
                 let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
                     serialized_item,
                 ) {
-                    Ok(FetchResponse::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchResponse::Fetched(deploy)) => Arc::new(deploy),
                     Ok(FetchResponse::NotFound(deploy_hash)) => {
                         return fatal!(
                             effect_builder,
@@ -363,7 +363,7 @@ fn announce_deploy_received(
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .announce_deploy_received(Box::new(deploy), responder)
+            .announce_deploy_received(Arc::new(deploy), responder)
             .ignore()
     }
 }

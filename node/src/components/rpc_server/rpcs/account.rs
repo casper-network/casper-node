@@ -3,7 +3,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::str;
+use std::{str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -83,7 +83,7 @@ impl RpcWithParams for PutDeploy {
         let put_deploy_result = effect_builder
             .make_request(
                 |responder| RpcRequest::SubmitDeploy {
-                    deploy: Box::new(params.deploy),
+                    deploy: Arc::new(params.deploy),
                     responder,
                 },
                 QueueKind::Api,

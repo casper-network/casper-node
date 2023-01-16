@@ -65,7 +65,7 @@ pub(crate) enum Message {
     },
     /// Finality signature.
     #[from]
-    FinalitySignature(Box<FinalitySignature>),
+    FinalitySignature(Arc<FinalitySignature>),
 }
 
 impl Payload for Message {

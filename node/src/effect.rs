@@ -845,7 +845,7 @@ impl<REv> EffectBuilder<REv> {
     /// item.
     pub(crate) async fn announce_item_body_received_via_gossip<T: GossiperItem>(
         self,
-        item: Box<T>,
+        item: Arc<T>,
         sender: NodeId,
     ) where
         REv: From<GossiperAnnouncement<T>>,
@@ -861,7 +861,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Arc<FinalitySignature>,
     ) where
         REv: From<BlockAccumulatorAnnouncement>,
     {
@@ -917,7 +917,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the HTTP API server has received a deploy.
     pub(crate) async fn announce_deploy_received(
         self,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     ) where
         REv: From<RpcServerAnnouncement>,
@@ -933,7 +933,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that a deploy not previously stored has now been accepted and stored.
     pub(crate) fn announce_new_deploy_accepted(
         self,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
     ) -> impl Future<Output = ()>
     where
@@ -977,7 +977,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that an invalid deploy has been received.
     pub(crate) fn announce_invalid_deploy(
         self,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
     ) -> impl Future<Output = ()>
     where
@@ -1438,7 +1438,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
+    pub(crate) async fn put_deploy_to_storage(self, deploy: Arc<Deploy>) -> bool
     where
         REv: From<StorageRequest>,
     {
@@ -1725,7 +1725,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(
-                ConsensusAnnouncement::Proposed(Box::new(proposed_block)),
+                ConsensusAnnouncement::Proposed(Arc::new(proposed_block)),
                 QueueKind::Consensus,
             )
             .await
@@ -1738,7 +1738,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(
-                ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
+                ConsensusAnnouncement::Finalized(Arc::new(finalized_block)),
                 QueueKind::Consensus,
             )
             .await
@@ -1767,7 +1767,7 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 ConsensusAnnouncement::Fault {
                     era_id,
-                    public_key: Box::new(public_key),
+                    public_key: Arc::new(public_key),
                     timestamp,
                 },
                 QueueKind::Consensus,
@@ -1789,8 +1789,8 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 PeerBehaviorAnnouncement::OffenseCommitted {
-                    offender: Box::new(offender),
-                    justification: Box::new(justification),
+                    offender: Arc::new(offender),
+                    justification: Arc::new(justification),
                 },
                 QueueKind::NetworkInfo,
             )

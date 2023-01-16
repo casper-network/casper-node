@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use serde::Serialize;
 
@@ -18,14 +21,14 @@ use casper_types::{
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(crate) deploy: Box<Deploy>,
+    pub(crate) deploy: Arc<Deploy>,
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
     pub(crate) fn new(
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Self {
@@ -42,7 +45,7 @@ impl EventMetadata {
 pub(crate) enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },

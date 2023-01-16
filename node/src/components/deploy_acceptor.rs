@@ -2,7 +2,7 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -179,7 +179,7 @@ impl DeployAcceptor {
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
@@ -785,7 +785,7 @@ impl DeployAcceptor {
         }
 
         effect_builder
-            .put_deploy_to_storage(Box::new((*event_metadata.deploy).clone()))
+            .put_deploy_to_storage(event_metadata.deploy.clone())
             .event(move |is_new| Event::PutToStorageResult {
                 event_metadata,
                 is_new,

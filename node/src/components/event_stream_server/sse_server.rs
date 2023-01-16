@@ -108,7 +108,7 @@ pub enum SseData {
         timestamp: Timestamp,
     },
     /// New finality signature received.
-    FinalitySignature(Box<FinalitySignature>),
+    FinalitySignature(Arc<FinalitySignature>),
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
@@ -197,7 +197,7 @@ impl SseData {
 
     /// Returns a random `SseData::FinalitySignature`.
     pub(super) fn random_finality_signature(rng: &mut TestRng) -> Self {
-        SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
+        SseData::FinalitySignature(Arc::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
             rng.gen(),
         )))

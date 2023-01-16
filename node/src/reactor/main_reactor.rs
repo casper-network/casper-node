@@ -1100,7 +1100,7 @@ impl MainReactor {
                 ));
 
                 let era_id = finality_signature.era_id;
-                let payload = Message::FinalitySignature(Box::new(finality_signature));
+                let payload = Message::FinalitySignature(Arc::new(finality_signature));
                 effects.extend(reactor::wrap_effects(
                     MainEvent::Network,
                     effect_builder

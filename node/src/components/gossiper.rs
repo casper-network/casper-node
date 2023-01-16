@@ -10,6 +10,7 @@ mod tests;
 use std::{
     collections::HashSet,
     fmt::{self, Debug, Formatter},
+    sync::Arc,
     time::Duration,
 };
 
@@ -524,7 +525,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        let message = Message::Item(Box::new(item));
+        let message = Message::Item(Arc::new(item));
         effect_builder.send_message(requester, message).ignore()
     }
 
@@ -565,7 +566,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     fn handle_item_received_from_peer(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        item: Box<T>,
+        item: Arc<T>,
         sender: NodeId,
     ) -> Effects<Event<T>> {
         effect_builder

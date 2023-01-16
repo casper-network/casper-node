@@ -353,7 +353,8 @@ pub(crate) enum StorageRequest {
     /// Store given deploy.
     PutDeploy {
         /// Deploy to store.
-        deploy: Box<Deploy>,
+        // Note: `Deploy` is an `Arc` here, because almost all sources of deploys use `Arc`s.
+        deploy: Arc<Deploy>,
         /// Responder to call with the result.  Returns `true` if the deploy was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -665,7 +666,7 @@ pub(crate) enum RpcRequest {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// Responder to call.
         responder: Responder<Result<(), Error>>,
     },

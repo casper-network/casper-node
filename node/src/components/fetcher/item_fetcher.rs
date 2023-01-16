@@ -1,5 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
+    sync::Arc,
     time::Duration,
 };
 
@@ -129,7 +130,7 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         peer: NodeId,
-        item: Box<T>,
+        item: Arc<T>,
     ) -> Effects<Event<T>>
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,

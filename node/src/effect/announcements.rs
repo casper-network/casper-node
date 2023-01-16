@@ -7,6 +7,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -160,7 +161,7 @@ pub(crate) enum RpcServerAnnouncement {
     /// A new deploy received.
     DeployReceived {
         /// The received deploy.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// A client responder in the case where a client submits a deploy.
         responder: Option<Responder<Result<(), Error>>>,
     },
@@ -182,7 +183,7 @@ pub(crate) enum DeployAcceptorAnnouncement {
     /// A deploy which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewDeploy {
         /// The new deploy.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// The source (peer or client) of the deploy.
         source: Source,
     },
@@ -190,7 +191,7 @@ pub(crate) enum DeployAcceptorAnnouncement {
     /// An invalid deploy was received.
     InvalidDeploy {
         /// The invalid deploy.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// The source (peer or client) of the deploy.
         source: Source,
     },
@@ -237,15 +238,15 @@ impl Display for DeployBufferAnnouncement {
 #[derive(Debug)]
 pub(crate) enum ConsensusAnnouncement {
     /// A block was proposed.
-    Proposed(Box<ProposedBlock<ClContext>>),
+    Proposed(Arc<ProposedBlock<ClContext>>),
     /// A block was finalized.
-    Finalized(Box<FinalizedBlock>),
+    Finalized(Arc<FinalizedBlock>),
     /// An equivocation has been detected.
     Fault {
         /// The Id of the era in which the equivocation was detected
         era_id: EraId,
         /// The public key of the equivocator.
-        public_key: Box<PublicKey>,
+        public_key: Arc<PublicKey>,
         /// The timestamp when the evidence of the equivocation was detected.
         timestamp: Timestamp,
     },
@@ -279,9 +280,9 @@ pub(crate) enum PeerBehaviorAnnouncement {
     /// A given peer committed a blockable offense.
     OffenseCommitted {
         /// The peer ID of the offending node.
-        offender: Box<NodeId>,
+        offender: Arc<NodeId>,
         /// Justification for blocking the peer.
-        justification: Box<BlocklistJustification>,
+        justification: Arc<BlocklistJustification>,
     },
 }
 
@@ -308,7 +309,7 @@ pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
     NewCompleteItem(T::Id),
 
     /// A new item has been received where the item's ID is NOT the complete item.
-    NewItemBody { item: Box<T>, sender: NodeId },
+    NewItemBody { item: Arc<T>, sender: NodeId },
 
     /// Finished gossiping about the indicated item.
     FinishedGossiping(T::Id),
@@ -391,7 +392,7 @@ pub(crate) enum BlockAccumulatorAnnouncement {
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Arc<FinalitySignature>,
     },
 }
 

@@ -653,7 +653,7 @@ fn put_block_to_storage_and_mark_complete(
 }
 
 fn put_deploy_to_storage(
-    deploy: Box<Deploy>,
+    deploy: Arc<Deploy>,
     result_sender: Sender<bool>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -669,7 +669,7 @@ fn put_deploy_to_storage(
 }
 
 fn schedule_accept_deploy(
-    deploy: Box<Deploy>,
+    deploy: Arc<Deploy>,
     source: Source,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
@@ -689,7 +689,7 @@ fn schedule_accept_deploy(
 }
 
 fn inject_balance_check_for_peer(
-    deploy: Box<Deploy>,
+    deploy: Arc<Deploy>,
     source: Source,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
@@ -751,14 +751,14 @@ async fn run_deploy_acceptor_without_timeout(
     let deploy_responder = Responder::without_shutdown(deploy_sender);
 
     // Create a deploy specific to the test scenario
-    let deploy = test_scenario.deploy(&mut rng);
+    let deploy = Arc::new(test_scenario.deploy(&mut rng));
     // Mark the source as either a peer or a client depending on the scenario.
     let source = test_scenario.source(&mut rng);
 
     {
         // Inject the deploy artificially into storage to simulate a previously seen deploy.
         if test_scenario.is_repeated_deploy_case() {
-            let injected_deploy = Box::new(deploy.clone());
+            let injected_deploy = deploy.clone();
             let (result_sender, result_receiver) = oneshot::channel();
             runner
                 .process_injected_effects(put_deploy_to_storage(injected_deploy, result_sender))
@@ -771,7 +771,7 @@ async fn run_deploy_acceptor_without_timeout(
         }
 
         if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
-            let fatal_deploy = Box::new(deploy.clone());
+            let fatal_deploy = deploy.clone();
             let (deploy_sender, _) = oneshot::channel();
             let deploy_responder = Responder::without_shutdown(deploy_sender);
             runner
@@ -789,7 +789,7 @@ async fn run_deploy_acceptor_without_timeout(
 
     runner
         .process_injected_effects(schedule_accept_deploy(
-            Box::new(deploy.clone()),
+            deploy.clone(),
             source,
             deploy_responder,
         ))

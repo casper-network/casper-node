@@ -521,7 +521,7 @@ impl BlockAccumulator {
             for finality_signature in block_signatures.finality_signatures() {
                 effects.extend(
                     effect_builder
-                        .announce_finality_signature_accepted(Box::new(finality_signature))
+                        .announce_finality_signature_accepted(Arc::new(finality_signature))
                         .ignore(),
                 );
             }
@@ -793,7 +793,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                let meta_block = MetaBlock::new(Arc::new(*block), vec![], MetaBlockState::new());
+                let meta_block = MetaBlock::new(block.clone(), vec![], MetaBlockState::new());
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {

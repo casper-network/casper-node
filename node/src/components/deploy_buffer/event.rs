@@ -19,9 +19,9 @@ pub(crate) enum Event {
     Request(DeployBufferRequest),
     ReceiveDeployGossiped(DeployId),
     StoredDeploy(DeployId, Box<Option<Deploy>>),
-    BlockProposed(Box<ProposedBlock<ClContext>>),
+    BlockProposed(Arc<ProposedBlock<ClContext>>),
     Block(Arc<Block>),
-    BlockFinalized(Box<FinalizedBlock>),
+    BlockFinalized(Arc<FinalizedBlock>),
     Expire,
 }
 
