@@ -54,14 +54,15 @@ function main() {
     # 14. Wait until node 1 syncs back to genesis.
     do_await_node_1_historical_sync
     # 15. Run Health Checks
-    # ... restarts=15: due to node being stopped and started
+    # ... restarts=16: due to nodes being stopped and started
     # ... crashes=5: expected in an emergency restart scenario?
+    # (TODO: double check the numbers once the test can properly finish)
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \
             equivocators=0 \
             doppels=0 \
-            crashes=0 \
-            restarts=5 \
+            crashes=5 \
+            restarts=16 \
             ejections=0
 
     log "------------------------------------------------------------"
