@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use datasize::DataSize;
 use either::Either;
+use futures::FutureExt;
 use once_cell::sync::Lazy;
 use prometheus::Registry;
 use schemars::JsonSchema;
@@ -35,7 +36,7 @@ use crate::{
         Component, ComponentState, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
-        announcements::{BlockSynchronizerAnnouncement, PeerBehaviorAnnouncement},
+        announcements::{MetaBlockAnnouncement, PeerBehaviorAnnouncement},
         requests::{
             BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
             ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
@@ -48,7 +49,8 @@ use crate::{
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
-        HotBlockState, Item, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        Item, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap, TrieOrChunk,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -64,6 +66,7 @@ use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
 };
+use metrics::Metrics;
 pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
 pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
@@ -92,7 +95,6 @@ static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
         }),
     )
 });
-use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "block_synchronizer";
 
@@ -114,7 +116,7 @@ pub(crate) trait ReactorEvent:
     + From<SyncGlobalStateRequest>
     + From<BlockCompleteConfirmationRequest>
     + From<MakeBlockExecutableRequest>
-    + From<BlockSynchronizerAnnouncement>
+    + From<MetaBlockAnnouncement>
     + Send
     + 'static
 {
@@ -138,7 +140,7 @@ impl<REv> ReactorEvent for REv where
         + From<SyncGlobalStateRequest>
         + From<BlockCompleteConfirmationRequest>
         + From<MakeBlockExecutableRequest>
-        + From<BlockSynchronizerAnnouncement>
+        + From<MetaBlockAnnouncement>
         + Send
         + 'static
 {
@@ -418,7 +420,10 @@ impl BlockSynchronizer {
         block_hash: &BlockHash,
     ) -> Effects<Event>
     where
-        REv: From<BlockSynchronizerAnnouncement> + From<BlockCompleteConfirmationRequest> + Send,
+        REv: From<StorageRequest>
+            + From<MetaBlockAnnouncement>
+            + From<BlockCompleteConfirmationRequest>
+            + Send,
     {
         if let Some(builder) = &self.forward {
             if builder.block_hash() == *block_hash {
@@ -435,7 +440,25 @@ impl BlockSynchronizer {
                 if let Some(block) = builder.maybe_block() {
                     effects.extend(
                         effect_builder
-                            .announce_completed_block(Arc::new(*block))
+                            .get_execution_results_from_storage(*block.hash())
+                            .then(move |maybe_execution_results| async move {
+                                match maybe_execution_results {
+                                    Some(execution_results) => {
+                                        let meta_block = MetaBlock::new(
+                                            Arc::new(*block),
+                                            execution_results,
+                                            MetaBlockState::new_after_historical_sync(),
+                                        );
+                                        effect_builder.announce_meta_block(meta_block).await
+                                    }
+                                    None => {
+                                        error!(
+                                            "should have execution results for {}",
+                                            block.hash()
+                                        );
+                                    }
+                                }
+                            })
                             .ignore(),
                     );
                 }
@@ -1309,7 +1332,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                                     .enqueue_block_for_execution(
                                         finalized_block,
                                         deploys,
-                                        HotBlockState::new_synced(),
+                                        MetaBlockState::new_already_stored(),
                                     )
                                     .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
                             );

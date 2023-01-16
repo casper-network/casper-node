@@ -53,7 +53,7 @@ use crate::{
     fatal, protocol,
     types::{
         chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, HotBlockState, NodeId,
+        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId,
     },
     NodeRng,
 };
@@ -1217,7 +1217,7 @@ async fn execute_finalized_block<REv>(
         }
     };
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys, HotBlockState::new())
+        .enqueue_block_for_execution(finalized_block, deploys, MetaBlockState::new())
         .await
 }
 

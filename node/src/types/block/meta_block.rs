@@ -13,27 +13,34 @@ use crate::types::{Block, DeployHash, DeployHeader};
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
 
+/// A block along with its execution results and state recording which actions have been taken
+/// related to the block.
+///
+/// Some or all of these actions should be taken after a block is formed on a node via:
+/// * execution (ContractRuntime executing a FinalizedBlock)
+/// * accumulation (BlockAccumulator receiving a gossiped block and its finality signatures)
+/// * historical sync (BlockSynchronizer fetching all data relating to a block)
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
-pub(crate) struct HotBlock {
+pub(crate) struct MetaBlock {
     pub(crate) block: Arc<Block>,
     pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     pub(crate) state: State,
 }
 
-impl HotBlock {
+impl MetaBlock {
     pub(crate) fn new(
         block: Arc<Block>,
         execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
         state: State,
     ) -> Self {
-        HotBlock {
+        MetaBlock {
             block,
             execution_results,
             state,
         }
     }
 
-    pub(crate) fn merge(mut self, other: HotBlock) -> Result<Self, MergeMismatchError> {
+    pub(crate) fn merge(mut self, other: MetaBlock) -> Result<Self, MergeMismatchError> {
         if self.block != other.block {
             return Err(MergeMismatchError::Block);
         }
@@ -72,17 +79,17 @@ mod tests {
         let block = Arc::new(Block::random(&mut rng));
         let deploy = Deploy::random(&mut rng);
         let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
-        let state = State::new_synced();
+        let state = State::new_already_stored();
 
-        let hot_block1 = HotBlock::new(Arc::clone(&block), execution_results.clone(), state);
-        let hot_block2 = HotBlock::new(Arc::clone(&block), execution_results.clone(), state);
+        let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
+        let meta_block2 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
 
-        let merged = hot_block1.clone().merge(hot_block2.clone()).unwrap();
+        let merged = meta_block1.clone().merge(meta_block2.clone()).unwrap();
 
         assert_eq!(merged.block, block);
         assert_eq!(merged.execution_results, execution_results);
-        assert_eq!(merged.state, State::new_synced());
-        assert_eq!(hot_block2.merge(hot_block1).unwrap(), merged)
+        assert_eq!(merged.state, State::new_already_stored());
+        assert_eq!(meta_block2.merge(meta_block1).unwrap(), merged)
     }
 
     #[test]
@@ -92,15 +99,15 @@ mod tests {
         let block = Arc::new(Block::random(&mut rng));
         let state = State::new();
 
-        let hot_block1 = HotBlock::new(Arc::clone(&block), vec![], state);
-        let hot_block2 = HotBlock::new(Arc::clone(&block), vec![], state);
+        let meta_block1 = MetaBlock::new(Arc::clone(&block), vec![], state);
+        let meta_block2 = MetaBlock::new(Arc::clone(&block), vec![], state);
 
-        let merged = hot_block1.clone().merge(hot_block2.clone()).unwrap();
+        let merged = meta_block1.clone().merge(meta_block2.clone()).unwrap();
 
         assert_eq!(merged.block, block);
         assert!(merged.execution_results.is_empty());
         assert_eq!(merged.state, state);
-        assert_eq!(hot_block2.merge(hot_block1).unwrap(), merged)
+        assert_eq!(meta_block2.merge(meta_block1).unwrap(), merged)
     }
 
     #[test]
@@ -110,17 +117,17 @@ mod tests {
         let block = Arc::new(Block::random(&mut rng));
         let deploy = Deploy::random(&mut rng);
         let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
-        let state = State::new_immediate_switch();
+        let state = State::new_not_to_be_gossiped();
 
-        let hot_block1 = HotBlock::new(Arc::clone(&block), execution_results.clone(), state);
-        let hot_block2 = HotBlock::new(Arc::clone(&block), vec![], state);
+        let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
+        let meta_block2 = MetaBlock::new(Arc::clone(&block), vec![], state);
 
-        let merged = hot_block1.clone().merge(hot_block2.clone()).unwrap();
+        let merged = meta_block1.clone().merge(meta_block2.clone()).unwrap();
 
         assert_eq!(merged.block, block);
         assert_eq!(merged.execution_results, execution_results);
         assert_eq!(merged.state, state);
-        assert_eq!(hot_block2.merge(hot_block1).unwrap(), merged)
+        assert_eq!(meta_block2.merge(meta_block1).unwrap(), merged)
     }
 
     #[test]
@@ -140,15 +147,15 @@ mod tests {
         let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
         let state = State::new();
 
-        let hot_block1 = HotBlock::new(block1, execution_results.clone(), state);
-        let hot_block2 = HotBlock::new(block2, execution_results, state);
+        let meta_block1 = MetaBlock::new(block1, execution_results.clone(), state);
+        let meta_block2 = MetaBlock::new(block2, execution_results, state);
 
         assert!(matches!(
-            hot_block1.clone().merge(hot_block2.clone()),
+            meta_block1.clone().merge(meta_block2.clone()),
             Err(MergeMismatchError::Block)
         ));
         assert!(matches!(
-            hot_block2.merge(hot_block1),
+            meta_block2.merge(meta_block1),
             Err(MergeMismatchError::Block)
         ));
     }
@@ -164,15 +171,15 @@ mod tests {
         let execution_results2 = vec![(*deploy2.hash(), deploy2.take_header(), rng.gen())];
         let state = State::new();
 
-        let hot_block1 = HotBlock::new(Arc::clone(&block), execution_results1, state);
-        let hot_block2 = HotBlock::new(Arc::clone(&block), execution_results2, state);
+        let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results1, state);
+        let meta_block2 = MetaBlock::new(Arc::clone(&block), execution_results2, state);
 
         assert!(matches!(
-            hot_block1.clone().merge(hot_block2.clone()),
+            meta_block1.clone().merge(meta_block2.clone()),
             Err(MergeMismatchError::ExecutionResults)
         ));
         assert!(matches!(
-            hot_block2.merge(hot_block1),
+            meta_block2.merge(meta_block1),
             Err(MergeMismatchError::ExecutionResults)
         ));
     }
