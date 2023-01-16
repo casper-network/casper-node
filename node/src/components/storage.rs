@@ -93,9 +93,9 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
-        DeployMetadataExt, DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId,
-        SignatureWeight, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SyncLeap,
+        SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{self, display_error, WithDir},
     NodeRng,
@@ -1236,6 +1236,13 @@ impl Storage {
         self.read_block_header_by_hash(highest_block_hash)
     }
 
+    /// Retrieves the height of the highest complete block (if any).
+    pub(crate) fn highest_complete_block_height(&self) -> Option<u64> {
+        self.completed_blocks
+            .highest_sequence()
+            .map(|sequence| sequence.high())
+    }
+
     /// Retrieves the highest complete block from the storage, if one exists.
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
@@ -1753,8 +1760,8 @@ impl Storage {
         &self,
         txn: &mut Tx,
     ) -> Result<Option<Block>, FatalStorageError> {
-        let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
-            Some(sequence) => sequence.high(),
+        let highest_complete_block_height = match self.highest_complete_block_height() {
+            Some(height) => height,
             None => {
                 return Ok(None);
             }
@@ -2148,63 +2155,6 @@ impl Storage {
         let maybe_signatures: Option<BlockSignatures> =
             txn.get_value(self.block_metadata_db, block_hash)?;
         Ok(maybe_signatures.and_then(|signatures| signatures.get_finality_signature(public_key)))
-    }
-
-    /// Walks an era backwards from its switch block; returns true if every block in the era
-    /// has sufficient finality signatures, else false
-    pub(crate) fn era_has_sufficient_finality_signatures(
-        &self,
-        era_validator_weights: &EraValidatorWeights,
-    ) -> Result<bool, FatalStorageError> {
-        let era_id = era_validator_weights.era_id();
-        if let Some(mut block_hash) = self.switch_block_era_id_index.get(&era_id).copied() {
-            let mut txn = self.env.begin_ro_txn()?;
-            loop {
-                if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
-                    if block.header().era_id() != era_id {
-                        return Ok(true);
-                    }
-                    if self.block_has_sufficient_finality_signatures(
-                        &mut txn,
-                        &block_hash,
-                        era_validator_weights,
-                    ) == false
-                    {
-                        return Ok(false);
-                    }
-                    if let Some(parent_hash) = block.parent() {
-                        block_hash = *parent_hash;
-                    }
-                }
-            }
-        }
-        Ok(false)
-    }
-
-    /// Determines if a given block has sufficient finality signatures for its era.
-    fn block_has_sufficient_finality_signatures<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_hash: &BlockHash,
-        era_validator_weights: &EraValidatorWeights,
-    ) -> bool {
-        let era_id = era_validator_weights.era_id();
-        if let Ok(Some(block_signatures)) = self.get_block_signatures(txn, block_hash) {
-            if block_signatures.era_id != era_id {
-                return false;
-            }
-            if let Some(validator_keys) = block_signatures.public_keys() {
-                match era_validator_weights.signature_weight(validator_keys.iter()) {
-                    SignatureWeight::Strict => {
-                        return true;
-                    }
-                    SignatureWeight::Insufficient | SignatureWeight::Weak => {
-                        return false;
-                    }
-                }
-            }
-        }
-        false
     }
 
     /// Retrieves block signatures for a block with a given block hash.

@@ -421,9 +421,12 @@ impl MainReactor {
         };
 
         if let Some(block_header) = recent_switch_block_headers.last() {
-            return self
-                .upgrade_watcher
-                .should_upgrade_after(block_header.era_id());
+            let highest_block_complete =
+                self.storage.highest_complete_block_height() == Some(block_header.height());
+            return highest_block_complete
+                && self
+                    .upgrade_watcher
+                    .should_upgrade_after(block_header.era_id());
         }
         false
     }

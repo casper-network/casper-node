@@ -1,12 +1,73 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
+
+use datasize::DataSize;
+use tracing::debug;
 
 use crate::{
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::EraValidatorWeights,
+    types::{BlockHash, EraValidatorWeights, FinalitySignatureId},
 };
 
+use casper_types::EraId;
+
 const DELAY_BEFORE_SHUTDOWN: Duration = Duration::from_secs(2);
+
+#[derive(Debug, DataSize)]
+pub(super) struct SignatureGossipTracker {
+    era_id: EraId,
+    finished_gossiping: HashMap<BlockHash, Vec<FinalitySignatureId>>,
+}
+
+impl SignatureGossipTracker {
+    pub(super) fn new() -> Self {
+        Self {
+            era_id: EraId::from(0),
+            finished_gossiping: Default::default(),
+        }
+    }
+
+    pub(super) fn register_signature(&mut self, signature_id: FinalitySignatureId) {
+        // ignore the signature if it's from an older era
+        if signature_id.era_id < self.era_id {
+            return;
+        }
+        // if we registered a signature in a higher era, reset the cache
+        if signature_id.era_id > self.era_id {
+            self.era_id = signature_id.era_id;
+            self.finished_gossiping = Default::default();
+        }
+        // record that the signature has finished gossiping
+        self.finished_gossiping
+            .entry(signature_id.block_hash)
+            .or_default()
+            .push(signature_id);
+    }
+
+    fn finished_gossiping_enough(&self, validator_weights: &EraValidatorWeights) -> bool {
+        if validator_weights.era_id() != self.era_id {
+            debug!(
+                relevant_era=%validator_weights.era_id(),
+                our_era_id=%self.era_id,
+                "SignatureGossipTracker has no record of the relevant era!"
+            );
+            return false;
+        }
+        self.finished_gossiping
+            .iter()
+            .all(|(block_hash, signatures)| {
+                let gossiped_weight_sufficient = validator_weights
+                    .signature_weight(signatures.iter().map(|sig_id| &sig_id.public_key))
+                    .is_sufficient(true);
+                debug!(
+                    %gossiped_weight_sufficient,
+                    %block_hash,
+                    "SignatureGossipTracker: gossiped finality signatures check"
+                );
+                gossiped_weight_sufficient
+            })
+    }
+}
 
 pub(super) enum UpgradeShutdownInstruction {
     Do(Duration, Effects<MainEvent>),
@@ -49,28 +110,21 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         validator_weights: &EraValidatorWeights,
     ) -> UpgradeShutdownInstruction {
-        match self
-            .storage
-            .era_has_sufficient_finality_signatures(validator_weights)
-        {
-            Ok(true) => {
-                // Allow a delay to acquire more finality signatures
-                let effects = effect_builder
-                    .set_timeout(DELAY_BEFORE_SHUTDOWN)
-                    .event(|_| {
-                        MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade)
-                    });
-                // should not need to crank the control logic again as the reactor will shutdown
-                UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
-            }
-            Ok(false) => UpgradeShutdownInstruction::CheckLater(
-                "waiting for sufficient finality".to_string(),
+        let finished_gossiping_enough = self
+            .signature_gossip_tracker
+            .finished_gossiping_enough(validator_weights);
+        if finished_gossiping_enough {
+            // Allow a delay to acquire more finality signatures
+            let effects = effect_builder
+                .set_timeout(DELAY_BEFORE_SHUTDOWN)
+                .event(|_| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade));
+            // should not need to crank the control logic again as the reactor will shutdown
+            UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
+        } else {
+            UpgradeShutdownInstruction::CheckLater(
+                "waiting for completion of gossiping signatures".to_string(),
                 DELAY_BEFORE_SHUTDOWN,
-            ),
-            Err(error) => UpgradeShutdownInstruction::Fatal(format!(
-                "failed check for sufficient finality signatures: {}",
-                error
-            )),
+            )
         }
     }
 }
