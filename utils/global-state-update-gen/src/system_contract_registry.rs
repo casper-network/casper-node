@@ -49,7 +49,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
         .open_ro_cursor(protocol_data_db)
         .unwrap_or_else(|error| panic!("failed to open a read-only cursor: {}", error));
 
-    let serialized_protocol_data = match cursor.iter().next() {
+    let serialized_protocol_data = match cursor.iter().next().map(Result::unwrap) {
         Some((_key, value)) => value,
         None => {
             println!("No protocol data found");
