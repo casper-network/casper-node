@@ -2,6 +2,8 @@
 mod error;
 mod event;
 mod metrics;
+#[cfg(test)]
+mod tests;
 
 use std::{
     cmp::Ordering,
@@ -31,7 +33,7 @@ use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "sync_leaper";
 
-#[derive(Debug, DataSize)]
+#[derive(Clone, Debug, DataSize)]
 enum PeerState {
     RequestSent,
     Rejected,
@@ -136,6 +138,9 @@ impl LeapActivity {
             .filter(|state| matches!(state, PeerState::RequestSent))
             .count();
         let responsed = self.peers.len() - in_flight;
+
+        // TODO[RC]: Should this be just self.peers.is_empty()?
+
         if in_flight == 0 && responsed == 0 {
             return LeapState::Failed {
                 sync_leap_identifier,
