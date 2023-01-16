@@ -113,29 +113,18 @@ impl MainReactor {
         let finished_gossiping_enough = self
             .signature_gossip_tracker
             .finished_gossiping_enough(validator_weights);
-        match self
-            .storage
-            .era_has_sufficient_finality_signatures(validator_weights)
-        {
-            Ok(true) if finished_gossiping_enough => {
-                // Allow a delay to acquire more finality signatures
-                let effects = effect_builder
-                    .set_timeout(DELAY_BEFORE_SHUTDOWN)
-                    .event(|_| {
-                        MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade)
-                    });
-                // should not need to crank the control logic again as the reactor will shutdown
-                UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
-            }
-            Ok(_) => UpgradeShutdownInstruction::CheckLater(
-                "waiting for sufficient finality and completion of gossiping signatures"
-                    .to_string(),
+        if finished_gossiping_enough {
+            // Allow a delay to acquire more finality signatures
+            let effects = effect_builder
+                .set_timeout(DELAY_BEFORE_SHUTDOWN)
+                .event(|_| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade));
+            // should not need to crank the control logic again as the reactor will shutdown
+            UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
+        } else {
+            UpgradeShutdownInstruction::CheckLater(
+                "waiting for completion of gossiping signatures".to_string(),
                 DELAY_BEFORE_SHUTDOWN,
-            ),
-            Err(error) => UpgradeShutdownInstruction::Fatal(format!(
-                "failed check for sufficient finality signatures: {}",
-                error
-            )),
+            )
         }
     }
 }
