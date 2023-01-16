@@ -400,7 +400,8 @@ impl Storage {
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
-        for (_, raw_val) in cursor.iter() {
+        for row in cursor.iter() {
+            let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             let maybe_block_body =
@@ -2843,6 +2844,7 @@ impl Storage {
 
         cursor
             .iter()
+            .map(Result::unwrap)
             .map(|(raw_key, _)| {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
@@ -2887,7 +2889,8 @@ fn construct_block_body_to_block_header_reverse_lookup(
     block_header_db: &Database,
 ) -> Result<BTreeMap<Digest, BlockHeader>, LmdbExtError> {
     let mut block_body_hash_to_header_map: BTreeMap<Digest, BlockHeader> = BTreeMap::new();
-    for (_raw_key, raw_val) in txn.open_ro_cursor(*block_header_db)?.iter() {
+    for row in txn.open_ro_cursor(*block_header_db)?.iter() {
+        let (_raw_key, raw_val) = row?;
         let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
         block_body_hash_to_header_map.insert(block_header.body_hash().to_owned(), block_header);
     }
@@ -2909,7 +2912,8 @@ fn initialize_block_body_db(
 
     let mut cursor = txn.open_rw_cursor(*block_body_db)?;
 
-    for (raw_key, _raw_val) in cursor.iter() {
+    for row in cursor.iter() {
+        let (raw_key, _raw_val) = row?;
         let block_body_hash =
             Digest::try_from(raw_key).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
         if !block_body_hash_to_header_map.contains_key(&block_body_hash) {
@@ -2949,7 +2953,8 @@ fn initialize_block_metadata_db(
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
 
-    for (raw_key, _) in cursor.iter() {
+    for row in cursor.iter() {
+        let (raw_key, _) = row?;
         if deleted_block_hashes.contains(raw_key) {
             cursor.del(WriteFlags::empty())?;
             continue;
