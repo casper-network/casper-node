@@ -488,7 +488,7 @@ impl BlockSynchronizer {
             if builder.in_flight_latch().is_some() || builder.is_finished() {
                 return;
             }
-            let action = builder.block_acquisition_action(rng);
+            let action = builder.block_acquisition_action(rng, max_simultaneous_peers);
             let peers = action.peers_to_ask();
             let need_next = action.need_next();
             info!("BlockSynchronizer: {}", need_next);
@@ -519,18 +519,23 @@ impl BlockSynchronizer {
                 }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
                     builder.set_in_flight_latch();
-                    results.extend(peers.into_iter().flat_map(|node_id| {
-                        validators.iter().flat_map(move |public_key| {
-                            let id = FinalitySignatureId {
-                                block_hash,
-                                era_id,
-                                public_key: public_key.clone(),
-                            };
+                    for (validator, peer) in validators
+                        .into_iter()
+                        .take(max_simultaneous_peers)
+                        .zip(peers.into_iter().cycle())
+                    {
+                        builder.register_finality_signature_pending(validator.clone());
+                        let id = FinalitySignatureId {
+                            block_hash,
+                            era_id,
+                            public_key: validator,
+                        };
+                        results.extend(
                             effect_builder
-                                .fetch::<FinalitySignature>(id, node_id, EmptyValidationMetadata)
-                                .event(Event::FinalitySignatureFetched)
-                        })
-                    }))
+                                .fetch::<FinalitySignature>(id, peer, EmptyValidationMetadata)
+                                .event(Event::FinalitySignatureFetched),
+                        );
+                    }
                 }
                 NeedNext::GlobalState(block_hash, global_state_root_hash) => {
                     builder.set_in_flight_latch();

@@ -8,7 +8,7 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},
@@ -269,7 +269,11 @@ impl BlockBuilder {
         self.peer_list.flush_dishonest_peers();
     }
 
-    pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
+    pub(super) fn block_acquisition_action(
+        &mut self,
+        rng: &mut NodeRng,
+        max_simultaneous_peers: usize,
+    ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
                 trace!(
@@ -306,6 +310,7 @@ impl BlockBuilder {
             validator_weights,
             rng,
             self.should_fetch_execution_state,
+            max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
             Err(err) => {
@@ -360,6 +365,11 @@ impl BlockBuilder {
             .acquisition_state
             .register_approvals_hashes(approvals_hashes, self.should_fetch_execution_state);
         self.handle_acceptance(maybe_peer, acceptance)
+    }
+
+    pub(super) fn register_finality_signature_pending(&mut self, validator: PublicKey) {
+        self.acquisition_state
+            .register_finality_signature_pending(validator);
     }
 
     pub(super) fn register_finality_signature(

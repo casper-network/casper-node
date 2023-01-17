@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;
 
@@ -8,6 +8,7 @@ use casper_types::PublicKey;
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 enum SignatureState {
     Vacant,
+    Pending,
     Signature(Box<FinalitySignature>),
 }
 
@@ -30,7 +31,20 @@ impl SignatureAcquisition {
         }
     }
 
-    // Returns `true` if new signature was registered.
+    pub(super) fn register_pending(&mut self, public_key: PublicKey) {
+        match self.inner.entry(public_key) {
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(SignatureState::Pending);
+            }
+            Entry::Occupied(mut occupied_entry) => {
+                if *occupied_entry.get() == SignatureState::Vacant {
+                    occupied_entry.insert(SignatureState::Pending);
+                }
+            }
+        }
+    }
+
+    /// Returns `true` if new signature was registered.
     pub(super) fn apply_signature(&mut self, finality_signature: FinalitySignature) -> bool {
         self.inner
             .insert(
@@ -42,9 +56,27 @@ impl SignatureAcquisition {
 
     pub(super) fn have_signatures(&self) -> impl Iterator<Item = &PublicKey> {
         self.inner.iter().filter_map(|(k, v)| match v {
-            SignatureState::Vacant => None,
+            SignatureState::Vacant | SignatureState::Pending => None,
             SignatureState::Signature(_finality_signature) => Some(k),
         })
+    }
+
+    pub(super) fn not_vacant(&self) -> impl Iterator<Item = &PublicKey> {
+        self.inner.iter().filter_map(|(k, v)| match v {
+            SignatureState::Vacant => None,
+            SignatureState::Pending | SignatureState::Signature(_) => Some(k),
+        })
+    }
+
+    pub(super) fn not_pending(&self) -> impl Iterator<Item = &PublicKey> {
+        self.inner.iter().filter_map(|(k, v)| match v {
+            SignatureState::Pending => None,
+            SignatureState::Vacant | SignatureState::Signature(_) => Some(k),
+        })
+    }
+
+    pub(super) fn have_no_vacant(&self) -> bool {
+        self.inner.iter().all(|(_, v)| *v != SignatureState::Vacant)
     }
 
     pub(crate) fn set_is_checkable(&mut self, is_checkable: bool) {

@@ -233,6 +233,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
+        max_simultaneous_peers: usize,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
         // to acquire the necessary data to get us to the next step (if any), or an error
@@ -246,14 +247,25 @@ impl BlockAcquisitionState {
                         validator_weights.era_id(),
                     ))
                 } else {
+                    // Collect signatures with Vacant state or which are currently missing from the
+                    // SignatureAcquisition.
+                    let mut missing_signatures: Vec<PublicKey> = validator_weights
+                        .missing_validators(signatures.not_vacant())
+                        .cloned()
+                        .collect();
+                    // If there are too few, retry any in Pending state.
+                    if missing_signatures.len() < max_simultaneous_peers {
+                        missing_signatures.extend(
+                            validator_weights
+                                .missing_validators(signatures.not_pending())
+                                .cloned(),
+                        );
+                    }
                     Ok(BlockAcquisitionAction::finality_signatures(
                         peer_list,
                         rng,
                         block_header,
-                        validator_weights
-                            .missing_validators(signatures.have_signatures())
-                            .cloned()
-                            .collect(),
+                        missing_signatures,
                     ))
                 }
             }
@@ -461,6 +473,23 @@ impl BlockAcquisitionState {
         Ok(Some(Acceptance::NeededIt))
     }
 
+    /// Register a finality signature as pending for this block.
+    pub(super) fn register_finality_signature_pending(&mut self, validator: PublicKey) {
+        match self {
+            BlockAcquisitionState::HaveBlockHeader(_, acquired_signatures)
+            | BlockAcquisitionState::HaveBlock(_, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveGlobalState(_, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveApprovalsHashes(_, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveAllExecutionResults(_, acquired_signatures, ..)
+            | BlockAcquisitionState::HaveAllDeploys(_, acquired_signatures)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(_, acquired_signatures)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(_, acquired_signatures) => {
+                acquired_signatures.register_pending(validator);
+            }
+            BlockAcquisitionState::Initialized(..) | BlockAcquisitionState::Failed(..) => {}
+        };
+    }
+
     /// Register a finality signature for this block.
     pub(super) fn register_finality_signature(
         &mut self,
@@ -478,16 +507,22 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures) => {
                 // we are attempting to acquire at least ~1/3 signature weight before
                 // committing to doing non-trivial work to acquire this block
-                // thus the primary thing we are doing in this state is accumulating sigs
+                // thus the primary thing we are doing in this state is accumulating sigs.
+                // We also want to ensure we've tried at least once to fetch every potential
+                // signature.
                 maybe_block_hash = Some(header.block_hash());
                 added = acquired_signatures.apply_signature(signature);
                 match validator_weights.signature_weight(acquired_signatures.have_signatures()) {
                     SignatureWeight::Insufficient => None,
                     SignatureWeight::Weak | SignatureWeight::Strict => {
-                        Some(BlockAcquisitionState::HaveWeakFinalitySignatures(
-                            header.clone(),
-                            acquired_signatures.clone(),
-                        ))
+                        if acquired_signatures.have_no_vacant() {
+                            Some(BlockAcquisitionState::HaveWeakFinalitySignatures(
+                                header.clone(),
+                                acquired_signatures.clone(),
+                            ))
+                        } else {
+                            None
+                        }
                     }
                 }
             }
