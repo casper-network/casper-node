@@ -328,9 +328,6 @@ impl BlockAccumulator {
             .as_ref()
             .map_or(false, |local_tip| block_height < local_tip.height)
         {
-            // If the acceptor exists already (through a previously recorded
-            // signature), we should probably purge it if it's older than
-            // the local tip.
             debug!(%block_hash, "ignoring outdated block");
             return Effects::new();
         }

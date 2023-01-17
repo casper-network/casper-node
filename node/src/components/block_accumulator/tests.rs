@@ -39,6 +39,7 @@ use crate::{
 };
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
+const RECENT_ERA_INTERVAL: u64 = 1;
 
 fn meta_block_with_default_state(block: Arc<Block>) -> MetaBlock {
     MetaBlock::new(block, vec![], MetaBlockState::new())
@@ -157,13 +158,12 @@ impl Reactor for MockReactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
         let block_accumulator_config = Config::default();
-        let recent_era_interval = 1;
         let block_time = block_accumulator_config.purge_interval() / 2;
 
         let block_accumulator = BlockAccumulator::new(
             block_accumulator_config,
             validator_matrix.clone(),
-            recent_era_interval,
+            RECENT_ERA_INTERVAL,
             block_time,
             registry,
         )
@@ -1138,7 +1138,7 @@ fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
 }
 
 fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
-    let era = rng.gen_range(1..10);
+    let era = rng.gen_range(10..20);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
 
@@ -1500,12 +1500,45 @@ async fn block_accumulator_reactor_flow() {
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
-        // This should *probably* have no effect on the accumulator since the
-        // block is older than the local tip, but right now it creates the
-        // acceptor if it's in the same era or newer than the local tip era.
-        // See comment in `BlockAccumulator::register_block`.
-        // assert!(!block_accumulator
-        //     .block_acceptors
-        //     .contains_key(older_block.hash()));
+        // The block is older than the local tip, but the accumulator doesn't
+        // know that because it was only provided with the signature, so it
+        // creates the acceptor if it's in the same era or newer than the
+        // local tip era, which, in this case, it is.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(older_block.hash()));
+    }
+
+    let old_era_block = Block::random_with_specifics(
+        &mut rng,
+        block_1.header().era_id() - RECENT_ERA_INTERVAL - 1,
+        1,
+        ProtocolVersion::V1_0_0,
+        false,
+        None,
+    );
+    let old_era_signature = FinalitySignature::create(
+        *old_era_block.hash(),
+        old_era_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+    // Register a signature for a block in an old era.
+    {
+        let effect_builder = runner.effect_builder();
+        let reactor = runner.reactor_mut();
+
+        let block_accumulator = &mut reactor.block_accumulator;
+        let event = super::Event::ReceivedFinalitySignature {
+            finality_signature: Box::new(old_era_signature),
+            sender: peer_2,
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+        // This signature is from an older era and shouldn't lead to the
+        // creation of an acceptor.
+        assert!(!block_accumulator
+            .block_acceptors
+            .contains_key(old_era_block.hash()));
     }
 }
