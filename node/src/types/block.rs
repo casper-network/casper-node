@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 mod approvals_hashes;
-mod hot_block;
+mod meta_block;
 
 use std::{
     array::TryFromSliceError,
@@ -16,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::Into;
-use itertools::Itertools;
 use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
@@ -48,8 +47,8 @@ use crate::{
     utils::{ds, DisplayIter},
 };
 pub(crate) use approvals_hashes::ApprovalsHashes;
-pub(crate) use hot_block::{
-    HotBlock, MergeMismatchError as HotBlockMergeError, State as HotBlockState,
+pub(crate) use meta_block::{
+    MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
@@ -1254,15 +1253,6 @@ impl BlockSignatures {
         self.proofs.iter().map(move |(public_key, signature)| {
             FinalitySignature::new(self.block_hash, self.era_id, *signature, public_key.clone())
         })
-    }
-
-    pub(crate) fn public_keys(&self) -> Option<Vec<PublicKey>> {
-        if self.proofs.is_empty() {
-            None
-        } else {
-            let public_keys = self.proofs.keys().cloned().collect_vec();
-            Some(public_keys)
-        }
     }
 }
 

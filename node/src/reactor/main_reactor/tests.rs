@@ -17,13 +17,15 @@ use casper_types::{
 
 use crate::{
     components::{
-        consensus::{ClContext, ConsensusMessage, HighwayMessage, HighwayVertex},
+        consensus::{
+            self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
+        },
         gossiper, network, storage,
         upgrade_watcher::NextUpgrade,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
-        requests::{ContractRuntimeRequest, DeployBufferRequest, NetworkRequest},
+        requests::{ContractRuntimeRequest, NetworkRequest},
         EffectExt,
     },
     protocol::Message,
@@ -36,7 +38,8 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, NodeRng,
+        ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
+        NodeRng,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -731,6 +734,12 @@ async fn should_store_finalized_approvals() {
     }
 }
 
+// This test exercises a scenario in which a proposed block contains invalid accusations.
+// Blocks containing no deploys or transfers used to be incorrectly marked as not needing
+// validation even if they contained accusations, which opened up a security hole through which a
+// malicious validator could accuse whomever they wanted of equivocating and have these
+// accusations accepted by the other validators. This has been patched and the test asserts that
+// such a scenario is no longer possible.
 #[tokio::test]
 async fn empty_block_validation_regression() {
     testing::init_logging();
@@ -757,7 +766,7 @@ async fn empty_block_validation_regression() {
         .expect("network initialization failed");
     let malicious_validator = stakes.keys().next().unwrap().clone();
     info!("Malicious validator: {:?}", malicious_validator);
-    let _everyone_else: Vec<_> = stakes
+    let everyone_else: Vec<_> = stakes
         .keys()
         .filter(|pub_key| **pub_key != malicious_validator)
         .cloned()
@@ -770,26 +779,35 @@ async fn empty_block_validation_regression() {
         .reactor_mut()
         .inner_mut()
         .set_filter(move |event| match event {
-            MainEvent::DeployBufferRequest(DeployBufferRequest::GetAppendableBlock {
-                timestamp,
-                responder,
-            }) => {
+            MainEvent::Consensus(consensus::Event::NewBlockPayload(NewBlockPayload {
+                era_id,
+                block_payload: _,
+                block_context,
+            })) => {
                 info!("Accusing everyone else!");
-                Either::Right(MainEvent::DeployBufferRequest(
-                    DeployBufferRequest::GetAppendableBlock {
-                        timestamp,
-                        responder,
+                // We hook into the NewBlockPayload event to replace the block being proposed with
+                // an empty one that accuses all the validators, except the malicious validator.
+                Either::Right(MainEvent::Consensus(consensus::Event::NewBlockPayload(
+                    NewBlockPayload {
+                        era_id,
+                        block_payload: Arc::new(BlockPayload::new(
+                            vec![],
+                            vec![],
+                            everyone_else.clone(),
+                            false,
+                        )),
+                        block_context,
                     },
-                ))
+                )))
             }
             event => Either::Right(event),
         });
 
     let timeout = Duration::from_secs(300);
-    info!("Waiting for the first era to end.");
-    net.settle_on(&mut rng, is_in_era(EraId::new(1)), timeout)
+    info!("Waiting for the first era after genesis to end.");
+    net.settle_on(&mut rng, is_in_era(EraId::new(2)), timeout)
         .await;
-    let switch_blocks = SwitchBlocks::collect(net.nodes(), 1);
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), 2);
 
     // Nobody actually double-signed. The accusations should have had no effect.
     assert_eq!(switch_blocks.equivocators(0), []);

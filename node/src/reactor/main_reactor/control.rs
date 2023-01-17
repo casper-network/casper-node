@@ -17,7 +17,7 @@ use crate::{
         upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
         utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, HotBlockState, Item},
+    types::{BlockHash, BlockPayload, FinalizedBlock, Item, MetaBlockState},
     NodeRng,
 };
 
@@ -342,7 +342,7 @@ impl MainReactor {
             .enqueue_block_for_execution(
                 finalized_block,
                 vec![],
-                HotBlockState::new_immediate_switch(),
+                MetaBlockState::new_not_to_be_gossiped(),
             )
             .ignore())
     }
@@ -401,7 +401,7 @@ impl MainReactor {
                         .enqueue_block_for_execution(
                             finalized_block,
                             vec![],
-                            HotBlockState::new_immediate_switch(),
+                            MetaBlockState::new_not_to_be_gossiped(),
                         )
                         .ignore())
                 }
@@ -421,9 +421,12 @@ impl MainReactor {
         };
 
         if let Some(block_header) = recent_switch_block_headers.last() {
-            return self
-                .upgrade_watcher
-                .should_upgrade_after(block_header.era_id());
+            let highest_block_complete =
+                self.storage.highest_complete_block_height() == Some(block_header.height());
+            return highest_block_complete
+                && self
+                    .upgrade_watcher
+                    .should_upgrade_after(block_header.era_id());
         }
         false
     }
