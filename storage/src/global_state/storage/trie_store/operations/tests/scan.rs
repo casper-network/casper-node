@@ -27,7 +27,7 @@ where
         .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
     let TrieScan { mut tip, parents } =
-        scan::<R::ReadTransaction, S, E>(correlation_id, &txn, store, key, &root)?;
+        scan::<R::ReadTransaction, S, E>(correlation_id, &txn, store, key, &root)?.unwrap();
 
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {

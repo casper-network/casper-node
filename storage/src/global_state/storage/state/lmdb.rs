@@ -349,20 +349,20 @@ mod tests {
         ]
     }
 
-    fn create_test_pairs_updated() -> [TestPair; 3] {
+    fn create_test_pairs_updated() -> [(Key, StoredValue); 3] {
         [
-            TestPair {
-                key: Key::Account(AccountHash::new([1u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([2u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([3u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
-            },
+            (
+                Key::Account(AccountHash::new([1u8; 32])),
+                StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
+            ),
+            (
+                Key::Account(AccountHash::new([2u8; 32])),
+                StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
+            ),
+            (
+                Key::Account(AccountHash::new([3u8; 32])),
+                StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
+            ),
         ]
     }
 

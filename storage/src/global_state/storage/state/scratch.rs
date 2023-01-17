@@ -258,7 +258,10 @@ mod tests {
 
     use crate::global_state::storage::{
         transaction_source::{lmdb::LmdbEnvironment, TransactionSource},
-        trie_store::{lmdb::LmdbTrieStore, operations::WriteResult},
+        trie_store::{
+            lmdb::LmdbTrieStore,
+            operations::{self, WriteResult},
+        },
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
 
