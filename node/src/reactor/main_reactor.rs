@@ -80,6 +80,50 @@ pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
 
 /// Main node reactor.
+///
+/// This following diagram represents how the components involved in the **sync process** interact
+/// with each other.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     G((Network))
+///     E((BlockAccumulator))
+///     H[(Storage)]
+///     I((SyncLeaper))
+///     A(("Reactor<br/>(control logic)"))
+///     B((ContractRuntime))
+///     C((BlockSynchronizer))
+///     D((Consensus))
+///     K((Gossiper))
+///     J((Fetcher))
+///     F((DeployBuffer))
+///
+///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
+///     linkStyle 0 fill:none,stroke:red,color:red
+///     
+///     A -->|"Execute block<br/>(genesis or upgrade)"| B
+///
+///     G -->|Peers| C
+///     G -->|Peers| D
+///
+///     C -->|Block data| E
+///
+///     J -->|Block data| C
+///
+///     D -->|Execute block| B
+///
+///     A -->|SyncLeap| I
+///
+///     B -->|Put block| H
+///     C -->|Mark block complete| H
+///     E -->|Mark block complete| H
+///     C -->|Execute block| B
+///
+///     C -->|Complete block<br/>with Deploys| F
+///
+///     K -->|Deploy| F
+///     K -->|Block data| E
+/// ```
 #[derive(DataSize, Debug)]
 pub(crate) struct MainReactor {
     // components
