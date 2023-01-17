@@ -15,7 +15,7 @@ use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
-        storage::state::{CommitProvider, StateProvider},
+        storage::state::StateProvider,
     },
 };
 
@@ -62,6 +62,7 @@ pub fn execute_finalized_block(
         parent_seed,
         next_block_height: _,
     } = execution_pre_state;
+    // This root hash will be use in-mem to generate several others, but we must "commit_to_disk" with the original.
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
         Vec::with_capacity(deploys.len());
@@ -93,7 +94,7 @@ pub fn execute_finalized_block(
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) = commit_execution_results(
+        let (state_hash, execution_result) = apply_execution_results(
             engine_state,
             metrics.clone(),
             state_root_hash,
@@ -126,7 +127,7 @@ pub fn execute_finalized_block(
                 .into(),
         ),
     );
-    engine_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+    state_root_hash = engine_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -149,7 +150,7 @@ pub fn execute_finalized_block(
                 finalized_block.era_id().successor(),
             )?;
 
-            state_root_hash = engine_state.commit_to_disk(state_root_hash)?;
+            state_root_hash = engine_state.commit_to_disk(pre_state_root_hash)?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -167,7 +168,7 @@ pub fn execute_finalized_block(
         } else {
             // Finally, the new state-root-hash from the cumulative changes to global state is
             // returned when they are written to LMDB.
-            state_root_hash = engine_state.commit_to_disk(state_root_hash)?;
+            state_root_hash = engine_state.commit_to_disk(pre_state_root_hash)?;
             None
         };
 
@@ -218,7 +219,7 @@ pub fn execute_finalized_block(
 }
 
 /// Commits the execution results.
-fn commit_execution_results<S>(
+fn apply_execution_results<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
@@ -226,7 +227,7 @@ fn commit_execution_results<S>(
     execution_results: ExecutionResults,
 ) -> Result<(Digest, ExecutionResult), BlockExecutionError>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
 {
     let ee_execution_result = execution_results
@@ -272,7 +273,7 @@ fn commit_transforms<S>(
     effects: AdditiveMap<Key, Transform>,
 ) -> Result<Digest, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
 {
     trace!(?state_root_hash, ?effects, "commit");
@@ -296,7 +297,7 @@ pub fn execute_only<S>(
     deploy: DeployItem,
 ) -> Result<Option<ExecutionResult>, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
 {
     let SpeculativeExecutionState {
@@ -337,7 +338,7 @@ fn execute<S>(
     execute_request: ExecuteRequest,
 ) -> Result<ExecutionResults, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
 {
     trace!(?execute_request, "execute");
@@ -361,7 +362,7 @@ fn commit_step<S>(
     next_era_id: EraId,
 ) -> Result<StepSuccess, StepError>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
 {
     // Extract the rewards and the inactive validators if this is a switch block

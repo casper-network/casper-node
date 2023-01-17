@@ -14,7 +14,7 @@ use casper_hashing::Digest;
 use casper_storage::global_state::{
     shared::CorrelationId,
     storage::{
-        state::{CommitProvider, StateProvider},
+        state::StateProvider,
         trie::{Pointer, Trie},
     },
 };
@@ -216,7 +216,7 @@ fn find_necessary_tries<S>(
     necessary_tries: &mut HashSet<Digest>,
     state_root: Digest,
 ) where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
     engine_state::Error: From<S::Error>,
 {

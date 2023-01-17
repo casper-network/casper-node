@@ -74,18 +74,6 @@ pub enum CommitError {
     TrieNotFoundInCache(Digest),
 }
 
-/// Provides `commit` method.
-pub trait CommitProvider: StateProvider {
-    /// Applies changes and returns a new post state hash.
-    /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error>;
-}
-
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
     /// Associated error type for `StateProvider`.
@@ -99,6 +87,15 @@ pub trait StateProvider {
 
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;
+
+    /// Applies changes and returns a new post state hash.
+    /// block_hash is used for computing a deterministic and unique keys.
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error>;
 
     /// Reads a full `Trie` (never chunked) from the state if it is present
     fn get_trie_full(

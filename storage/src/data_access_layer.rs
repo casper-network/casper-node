@@ -6,7 +6,7 @@ use crate::global_state::{
         error,
         state::{
             scratch::{ScratchGlobalState, ScratchGlobalStateView},
-            CommitProvider, StateProvider,
+            StateProvider,
         },
         trie::TrieRaw,
     },
@@ -62,6 +62,15 @@ impl StateProvider for DataAccessLayer {
 
     type Reader = ScratchGlobalStateView;
 
+    fn commit(
+        &self,
+        correlation_id: shared::CorrelationId,
+        prestate_hash: casper_hashing::Digest,
+        effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
+    ) -> Result<casper_hashing::Digest, Self::Error> {
+        self.state.commit(correlation_id, prestate_hash, effects)
+    }
+
     fn checkout(
         &self,
         state_hash: casper_hashing::Digest,
@@ -95,16 +104,5 @@ impl StateProvider for DataAccessLayer {
         trie_raw: &[u8],
     ) -> Result<Vec<casper_hashing::Digest>, Self::Error> {
         self.state.missing_children(correlation_id, trie_raw)
-    }
-}
-
-impl CommitProvider for DataAccessLayer {
-    fn commit(
-        &self,
-        correlation_id: shared::CorrelationId,
-        state_hash: casper_hashing::Digest,
-        effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
-    ) -> Result<casper_hashing::Digest, Self::Error> {
-        self.state.commit(correlation_id, state_hash, effects)
     }
 }

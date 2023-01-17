@@ -39,7 +39,7 @@ use casper_storage::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
         storage::{
             lmdb,
-            state::{CommitProvider, StateProvider, StateReader},
+            state::{StateProvider, StateReader},
             trie::{merkle_proof::TrieMerkleProof, TrieRaw},
         },
     },
@@ -132,10 +132,10 @@ impl EngineState<DataAccessLayer> {
 
     /// Writes state cached in an EngineState<ScratchEngineState> to LMDB. Also flushes LMDB to
     /// disk.
-    pub fn commit_to_disk(&self, state_root_hash: Digest) -> Result<Digest, Error> {
+    pub fn commit_to_disk(&self, prestate_hash: Digest) -> Result<Digest, Error> {
         self.state
             .state()
-            .write_to_disk(state_root_hash)
+            .write_to_disk(prestate_hash)
             .map_err(Into::into)
     }
 
@@ -156,9 +156,14 @@ impl EngineState<DataAccessLayer> {
 
 impl<S> EngineState<S>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
     S::Error: Into<execution::Error>,
 {
+    /// Returns the empty root.
+    pub fn empty_root(&self) -> Digest {
+        self.state.empty_root()
+    }
+
     /// Returns engine config.
     pub fn config(&self) -> &EngineConfig {
         &self.config
@@ -180,7 +185,7 @@ where
     /// [`Key::SystemContractRegistry`].
     ///
     /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
-    pub fn commit_genesis(
+    pub fn apply_genesis(
         &self,
         correlation_id: CorrelationId,
         genesis_config_hash: Digest,
@@ -233,7 +238,7 @@ where
     /// This process applies changes to the global state.
     ///
     /// Returns [`UpgradeSuccess`].
-    pub fn commit_upgrade(
+    pub fn apply_upgrade(
         &self,
         correlation_id: CorrelationId,
         upgrade_config: UpgradeConfig,

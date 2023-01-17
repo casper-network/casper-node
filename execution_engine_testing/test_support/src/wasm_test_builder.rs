@@ -399,7 +399,7 @@ impl WasmTestBuilder {
             execution_effect,
         } = self
             .engine_state
-            .commit_genesis(
+            .apply_genesis(
                 CorrelationId::new(),
                 run_genesis_request.genesis_config_hash(),
                 run_genesis_request.protocol_version(),
@@ -649,7 +649,7 @@ impl WasmTestBuilder {
 
         let result = self
             .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
+            .apply_upgrade(CorrelationId::new(), upgrade_config.clone());
 
         self.commit_to_disk();
 

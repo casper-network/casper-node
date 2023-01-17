@@ -636,7 +636,7 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis request.
-    pub(crate) fn commit_genesis(
+    pub(crate) fn apply_and_commit_genesis(
         &self,
         chainspec: &Chainspec,
         chainspec_raw_bytes: &ChainspecRawBytes,
@@ -659,32 +659,38 @@ impl ContractRuntime {
                 })?,
         );
 
-        let result = self.engine_state.commit_genesis(
+        let mut result = self.engine_state.apply_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
             chainspec_registry,
-        );
+        )?;
+        let successful_post_state_hash = self
+            .engine_state
+            .commit_to_disk(self.engine_state.empty_root())?;
+        result.post_state_hash = successful_post_state_hash;
         self.engine_state.flush_environment()?;
-        result
+        Ok(result)
     }
 
-    pub(crate) fn commit_upgrade(
+    pub(crate) fn apply_and_commit_upgrade(
         &self,
         upgrade_config: UpgradeConfig,
     ) -> Result<UpgradeSuccess, engine_state::Error> {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();
-        let result = self
+        let pre_upgrade_root_hash = upgrade_config.pre_state_hash();
+        let mut result = self
             .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config);
+            .apply_upgrade(CorrelationId::new(), upgrade_config)?;
+        result.post_state_hash = self.engine_state.commit_to_disk(pre_upgrade_root_hash)?;
         self.engine_state.flush_environment()?;
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
         debug!(?result, "upgrade result");
-        result
+        Ok(result)
     }
 
     pub(crate) fn set_initial_state(

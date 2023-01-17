@@ -292,7 +292,7 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
-        let post_state_hash = match self.contract_runtime.commit_genesis(
+        let post_state_hash = match self.contract_runtime.apply_and_commit_genesis(
             self.chainspec.clone().as_ref(),
             self.chainspec_raw_bytes.clone().as_ref(),
         ) {
@@ -367,7 +367,7 @@ impl MainReactor {
             self.chainspec.protocol_config.activation_point.era_id(),
             self.chainspec_raw_bytes.clone(),
         ) {
-            Ok(cfg) => match self.contract_runtime.commit_upgrade(cfg) {
+            Ok(cfg) => match self.contract_runtime.apply_and_commit_upgrade(cfg) {
                 Ok(success) => {
                     let post_state_hash = success.post_state_hash;
                     info!(

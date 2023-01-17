@@ -10,8 +10,7 @@ use crate::global_state::{
     storage::{
         error,
         state::{
-            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
+            commit, put_stored_values, scratch::ScratchGlobalState, StateProvider, StateReader,
         },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
@@ -208,7 +207,11 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     }
 }
 
-impl CommitProvider for LmdbGlobalState {
+impl StateProvider for LmdbGlobalState {
+    type Error = error::Error;
+
+    type Reader = LmdbGlobalStateView;
+
     fn commit(
         &self,
         correlation_id: CorrelationId,
@@ -224,12 +227,6 @@ impl CommitProvider for LmdbGlobalState {
         )
         .map_err(Into::into)
     }
-}
-
-impl StateProvider for LmdbGlobalState {
-    type Error = error::Error;
-
-    type Reader = LmdbGlobalStateView;
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;

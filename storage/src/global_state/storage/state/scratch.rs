@@ -13,7 +13,7 @@ use crate::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
         error,
-        state::{CommitError, CommitProvider, StateProvider, StateReader},
+        state::{CommitError, StateProvider, StateReader},
         trie::{merkle_proof::TrieMerkleProof, TrieRaw},
         trie_store::operations::{read, ReadResult},
     },
@@ -145,13 +145,17 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     }
 }
 
-impl CommitProvider for ScratchGlobalState {
+impl StateProvider for ScratchGlobalState {
+    type Error = error::Error;
+
+    type Reader = ScratchGlobalStateView;
+
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Digest,
+        prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
         let scratch_trie = self.state.get_scratch_store();
@@ -166,7 +170,7 @@ impl CommitProvider for ScratchGlobalState {
                         correlation_id,
                         &scratch_trie,
                         &scratch_trie,
-                        &state_hash,
+                        &prestate_hash,
                         &key,
                     )? {
                         ReadResult::Found(current_value) => {
@@ -187,8 +191,8 @@ impl CommitProvider for ScratchGlobalState {
                             return Err(CommitError::KeyNotFound(key).into());
                         }
                         ReadResult::RootNotFound => {
-                            error!(root_hash=?state_hash, "root not found");
-                            return Err(CommitError::ReadRootNotFound(state_hash).into());
+                            error!(root_hash=?prestate_hash, "root not found");
+                            return Err(CommitError::ReadRootNotFound(prestate_hash).into());
                         }
                     }
                 }
@@ -203,15 +207,8 @@ impl CommitProvider for ScratchGlobalState {
 
             self.cache.write().unwrap().insert_write(key, value);
         }
-        Ok(state_hash)
+        Ok(prestate_hash)
     }
-}
-
-impl StateProvider for ScratchGlobalState {
-    type Error = error::Error;
-
-    type Reader = ScratchGlobalStateView;
-
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let maybe_view = self.state.checkout(state_hash)?;
         let maybe_state = maybe_view.map(|view| ScratchGlobalStateView {
