@@ -320,6 +320,40 @@ fn upsert_acceptor() {
     assert!(accumulator.block_acceptors[&block_hash]
         .peers()
         .contains(&ALICE_NODE_ID));
+
+    // Modify the timestamp of the acceptor we just added to be too old.
+    let purge_interval = config.purge_interval() * 2;
+    let purged_hash = {
+        let (hash, timestamp) = accumulator
+            .peer_block_timestamps
+            .get_mut(&ALICE_NODE_ID)
+            .unwrap()
+            .front_mut()
+            .unwrap();
+        *timestamp = Timestamp::now().saturating_sub(purge_interval);
+        *hash
+    };
+    // This should lead to a purge of said acceptor, therefore enabling us to
+    // add another one for Alice.
+    assert_eq!(accumulator.block_acceptors.len(), max_block_count + 1);
+    accumulator.upsert_acceptor(
+        BlockHash::random(&mut rng),
+        Some(era0),
+        Some(*ALICE_NODE_ID),
+    );
+    // Acceptor was added.
+    assert_eq!(accumulator.block_acceptors.len(), max_block_count + 2);
+    // The timestamp was purged.
+    assert_ne!(
+        accumulator
+            .peer_block_timestamps
+            .get(&ALICE_NODE_ID)
+            .unwrap()
+            .front()
+            .unwrap()
+            .0,
+        purged_hash
+    );
 }
 
 #[test]
@@ -629,12 +663,30 @@ fn acceptor_should_store_block() {
         &keys[2].0,
         keys[2].1.clone(),
     );
-    // The third signature with weight 10% doesn't change make the block go to
+    // The third signature with weight 10% doesn't make the block go to
     // strict finality.
     signatures.push(fin_sig.clone());
     acceptor.register_finality_signature(fin_sig, None).unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
+
+    // Create a bogus signature from a non-validator for this era.
+    let non_validator_keys = generate_ed25519_keypair();
+    let faulty_peer = NodeId::random(&mut rng);
+    let bogus_sig = FinalitySignature::create(
+        *block.hash(),
+        block.header().era_id(),
+        &non_validator_keys.0,
+        non_validator_keys.1.clone(),
+    );
+    acceptor
+        .register_finality_signature(bogus_sig, Some(faulty_peer))
+        .unwrap();
+    let (should_store, offenders) = acceptor.should_store_block(&era_validator_weights);
+    assert_eq!(should_store, ShouldStore::Nothing);
+    // Make sure the peer who sent us this bogus signature is marked as an
+    // offender.
+    assert_eq!(offenders[0].0, faulty_peer);
 
     // Create the second validator's signature.
     let fin_sig = FinalitySignature::create(
@@ -686,6 +738,377 @@ fn acceptor_should_store_block() {
     acceptor.signatures_mut().retain(|_, _| false);
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
+}
+
+#[test]
+fn accumulator_highest_usable_block_height() {
+    let mut rng = TestRng::new();
+    let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+    let block_accumulator_config = Config::default();
+    let recent_era_interval = 1;
+    let block_time = block_accumulator_config.purge_interval() / 2;
+    let mut block_accumulator = BlockAccumulator::new(
+        block_accumulator_config,
+        validator_matrix.clone(),
+        recent_era_interval,
+        block_time,
+        &Registry::default(),
+    )
+    .unwrap();
+
+    // Create 3 parent-child blocks.
+    let block_1 = Arc::new(generate_non_genesis_block(&mut rng));
+    let block_2 = Arc::new(generate_next_block(&mut rng, &block_1));
+    let block_3 = Arc::new(generate_next_block(&mut rng, &block_2));
+
+    // One finality signature from our only validator for block 1.
+    let fin_sig_1 = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+    // One finality signature from our only validator for block 2.
+    let fin_sig_2 = FinalitySignature::create(
+        *block_2.hash(),
+        block_2.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+    // One finality signature from our only validator for block 3.
+    let fin_sig_3 = FinalitySignature::create(
+        *block_3.hash(),
+        block_3.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    // Register the eras in the validator matrix so the blocks are valid.
+    {
+        register_evw_for_era(&mut validator_matrix, block_1.header().era_id());
+        register_evw_for_era(&mut validator_matrix, block_2.header().era_id());
+        register_evw_for_era(&mut validator_matrix, block_3.header().era_id());
+    }
+
+    // The accumulator should have no usable block height at inception.
+    assert!(block_accumulator.highest_usable_block_height().is_none());
+
+    // Create an empty acceptor and insert it into the accumulator.
+    let acceptor = BlockAcceptor::new(*block_2.hash(), vec![]);
+    block_accumulator
+        .block_acceptors
+        .insert(*block_2.hash(), acceptor);
+    // An empty acceptor should not count towards the usable block height.
+    assert!(block_accumulator.highest_usable_block_height().is_none());
+
+    {
+        // Insert the second block with sufficient finality.
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(block_2.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block_2.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(fin_sig_2, None)
+            .unwrap();
+        acceptor.register_block(meta_block, None).unwrap();
+    }
+    // Now we should have a usable block height.
+    assert_eq!(
+        block_accumulator.highest_usable_block_height().unwrap(),
+        block_2.height()
+    );
+
+    {
+        // Insert the first block with sufficient finality.
+        let mut acceptor = BlockAcceptor::new(*block_1.hash(), vec![]);
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block_1.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(fin_sig_1, None)
+            .unwrap();
+        acceptor.register_block(meta_block, None).unwrap();
+        block_accumulator
+            .block_acceptors
+            .insert(*block_1.hash(), acceptor);
+    }
+    // The first block has a lower height than the second, so the highest
+    // usable block height should still be the second block's height.
+    assert_eq!(
+        block_accumulator.highest_usable_block_height().unwrap(),
+        block_2.height()
+    );
+
+    {
+        // Insert the third block with sufficient finality.
+        let mut acceptor = BlockAcceptor::new(*block_3.hash(), vec![]);
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block_3.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(fin_sig_3, None)
+            .unwrap();
+        acceptor.register_block(meta_block, None).unwrap();
+        block_accumulator
+            .block_acceptors
+            .insert(*block_3.hash(), acceptor);
+    }
+    // The third block has a higher height than the second, so the highest
+    // usable block height should now be the third block's height.
+    assert_eq!(
+        block_accumulator.highest_usable_block_height().unwrap(),
+        block_3.height()
+    );
+}
+
+#[test]
+fn accumulator_should_leap() {
+    let mut rng = TestRng::new();
+    let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+    let block_accumulator_config = Config::default();
+    let recent_era_interval = 1;
+    let block_time = block_accumulator_config.purge_interval() / 2;
+    let attempt_execution_threshold = block_accumulator_config.attempt_execution_threshold();
+    let mut block_accumulator = BlockAccumulator::new(
+        block_accumulator_config,
+        validator_matrix.clone(),
+        recent_era_interval,
+        block_time,
+        &Registry::default(),
+    )
+    .unwrap();
+
+    // Create a block.
+    let starting_seed: u64 = rng.gen_range(1..10);
+    let block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        EraId::from(starting_seed),
+        attempt_execution_threshold + starting_seed,
+        ProtocolVersion::V1_0_0,
+        starting_seed % 2 == 0,
+        None,
+    ));
+
+    // One finality signature from our only validator for block 1.
+    let fin_sig = FinalitySignature::create(
+        *block.hash(),
+        block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    // Register the era in the validator matrix so the block is valid.
+    register_evw_for_era(&mut validator_matrix, block.header().era_id());
+
+    // The accumulator should try to leap at inception, no matter the starting
+    // height.
+    assert!(block_accumulator.should_leap(0));
+    assert!(block_accumulator.should_leap(block.height().saturating_add(1_000)));
+
+    // Create an acceptor to change the highest usable block height.
+    {
+        // Insert the block with sufficient finality.
+        let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block.clone(), vec![], state);
+        acceptor.register_finality_signature(fin_sig, None).unwrap();
+        acceptor.register_block(meta_block, None).unwrap();
+        block_accumulator
+            .block_acceptors
+            .insert(*block.hash(), acceptor);
+    }
+    // Highest usable block height should have changed.
+    let highest_usable_block_height = block_accumulator.highest_usable_block_height().unwrap();
+    assert_eq!(highest_usable_block_height, block.height());
+    // We should not leap from a height that is greater than our highest usable
+    // block height.
+    assert!(!block_accumulator.should_leap(highest_usable_block_height + 1));
+
+    // We should leap from a height *lower* than `attempt_execution_threshold`
+    // from the highest usable block height.
+    assert!(
+        !block_accumulator.should_leap(highest_usable_block_height - attempt_execution_threshold)
+    );
+    assert!(!block_accumulator
+        .should_leap(highest_usable_block_height - attempt_execution_threshold + 1));
+    assert!(block_accumulator
+        .should_leap(highest_usable_block_height - attempt_execution_threshold - 1));
+}
+
+#[test]
+fn accumulator_purge() {
+    let mut rng = TestRng::new();
+    let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+    let block_accumulator_config = Config::default();
+    let recent_era_interval = 1;
+    let block_time = block_accumulator_config.purge_interval() / 2;
+    let purge_interval = block_accumulator_config.purge_interval();
+    let time_before_insertion = Timestamp::now();
+    let mut block_accumulator = BlockAccumulator::new(
+        block_accumulator_config,
+        validator_matrix.clone(),
+        recent_era_interval,
+        block_time,
+        &Registry::default(),
+    )
+    .unwrap();
+    block_accumulator.register_local_tip(0, 0.into());
+
+    // Create 3 parent-child blocks.
+    let block_1 = Arc::new(generate_non_genesis_block(&mut rng));
+    let block_2 = Arc::new(generate_next_block(&mut rng, &block_1));
+    let block_3 = Arc::new(generate_next_block(&mut rng, &block_2));
+
+    // Also create 2 peers.
+    let peer_1 = NodeId::random(&mut rng);
+    let peer_2 = NodeId::random(&mut rng);
+
+    // One finality signature from our only validator for block 1.
+    let fin_sig_1 = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+    // One finality signature from our only validator for block 2.
+    let fin_sig_2 = FinalitySignature::create(
+        *block_2.hash(),
+        block_2.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+    // One finality signature from our only validator for block 3.
+    let fin_sig_3 = FinalitySignature::create(
+        *block_3.hash(),
+        block_3.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    // Register the eras in the validator matrix so the blocks are valid.
+    {
+        register_evw_for_era(&mut validator_matrix, block_1.header().era_id());
+        register_evw_for_era(&mut validator_matrix, block_2.header().era_id());
+        register_evw_for_era(&mut validator_matrix, block_3.header().era_id());
+    }
+
+    // We will manually call `upsert_acceptor` in order to have
+    // `peer_block_timestamps` populated.
+    {
+        // Insert the first block with sufficient finality from the first peer.
+        block_accumulator.upsert_acceptor(
+            *block_1.hash(),
+            Some(block_1.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(block_1.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block_1.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(fin_sig_1, Some(peer_1))
+            .unwrap();
+        acceptor.register_block(meta_block, None).unwrap();
+    }
+
+    {
+        // Insert the second block with sufficient finality from the second
+        // peer.
+        block_accumulator.upsert_acceptor(
+            *block_2.hash(),
+            Some(block_2.header().era_id()),
+            Some(peer_2),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(block_2.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block_2.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(fin_sig_2, Some(peer_2))
+            .unwrap();
+        acceptor.register_block(meta_block, None).unwrap();
+    }
+
+    {
+        // Insert the third block with sufficient finality from the third peer.
+        block_accumulator.upsert_acceptor(
+            *block_3.hash(),
+            Some(block_3.header().era_id()),
+            Some(peer_1),
+        );
+        block_accumulator.upsert_acceptor(
+            *block_3.hash(),
+            Some(block_3.header().era_id()),
+            Some(peer_2),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(block_3.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(block_3.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(fin_sig_3, Some(peer_1))
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    {
+        // Modify the times in the acceptors for blocks 1 and 2 as well as in
+        // `peer_block_timestamps` for the second peer to become outdated.
+        let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_1.hash())
+            .unwrap()
+            .set_last_progress(last_progress);
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_2.hash())
+            .unwrap()
+            .set_last_progress(last_progress);
+        for (_block_hash, timestamp) in block_accumulator
+            .peer_block_timestamps
+            .get_mut(&peer_2)
+            .unwrap()
+        {
+            *timestamp = last_progress;
+        }
+    }
+
+    // Entries we modified earlier should be purged.
+    block_accumulator.purge();
+    // Acceptors for blocks 1 and 2 should have been purged.
+    assert!(!block_accumulator
+        .block_acceptors
+        .contains_key(block_1.hash()));
+    assert!(!block_accumulator
+        .block_acceptors
+        .contains_key(block_2.hash()));
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_3.hash()));
+    // The third block acceptor is all that is left and it has no known
+    // children, so `block_children` should be empty.
+    assert!(block_accumulator.block_children.is_empty());
+    // We should have kept only the timestamps for the first peer.
+    assert!(block_accumulator
+        .peer_block_timestamps
+        .contains_key(&peer_1));
+    assert!(!block_accumulator
+        .peer_block_timestamps
+        .contains_key(&peer_2));
 }
 
 fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {

@@ -402,6 +402,10 @@ impl BlockAcceptor {
         self.meta_block.clone()
     }
 
+    pub(super) fn set_last_progress(&mut self, last_progress: Timestamp) {
+        self.last_progress = last_progress;
+    }
+
     pub(super) fn set_meta_block(&mut self, meta_block: Option<MetaBlock>) {
         self.meta_block = meta_block;
     }
