@@ -39,6 +39,7 @@ pub(crate) struct State {
     pub(super) tried_to_sign: bool,
     pub(super) consensus_notified: bool,
     pub(super) accumulator_notified: bool,
+    pub(super) synchronizer_notified: bool,
     pub(super) sufficient_finality: bool,
     pub(super) marked_complete: bool,
     pub(super) all_actions_done: bool,
@@ -77,9 +78,10 @@ impl State {
             tried_to_sign: true,
             consensus_notified: false,
             accumulator_notified: true,
+            synchronizer_notified: true,
             sufficient_finality: true,
             marked_complete: true,
-            all_actions_done: true,
+            all_actions_done: false,
         }
     }
 
@@ -147,6 +149,12 @@ impl State {
         outcome
     }
 
+    pub(crate) fn register_as_synchronizer_notified(&mut self) -> StateChange {
+        let outcome = StateChange::from(self.synchronizer_notified);
+        self.synchronizer_notified = true;
+        outcome
+    }
+
     pub(crate) fn register_has_sufficient_finality(&mut self) -> StateChange {
         let outcome = StateChange::from(self.sufficient_finality);
         self.sufficient_finality = true;
@@ -175,6 +183,7 @@ impl State {
             ref mut tried_to_sign,
             ref mut consensus_notified,
             ref mut accumulator_notified,
+            ref mut synchronizer_notified,
             ref mut sufficient_finality,
             ref mut marked_complete,
             ref mut all_actions_done,
@@ -188,6 +197,7 @@ impl State {
         *tried_to_sign |= other.tried_to_sign;
         *consensus_notified |= other.consensus_notified;
         *accumulator_notified |= other.accumulator_notified;
+        *synchronizer_notified |= other.synchronizer_notified;
         *sufficient_finality |= other.sufficient_finality;
         *marked_complete |= other.marked_complete;
         *all_actions_done |= other.all_actions_done;
@@ -204,6 +214,7 @@ impl State {
             && self.tried_to_sign
             && self.consensus_notified
             && self.accumulator_notified
+            && self.synchronizer_notified
             && self.sufficient_finality
             && self.marked_complete
     }
@@ -224,6 +235,7 @@ mod tests {
             tried_to_sign: true,
             consensus_notified: true,
             accumulator_notified: true,
+            synchronizer_notified: true,
             sufficient_finality: true,
             marked_complete: true,
             all_actions_done: true,
