@@ -393,22 +393,22 @@ impl BlockAcceptor {
 #[cfg(test)]
 impl BlockAcceptor {
     pub(super) fn executed(&self) -> bool {
-        self.hot_block
+        self.meta_block
             .as_ref()
-            .map_or(false, |hot_block| hot_block.state.is_executed())
+            .map_or(false, |meta_block| meta_block.state.is_executed())
     }
 
-    pub(super) fn hot_block(&self) -> Option<HotBlock> {
-        self.hot_block.clone()
+    pub(super) fn meta_block(&self) -> Option<MetaBlock> {
+        self.meta_block.clone()
     }
 
-    pub(super) fn set_hot_block(&mut self, hot_block: Option<HotBlock>) {
-        self.hot_block = hot_block;
+    pub(super) fn set_meta_block(&mut self, meta_block: Option<MetaBlock>) {
+        self.meta_block = meta_block;
     }
 
     pub(super) fn set_sufficient_finality(&mut self, has_sufficient_finality: bool) {
-        if let Some(hot_block) = self.hot_block.as_mut() {
-            hot_block
+        if let Some(meta_block) = self.meta_block.as_mut() {
+            meta_block
                 .state
                 .set_sufficient_finality(has_sufficient_finality);
         }

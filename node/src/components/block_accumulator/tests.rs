@@ -40,8 +40,8 @@ use crate::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-fn hot_block_with_default_state(block: Arc<Block>) -> HotBlock {
-    HotBlock::new(block, vec![], HotBlockState::new())
+fn meta_block_with_default_state(block: Arc<Block>) -> MetaBlock {
+    MetaBlock::new(block, vec![], MetaBlockState::new())
 }
 
 fn signatures_for_block(block: &Block, signatures: &Vec<FinalitySignature>) -> BlockSignatures {
@@ -68,7 +68,7 @@ enum Event {
     #[from]
     BlockAccumulatorAnnouncement(#[serde(skip_serializing)] BlockAccumulatorAnnouncement),
     #[from]
-    HotBlockAnnouncement(#[serde(skip_serializing)] HotBlockAnnouncement),
+    MetaBlockAnnouncement(#[serde(skip_serializing)] MetaBlockAnnouncement),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
     #[from]
@@ -109,8 +109,8 @@ impl Display for Event {
             Event::BlockAccumulatorAnnouncement(ann) => {
                 write!(formatter, "block-accumulator announcement: {}", ann)
             }
-            Event::HotBlockAnnouncement(hot_block_ann) => {
-                write!(formatter, "hot block announcement: {}", hot_block_ann)
+            Event::MetaBlockAnnouncement(meta_block_ann) => {
+                write!(formatter, "meta block announcement: {}", meta_block_ann)
             }
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
@@ -215,9 +215,9 @@ impl Reactor for MockReactor {
                 self.block_accumulator
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::HotBlockAnnouncement(HotBlockAnnouncement(mut hot_block)) => {
+            Event::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
                 let effects = Effects::new();
-                let state = &mut hot_block.state;
+                let state = &mut meta_block.state;
                 assert!(state.is_stored());
                 state.register_as_sent_to_deploy_buffer();
                 if !state.is_executed() {
@@ -225,18 +225,15 @@ impl Reactor for MockReactor {
                 }
 
                 state.register_we_have_tried_to_sign();
-                state.register_as_sent_to_consensus_post_execution();
+                state.register_as_consensus_notified();
 
-                if state
-                    .register_as_sent_to_accumulator_post_execution()
-                    .was_updated()
-                {
+                if state.register_as_accumulator_notified().was_updated() {
                     return reactor::wrap_effects(
                         Event::BlockAccumulator,
                         self.block_accumulator.handle_event(
                             effect_builder,
                             rng,
-                            super::Event::ExecutedBlock { hot_block },
+                            super::Event::ExecutedBlock { meta_block },
                         ),
                     );
                 }
@@ -344,7 +341,7 @@ fn acceptor_register_finality_signature() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
     let block = Arc::new(Block::random(&mut rng));
-    let mut hot_block = HotBlock::new(block.clone(), vec![], HotBlockState::new());
+    let mut meta_block = MetaBlock::new(block.clone(), vec![], MetaBlockState::new());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
@@ -422,9 +419,9 @@ fn acceptor_register_finality_signature() {
     assert_eq!(*senders, BTreeSet::from([first_peer]));
     assert!(!acceptor.has_sufficient_finality());
     // Register the block with the sufficient finality flag set.
-    hot_block.state.register_has_sufficient_finality();
+    meta_block.state.register_has_sufficient_finality();
     acceptor
-        .register_block(hot_block.clone(), Some(first_peer))
+        .register_block(meta_block.clone(), Some(first_peer))
         .unwrap();
     // Registering invalid signatures should still yield an error.
     let mut invalid_fin_sig =
@@ -488,11 +485,11 @@ fn acceptor_register_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
     let block = Arc::new(Block::random(&mut rng));
-    let mut hot_block = hot_block_with_default_state(block.clone());
+    let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
-    let wrong_block = hot_block_with_default_state(Arc::new(Block::random(&mut rng)));
+    let wrong_block = meta_block_with_default_state(Arc::new(Block::random(&mut rng)));
     assert!(matches!(
         acceptor.register_block(wrong_block, None).unwrap_err(),
         Error::BlockHashMismatch {
@@ -505,12 +502,12 @@ fn acceptor_register_block() {
         // Invalid block case.
         let invalid_block = Arc::new(Block::random_invalid(&mut rng));
         let mut invalid_block_acceptor = BlockAcceptor::new(*invalid_block.hash(), vec![]);
-        let invalid_hot_block = hot_block_with_default_state(invalid_block);
+        let invalid_meta_block = meta_block_with_default_state(invalid_block);
         let malicious_peer = NodeId::random(&mut rng);
         // Peers shouldn't send us invalid blocks.
         assert!(matches!(
             invalid_block_acceptor
-                .register_block(invalid_hot_block.clone(), Some(malicious_peer))
+                .register_block(invalid_meta_block.clone(), Some(malicious_peer))
                 .unwrap_err(),
             Error::InvalidGossip(_)
         ));
@@ -518,7 +515,7 @@ fn acceptor_register_block() {
         // reached an invalid state.
         assert!(matches!(
             invalid_block_acceptor
-                .register_block(invalid_hot_block, None)
+                .register_block(invalid_meta_block, None)
                 .unwrap_err(),
             Error::InvalidConfiguration
         ));
@@ -529,14 +526,14 @@ fn acceptor_register_block() {
     assert!(acceptor.peers().is_empty());
 
     // Register the block with ourselves as source.
-    acceptor.register_block(hot_block.clone(), None).unwrap();
+    acceptor.register_block(meta_block.clone(), None).unwrap();
     assert_eq!(acceptor.block_height().unwrap(), block.height());
     assert!(acceptor.peers().is_empty());
 
     // Register the block from a peer.
     let first_peer = NodeId::random(&mut rng);
     acceptor
-        .register_block(hot_block.clone(), Some(first_peer))
+        .register_block(meta_block.clone(), Some(first_peer))
         .unwrap();
     // Peer list should be updated.
     assert_eq!(*acceptor.peers(), BTreeSet::from([first_peer]));
@@ -545,9 +542,9 @@ fn acceptor_register_block() {
     assert!(!acceptor.executed());
     // Register the block from a second peer with the executed flag set.
     let second_peer = NodeId::random(&mut rng);
-    assert!(hot_block.state.register_as_executed().was_updated());
+    assert!(meta_block.state.register_as_executed().was_updated());
     acceptor
-        .register_block(hot_block.clone(), Some(second_peer))
+        .register_block(meta_block.clone(), Some(second_peer))
         .unwrap();
     // Peer list should contain both peers.
     assert_eq!(*acceptor.peers(), BTreeSet::from([first_peer, second_peer]));
@@ -555,7 +552,7 @@ fn acceptor_register_block() {
     assert!(acceptor.executed());
 
     // Re-registering with the `executed` flag set should not change anything.
-    acceptor.register_block(hot_block, None).unwrap();
+    acceptor.register_block(meta_block, None).unwrap();
     assert_eq!(*acceptor.peers(), BTreeSet::from([first_peer, second_peer]));
     assert!(acceptor.executed());
 }
@@ -565,7 +562,7 @@ fn acceptor_should_store_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
     let block = Arc::new(Block::random(&mut rng));
-    let mut hot_block = hot_block_with_default_state(block.clone());
+    let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create 4 pairs of keys so we can later create 4 signatures.
@@ -621,7 +618,7 @@ fn acceptor_should_store_block() {
     assert_eq!(should_store, ShouldStore::Nothing);
 
     // Registering the block now.
-    acceptor.register_block(hot_block.clone(), None).unwrap();
+    acceptor.register_block(meta_block.clone(), None).unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
 
@@ -651,15 +648,15 @@ fn acceptor_should_store_block() {
     acceptor.register_finality_signature(fin_sig, None).unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     let block_signatures = signatures_for_block(&block, &signatures);
-    let mut hot_block_with_expected_state = hot_block.clone();
-    hot_block_with_expected_state.state.register_as_stored();
-    hot_block_with_expected_state
+    let mut meta_block_with_expected_state = meta_block.clone();
+    meta_block_with_expected_state.state.register_as_stored();
+    meta_block_with_expected_state
         .state
         .register_has_sufficient_finality();
     assert_eq!(
         should_store,
         ShouldStore::SufficientlySignedBlock {
-            hot_block: hot_block_with_expected_state,
+            meta_block: meta_block_with_expected_state,
             block_signatures,
         }
     );
@@ -678,14 +675,14 @@ fn acceptor_should_store_block() {
     assert_eq!(should_store, ShouldStore::Nothing);
 
     // Without the block, even with sufficient signatures we should not store anything.
-    acceptor.set_hot_block(None);
+    acceptor.set_meta_block(None);
     acceptor.set_sufficient_finality(false);
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
 
     // Without any signatures, we should not store anything.
-    hot_block.state.register_has_sufficient_finality();
-    acceptor.set_hot_block(Some(hot_block));
+    meta_block.state.register_has_sufficient_finality();
+    acceptor.set_meta_block(Some(meta_block));
     acceptor.signatures_mut().retain(|_, _| false);
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
@@ -950,18 +947,18 @@ async fn block_accumulator_reactor_flow() {
             .is_none());
     }
 
-    // Get the hot block along with the state, then register it as executed to
+    // Get the meta block along with the state, then register it as executed to
     // later notify the accumulator of its execution.
-    let hot_block_1 = {
+    let meta_block_1 = {
         let block_accumulator = &runner.reactor().block_accumulator;
-        let mut hot_block = block_accumulator
+        let mut meta_block = block_accumulator
             .block_acceptors
             .get(block_1.hash())
             .unwrap()
-            .hot_block()
+            .meta_block()
             .unwrap();
-        assert!(hot_block.state.register_as_executed().was_updated());
-        hot_block
+        assert!(meta_block.state.register_as_executed().was_updated());
+        meta_block
     };
 
     // Let the accumulator know block 1 has been executed.
@@ -969,7 +966,7 @@ async fn block_accumulator_reactor_flow() {
         runner
             .process_injected_effects(|effect_builder| {
                 let event = super::Event::ExecutedBlock {
-                    hot_block: hot_block_1.clone(),
+                    meta_block: meta_block_1.clone(),
                 };
                 effect_builder
                     .into_inner()
@@ -1020,16 +1017,16 @@ async fn block_accumulator_reactor_flow() {
                 .unwrap()
                 .unwrap()
                 .height(),
-            hot_block_1.block.height()
+            meta_block_1.block.height()
         );
     }
 
-    // Retrigger the event so the accumulator can update its hot block state.
+    // Retrigger the event so the accumulator can update its meta block state.
     {
         runner
             .process_injected_effects(|effect_builder| {
                 let event = super::Event::ExecutedBlock {
-                    hot_block: hot_block_1.clone(),
+                    meta_block: meta_block_1.clone(),
                 };
                 effect_builder
                     .into_inner()
