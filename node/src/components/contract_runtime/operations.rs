@@ -62,7 +62,8 @@ pub fn execute_finalized_block(
         parent_seed,
         next_block_height: _,
     } = execution_pre_state;
-    // This root hash will be use in-mem to generate several others, but we must "commit_to_disk" with the original.
+    // This root hash will be use in-mem to generate several others, but we must "commit_to_disk"
+    // with the original.
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
         Vec::with_capacity(deploys.len());
