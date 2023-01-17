@@ -10,6 +10,7 @@ mod tests;
 use std::{sync::Arc, time::Instant};
 
 use datasize::DataSize;
+use futures::FutureExt;
 use prometheus::Registry;
 use tracing::{error, info, warn};
 
@@ -39,6 +40,13 @@ pub(crate) enum PeerState {
     CouldntFetch,
     Fetched(Box<SyncLeap>),
 }
+
+#[derive(Debug)]
+enum RegisterLeapAttemptOutcome {
+    DoNothing,
+    FetchSyncLeapFromPeers(Vec<NodeId>),
+}
+
 #[derive(Debug, DataSize)]
 pub(crate) struct SyncLeaper {
     leap_activity: Option<LeapActivity>,
@@ -84,20 +92,16 @@ impl SyncLeaper {
         }
     }
 
-    fn register_leap_attempt<REv>(
+    fn register_leap_attempt(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         sync_leap_identifier: SyncLeapIdentifier,
         peers_to_ask: Vec<NodeId>,
-    ) -> Effects<Event>
-    where
-        REv: From<FetcherRequest<SyncLeap>> + Send,
-    {
+    ) -> RegisterLeapAttemptOutcome {
         info!(%sync_leap_identifier, "registering leap attempt");
-        let mut effects = Effects::new();
         if peers_to_ask.is_empty() {
             error!("tried to start fetching a sync leap without peers to ask");
-            return effects;
+            //panic!("1");
+            return RegisterLeapAttemptOutcome::DoNothing;
         }
         if let Some(leap_activity) = self.leap_activity.as_mut() {
             if leap_activity.sync_leap_identifier() != &sync_leap_identifier {
@@ -106,47 +110,34 @@ impl SyncLeaper {
                     requested_sync_leap_identifier = %sync_leap_identifier,
                     "tried to start fetching a sync leap for a different sync_leap_identifier"
                 );
-                return effects;
+                //panic!("2");
+                return RegisterLeapAttemptOutcome::DoNothing;
             }
 
-            for peer in peers_to_ask {
-                if false == leap_activity.peers().contains_key(&peer) {
-                    effects.extend(
-                        effect_builder
-                            .fetch::<SyncLeap>(sync_leap_identifier, peer, self.chainspec.clone())
-                            .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                                sync_leap_identifier,
-                                fetch_result,
-                            }),
-                    );
-                    leap_activity
-                        .peers_mut()
-                        .insert(peer, PeerState::RequestSent);
-                }
-            }
-            return effects;
+            let peers_not_asked_yet: Vec<_> = peers_to_ask
+                .iter()
+                .filter_map(|peer| leap_activity.register_peer(*peer))
+                .collect();
+
+            return if peers_not_asked_yet.is_empty() {
+                //panic!("3");
+                RegisterLeapAttemptOutcome::DoNothing
+            } else {
+                //panic!("4");
+                RegisterLeapAttemptOutcome::FetchSyncLeapFromPeers(peers_not_asked_yet)
+            };
         }
 
-        let peers = peers_to_ask
-            .into_iter()
-            .map(|peer| {
-                effects.extend(
-                    effect_builder
-                        .fetch::<SyncLeap>(sync_leap_identifier, peer, self.chainspec.clone())
-                        .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
-                            sync_leap_identifier,
-                            fetch_result,
-                        }),
-                );
-                (peer, PeerState::RequestSent)
-            })
-            .collect();
         self.leap_activity = Some(LeapActivity::new(
             sync_leap_identifier,
-            peers,
+            peers_to_ask
+                .iter()
+                .map(|peer| (*peer, PeerState::RequestSent))
+                .collect(),
             Instant::now(),
         ));
-        effects
+        //panic!("5");
+        RegisterLeapAttemptOutcome::FetchSyncLeapFromPeers(peers_to_ask)
     }
 
     fn fetch_received(
@@ -246,7 +237,27 @@ where
             Event::AttemptLeap {
                 sync_leap_identifier,
                 peers_to_ask,
-            } => self.register_leap_attempt(effect_builder, sync_leap_identifier, peers_to_ask),
+            } => match self.register_leap_attempt(sync_leap_identifier, peers_to_ask) {
+                RegisterLeapAttemptOutcome::DoNothing => Effects::new(),
+                RegisterLeapAttemptOutcome::FetchSyncLeapFromPeers(peers) => {
+                    let mut effects = Effects::new();
+                    peers.into_iter().for_each(|peer| {
+                        effects.extend(
+                            effect_builder
+                                .fetch::<SyncLeap>(
+                                    sync_leap_identifier,
+                                    peer,
+                                    self.chainspec.clone(),
+                                )
+                                .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
+                                    sync_leap_identifier,
+                                    fetch_result,
+                                }),
+                        )
+                    });
+                    effects
+                }
+            },
             Event::FetchedSyncLeapFromPeer {
                 sync_leap_identifier,
                 fetch_result,
@@ -259,5 +270,22 @@ where
 
     fn name(&self) -> &str {
         COMPONENT_NAME
+    }
+}
+
+#[cfg(test)]
+impl SyncLeaper {
+    // TODO[RC]: Rework this
+    fn peers(&self) -> Option<Vec<(NodeId, PeerState)>> {
+        match &self.leap_activity {
+            Some(leap_activity) => {
+                let mut ret = vec![];
+                for (node_id, peer_state) in leap_activity.peers() {
+                    ret.push((*node_id, peer_state.clone()));
+                }
+                return Some(ret);
+            }
+            None => return None,
+        }
     }
 }

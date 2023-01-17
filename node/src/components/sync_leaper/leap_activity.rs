@@ -138,11 +138,22 @@ impl LeapActivity {
     pub(crate) fn peers_mut(&mut self) -> &mut HashMap<NodeId, PeerState> {
         &mut self.peers
     }
+
+    /// Registers new leap activity if it wasn't already registered for specified peer.
+    pub(crate) fn register_peer(&mut self, peer: NodeId) -> Option<NodeId> {
+        (!self.peers().contains_key(&peer)).then(|| {
+            self.peers.insert(peer, PeerState::RequestSent);
+            peer
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, time::Instant};
+    use std::{
+        collections::{BTreeSet, HashMap},
+        time::Instant,
+    };
 
     use casper_types::{testing::TestRng, ProtocolVersion};
     use rand::seq::SliceRandom;
@@ -419,5 +430,65 @@ mod tests {
         );
 
         assert!(matches!(leap_activity.status(), LeapState::Received { .. }));
+    }
+
+    #[test]
+    fn register_peer() {
+        let mut rng = TestRng::new();
+
+        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+        let peer_1 = (NodeId::random(&mut rng), PeerState::RequestSent);
+
+        let mut leap_activity = LeapActivity {
+            sync_leap_identifier,
+            peers: [peer_1.clone()].iter().cloned().collect(),
+            leap_start: Instant::now(),
+        };
+
+        // Expect the single peer specified on creation.
+        let mut expected_peers = BTreeSet::new();
+        expected_peers.insert(peer_1.0);
+        let actual_peers: BTreeSet<_> = leap_activity
+            .peers()
+            .iter()
+            .map(|(node_id, _)| *node_id)
+            .collect();
+        assert_eq!(expected_peers, actual_peers);
+
+        // Registering the same peer the second time does not register.
+        let maybe_registered_peer = leap_activity.register_peer(peer_1.0);
+        assert!(maybe_registered_peer.is_none());
+
+        // Still expect only the single peer.
+        // TODO[RC]: Extract the asserting code, i.e. `assert!(expect_peers(peer_1, peer_2))`
+        let mut expected_peers = BTreeSet::new();
+        expected_peers.insert(peer_1.0);
+        let actual_peers: BTreeSet<_> = leap_activity
+            .peers()
+            .iter()
+            .map(|(node_id, _)| *node_id)
+            .collect();
+        assert_eq!(expected_peers, actual_peers);
+
+        // Registering additional peer should succeed.
+        let peer_2 = NodeId::random(&mut rng);
+        let maybe_registered_peer = leap_activity.register_peer(peer_2);
+        assert_eq!(maybe_registered_peer, Some(peer_2));
+
+        // But registering it for the second time should be a noop.
+        let maybe_registered_peer = leap_activity.register_peer(peer_2);
+        assert_eq!(maybe_registered_peer, None);
+
+        // Expect two added peers.
+        let mut expected_peers = BTreeSet::new();
+        expected_peers.insert(peer_1.0);
+        expected_peers.insert(peer_2);
+        let actual_peers: BTreeSet<_> = leap_activity
+            .peers()
+            .iter()
+            .map(|(node_id, _)| *node_id)
+            .collect();
+        assert_eq!(expected_peers, actual_peers);
     }
 }
