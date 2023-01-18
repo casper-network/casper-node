@@ -2832,6 +2832,26 @@ impl Storage {
         txn.commit().expect("Could not commit transaction");
         Ok(switch_block)
     }
+
+    /// Directly returns a deploy from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_finality_signatures_for_block(
+        &self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let res = txn
+            .get_value(self.block_metadata_db, &block_hash)
+            .expect("could not retrieve value from storage");
+        txn.commit().expect("Could not commit transaction");
+        res
+    }
 }
 
 fn construct_block_body_to_block_header_reverse_lookup(

@@ -23,7 +23,7 @@ pub(super) struct BlockAcceptor {
     last_progress: Timestamp,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub(super) enum ShouldStore {
     SufficientlySignedBlock {
@@ -387,5 +387,44 @@ impl BlockAcceptor {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
+    }
+}
+
+#[cfg(test)]
+impl BlockAcceptor {
+    pub(super) fn executed(&self) -> bool {
+        self.meta_block
+            .as_ref()
+            .map_or(false, |meta_block| meta_block.state.is_executed())
+    }
+
+    pub(super) fn meta_block(&self) -> Option<MetaBlock> {
+        self.meta_block.clone()
+    }
+
+    pub(super) fn set_last_progress(&mut self, last_progress: Timestamp) {
+        self.last_progress = last_progress;
+    }
+
+    pub(super) fn set_meta_block(&mut self, meta_block: Option<MetaBlock>) {
+        self.meta_block = meta_block;
+    }
+
+    pub(super) fn set_sufficient_finality(&mut self, has_sufficient_finality: bool) {
+        if let Some(meta_block) = self.meta_block.as_mut() {
+            meta_block
+                .state
+                .set_sufficient_finality(has_sufficient_finality);
+        }
+    }
+
+    pub(super) fn signatures(&self) -> &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+        &self.signatures
+    }
+
+    pub(super) fn signatures_mut(
+        &mut self,
+    ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+        &mut self.signatures
     }
 }
