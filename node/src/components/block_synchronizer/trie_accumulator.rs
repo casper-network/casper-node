@@ -1,5 +1,4 @@
 #[cfg(test)]
-#[path = "tests/trie_accumulator.rs"]
 mod tests;
 
 use std::{

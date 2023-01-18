@@ -1,5 +1,4 @@
 #[cfg(test)]
-#[path = "tests/global_state_synchronizer.rs"]
 mod tests;
 
 use std::collections::{btree_map::Entry, BTreeMap, HashSet};
