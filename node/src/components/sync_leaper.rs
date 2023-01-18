@@ -11,6 +11,7 @@ use std::{sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use prometheus::Registry;
+use thiserror::Error;
 use tracing::{error, info, warn};
 
 use crate::{
@@ -44,6 +45,26 @@ pub(crate) enum PeerState {
 enum RegisterLeapAttemptOutcome {
     DoNothing,
     FetchSyncLeapFromPeers(Vec<NodeId>),
+}
+
+#[derive(Debug, Error)]
+enum Error {
+    #[error("fetched a sync leap from storage - should never happen - {0}")]
+    FetchedSyncLeapFromStorage(SyncLeapIdentifier),
+    #[error("received a sync leap response while no requests were in progress - {0}")]
+    UnexpectedSyncLeapResponse(SyncLeapIdentifier),
+    #[error("block hash in the response '{actual}' doesn't match the one requested '{expected}'")]
+    SyncLeapIdentifierMismatch {
+        expected: SyncLeapIdentifier,
+        actual: SyncLeapIdentifier,
+    },
+    #[error(
+        "received a sync leap response from an unknown peer - {peer} - {sync_leap_identifier}"
+    )]
+    ResponseFromUnknownPeer {
+        peer: NodeId,
+        sync_leap_identifier: SyncLeapIdentifier,
+    },
 }
 
 #[derive(Debug, DataSize)]
@@ -99,7 +120,6 @@ impl SyncLeaper {
         info!(%sync_leap_identifier, "registering leap attempt");
         if peers_to_ask.is_empty() {
             error!("tried to start fetching a sync leap without peers to ask");
-            //panic!("1");
             return RegisterLeapAttemptOutcome::DoNothing;
         }
         if let Some(leap_activity) = self.leap_activity.as_mut() {
@@ -109,7 +129,6 @@ impl SyncLeaper {
                     requested_sync_leap_identifier = %sync_leap_identifier,
                     "tried to start fetching a sync leap for a different sync_leap_identifier"
                 );
-                //panic!("2");
                 return RegisterLeapAttemptOutcome::DoNothing;
             }
 
@@ -119,10 +138,8 @@ impl SyncLeaper {
                 .collect();
 
             return if peers_not_asked_yet.is_empty() {
-                //panic!("3");
                 RegisterLeapAttemptOutcome::DoNothing
             } else {
-                //panic!("4");
                 RegisterLeapAttemptOutcome::FetchSyncLeapFromPeers(peers_not_asked_yet)
             };
         }
@@ -135,7 +152,6 @@ impl SyncLeaper {
                 .collect(),
             Instant::now(),
         ));
-        //panic!("5");
         RegisterLeapAttemptOutcome::FetchSyncLeapFromPeers(peers_to_ask)
     }
 
@@ -143,61 +159,77 @@ impl SyncLeaper {
         &mut self,
         sync_leap_identifier: SyncLeapIdentifier,
         fetch_result: FetchResult<SyncLeap>,
-    ) {
+    ) -> Result<(), Error> {
         let leap_activity = match &mut self.leap_activity {
             Some(leap_activity) => leap_activity,
             None => {
-                warn!(
-                    %sync_leap_identifier,
-                    "received a sync leap response while no requests were in progress"
-                );
-                return;
+                // warn!(
+                //     %sync_leap_identifier,
+                //     "received a sync leap response while no requests were in progress"
+                // );
+                panic!("1");
+                return Err(Error::UnexpectedSyncLeapResponse(sync_leap_identifier));
             }
         };
 
         if leap_activity.sync_leap_identifier() != &sync_leap_identifier {
-            warn!(
-                requested_hash=%leap_activity.sync_leap_identifier(),
-                response_hash=%sync_leap_identifier,
-                "block hash in the response doesn't match the one requested"
-            );
-            return;
+            // warn!(
+            //     requested_hash=%leap_activity.sync_leap_identifier(),
+            //     response_hash=%sync_leap_identifier,
+            //     "block hash in the response doesn't match the one requested"
+            // );
+            panic!("2");
+            return Err(Error::SyncLeapIdentifierMismatch {
+                actual: sync_leap_identifier,
+                expected: *leap_activity.sync_leap_identifier(),
+            });
         }
 
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
-                error!(%sync_leap_identifier, "fetched a sync leap from storage - should never happen");
+                //error!(%sync_leap_identifier, "fetched a sync leap from storage - should never happen");
+                return Err(Error::FetchedSyncLeapFromStorage(sync_leap_identifier));
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
                 let peer_state = match leap_activity.peers_mut().get_mut(&peer) {
                     Some(state) => state,
                     None => {
-                        warn!(
-                            ?peer,
-                            %sync_leap_identifier,
-                            "received a sync leap response from an unknown peer"
-                        );
-                        return;
+                        // warn!(
+                        //     ?peer,
+                        //     %sync_leap_identifier,
+                        //     "received a sync leap response from an unknown peer"
+                        // );
+                        panic!("4");
+                        return Err(Error::ResponseFromUnknownPeer {
+                            peer,
+                            sync_leap_identifier,
+                        });
                     }
                 };
                 *peer_state = PeerState::Fetched(Box::new(*item));
                 self.metrics.sync_leap_fetched_from_peer.inc();
+                panic!("5");
             }
             Err(fetcher::Error::Rejected { peer, .. }) => {
                 let peer_state = match leap_activity.peers_mut().get_mut(&peer) {
                     Some(state) => state,
                     None => {
-                        warn!(
-                            ?peer,
-                            %sync_leap_identifier,
-                            "received a sync leap response from an unknown peer"
-                        );
-                        return;
+                        // warn!(
+                        //     ?peer,
+                        //     %sync_leap_identifier,
+                        //     "received a sync leap response from an unknown peer"
+                        // );
+                        panic!("6");
+                        return Err(Error::ResponseFromUnknownPeer {
+                            peer,
+                            sync_leap_identifier,
+                        });
                     }
                 };
                 info!(%peer, %sync_leap_identifier, "peer rejected our request for a sync leap");
                 *peer_state = PeerState::Rejected;
                 self.metrics.sync_leap_rejected_by_peer.inc();
+                panic!("7");
             }
             Err(error) => {
                 let peer = error.peer();
@@ -205,18 +237,26 @@ impl SyncLeaper {
                 let peer_state = match leap_activity.peers_mut().get_mut(peer) {
                     Some(state) => state,
                     None => {
-                        warn!(
-                            ?peer,
-                            %sync_leap_identifier,
-                            "received a sync leap response from an unknown peer"
-                        );
-                        return;
+                        // warn!(
+                        //     ?peer,
+                        //     %sync_leap_identifier,
+                        //     "received a sync leap response from an unknown peer"
+                        // );
+                        panic!("8");
+                        return Err(Error::ResponseFromUnknownPeer {
+                            peer: *peer,
+                            sync_leap_identifier,
+                        });
                     }
                 };
                 *peer_state = PeerState::CouldntFetch;
                 self.metrics.sync_leap_cant_fetch.inc();
+                panic!("9");
             }
         }
+        panic!("10");
+
+        Ok(())
     }
 }
 
