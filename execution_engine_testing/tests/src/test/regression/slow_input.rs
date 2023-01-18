@@ -4,8 +4,11 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error, execution};
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
+use casper_execution_engine::{
+    core::{engine_state::Error, execution},
+    shared::opcode_costs::DEFAULT_BR_TABLE_MULTIPLIER,
+};
+use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs};
 
 use walrus::{ir::BinaryOp, FunctionBuilder, InstrSeqBuilder, Module, ModuleConfig, ValType};
 
@@ -167,6 +170,12 @@ fn should_charge_extra_per_amount_of_br_table_elements() {
     assert!(
         gas_cost_2 > gas_cost_1,
         "larger br_table should cost more gas"
+    );
+
+    assert_eq!(
+        gas_cost_2 - gas_cost_1,
+        Gas::from((M_ELEMENTS - N_ELEMENTS) * DEFAULT_BR_TABLE_MULTIPLIER),
+        "the cost difference should equal to exactly the size of br_table difference "
     );
 }
 
