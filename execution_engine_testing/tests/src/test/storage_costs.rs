@@ -19,7 +19,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::OpcodeCosts,
+        opcode_costs::{BrTableCost, ControlFlowCost, OpcodeCosts},
         storage_costs::StorageCosts,
         system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
@@ -75,14 +75,30 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
     op_const: 0,
     local: 0,
     global: 0,
-    control_flow: 0,
+    control_flow: ControlFlowCost {
+        block: 0,
+        op_loop: 0,
+        op_if: 0,
+        op_else: 0,
+        end: 0,
+        br: 0,
+        br_if: 0,
+        br_table: BrTableCost {
+            cost: 0,
+            size_multiplier: 0,
+        },
+        op_return: 0,
+        call: 0,
+        call_indirect: 0,
+        drop: 0,
+        select: 0,
+    },
     integer_comparison: 0,
     conversion: 0,
     unreachable: 0,
     nop: 0,
     current_memory: 0,
     grow_memory: 0,
-    regular: 0,
 };
 
 static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunctionCosts {

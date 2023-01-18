@@ -393,7 +393,7 @@ pub fn preprocess(
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(
         module,
-        &wasm_config.opcode_costs().to_set(),
+        &wasm_config.opcode_costs(),
         DEFAULT_GAS_MODULE_NAME,
     )
     .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;

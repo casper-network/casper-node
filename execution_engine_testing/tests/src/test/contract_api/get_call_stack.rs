@@ -2640,7 +2640,10 @@ mod payment {
         } else {
             builder.exec(execute_request).commit().expect_failure();
             let error = builder.get_error().expect("must have an error");
-            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+            assert!(matches!(
+                error,
+                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+            ));
         }
     }
 
@@ -2682,7 +2685,10 @@ mod payment {
         } else {
             builder.exec(execute_request).commit().expect_failure();
             let error = builder.get_error().expect("must have an error");
-            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+            assert!(matches!(
+                error,
+                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+            ));
         }
     }
 
@@ -2721,7 +2727,10 @@ mod payment {
         } else {
             builder.exec(execute_request).commit().expect_failure();
             let error = builder.get_error().expect("must have an error");
-            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+            assert!(matches!(
+                error,
+                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+            ));
         }
     }
 
@@ -2762,7 +2771,10 @@ mod payment {
         } else {
             builder.exec(execute_request).commit().expect_failure();
             let error = builder.get_error().expect("must have an error");
-            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+            assert!(matches!(
+                error,
+                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+            ));
         }
     }
 
@@ -2800,7 +2812,10 @@ mod payment {
         } else {
             builder.exec(execute_request).commit().expect_failure();
             let error = builder.get_error().expect("must have an error");
-            assert!(matches!(error, CoreError::Exec(ExecError::GasLimit)));
+            assert!(matches!(
+                error,
+                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+            ));
         }
     }
 
