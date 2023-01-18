@@ -1167,6 +1167,17 @@ impl MainReactor {
             &mut effects,
         );
 
+        if state.register_as_synchronizer_notified().was_updated() {
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockSynchronizer,
+                self.block_synchronizer.handle_event(
+                    effect_builder,
+                    rng,
+                    block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
+                ),
+            ));
+        }
+
         debug_assert!(
             state.verify_complete(),
             "meta block {} at height {} has invalid state: {:?}",
@@ -1174,6 +1185,15 @@ impl MainReactor {
             block.height(),
             state
         );
+
+        if state.register_all_actions_done().was_already_registered() {
+            error!(
+                block = %*block,
+                ?state,
+                "duplicate meta block announcement emitted"
+            );
+            return effects;
+        }
 
         effects.extend(reactor::wrap_effects(
             MainEvent::EventStreamServer,

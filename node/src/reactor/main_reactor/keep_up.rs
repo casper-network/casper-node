@@ -146,6 +146,10 @@ impl MainReactor {
                 // working on syncing a block
                 Either::Left(self.keep_up_syncing(block_hash, block_height))
             }
+            // waiting for execution - forward only
+            BlockSynchronizerProgress::Executing(block_hash, block_height, era_id) => {
+                Either::Left(self.keep_up_executing(block_hash, block_height, era_id))
+            }
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 // for a synced forward block -> we have header, body, any referenced deploys,
                 // and sufficient finality (by weight) of signatures. this node will ultimately
@@ -185,6 +189,15 @@ impl MainReactor {
             None => SyncIdentifier::BlockHash(block_hash),
             Some(height) => SyncIdentifier::BlockIdentifier(block_hash, height),
         }
+    }
+
+    fn keep_up_executing(
+        &mut self,
+        block_hash: BlockHash,
+        block_height: u64,
+        era_id: EraId,
+    ) -> SyncIdentifier {
+        SyncIdentifier::ExecutingBlockIdentifier(block_hash, block_height, era_id)
     }
 
     fn keep_up_synced(
