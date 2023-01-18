@@ -186,6 +186,19 @@ mod tests {
         }
     }
 
+    fn assert_peers<I>(expected_peers: I, leap_activity: &LeapActivity)
+    where
+        I: IntoIterator<Item = NodeId>,
+    {
+        let expected_peers: BTreeSet<_> = expected_peers.into_iter().collect();
+        let actual_peers: BTreeSet<_> = leap_activity
+            .peers()
+            .iter()
+            .map(|(node_id, _)| *node_id)
+            .collect();
+        assert_eq!(expected_peers, actual_peers);
+    }
+
     #[test]
     fn best_response_with_single_peer() {
         let mut rng = TestRng::new();
@@ -447,29 +460,14 @@ mod tests {
         };
 
         // Expect the single peer specified on creation.
-        let mut expected_peers = BTreeSet::new();
-        expected_peers.insert(peer_1.0);
-        let actual_peers: BTreeSet<_> = leap_activity
-            .peers()
-            .iter()
-            .map(|(node_id, _)| *node_id)
-            .collect();
-        assert_eq!(expected_peers, actual_peers);
+        assert_peers([peer_1.0], &leap_activity);
 
         // Registering the same peer the second time does not register.
         let maybe_registered_peer = leap_activity.register_peer(peer_1.0);
         assert!(maybe_registered_peer.is_none());
 
         // Still expect only the single peer.
-        // TODO[RC]: Extract the asserting code, i.e. `assert!(expect_peers(peer_1, peer_2))`
-        let mut expected_peers = BTreeSet::new();
-        expected_peers.insert(peer_1.0);
-        let actual_peers: BTreeSet<_> = leap_activity
-            .peers()
-            .iter()
-            .map(|(node_id, _)| *node_id)
-            .collect();
-        assert_eq!(expected_peers, actual_peers);
+        assert_peers([peer_1.0], &leap_activity);
 
         // Registering additional peer should succeed.
         let peer_2 = NodeId::random(&mut rng);
@@ -481,14 +479,6 @@ mod tests {
         assert_eq!(maybe_registered_peer, None);
 
         // Expect two added peers.
-        let mut expected_peers = BTreeSet::new();
-        expected_peers.insert(peer_1.0);
-        expected_peers.insert(peer_2);
-        let actual_peers: BTreeSet<_> = leap_activity
-            .peers()
-            .iter()
-            .map(|(node_id, _)| *node_id)
-            .collect();
-        assert_eq!(expected_peers, actual_peers);
+        assert_peers([peer_1.0, peer_2], &leap_activity);
     }
 }
