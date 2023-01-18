@@ -10,7 +10,6 @@ mod tests;
 use std::{sync::Arc, time::Instant};
 
 use datasize::DataSize;
-use futures::FutureExt;
 use prometheus::Registry;
 use tracing::{error, info, warn};
 
@@ -275,17 +274,17 @@ where
 
 #[cfg(test)]
 impl SyncLeaper {
-    // TODO[RC]: Rework this
     fn peers(&self) -> Option<Vec<(NodeId, PeerState)>> {
-        match &self.leap_activity {
-            Some(leap_activity) => {
-                let mut ret = vec![];
-                for (node_id, peer_state) in leap_activity.peers() {
-                    ret.push((*node_id, peer_state.clone()));
+        self.leap_activity
+            .as_ref()
+            .and_then(|leap_activity| {
+                let peers = leap_activity.peers();
+                if leap_activity.peers().is_empty() {
+                    None
+                } else {
+                    Some(peers.clone())
                 }
-                return Some(ret);
-            }
-            None => return None,
-        }
+            })
+            .map(|peers| peers.into_iter().collect::<Vec<_>>())
     }
 }
