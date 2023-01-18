@@ -152,7 +152,7 @@ fn should_correctly_measure_gas_for_opcodes() {
         // if 0 { nop } else { nop; nop; }
         (Some(opcode_costs.op_const), Instruction::I32Const(0)),
         (
-            Some(opcode_costs.control_flow),
+            Some(opcode_costs.control_flow.op_if),
             Instruction::If(BlockType::NoResult),
         ),
         (None, Instruction::Nop),
@@ -170,7 +170,7 @@ fn should_correctly_measure_gas_for_opcodes() {
         // i32 -> i64
         (Some(opcode_costs.op_const), Instruction::I32Const(123)),
         (Some(opcode_costs.conversion), Instruction::I64ExtendSI32),
-        (Some(opcode_costs.control_flow), Instruction::Drop), /* Discard the result */
+        (Some(opcode_costs.control_flow.drop), Instruction::Drop), /* Discard the result */
         // Sentinel instruction that's required to be present but it's not accounted for
         (None, Instruction::End),
     ];

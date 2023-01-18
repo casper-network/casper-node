@@ -19,6 +19,8 @@ mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
 
+use std::env;
+
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
@@ -120,7 +122,13 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 /// Default [`ProtocolVersion`].
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
 /// Default payment.
-pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
+pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| {
+    let amount = env::var("DEFAULT_PAYMENT")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(1_500_000_000_000u64);
+    U512::from(amount)
+});
 /// Default [`WasmConfig`].
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].

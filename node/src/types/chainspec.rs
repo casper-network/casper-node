@@ -208,7 +208,7 @@ mod tests {
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::OpcodeCosts,
+        opcode_costs::{BrTableCost, ControlFlowCost, OpcodeCosts},
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
@@ -287,14 +287,30 @@ mod tests {
         op_const: 19,
         local: 20,
         global: 21,
-        control_flow: 22,
-        integer_comparison: 23,
-        conversion: 24,
-        unreachable: 25,
-        nop: 26,
-        current_memory: 27,
-        grow_memory: 28,
-        regular: 29,
+        control_flow: ControlFlowCost {
+            block: 1,
+            op_loop: 2,
+            op_if: 3,
+            op_else: 4,
+            end: 5,
+            br: 6,
+            br_if: 7,
+            br_table: BrTableCost {
+                cost: 0,
+                size_multiplier: 1,
+            },
+            op_return: 8,
+            call: 9,
+            call_indirect: 10,
+            drop: 11,
+            select: 12,
+        },
+        integer_comparison: 22,
+        conversion: 23,
+        unreachable: 24,
+        nop: 25,
+        current_memory: 26,
+        grow_memory: 27,
     };
 
     fn check_spec(spec: Chainspec, is_first_version: bool) {
