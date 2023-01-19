@@ -2330,7 +2330,7 @@ impl GossiperItem for FinalitySignature {
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn target(&self) -> GossipTarget {
-        GossipTarget::All
+        GossipTarget::Mixed(self.era_id)
     }
 }
 
