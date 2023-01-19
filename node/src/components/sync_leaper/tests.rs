@@ -4,11 +4,14 @@ use casper_types::testing::TestRng;
 use prometheus::Registry;
 
 use crate::{
-    components::sync_leaper::{LeapState, PeerState, RegisterLeapAttemptOutcome},
+    components::{
+        fetcher::{self, FetchResult, FetchedData},
+        sync_leaper::{LeapState, PeerState, RegisterLeapAttemptOutcome},
+    },
     types::{Block, BlockHash, Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
 };
 
-use super::SyncLeaper;
+use super::{Error, SyncLeaper};
 
 pub(crate) fn make_default_sync_leap(rng: &mut TestRng) -> SyncLeap {
     let block = Block::random(rng);
@@ -36,6 +39,13 @@ fn assert_peers(expected: &[NodeId], actual: &Vec<(NodeId, PeerState)>) {
     let expected: BTreeSet<_> = expected.iter().collect();
     let actual: BTreeSet<_> = actual.iter().map(|(node_id, _)| node_id).collect();
     assert_eq!(expected, actual);
+}
+
+fn assert_peer(sync_leaper: SyncLeaper, (expected_peer, expected_peer_state): (NodeId, PeerState)) {
+    let peers = sync_leaper.peers().unwrap();
+    let (node_id, actual_peer_state) = peers.first().unwrap();
+    assert_eq!(node_id, &expected_peer);
+    assert_eq!(actual_peer_state, &expected_peer_state);
 }
 
 #[test]
@@ -160,4 +170,205 @@ fn register_leap_attempt_with_reattempt_for_the_same_leap_identifier() {
     let expected_peers = vec![peer_1, peer_2, peer_3, peer_4];
     let actual_peers = sync_leaper.peers().unwrap();
     assert_peers(&expected_peers, &actual_peers);
+}
+
+#[test]
+fn fetch_received_from_storage() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer_1 = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer_1];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_storage(sync_leap));
+
+    let actual = sync_leaper
+        .fetch_received(sync_leap_identifier, fetch_result)
+        .unwrap_err();
+    assert!(matches!(actual, Error::FetchedSyncLeapFromStorage(_)));
+}
+
+#[test]
+fn fetch_received_identifier_mismatch() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_peer(sync_leap, peer));
+
+    let different_sync_leap_identifier =
+        SyncLeapIdentifier::sync_to_historical(BlockHash::random(&mut rng));
+
+    let actual = sync_leaper
+        .fetch_received(different_sync_leap_identifier, fetch_result)
+        .unwrap_err();
+
+    assert!(matches!(actual, Error::SyncLeapIdentifierMismatch { .. }));
+}
+
+#[test]
+fn fetch_received_unexpected_response() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_peer(sync_leap, peer));
+
+    let actual = sync_leaper
+        .fetch_received(sync_leap_identifier, fetch_result)
+        .unwrap_err();
+    assert!(matches!(actual, Error::UnexpectedSyncLeapResponse(_)));
+
+    let peers = sync_leaper.peers();
+    assert!(peers.is_none());
+}
+
+#[test]
+fn fetch_received_from_unknown_peer() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let unknown_peer = NodeId::random(&mut rng);
+    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_peer(sync_leap, unknown_peer));
+
+    let actual = sync_leaper
+        .fetch_received(sync_leap_identifier, fetch_result)
+        .unwrap_err();
+    assert!(matches!(actual, Error::ResponseFromUnknownPeer { .. }));
+
+    assert_peer(sync_leaper, (peer, PeerState::RequestSent));
+}
+
+#[test]
+fn fetch_received_correctly() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_peer(sync_leap.clone(), peer));
+
+    let actual = sync_leaper.fetch_received(sync_leap_identifier, fetch_result);
+    assert!(actual.is_ok());
+
+    assert_peer(sync_leaper, (peer, PeerState::Fetched(Box::new(sync_leap))));
+}
+
+#[test]
+fn fetch_received_peer_rejected() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::Rejected {
+        id: sync_leap_identifier,
+        peer,
+    });
+
+    let actual = sync_leaper.fetch_received(sync_leap_identifier, fetch_result);
+    assert!(actual.is_ok());
+
+    assert_peer(sync_leaper, (peer, PeerState::Rejected));
+}
+
+#[test]
+fn fetch_received_from_unknown_peer_rejected() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let unknown_peer = NodeId::random(&mut rng);
+    let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::Rejected {
+        id: sync_leap_identifier,
+        peer: unknown_peer,
+    });
+
+    let actual = sync_leaper
+        .fetch_received(sync_leap_identifier, fetch_result)
+        .unwrap_err();
+    assert!(matches!(actual, Error::ResponseFromUnknownPeer { .. }));
+
+    assert_peer(sync_leaper, (peer, PeerState::RequestSent));
+}
+
+#[test]
+fn fetch_received_other_error() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::TimedOut {
+        id: sync_leap_identifier,
+        peer,
+    });
+
+    let actual = sync_leaper.fetch_received(sync_leap_identifier, fetch_result);
+    assert!(actual.is_ok());
+
+    assert_peer(sync_leaper, (peer, PeerState::CouldntFetch));
+}
+
+#[test]
+fn fetch_received_from_unknown_peer_other_error() {
+    let mut rng = TestRng::new();
+
+    let mut sync_leaper = make_sync_leaper(&mut rng);
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+
+    let peer = NodeId::random(&mut rng);
+    let peers_to_ask = vec![peer];
+    sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
+
+    let unknown_peer = NodeId::random(&mut rng);
+    let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::TimedOut {
+        id: sync_leap_identifier,
+        peer: unknown_peer,
+    });
+
+    let actual = sync_leaper
+        .fetch_received(sync_leap_identifier, fetch_result)
+        .unwrap_err();
+    assert!(matches!(actual, Error::ResponseFromUnknownPeer { .. }));
+
+    assert_peer(sync_leaper, (peer, PeerState::RequestSent));
 }

@@ -35,8 +35,6 @@ impl LeapActivity {
             .count();
         let responsed = self.peers.len() - in_flight;
 
-        // TODO[RC]: Should this be just self.peers.is_empty()?
-
         if in_flight == 0 && responsed == 0 {
             return LeapState::Failed {
                 sync_leap_identifier,

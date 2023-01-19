@@ -12,7 +12,7 @@ use std::{sync::Arc, time::Instant};
 use datasize::DataSize;
 use prometheus::Registry;
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::{
     components::{
@@ -33,7 +33,7 @@ use self::leap_activity::LeapActivity;
 
 const COMPONENT_NAME: &str = "sync_leaper";
 
-#[derive(Clone, Debug, DataSize)]
+#[derive(Clone, Debug, DataSize, Eq, PartialEq)]
 pub(crate) enum PeerState {
     RequestSent,
     Rejected,
@@ -167,7 +167,6 @@ impl SyncLeaper {
                 //     %sync_leap_identifier,
                 //     "received a sync leap response while no requests were in progress"
                 // );
-                panic!("1");
                 return Err(Error::UnexpectedSyncLeapResponse(sync_leap_identifier));
             }
         };
@@ -178,7 +177,6 @@ impl SyncLeaper {
             //     response_hash=%sync_leap_identifier,
             //     "block hash in the response doesn't match the one requested"
             // );
-            panic!("2");
             return Err(Error::SyncLeapIdentifierMismatch {
                 actual: sync_leap_identifier,
                 expected: *leap_activity.sync_leap_identifier(),
@@ -187,8 +185,9 @@ impl SyncLeaper {
 
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
-                //error!(%sync_leap_identifier, "fetched a sync leap from storage - should never happen");
-                return Err(Error::FetchedSyncLeapFromStorage(sync_leap_identifier));
+                //error!(%sync_leap_identifier, "fetched a sync leap from storage - should never
+                // happen");
+                Err(Error::FetchedSyncLeapFromStorage(sync_leap_identifier))
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
                 let peer_state = match leap_activity.peers_mut().get_mut(&peer) {
@@ -199,7 +198,6 @@ impl SyncLeaper {
                         //     %sync_leap_identifier,
                         //     "received a sync leap response from an unknown peer"
                         // );
-                        panic!("4");
                         return Err(Error::ResponseFromUnknownPeer {
                             peer,
                             sync_leap_identifier,
@@ -208,7 +206,7 @@ impl SyncLeaper {
                 };
                 *peer_state = PeerState::Fetched(Box::new(*item));
                 self.metrics.sync_leap_fetched_from_peer.inc();
-                panic!("5");
+                Ok(())
             }
             Err(fetcher::Error::Rejected { peer, .. }) => {
                 let peer_state = match leap_activity.peers_mut().get_mut(&peer) {
@@ -219,7 +217,6 @@ impl SyncLeaper {
                         //     %sync_leap_identifier,
                         //     "received a sync leap response from an unknown peer"
                         // );
-                        panic!("6");
                         return Err(Error::ResponseFromUnknownPeer {
                             peer,
                             sync_leap_identifier,
@@ -229,7 +226,7 @@ impl SyncLeaper {
                 info!(%peer, %sync_leap_identifier, "peer rejected our request for a sync leap");
                 *peer_state = PeerState::Rejected;
                 self.metrics.sync_leap_rejected_by_peer.inc();
-                panic!("7");
+                Ok(())
             }
             Err(error) => {
                 let peer = error.peer();
@@ -242,7 +239,6 @@ impl SyncLeaper {
                         //     %sync_leap_identifier,
                         //     "received a sync leap response from an unknown peer"
                         // );
-                        panic!("8");
                         return Err(Error::ResponseFromUnknownPeer {
                             peer: *peer,
                             sync_leap_identifier,
@@ -251,12 +247,9 @@ impl SyncLeaper {
                 };
                 *peer_state = PeerState::CouldntFetch;
                 self.metrics.sync_leap_cant_fetch.inc();
-                panic!("9");
+                Ok(())
             }
         }
-        panic!("10");
-
-        Ok(())
     }
 }
 
@@ -301,7 +294,8 @@ where
                 sync_leap_identifier,
                 fetch_result,
             } => {
-                self.fetch_received(sync_leap_identifier, fetch_result);
+                // TODO[RC]
+                let _ = self.fetch_received(sync_leap_identifier, fetch_result);
                 Effects::new()
             }
         }
