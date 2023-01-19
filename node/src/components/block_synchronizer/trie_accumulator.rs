@@ -15,7 +15,7 @@ use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::storage::trie::TrieRaw;
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::bytesrepr::{self, Bytes};
+use casper_types::bytesrepr::Bytes;
 
 use crate::{
     components::{
@@ -37,8 +37,6 @@ const COMPONENT_NAME: &str = "trie_accumulator";
 pub(crate) enum Error {
     #[error("trie accumulator fetcher error: {0}")]
     Fetcher(FetcherError<TrieOrChunk>),
-    #[error("trie accumulator serialization error: {0}")]
-    Bytesrepr(bytesrepr::Error),
     #[error("trie accumulator couldn't fetch trie chunk ({0}, {1})")]
     Absent(Digest, u64),
     #[error("request contained no peers; trie = {0}")]
