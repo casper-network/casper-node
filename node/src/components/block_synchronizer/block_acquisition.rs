@@ -390,7 +390,11 @@ impl BlockAcquisitionState {
         let new_state = match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
                 if header.id() == *block_hash {
-                    info!("BlockAcquisition: registering header for: {}", block_hash);
+                    info!(
+                        "BlockAcquisition: registering header for: {:?}, height: {}",
+                        block_hash,
+                        header.height()
+                    );
                     BlockAcquisitionState::HaveBlockHeader(Box::new(header), signatures.clone())
                 } else {
                     return Err(BlockAcquisitionError::BlockHashMismatch {
