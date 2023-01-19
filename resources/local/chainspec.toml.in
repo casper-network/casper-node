@@ -148,8 +148,8 @@ loop = 440
 if = 440
 else = 440
 end = 440
-br = 440000
-br_if = 440000
+br = 440_000
+br_if = 440_000
 return = 440
 select = 440
 call = 440
@@ -158,7 +158,7 @@ drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
-cost = 440000
+cost = 440_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 

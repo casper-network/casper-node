@@ -57,7 +57,7 @@ pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 440000;
 /// Default fixed cost of the `br_table` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 440000;
 /// Default multiplier for the size of targets in `br_table` Wasm opcode.
-pub const DEFAULT_BR_TABLE_MULTIPLIER: u32 = 100;
+pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 /// Default cost of the `return` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_RETURN_OPCODE: u32 = 440;
 /// Default cost of the `call` Wasm opcode.
@@ -76,9 +76,7 @@ pub const DEFAULT_CONTROL_FLOW_SELECT_OPCODE: u32 = 440;
 /// ```text
 /// cost + (len(br_table.targets) * size_multiplier)
 /// ```
-///
-/// This is done to punish users for writing code with very long `br_table`s and encourage users to
-/// optimize their generated code.
+// This is done to encourage users to avoid writing code with very long `br_table`s.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct BrTableCost {
     /// Fixed cost charge for `br_table` opcode.
@@ -91,7 +89,7 @@ impl Default for BrTableCost {
     fn default() -> Self {
         Self {
             cost: DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE,
-            size_multiplier: DEFAULT_BR_TABLE_MULTIPLIER,
+            size_multiplier: DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
         }
     }
 }
@@ -133,11 +131,11 @@ impl ToBytes for BrTableCost {
 impl FromBytes for BrTableCost {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (cost, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (target_size_multiplier, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (size_multiplier, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         Ok((
             Self {
                 cost,
-                size_multiplier: target_size_multiplier,
+                size_multiplier,
             },
             bytes,
         ))
@@ -146,7 +144,7 @@ impl FromBytes for BrTableCost {
 
 /// Definition of a cost table for a Wasm control flow opcodes.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
-pub struct ControlFlowCost {
+pub struct ControlFlowCosts {
     /// Cost for `block` opcode.
     pub block: u32,
     /// Cost for `loop` opcode.
@@ -179,7 +177,7 @@ pub struct ControlFlowCost {
     pub br_table: BrTableCost,
 }
 
-impl Default for ControlFlowCost {
+impl Default for ControlFlowCosts {
     fn default() -> Self {
         Self {
             block: DEFAULT_CONTROL_FLOW_BLOCK_OPCODE,
@@ -199,7 +197,7 @@ impl Default for ControlFlowCost {
     }
 }
 
-impl ToBytes for ControlFlowCost {
+impl ToBytes for ControlFlowCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
@@ -267,7 +265,7 @@ impl ToBytes for ControlFlowCost {
     }
 }
 
-impl FromBytes for ControlFlowCost {
+impl FromBytes for ControlFlowCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (block, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (op_loop, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
@@ -283,7 +281,7 @@ impl FromBytes for ControlFlowCost {
         let (select, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (br_table, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
 
-        let control_flow_cost = ControlFlowCost {
+        let control_flow_cost = ControlFlowCosts {
             block,
             op_loop,
             op_if,
@@ -302,9 +300,9 @@ impl FromBytes for ControlFlowCost {
     }
 }
 
-impl Distribution<ControlFlowCost> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ControlFlowCost {
-        ControlFlowCost {
+impl Distribution<ControlFlowCosts> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ControlFlowCosts {
+        ControlFlowCosts {
             block: rng.gen(),
             op_loop: rng.gen(),
             op_if: rng.gen(),
@@ -359,7 +357,7 @@ pub struct OpcodeCosts {
     /// Grow memory cost, per page (64kb)
     pub grow_memory: u32,
     /// Control flow operations multiplier.
-    pub control_flow: ControlFlowCost,
+    pub control_flow: ControlFlowCosts,
 }
 
 impl Rules for OpcodeCosts {
@@ -592,7 +590,7 @@ impl Default for OpcodeCosts {
             nop: DEFAULT_NOP_COST,
             current_memory: DEFAULT_CURRENT_MEMORY_COST,
             grow_memory: DEFAULT_GROW_MEMORY_COST,
-            control_flow: ControlFlowCost::default(),
+            control_flow: ControlFlowCosts::default(),
         }
     }
 }
@@ -749,7 +747,7 @@ pub mod gens {
 
     use crate::shared::opcode_costs::OpcodeCosts;
 
-    use super::{BrTableCost, ControlFlowCost};
+    use super::{BrTableCost, ControlFlowCosts};
 
     prop_compose! {
         pub fn br_table_cost_arb()(
@@ -775,8 +773,8 @@ pub mod gens {
             call_indirect in num::u32::ANY,
             drop in num::u32::ANY,
             select in num::u32::ANY,
-        ) -> ControlFlowCost {
-            ControlFlowCost {
+        ) -> ControlFlowCosts {
+            ControlFlowCosts {
                 block,
                 op_loop,
                 op_if,

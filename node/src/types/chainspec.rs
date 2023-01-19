@@ -208,7 +208,7 @@ mod tests {
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCost, OpcodeCosts},
+        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
@@ -287,7 +287,7 @@ mod tests {
         op_const: 19,
         local: 20,
         global: 21,
-        control_flow: ControlFlowCost {
+        control_flow: ControlFlowCosts {
             block: 1,
             op_loop: 2,
             op_if: 3,

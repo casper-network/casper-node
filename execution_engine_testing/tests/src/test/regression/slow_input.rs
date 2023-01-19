@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{engine_state::Error, execution},
-    shared::opcode_costs::DEFAULT_BR_TABLE_MULTIPLIER,
+    shared::opcode_costs::DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs};
 
@@ -174,7 +174,7 @@ fn should_charge_extra_per_amount_of_br_table_elements() {
 
     assert_eq!(
         gas_cost_2 - gas_cost_1,
-        Gas::from((M_ELEMENTS - N_ELEMENTS) * DEFAULT_BR_TABLE_MULTIPLIER),
+        Gas::from((M_ELEMENTS - N_ELEMENTS) * DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER),
         "the cost difference should equal to exactly the size of br_table difference "
     );
 }

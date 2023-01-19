@@ -17,7 +17,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCost, OpcodeCosts},
+        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
         storage_costs::StorageCosts,
         system_config::SystemConfig,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
@@ -73,7 +73,7 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
     op_const: 0,
     local: 0,
     global: 0,
-    control_flow: ControlFlowCost {
+    control_flow: ControlFlowCosts {
         block: 0,
         op_loop: 0,
         op_if: 0,

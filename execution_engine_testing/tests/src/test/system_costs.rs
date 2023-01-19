@@ -17,7 +17,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCost, OpcodeCosts},
+        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
         storage_costs::StorageCosts,
         system_config::{
             auction_costs::{
@@ -793,7 +793,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         op_const: 0,
         local: 0,
         global: 0,
-        control_flow: ControlFlowCost {
+        control_flow: ControlFlowCosts {
             block: 0,
             op_loop: 0,
             op_if: 0,
