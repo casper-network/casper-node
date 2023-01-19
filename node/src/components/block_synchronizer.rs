@@ -418,7 +418,7 @@ impl BlockSynchronizer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_hash: &BlockHash,
-        was_not_previously_marked_complete: bool,
+        is_new: bool,
     ) -> Effects<Event>
     where
         REv: From<StorageRequest>
@@ -439,7 +439,7 @@ impl BlockSynchronizer {
         match &mut self.historical {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_marked_complete();
-                if was_not_previously_marked_complete {
+                if !is_new {
                     warn!(%block_hash, "marked complete an already-complete block");
                     return effects;
                 }
@@ -643,12 +643,11 @@ impl BlockSynchronizer {
                     // any).
                     if builder.should_fetch_execution_state() {
                         builder.set_in_flight_latch();
-                        results.extend(effect_builder.mark_block_completed(block_height).event(
-                            move |was_not_previously_marked_complete| Event::MarkBlockCompleted {
-                                block_hash,
-                                was_not_previously_marked_complete,
-                            },
-                        ))
+                        results.extend(
+                            effect_builder.mark_block_completed(block_height).event(
+                                move |is_new| Event::MarkBlockCompleted { block_hash, is_new },
+                            ),
+                        )
                     }
                 }
                 NeedNext::Peers(block_hash) => {
@@ -1363,18 +1362,11 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.register_block_executed(&block_hash);
                     Effects::new()
                 }
-                Event::MarkBlockCompleted {
-                    block_hash,
-                    was_not_previously_marked_complete,
-                } => {
+                Event::MarkBlockCompleted { block_hash, is_new } => {
                     // when syncing an historical block, the synchronizer considers it
                     // finished after receiving confirmation that the complete block
                     // has been stored.
-                    self.register_marked_complete(
-                        effect_builder,
-                        &block_hash,
-                        was_not_previously_marked_complete,
-                    )
+                    self.register_marked_complete(effect_builder, &block_hash, is_new)
                 }
             },
         }

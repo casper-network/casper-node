@@ -32,7 +32,7 @@ pub(crate) enum Event {
     MarkBlockExecuted(BlockHash),
     MarkBlockCompleted {
         block_hash: BlockHash,
-        was_not_previously_marked_complete: bool,
+        is_new: bool,
     },
     ValidatorMatrixUpdated,
     #[from]
