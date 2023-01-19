@@ -445,12 +445,9 @@ impl MainReactor {
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
-        // Note: we don't want to read the highest COMPLETE block, as an immediate switch block is
-        // only marked complete after we receive enough signatures from validators.  Using the
-        // highest stored block ensures the ContractRuntime's `exec_queue` isn't set to a block
-        // height we already executed but haven't yet marked complete.
-        match self.storage.read_highest_block_header() {
-            Ok(Some(block_header)) => {
+        match self.storage.read_highest_complete_block() {
+            Ok(Some(block)) => {
+                let block_header = block.header();
                 let block_height = block_header.height();
                 let state_root_hash = block_header.state_root_hash();
                 let block_hash = block_header.id();
