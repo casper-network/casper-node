@@ -108,8 +108,8 @@ function _setup_asset_chainspec()
     local SCRIPT
     local COUNT_NODES
 
-    # Shouldnt matter, maybe, idk ?, blame Tom if this causes an issue :)
-    COUNT_NODES='100'
+    # Use # of nodes in assets dir
+    COUNT_NODES="$(get_count_of_nodes)"
 
     # Set file.
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
