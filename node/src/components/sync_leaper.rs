@@ -12,7 +12,7 @@ use std::{sync::Arc, time::Instant};
 use datasize::DataSize;
 use prometheus::Registry;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     components::{
@@ -163,20 +163,11 @@ impl SyncLeaper {
         let leap_activity = match &mut self.leap_activity {
             Some(leap_activity) => leap_activity,
             None => {
-                // warn!(
-                //     %sync_leap_identifier,
-                //     "received a sync leap response while no requests were in progress"
-                // );
                 return Err(Error::UnexpectedSyncLeapResponse(sync_leap_identifier));
             }
         };
 
         if leap_activity.sync_leap_identifier() != &sync_leap_identifier {
-            // warn!(
-            //     requested_hash=%leap_activity.sync_leap_identifier(),
-            //     response_hash=%sync_leap_identifier,
-            //     "block hash in the response doesn't match the one requested"
-            // );
             return Err(Error::SyncLeapIdentifierMismatch {
                 actual: sync_leap_identifier,
                 expected: *leap_activity.sync_leap_identifier(),
@@ -185,19 +176,12 @@ impl SyncLeaper {
 
         match fetch_result {
             Ok(FetchedData::FromStorage { .. }) => {
-                //error!(%sync_leap_identifier, "fetched a sync leap from storage - should never
-                // happen");
                 Err(Error::FetchedSyncLeapFromStorage(sync_leap_identifier))
             }
             Ok(FetchedData::FromPeer { item, peer, .. }) => {
                 let peer_state = match leap_activity.peers_mut().get_mut(&peer) {
                     Some(state) => state,
                     None => {
-                        // warn!(
-                        //     ?peer,
-                        //     %sync_leap_identifier,
-                        //     "received a sync leap response from an unknown peer"
-                        // );
                         return Err(Error::ResponseFromUnknownPeer {
                             peer,
                             sync_leap_identifier,
@@ -212,11 +196,6 @@ impl SyncLeaper {
                 let peer_state = match leap_activity.peers_mut().get_mut(&peer) {
                     Some(state) => state,
                     None => {
-                        // warn!(
-                        //     ?peer,
-                        //     %sync_leap_identifier,
-                        //     "received a sync leap response from an unknown peer"
-                        // );
                         return Err(Error::ResponseFromUnknownPeer {
                             peer,
                             sync_leap_identifier,
@@ -234,11 +213,6 @@ impl SyncLeaper {
                 let peer_state = match leap_activity.peers_mut().get_mut(peer) {
                     Some(state) => state,
                     None => {
-                        // warn!(
-                        //     ?peer,
-                        //     %sync_leap_identifier,
-                        //     "received a sync leap response from an unknown peer"
-                        // );
                         return Err(Error::ResponseFromUnknownPeer {
                             peer: *peer,
                             sync_leap_identifier,
@@ -294,8 +268,15 @@ where
                 sync_leap_identifier,
                 fetch_result,
             } => {
-                // TODO[RC]
-                let _ = self.fetch_received(sync_leap_identifier, fetch_result);
+                // Log potential error with proper severity and continue processing.
+                if let Err(error) = self.fetch_received(sync_leap_identifier, fetch_result) {
+                    match error {
+                        Error::FetchedSyncLeapFromStorage(_) => error!(%error),
+                        Error::UnexpectedSyncLeapResponse(_)
+                        | Error::SyncLeapIdentifierMismatch { .. }
+                        | Error::ResponseFromUnknownPeer { .. } => warn!(%error),
+                    }
+                }
                 Effects::new()
             }
         }
