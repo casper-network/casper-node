@@ -4,7 +4,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
+use casper_execution_engine::{
+    core::engine_state::{Error as CoreError, ExecError, ExecuteRequest},
+    storage::global_state::in_memory::InMemoryGlobalState,
+};
 use casper_types::{
     account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
     ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
@@ -64,6 +67,27 @@ fn store_contract(builder: &mut WasmTestBuilder<InMemoryGlobalState>, session_fi
         .exec(store_contract_request)
         .commit()
         .expect_success();
+}
+
+fn execute_and_assert_result(
+    call_depth: usize,
+    builder: &mut InMemoryWasmTestBuilder,
+    execute_request: ExecuteRequest,
+) {
+    if call_depth == 0 {
+        builder.exec(execute_request).commit().expect_success();
+    } else {
+        builder.exec(execute_request).commit().expect_failure();
+        let error = builder.get_error().expect("must have an error");
+        assert!(matches!(
+            error,
+            // Call chains have stored contract trying to call stored session which we don't
+            // support and is an actual error. Due to variable opcode costs such
+            // execution may end up in a success (and fail with InvalidContext) or GasLimit when
+            // executing longer chains.
+            CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+        ));
+    }
 }
 
 // Constant from the contracts used in the tests below.
@@ -2580,7 +2604,6 @@ mod payment {
     use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
-    use casper_execution_engine::core::engine_state::{Error as CoreError, ExecError};
     use casper_types::{runtime_args, system::mint, HashAddr, RuntimeArgs};
     use get_call_stack_recursive_subcall::Call;
 
@@ -2615,16 +2638,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        if call_depth == 0 {
-            builder.exec(execute_request).commit().expect_success();
-        } else {
-            builder.exec(execute_request).commit().expect_failure();
-            let error = builder.get_error().expect("must have an error");
-            assert!(matches!(
-                error,
-                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
-            ));
-        }
+        super::execute_and_assert_result(call_depth, builder, execute_request);
     }
 
     fn execute_stored_payment_by_package_name(
@@ -2660,16 +2674,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        if call_depth == 0 {
-            builder.exec(execute_request).commit().expect_success();
-        } else {
-            builder.exec(execute_request).commit().expect_failure();
-            let error = builder.get_error().expect("must have an error");
-            assert!(matches!(
-                error,
-                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
-            ));
-        }
+        super::execute_and_assert_result(call_depth, builder, execute_request);
     }
 
     fn execute_stored_payment_by_package_hash(
@@ -2702,16 +2707,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        if call_depth == 0 {
-            builder.exec(execute_request).expect_success().commit();
-        } else {
-            builder.exec(execute_request).commit().expect_failure();
-            let error = builder.get_error().expect("must have an error");
-            assert!(matches!(
-                error,
-                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
-            ));
-        }
+        super::execute_and_assert_result(call_depth, builder, execute_request);
     }
 
     fn execute_stored_payment_by_contract_name(
@@ -2746,16 +2742,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        if call_depth == 0 {
-            builder.exec(execute_request).commit().expect_success();
-        } else {
-            builder.exec(execute_request).commit().expect_failure();
-            let error = builder.get_error().expect("must have an error");
-            assert!(matches!(
-                error,
-                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
-            ));
-        }
+        super::execute_and_assert_result(call_depth, builder, execute_request);
     }
 
     fn execute_stored_payment_by_contract_hash(
@@ -2787,16 +2774,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        if call_depth == 0 {
-            builder.exec(execute_request).commit().expect_success();
-        } else {
-            builder.exec(execute_request).commit().expect_failure();
-            let error = builder.get_error().expect("must have an error");
-            assert!(matches!(
-                error,
-                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
-            ));
-        }
+        super::execute_and_assert_result(call_depth, builder, execute_request);
     }
 
     // Session + recursive subcall
