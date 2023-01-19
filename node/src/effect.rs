@@ -193,6 +193,8 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 /// The type of peers that should receive the gossip message.
 #[derive(Debug, Serialize, PartialEq, Eq, Hash, Copy, Clone, DataSize)]
 pub(crate) enum GossipTarget {
+    /// Both validators and non validators.
+    Mixed(EraId),
     /// Peers which are not validators in the given era.
     NonValidators(EraId),
     /// All peers.

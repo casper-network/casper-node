@@ -1107,14 +1107,16 @@ impl MainReactor {
                     ),
                 ));
 
-                let era_id = finality_signature.era_id;
-                let payload = Message::FinalitySignature(Box::new(finality_signature));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Network,
-                    effect_builder
-                        .broadcast_message_to_validators(payload, era_id)
-                        .ignore(),
-                ));
+                if false == block.header().is_switch_block() {
+                    let era_id = finality_signature.era_id;
+                    let payload = Message::FinalitySignature(Box::new(finality_signature));
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Network,
+                        effect_builder
+                            .broadcast_message_to_validators(payload, era_id)
+                            .ignore(),
+                    ));
+                }
             }
         }
 
