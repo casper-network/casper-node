@@ -515,7 +515,10 @@ impl BlockBuilder {
                 self.touch();
                 self.promote_peer(maybe_peer);
             }
-            Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
+            Ok(Some(Acceptance::HadIt)) => {
+                self.in_flight_latch = None;
+            }
+            Ok(None) => (),
             Err(error) => {
                 self.disqualify_peer(maybe_peer);
                 return Err(Error::BlockAcquisition(error));
