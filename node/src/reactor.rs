@@ -770,6 +770,13 @@ where
         .await
     }
 
+    /// Create an instance of an `EffectBuilder`.
+    #[cfg(test)]
+    pub(crate) fn effect_builder(&self) -> EffectBuilder<R::Event> {
+        let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
+        EffectBuilder::new(event_queue)
+    }
+
     /// Inject (schedule then process) effects created via a call to `create_effects` which is
     /// itself passed an instance of an `EffectBuilder`.
     #[cfg(test)]

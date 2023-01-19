@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{BlockHash, BlockValidationError, HotBlockMergeError, NodeId};
+use crate::types::{BlockHash, BlockValidationError, MetaBlockMergeError, NodeId};
 
 #[derive(Error, Debug)]
 pub(crate) enum InvalidGossipError {
@@ -60,5 +60,5 @@ pub(crate) enum Error {
     #[error("bogus validator detected")]
     BogusValidator(Bogusness),
     #[error(transparent)]
-    HotBlockMerge(#[from] HotBlockMergeError),
+    MetaBlockMerge(#[from] MetaBlockMergeError),
 }
