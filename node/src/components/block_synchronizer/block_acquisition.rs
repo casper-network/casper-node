@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
 };
 
@@ -249,7 +249,7 @@ impl BlockAcquisitionState {
                 } else {
                     // Collect signatures with Vacant state or which are currently missing from the
                     // SignatureAcquisition.
-                    let mut missing_signatures: Vec<PublicKey> = validator_weights
+                    let mut missing_signatures: HashSet<PublicKey> = validator_weights
                         .missing_validators(signatures.not_vacant())
                         .cloned()
                         .collect();
@@ -265,7 +265,7 @@ impl BlockAcquisitionState {
                         peer_list,
                         rng,
                         block_header,
-                        missing_signatures,
+                        missing_signatures.into_iter().collect(),
                     ))
                 }
             }
