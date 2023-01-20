@@ -87,10 +87,7 @@ impl PeerList {
                     PeerQuality::Dishonest => {
                         // no change -- this is terminal
                     }
-                    PeerQuality::Unknown => {
-                        self.peer_list.insert(peer_id, PeerQuality::Unreliable);
-                    }
-                    PeerQuality::Unreliable => {
+                    PeerQuality::Unreliable | PeerQuality::Unknown => {
                         self.peer_list.insert(peer_id, PeerQuality::Reliable);
                     }
                     PeerQuality::Reliable => {
@@ -110,13 +107,10 @@ impl PeerList {
                     // no change
                 }
                 Entry::Occupied(entry) => match entry.get() {
-                    PeerQuality::Dishonest | PeerQuality::Unknown => {
+                    PeerQuality::Dishonest | PeerQuality::Unreliable => {
                         // no change
                     }
-                    PeerQuality::Unreliable => {
-                        self.peer_list.insert(peer_id, PeerQuality::Unknown);
-                    }
-                    PeerQuality::Reliable => {
+                    PeerQuality::Reliable | PeerQuality::Unknown => {
                         self.peer_list.insert(peer_id, PeerQuality::Unreliable);
                     }
                 },
@@ -148,34 +142,40 @@ impl PeerList {
         PeersStatus::Sufficient
     }
 
+    fn get_peers_by_quality(
+        &self,
+        rng: &mut NodeRng,
+        up_to: usize,
+        peer_quality: PeerQuality,
+    ) -> Vec<NodeId> {
+        self.peer_list
+            .iter()
+            .filter(|(_peer, quality)| **quality == peer_quality)
+            .choose_multiple(rng, up_to)
+            .into_iter()
+            .map(|(peer, _)| *peer)
+            .collect()
+    }
+
     pub(super) fn qualified_peers(&self, rng: &mut NodeRng) -> Vec<NodeId> {
         let up_to = self.max_simultaneous_peers as usize;
 
         // get most useful up to limit
-        let mut peers: Vec<NodeId> = self
-            .peer_list
-            .iter()
-            .filter(|(_peer, quality)| **quality == PeerQuality::Reliable)
-            .choose_multiple(rng, up_to)
-            .into_iter()
-            .map(|(peer, _)| *peer)
-            .collect();
+        let mut peers = self.get_peers_by_quality(rng, up_to, PeerQuality::Reliable);
 
-        // if below limit get semi-useful
+        // if below limit get unknown peers which may or may not be useful
         let missing = up_to.saturating_sub(peers.len());
         if missing > 0 {
-            let better_than_nothing = self
-                .peer_list
-                .iter()
-                .filter(|(_peer, quality)| {
-                    **quality == PeerQuality::Unreliable || **quality == PeerQuality::Unknown
-                })
-                .choose_multiple(rng, missing)
-                .into_iter()
-                .map(|(peer, _)| *peer);
-
-            peers.extend(better_than_nothing);
+            peers.extend(self.get_peers_by_quality(rng, up_to, PeerQuality::Unknown));
         }
+
+        // if still below limit try unreliable peers again until we have the chance to refresh the
+        // peer list
+        let missing = up_to.saturating_sub(peers.len());
+        if missing > 0 {
+            peers.extend(self.get_peers_by_quality(rng, up_to, PeerQuality::Unreliable));
+        }
+
         peers
     }
 }
