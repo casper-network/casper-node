@@ -27,7 +27,7 @@ use crate::{
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub(crate) type Nodes<R> = HashMap<NodeId, Runner<ConditionCheckReactor<R>>>;
+pub(crate) type Nodes<R> = HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>>;
 
 /// A reactor with networking functionality.
 ///
@@ -57,7 +57,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[derive(Debug, Default)]
 pub(crate) struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<NodeId, Runner<ConditionCheckReactor<R>>>,
+    nodes: HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>>,
     /// Mapping of node IDs to spans.
     spans: HashMap<NodeId, Span>,
 }
@@ -121,8 +121,8 @@ where
         let node_idx = self.nodes.len();
         let span = error_span!("node", node_idx, node_id = field::Empty);
 
-        let runner: Runner<ConditionCheckReactor<R>> =
-            Runner::new(cfg, rng).instrument(span.clone()).await?;
+        let runner: Box<Runner<ConditionCheckReactor<R>>> =
+            Box::new(Runner::new(cfg, rng).instrument(span.clone()).await?);
 
         let node_id = runner.reactor().node_id();
         span.record("node_id", field::display(node_id));
@@ -144,7 +144,7 @@ where
     pub(crate) fn remove_node(
         &mut self,
         node_id: &NodeId,
-    ) -> Option<Runner<ConditionCheckReactor<R>>> {
+    ) -> Option<Box<Runner<ConditionCheckReactor<R>>>> {
         self.nodes.remove(node_id)
     }
 
@@ -303,7 +303,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub(crate) fn nodes(&self) -> &HashMap<NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn nodes(&self) -> &HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>> {
         &self.nodes
     }
 
@@ -311,7 +311,7 @@ where
     pub(crate) fn runners_mut(
         &mut self,
     ) -> impl Iterator<Item = &mut Runner<ConditionCheckReactor<R>>> {
-        self.nodes.values_mut()
+        self.nodes.values_mut().map(|bx| &mut **bx)
     }
 
     /// Returns an iterator over all reactors, mutable.

@@ -474,12 +474,13 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     }
 
     // Check every node has every deploy stored locally.
-    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
-        nodes.values().all(|runner| {
-            let hashes = runner.reactor().inner().storage.get_all_deploy_hashes();
-            all_deploy_hashes == hashes
-        })
-    };
+    let all_deploys_held =
+        |nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<Reactor>>>>| {
+            nodes.values().all(|runner| {
+                let hashes = runner.reactor().inner().storage.get_all_deploy_hashes();
+                all_deploy_hashes == hashes
+            })
+        };
     network.settle_on(rng, all_deploys_held, TIMEOUT).await;
 
     // Ensure all responders are called before dropping the network.
@@ -562,7 +563,7 @@ async fn should_get_from_alternate_source() {
     testing::advance_time(duration_to_advance.into()).await;
 
     // Check node 0 has the deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let deploy_held = |nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<Reactor>>>>| {
         let runner = nodes.get(&node_ids[2]).unwrap();
         runner
             .reactor()
@@ -631,7 +632,7 @@ async fn should_timeout_gossip_response() {
     testing::advance_time(duration_to_advance.into()).await;
 
     // Check every node has every deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let deploy_held = |nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<Reactor>>>>| {
         nodes.values().all(|runner| {
             runner
                 .reactor()

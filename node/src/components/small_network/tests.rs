@@ -279,7 +279,7 @@ impl Finalize for TestReactor {
 /// Checks whether or not a given network with potentially blocked nodes is completely connected.
 fn network_is_complete(
     blocklist: &HashSet<NodeId>,
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+    nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<TestReactor>>>>,
 ) -> bool {
     // Collect expected nodes.
     let expected: HashSet<_> = nodes
