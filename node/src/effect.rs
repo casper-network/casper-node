@@ -193,6 +193,8 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 /// The type of peers that should receive the gossip message.
 #[derive(Debug, Serialize, PartialEq, Eq, Hash, Copy, Clone, DataSize)]
 pub(crate) enum GossipTarget {
+    /// Both validators and non validators.
+    Mixed(EraId),
     /// Peers which are not validators in the given era.
     NonValidators(EraId),
     /// All peers.
@@ -900,7 +902,7 @@ impl<REv> EffectBuilder<REv> {
     /// Completion means that the block itself (along with its header) and all of its deploys have
     /// been persisted to storage and its global state root hash is missing no dependencies in the
     /// global state.
-    pub(crate) async fn mark_block_completed(self, block_height: u64)
+    pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
         REv: From<BlockCompleteConfirmationRequest>,
     {

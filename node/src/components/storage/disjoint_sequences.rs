@@ -107,11 +107,13 @@ impl DisjointSequences {
 
     /// Inserts `value` into the appropriate sequence and merges sequences if required.
     ///
+    /// Returns `true` if `value` was not previously contained in the disjoint sequences.
+    ///
     /// Note, this method is efficient where `value` is one greater than the current highest value.
     /// However, it's not advisable to use this method in a loop to rebuild a `DisjointSequences`
     /// from a large collection of randomly-ordered values.  In that case, it is very much more
     /// efficient to use `DisjointSequences::from(mut input: Vec<u64>)`.
-    pub(super) fn insert(&mut self, value: u64) {
+    pub(super) fn insert(&mut self, value: u64) -> bool {
         let mut iter_mut = self.sequences.iter_mut().enumerate().peekable();
 
         // The index at which to add a new `Sequence` containing only `value`.
@@ -119,13 +121,20 @@ impl DisjointSequences {
         // The index of a `Sequence` to be removed due to the insertion of `value` causing two
         // consecutive sequences to become contiguous.
         let mut maybe_removal_index = None;
+        let mut added_new_value = true;
         while let Some((index, sequence)) = iter_mut.next() {
             match sequence.try_insert(value) {
-                InsertOutcome::ExtendedHigh | InsertOutcome::AlreadyInSequence => {
+                InsertOutcome::ExtendedHigh => {
                     // We should exit the loop, and we don't need to add a new sequence; we only
                     // need to check for merges of sequences when we get `ExtendedLow` since we're
                     // iterating the sequences from high to low.
                     maybe_insertion_index = None;
+                    break;
+                }
+                InsertOutcome::AlreadyInSequence => {
+                    // We should exit the loop, and we don't need to add a new sequence.
+                    maybe_insertion_index = None;
+                    added_new_value = false;
                     break;
                 }
                 InsertOutcome::TooHigh => {
@@ -164,6 +173,7 @@ impl DisjointSequences {
         }
 
         trace!(%self, "current state of disjoint sequences");
+        added_new_value
     }
 
     /// Returns the highest sequence, or `None` if there are no sequences.
@@ -198,11 +208,21 @@ impl DisjointSequences {
             true
         })
     }
-
+}
+#[cfg(test)]
+impl DisjointSequences {
     /// Inserts multiple values produced by the given iterator.
-    #[cfg(test)]
-    pub(super) fn extend<T: IntoIterator<Item = u64>>(&mut self, iter: T) {
-        iter.into_iter().for_each(|height| self.insert(height))
+    fn extend<T: IntoIterator<Item = u64>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|height| {
+            self.insert(height);
+        })
+    }
+
+    /// Returns `true` if `value` exists in the disjoint sequences.
+    fn contains(&self, value: u64) -> bool {
+        self.sequences
+            .iter()
+            .any(|sequence| value >= sequence.low && value <= sequence.high)
     }
 }
 
@@ -346,7 +366,8 @@ mod tests {
 
         while disjoint_sequences.sequences != vec![Sequence { high: 255, low: 0 }] {
             let value = rng.gen::<u8>() as u64;
-            disjoint_sequences.insert(value);
+            let insertion_result = !disjoint_sequences.contains(value);
+            assert_eq!(insertion_result, disjoint_sequences.insert(value));
             expected.insert(value);
             assert_matches(&disjoint_sequences, &expected);
         }
@@ -380,7 +401,7 @@ mod tests {
         let mut expected = BTreeSet::new();
 
         for value in values {
-            disjoint_sequences.insert(value);
+            assert!(disjoint_sequences.insert(value));
             expected.insert(value);
             assert_matches(&disjoint_sequences, &expected);
         }

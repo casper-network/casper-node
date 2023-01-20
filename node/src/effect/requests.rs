@@ -621,10 +621,9 @@ impl Display for MakeBlockExecutableRequest {
 // joiner reactor might exit before handling the announcement and it would go un-actioned.
 #[derive(Debug, Serialize)]
 pub(crate) struct BlockCompleteConfirmationRequest {
-    /// Height of the block that was completed.
     pub block_height: u64,
-    /// Responder indicating that the change has been recorded.
-    pub responder: Responder<()>,
+    /// Responds `true` if the block was not previously marked complete.
+    pub responder: Responder<bool>,
 }
 
 impl Display for BlockCompleteConfirmationRequest {

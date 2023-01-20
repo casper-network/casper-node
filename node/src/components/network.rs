@@ -55,8 +55,9 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use itertools::Itertools;
 use prometheus::Registry;
-use rand::seq::IteratorRandom;
+use rand::seq::{IteratorRandom, SliceRandom};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -422,23 +423,43 @@ where
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
-        let peer_ids = self
-            .outgoing_manager
-            .connected_peers()
-            .filter(|peer_id| {
-                if exclude.contains(peer_id) {
-                    return false;
-                }
+        let peer_ids = match gossip_target {
+            GossipTarget::Mixed(era_id) => {
+                let (validators, non_validators): (Vec<_>, Vec<_>) = self
+                    .outgoing_manager
+                    .connected_peers()
+                    .filter(|peer_id| !exclude.contains(peer_id))
+                    .partition(|node_id| {
+                        self.outgoing_limiter.is_validator_in_era(era_id, node_id)
+                    });
 
-                match gossip_target {
-                    GossipTarget::All => true,
-                    GossipTarget::NonValidators(era_id) => {
+                non_validators
+                    .choose_multiple(rng, count)
+                    .interleave(validators.iter().choose_multiple(rng, count))
+                    .take(count)
+                    .copied()
+                    .collect()
+            }
+            GossipTarget::NonValidators(era_id) => {
+                self.outgoing_manager
+                    .connected_peers()
+                    .filter(|peer_id| {
+                        if exclude.contains(peer_id) {
+                            return false;
+                        }
                         // If the peer isn't a validator, include it.
                         !self.outgoing_limiter.is_validator_in_era(era_id, peer_id)
-                    }
-                }
-            })
-            .choose_multiple(rng, count);
+                    })
+                    .choose_multiple(rng, count)
+            }
+            GossipTarget::All => self
+                .outgoing_manager
+                .connected_peers()
+                .filter(|peer_id| !exclude.contains(peer_id))
+                .choose_multiple(rng, count),
+        };
+
+        // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
 
         if peer_ids.len() != count {
             // TODO - set this to `warn!` once we are normally testing with networks large enough to

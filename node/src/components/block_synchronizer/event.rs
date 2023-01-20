@@ -30,7 +30,10 @@ pub(crate) enum Event {
     },
     MarkBlockExecutionEnqueued(BlockHash),
     MarkBlockExecuted(BlockHash),
-    MarkBlockCompleted(BlockHash),
+    MarkBlockCompleted {
+        block_hash: BlockHash,
+        is_new: bool,
+    },
     ValidatorMatrixUpdated,
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
@@ -157,7 +160,7 @@ impl Display for Event {
             Event::MarkBlockExecuted(..) => {
                 write!(f, "block execution complete")
             }
-            Event::MarkBlockCompleted(..) => {
+            Event::MarkBlockCompleted { .. } => {
                 write!(f, "mark block completed")
             }
         }

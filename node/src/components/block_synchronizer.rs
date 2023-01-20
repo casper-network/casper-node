@@ -418,6 +418,7 @@ impl BlockSynchronizer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_hash: &BlockHash,
+        is_new: bool,
     ) -> Effects<Event>
     where
         REv: From<StorageRequest>
@@ -427,7 +428,10 @@ impl BlockSynchronizer {
     {
         if let Some(builder) = &self.forward {
             if builder.block_hash() == *block_hash {
-                error!(%block_hash, "forward block should not be marked complete in block synchronizer");
+                error!(
+                    %block_hash,
+                    "forward block should not be marked complete in block synchronizer"
+                );
             }
         }
 
@@ -435,6 +439,10 @@ impl BlockSynchronizer {
         match &mut self.historical {
             Some(builder) if builder.block_hash() == *block_hash => {
                 builder.register_marked_complete();
+                if !is_new {
+                    warn!(%block_hash, "marked complete an already-complete block");
+                    return effects;
+                }
                 // other components need to know that we've added an historical block
                 // that they may be interested in
                 if let Some(block) = builder.maybe_block() {
@@ -636,9 +644,9 @@ impl BlockSynchronizer {
                     if builder.should_fetch_execution_state() {
                         builder.set_in_flight_latch();
                         results.extend(
-                            effect_builder
-                                .mark_block_completed(block_height)
-                                .event(move |_| Event::MarkBlockCompleted(block_hash)),
+                            effect_builder.mark_block_completed(block_height).event(
+                                move |is_new| Event::MarkBlockCompleted { block_hash, is_new },
+                            ),
                         )
                     }
                 }
@@ -1144,7 +1152,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     | Event::MadeFinalizedBlock { .. }
                     | Event::MarkBlockExecutionEnqueued(_)
                     | Event::MarkBlockExecuted(_)
-                    | Event::MarkBlockCompleted(_)
+                    | Event::MarkBlockCompleted { .. }
                     | Event::ValidatorMatrixUpdated
                     | Event::BlockHeaderFetched(_)
                     | Event::BlockFetched(_)
@@ -1354,11 +1362,11 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.register_block_executed(&block_hash);
                     Effects::new()
                 }
-                Event::MarkBlockCompleted(block_hash) => {
+                Event::MarkBlockCompleted { block_hash, is_new } => {
                     // when syncing an historical block, the synchronizer considers it
                     // finished after receiving confirmation that the complete block
                     // has been stored.
-                    self.register_marked_complete(effect_builder, &block_hash)
+                    self.register_marked_complete(effect_builder, &block_hash, is_new)
                 }
             },
         }

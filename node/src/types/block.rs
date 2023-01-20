@@ -1636,6 +1636,7 @@ impl GossiperItem for Block {
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn target(&self) -> GossipTarget {
+        // Validators make their own blocks thus we only gossip blocks to non validators.
         GossipTarget::NonValidators(self.header.era_id)
     }
 }
@@ -2329,7 +2330,7 @@ impl GossiperItem for FinalitySignature {
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn target(&self) -> GossipTarget {
-        GossipTarget::All
+        GossipTarget::Mixed(self.era_id)
     }
 }
 
