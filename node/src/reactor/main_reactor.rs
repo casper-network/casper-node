@@ -1107,19 +1107,14 @@ impl MainReactor {
                     ),
                 ));
 
-                // We want to force the gossiper to handle this to deliberately cause the validators
-                // to slow down a little at era boundaries, with the expectation that slower
-                // following peers can remain caught up.
-                if false == block.header().is_switch_block() {
-                    let era_id = finality_signature.era_id;
-                    let payload = Message::FinalitySignature(Box::new(finality_signature));
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::Network,
-                        effect_builder
-                            .broadcast_message_to_validators(payload, era_id)
-                            .ignore(),
-                    ));
-                }
+                let era_id = finality_signature.era_id;
+                let payload = Message::FinalitySignature(Box::new(finality_signature));
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::Network,
+                    effect_builder
+                        .broadcast_message_to_validators(payload, era_id)
+                        .ignore(),
+                ));
             }
         }
 
