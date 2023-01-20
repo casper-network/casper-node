@@ -35,19 +35,43 @@ const COMPONENT_NAME: &str = "trie_accumulator";
 
 #[derive(Debug, From, Error, Clone, Serialize)]
 pub(crate) enum Error {
-    #[error("trie accumulator fetcher error: {0}")]
-    Fetcher(FetcherError<TrieOrChunk>),
-    #[error("trie accumulator couldn't fetch trie chunk ({0}, {1})")]
-    Absent(Digest, u64),
+    #[error("trie accumulator ran out of peers trying to fetch item with error: {0}; unreliable peers: {1:?}")]
+    PeersExhausted(FetcherError<TrieOrChunk>, Vec<NodeId>),
+    #[error("trie accumulator couldn't fetch trie chunk ({0}, {1}); unreliable peers: {2:?}")]
+    Absent(Digest, u64, Vec<NodeId>),
     #[error("request contained no peers; trie = {0}")]
     NoPeers(Digest),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Response {
+    trie: Box<TrieRaw>,
+    unreliable_peers: Vec<NodeId>,
+}
+
+impl Response {
+    pub(crate) fn new(trie: TrieRaw, unreliable_peers: Vec<NodeId>) -> Self {
+        Response {
+            trie: Box::new(trie),
+            unreliable_peers,
+        }
+    }
+
+    pub(crate) fn trie(self) -> Box<TrieRaw> {
+        self.trie
+    }
+
+    pub(crate) fn unreliable_peers(&self) -> &Vec<NodeId> {
+        &self.unreliable_peers
+    }
 }
 
 #[derive(DataSize, Debug)]
 struct PartialChunks {
     peers: Vec<NodeId>,
-    responders: Vec<Responder<Result<Box<TrieRaw>, Error>>>,
+    responders: Vec<Responder<Result<Response, Error>>>,
     chunks: HashMap<u64, ChunkWithProof>,
+    unreliable_peers: Vec<NodeId>,
 }
 
 impl PartialChunks {
@@ -82,11 +106,15 @@ impl PartialChunks {
         }
     }
 
-    fn respond(self, value: Result<Box<TrieRaw>, Error>) -> Effects<Event> {
+    fn respond(self, value: Result<Response, Error>) -> Effects<Event> {
         self.responders
             .into_iter()
             .flat_map(|responder| responder.respond(value.clone()).ignore())
             .collect()
+    }
+
+    fn mark_peer_unreliable(&mut self, peer: &NodeId) {
+        self.unreliable_peers.push(*peer);
     }
 }
 
@@ -140,7 +168,8 @@ impl TrieAccumulator {
                 }
                 Some(partial_chunks) => {
                     debug!(%hash, "got a full trie");
-                    partial_chunks.respond(Ok(Box::new(trie.into_inner())))
+                    let unreliable_peers = partial_chunks.unreliable_peers.clone();
+                    partial_chunks.respond(Ok(Response::new(trie.into_inner(), unreliable_peers)))
                 }
             },
             TrieOrChunk::ChunkWithProof(chunk) => self.consume_chunk(effect_builder, chunk),
@@ -179,7 +208,12 @@ impl TrieAccumulator {
                             %digest, %missing_index,
                             "no peers to download the next chunk from, giving up",
                         );
-                        return partial_chunks.respond(Err(Error::Absent(digest, index)));
+                        let unreliable_peers = partial_chunks.unreliable_peers.clone();
+                        return partial_chunks.respond(Err(Error::Absent(
+                            digest,
+                            index,
+                            unreliable_peers,
+                        )));
                     }
                 };
                 let next_id = TrieOrChunkId(missing_index, digest);
@@ -187,7 +221,8 @@ impl TrieAccumulator {
             }
             None => {
                 let trie = partial_chunks.assemble_chunks(count);
-                partial_chunks.respond(Ok(Box::new(trie)))
+                let unreliable_peers = partial_chunks.unreliable_peers.clone();
+                partial_chunks.respond(Ok(Response::new(trie, unreliable_peers)))
             }
         }
     }
@@ -249,6 +284,7 @@ where
                     responders: vec![responder],
                     peers,
                     chunks: Default::default(),
+                    unreliable_peers: Vec::new(),
                 };
                 self.try_download_chunk(effect_builder, trie_id, peer, partial_chunks)
             }
@@ -264,6 +300,7 @@ where
                         }
                         Some(mut partial_chunks) => {
                             debug!(%error, %id, "error fetching trie chunk");
+                            partial_chunks.mark_peer_unreliable(error.peer());
                             // try with the next peer, if possible
                             match partial_chunks.next_peer().cloned() {
                                 Some(next_peer) => self.try_download_chunk(
@@ -274,7 +311,9 @@ where
                                 ),
                                 None => {
                                     warn!(%id, "couldn't fetch chunk");
-                                    partial_chunks.respond(Err(error.into()))
+                                    let faulty_peers = partial_chunks.unreliable_peers.clone();
+                                    partial_chunks
+                                        .respond(Err(Error::PeersExhausted(error, faulty_peers)))
                                 }
                             }
                         }

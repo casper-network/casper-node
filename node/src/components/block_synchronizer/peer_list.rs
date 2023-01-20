@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;

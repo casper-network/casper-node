@@ -128,6 +128,7 @@ async fn try_download_chunk_generates_fetch_effect() {
         peers: vec![peer],
         responders: Default::default(),
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -159,6 +160,7 @@ async fn failed_fetch_retriggers_download_with_different_peer() {
         peers: peers.clone(),
         responders: Default::default(),
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -204,6 +206,7 @@ async fn fetched_chunk_triggers_download_of_missing_chunk() {
         peers: vec![peer],
         responders: Default::default(),
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -250,6 +253,7 @@ async fn trie_returned_when_all_chunks_fetched() {
         peers: vec![peer],
         responders: vec![responder],
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -282,6 +286,6 @@ async fn trie_returned_when_all_chunks_fetched() {
 
     // Validate the returned trie
     tokio::spawn(async move { effects.remove(0).await });
-    let result_trie = receiver.await.unwrap().expect("Expected trie");
+    let result_trie = receiver.await.unwrap().expect("Expected trie").trie;
     assert_eq!(*result_trie, TrieRaw::new(Bytes::from(data)));
 }

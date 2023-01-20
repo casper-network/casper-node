@@ -132,7 +132,8 @@ use casper_types::{
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
+            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
+            TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
@@ -1348,7 +1349,7 @@ impl<REv> EffectBuilder<REv> {
         block_hash: BlockHash,
         state_root_hash: Digest,
         peers: HashSet<NodeId>,
-    ) -> Result<Digest, GlobalStateSynchronizerError>
+    ) -> Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>
     where
         REv: From<SyncGlobalStateRequest>,
     {
@@ -1648,7 +1649,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         hash: Digest,
         peers: Vec<NodeId>,
-    ) -> Result<Box<TrieRaw>, TrieAccumulatorError>
+    ) -> Result<TrieAccumulatorResponse, TrieAccumulatorError>
     where
         REv: From<TrieAccumulatorRequest>,
     {
