@@ -55,4 +55,5 @@ mod regression_20220223;
 mod regression_20220224;
 mod regression_20220303;
 mod regression_20220727;
+mod slow_input;
 mod transforms_must_be_ordered;

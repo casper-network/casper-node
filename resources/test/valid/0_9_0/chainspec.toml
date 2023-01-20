@@ -53,7 +53,6 @@ store = 18
 const = 19
 local = 20
 global = 21
-control_flow = 22
 integer_comparison = 23
 conversion = 24
 unreachable = 25
@@ -61,6 +60,26 @@ nop = 26
 current_memory = 27
 grow_memory = 28
 regular = 29
+
+# Control flow operations multiplier.
+[wasm.opcode_costs.control_flow]
+block = 1
+loop = 2
+if = 3
+else = 4
+end = 5
+br = 6
+return = 7
+select = 8
+call = 9
+call_indirect = 10
+drop = 11
+
+[wasm.opcode_costs.control_flow.br_table]
+# Fixed cost per `br_table` opcode
+cost = 12
+# Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
+size_multiplier = 13
 
 [wasm.storage_costs]
 gas_per_byte = 101
