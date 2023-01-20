@@ -12,7 +12,7 @@ use crate::{
     },
     types::{
         Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, DeployHash, DeployId,
-        EraValidatorWeights, Item, NodeId,
+        EraValidatorWeights, NodeId,
     },
     NodeRng,
 };
@@ -232,7 +232,7 @@ impl BlockAcquisitionAction {
         match exec_results {
             ExecutionResultsAcquisition::Needed { .. } => {
                 Ok(BlockAcquisitionAction::execution_results_checksum(
-                    block.id(),
+                    *block.hash(),
                     *block.state_root_hash(),
                 ))
             }
@@ -240,11 +240,15 @@ impl BlockAcquisitionAction {
             | acq @ ExecutionResultsAcquisition::Acquiring { .. } => {
                 match acq.needs_value_or_chunk() {
                     None => {
-                        warn!(block_hash=%block.id(), "execution_results_acquisition.needs_value_or_chunk() should never be None for these variants");
+                        warn!(
+                            block_hash = %block.hash(),
+                            "execution_results_acquisition.needs_value_or_chunk() should never be \
+                            None for these variants"
+                        );
                         Err(BlockAcquisitionError::InvalidAttemptToAcquireExecutionResults)
                     }
                     Some((next, checksum)) => Ok(BlockAcquisitionAction::execution_results(
-                        block.id(),
+                        *block.hash(),
                         peer_list,
                         rng,
                         next,

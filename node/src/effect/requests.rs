@@ -40,7 +40,8 @@ use crate::{
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
         diagnostics_port::StopAtSpec,
-        fetcher::FetchResult,
+        fetcher::{FetchItem, FetchResult},
+        gossiper::GossipItem,
         network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
@@ -52,9 +53,9 @@ use crate::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
         BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
-        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, LegacyDeploy,
-        MetaBlockState, NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlockState,
+        NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };
@@ -243,7 +244,7 @@ impl Display for NetworkInfoRequest {
 #[must_use]
 pub(crate) struct BeginGossipRequest<T>
 where
-    T: GossiperItem,
+    T: GossipItem,
 {
     /// The ID of the item received.
     pub(crate) item_id: T::Id,
@@ -255,7 +256,7 @@ where
 
 impl<T> Display for BeginGossipRequest<T>
 where
-    T: GossiperItem,
+    T: GossipItem,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "begin gossip of {} from {}", self.item_id, self.source)
@@ -997,7 +998,7 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) struct FetcherRequest<T: FetcherItem> {
+pub(crate) struct FetcherRequest<T: FetchItem> {
     /// The ID of the item to be retrieved.
     pub(crate) id: T::Id,
     /// The peer id of the peer to be asked if the item is not held locally
@@ -1008,7 +1009,7 @@ pub(crate) struct FetcherRequest<T: FetcherItem> {
     pub(crate) responder: Responder<FetchResult<T>>,
 }
 
-impl<T: FetcherItem> Display for FetcherRequest<T> {
+impl<T: FetchItem> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
     }

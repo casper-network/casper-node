@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         consensus,
-        fetcher::FetchResponse,
+        fetcher::{FetchItem, FetchResponse, Tag},
         gossiper,
         network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
@@ -26,7 +26,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, Deploy, FetcherItem, FinalitySignature, NodeId, Tag},
+    types::{Block, Deploy, FinalitySignature, NodeId},
 };
 
 /// Reactor message.
@@ -160,14 +160,14 @@ impl Payload for Message {
 }
 
 impl Message {
-    pub(crate) fn new_get_request<T: FetcherItem>(id: &T::Id) -> Result<Self, bincode::Error> {
+    pub(crate) fn new_get_request<T: FetchItem>(id: &T::Id) -> Result<Self, bincode::Error> {
         Ok(Message::GetRequest {
             tag: T::TAG,
             serialized_id: bincode::serialize(id)?,
         })
     }
 
-    pub(crate) fn new_get_response<T: FetcherItem>(
+    pub(crate) fn new_get_response<T: FetchItem>(
         item: &FetchResponse<T, T::Id>,
     ) -> Result<Self, bincode::Error> {
         Ok(Message::GetResponse {

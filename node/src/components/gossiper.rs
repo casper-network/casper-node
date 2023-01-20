@@ -2,6 +2,7 @@ mod config;
 #[cfg(test)]
 mod error;
 mod event;
+mod gossip_item;
 mod gossip_table;
 mod message;
 mod metrics;
@@ -25,15 +26,13 @@ use crate::{
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    types::{
-        Block, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId, GossiperItem,
-        Item, NodeId,
-    },
+    types::{Block, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId, NodeId},
     utils::Source,
     NodeRng,
 };
 pub(crate) use config::Config;
 pub(crate) use event::Event;
+pub(crate) use gossip_item::GossipItem;
 use gossip_table::{GossipAction, GossipTable};
 pub(crate) use message::Message;
 use metrics::Metrics;
@@ -50,15 +49,15 @@ pub(crate) trait ReactorEventT<T>:
     + Send
     + 'static
 where
-    T: GossiperItem + 'static,
-    <T as Item>::Id: 'static,
+    T: GossipItem + 'static,
+    <T as GossipItem>::Id: 'static,
 {
 }
 
 impl<REv, T> ReactorEventT<T> for REv
 where
-    T: GossiperItem + 'static,
-    <T as Item>::Id: 'static,
+    T: GossipItem + 'static,
+    <T as GossipItem>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<Message<T>>>
         + From<StorageRequest>
@@ -70,7 +69,7 @@ where
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
 /// constructing a `Gossiper<Deploy>`.
-pub(crate) fn get_deploy_from_storage<T: GossiperItem + 'static, REv: ReactorEventT<T>>(
+pub(crate) fn get_deploy_from_storage<T: GossipItem + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
     item_id: DeployId,
     sender: NodeId,
@@ -87,7 +86,7 @@ pub(crate) fn get_deploy_from_storage<T: GossiperItem + 'static, REv: ReactorEve
 }
 
 pub(crate) fn get_finality_signature_from_storage<
-    T: GossiperItem + 'static,
+    T: GossipItem + 'static,
     REv: ReactorEventT<T>,
 >(
     effect_builder: EffectBuilder<REv>,
@@ -108,7 +107,7 @@ pub(crate) fn get_finality_signature_from_storage<
 
 /// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
 /// constructing a `Gossiper<Block>`.
-pub(crate) fn get_block_from_storage<T: GossiperItem + 'static, REv: ReactorEventT<T>>(
+pub(crate) fn get_block_from_storage<T: GossipItem + 'static, REv: ReactorEventT<T>>(
     effect_builder: EffectBuilder<REv>,
     block_hash: BlockHash,
     sender: NodeId,
@@ -130,7 +129,7 @@ pub(crate) fn get_block_from_storage<T: GossiperItem + 'static, REv: ReactorEven
 #[derive(DataSize)]
 pub(crate) struct Gossiper<T, REv>
 where
-    T: GossiperItem + 'static,
+    T: GossipItem + 'static,
     REv: ReactorEventT<T>,
 {
     table: GossipTable<T::Id>,
@@ -143,7 +142,7 @@ where
     metrics: Metrics,
 }
 
-impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
+impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == false`, i.e.
     /// where the gossip messages themselves don't contain the actual data being gossiped, they
     /// contain just the identifiers.
@@ -586,7 +585,7 @@ impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
 
 impl<T, REv> Component<REv> for Gossiper<T, REv>
 where
-    T: GossiperItem + 'static,
+    T: GossipItem + 'static,
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
@@ -652,7 +651,7 @@ where
     }
 }
 
-impl<T: GossiperItem + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> {
+impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
             .debug_struct("Gossiper")

@@ -28,10 +28,11 @@ use crate::{
             BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
             APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
+        fetcher::FetchItem,
     },
     types::{
         self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, Deploy, DeployHeader,
-        FinalizedBlock, Item,
+        FinalizedBlock,
     },
 };
 
@@ -63,7 +64,7 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    let deploy_ids = deploys.iter().map(|deploy| deploy.id()).collect_vec();
+    let deploy_ids = deploys.iter().map(|deploy| deploy.fetch_id()).collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockCreationError::BytesRepr)?;
 

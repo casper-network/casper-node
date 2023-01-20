@@ -49,11 +49,13 @@ use casper_types::{
 };
 
 use crate::{
+    components::{
+        fetcher::{EmptyValidationMetadata, FetchItem, Tag},
+        gossiper::GossipItem,
+    },
     effect::GossipTarget,
     rpcs::docs::DocExample,
-    types::{
-        chainspec::DeployConfig, EmptyValidationMetadata, FetcherItem, GossiperItem, Item, Tag,
-    },
+    types::chainspec::DeployConfig,
     utils::{ds, DisplayIter},
 };
 pub use approval::Approval;
@@ -541,10 +543,14 @@ impl FromBytes for Deploy {
     }
 }
 
-impl Item for Deploy {
+impl FetchItem for Deploy {
     type Id = DeployId;
+    type ValidationError = DeployConfigurationFailure;
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::Deploy;
+
+    fn fetch_id(&self) -> Self::Id {
         let deploy_hash = *self.hash();
         let approvals_hash = self.approvals_hash().unwrap_or_else(|error| {
             error!(%error, "failed to serialize approvals");
@@ -552,23 +558,28 @@ impl Item for Deploy {
         });
         DeployId::new(deploy_hash, approvals_hash)
     }
-}
-
-impl FetcherItem for Deploy {
-    type ValidationError = DeployConfigurationFailure;
-    type ValidationMetadata = EmptyValidationMetadata;
-    const TAG: Tag = Tag::Deploy;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.is_valid()
     }
 }
 
-impl GossiperItem for Deploy {
+impl GossipItem for Deploy {
+    type Id = DeployId;
+
     const ID_IS_COMPLETE_ITEM: bool = false;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = false;
 
-    fn target(&self) -> GossipTarget {
+    fn gossip_id(&self) -> Self::Id {
+        let deploy_hash = *self.hash();
+        let approvals_hash = self.approvals_hash().unwrap_or_else(|error| {
+            error!(%error, "failed to serialize approvals");
+            ApprovalsHash::from(Digest::default())
+        });
+        DeployId::new(deploy_hash, approvals_hash)
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
         GossipTarget::All
     }
 }

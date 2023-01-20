@@ -237,7 +237,7 @@ impl reactor::Reactor for Reactor {
                 source,
             }) => {
                 let event = super::Event::ItemReceived {
-                    item_id: deploy.id(),
+                    item_id: deploy.gossip_id(),
                     source,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))

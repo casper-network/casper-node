@@ -35,14 +35,18 @@ use casper_types::{
 };
 
 use crate::{
-    components::{block_synchronizer::ExecutionResultsChecksum, consensus},
+    components::{
+        block_synchronizer::ExecutionResultsChecksum,
+        consensus,
+        fetcher::{EmptyValidationMetadata, FetchItem, Tag},
+        gossiper::GossipItem,
+    },
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
         Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployId,
-        DeployOrTransferHash, EmptyValidationMetadata, FetcherItem, GossiperItem, Item, JsonBlock,
-        JsonBlockHeader, Tag, ValueOrChunk,
+        DeployOrTransferHash, JsonBlock, JsonBlockHeader, ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
@@ -1040,18 +1044,16 @@ impl FromBytes for BlockHeader {
     }
 }
 
-impl Item for BlockHeader {
+impl FetchItem for BlockHeader {
     type Id = BlockHash;
-
-    fn id(&self) -> Self::Id {
-        self.block_hash()
-    }
-}
-
-impl FetcherItem for BlockHeader {
     type ValidationError = Infallible;
     type ValidationMetadata = EmptyValidationMetadata;
+
     const TAG: Tag = Tag::BlockHeader;
+
+    fn fetch_id(&self) -> Self::Id {
+        self.block_hash()
+    }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -1613,29 +1615,33 @@ impl FromBytes for Block {
     }
 }
 
-impl Item for Block {
+impl FetchItem for Block {
     type Id = BlockHash;
-
-    fn id(&self) -> Self::Id {
-        *self.hash()
-    }
-}
-
-impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
+
     const TAG: Tag = Tag::Block;
+
+    fn fetch_id(&self) -> Self::Id {
+        *self.hash()
+    }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
 
-impl GossiperItem for Block {
+impl GossipItem for Block {
+    type Id = BlockHash;
+
     const ID_IS_COMPLETE_ITEM: bool = false;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
-    fn target(&self) -> GossipTarget {
+    fn gossip_id(&self) -> Self::Id {
+        *self.hash()
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
         // Validators make their own blocks thus we only gossip blocks to non validators.
         GossipTarget::NonValidators(self.header.era_id)
     }
@@ -1749,10 +1755,14 @@ impl PartialEq for BlockExecutionResultsOrChunk {
     }
 }
 
-impl Item for BlockExecutionResultsOrChunk {
+impl FetchItem for BlockExecutionResultsOrChunk {
     type Id = BlockExecutionResultsOrChunkId;
+    type ValidationError = ChunkWithProofVerificationError;
+    type ValidationMetadata = ExecutionResultsChecksum;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::BlockExecutionResults;
+
+    fn fetch_id(&self) -> Self::Id {
         let chunk_index = match &self.value {
             ValueOrChunk::Value(_) => 0,
             ValueOrChunk::ChunkWithProof(chunks) => chunks.proof().index(),
@@ -1762,12 +1772,6 @@ impl Item for BlockExecutionResultsOrChunk {
             block_hash: self.block_hash,
         }
     }
-}
-
-impl FetcherItem for BlockExecutionResultsOrChunk {
-    type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = ExecutionResultsChecksum;
-    const TAG: Tag = Tag::BlockExecutionResults;
 
     fn validate(&self, metadata: &ExecutionResultsChecksum) -> Result<(), Self::ValidationError> {
         if let ValueOrChunk::ChunkWithProof(chunk_with_proof) = &self.value {
@@ -2313,34 +2317,42 @@ impl Display for FinalitySignature {
     }
 }
 
-impl Item for FinalitySignature {
+impl FetchItem for FinalitySignature {
     type Id = FinalitySignatureId;
+    type ValidationError = crypto::Error;
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::FinalitySignature;
+
+    fn fetch_id(&self) -> Self::Id {
         FinalitySignatureId {
             block_hash: self.block_hash,
             era_id: self.era_id,
             public_key: self.public_key.clone(),
         }
     }
-}
-
-impl GossiperItem for FinalitySignature {
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
-
-    fn target(&self) -> GossipTarget {
-        GossipTarget::Mixed(self.era_id)
-    }
-}
-
-impl FetcherItem for FinalitySignature {
-    type ValidationError = crypto::Error;
-    type ValidationMetadata = EmptyValidationMetadata;
-    const TAG: Tag = Tag::FinalitySignature;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.is_verified()
+    }
+}
+
+impl GossipItem for FinalitySignature {
+    type Id = FinalitySignatureId;
+
+    const ID_IS_COMPLETE_ITEM: bool = false;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
+
+    fn gossip_id(&self) -> Self::Id {
+        FinalitySignatureId {
+            block_hash: self.block_hash,
+            era_id: self.era_id,
+            public_key: self.public_key.clone(),
+        }
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
+        GossipTarget::Mixed(self.era_id)
     }
 }
 
@@ -2579,7 +2591,7 @@ mod tests {
             };
 
             let next = Block::new(
-                self.block.id(),
+                *self.block.hash(),
                 self.block.header().accumulated_seed(),
                 *self.block.header().state_root_hash(),
                 FinalizedBlock::random_with_specifics(
@@ -2613,7 +2625,7 @@ mod tests {
             );
             assert_eq!(
                 current_block.header().parent_hash(),
-                &parent_block.id(),
+                parent_block.hash(),
                 "block's parent should point at previous block"
             );
             parent_block = current_block;

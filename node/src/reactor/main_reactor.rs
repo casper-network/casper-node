@@ -37,7 +37,7 @@ use crate::{
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
-        gossiper::{self, Gossiper},
+        gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
@@ -69,7 +69,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        Item, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -626,7 +626,7 @@ impl reactor::Reactor for MainReactor {
                         effect_builder,
                         rng,
                         gossiper::Event::ItemReceived {
-                            item_id: finality_signature.id(),
+                            item_id: finality_signature.gossip_id(),
                             source: Source::Ourself,
                         },
                     ),
@@ -798,7 +798,7 @@ impl reactor::Reactor for MainReactor {
                             effect_builder,
                             rng,
                             MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                item_id: deploy.id(),
+                                item_id: deploy.gossip_id(),
                                 source,
                             }),
                         ));

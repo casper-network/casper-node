@@ -3,17 +3,16 @@ use std::fmt::{self, Debug, Display, Formatter};
 use serde::Serialize;
 use tracing::error;
 
-use super::FetchResponder;
+use super::{FetchItem, FetchResponder, FetchResponse};
 use crate::{
-    components::fetcher::FetchResponse,
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest},
-    types::{Deploy, FetcherItem, Item, NodeId},
+    types::{Deploy, NodeId},
     utils::Source,
 };
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
-pub(crate) enum Event<T: FetcherItem> {
+pub(crate) enum Event<T: FetchItem> {
     /// The initiating event to fetch an item by its id.
     Fetch(FetcherRequest<T>),
     /// The result of the `Fetcher` getting a item from the storage component.  If the
@@ -41,7 +40,7 @@ pub(crate) enum Event<T: FetcherItem> {
     TimeoutPeer { id: T::Id, peer: NodeId },
 }
 
-impl<T: FetcherItem> Event<T> {
+impl<T: FetchItem> Event<T> {
     pub(crate) fn from_get_response_serialized_item(
         peer: NodeId,
         serialized_item: &[u8],
@@ -61,7 +60,7 @@ impl<T: FetcherItem> Event<T> {
     }
 }
 
-impl<T: FetcherItem> From<FetcherRequest<T>> for Event<T> {
+impl<T: FetchItem> From<FetcherRequest<T>> for Event<T> {
     fn from(fetcher_request: FetcherRequest<T>) -> Self {
         Event::Fetch(fetcher_request)
     }
@@ -80,7 +79,7 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
             }
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
                 Event::GotInvalidRemotely {
-                    id: deploy.id(),
+                    id: deploy.fetch_id(),
                     source,
                 }
             }
@@ -88,7 +87,7 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
     }
 }
 
-impl<T: FetcherItem> Display for Event<T> {
+impl<T: FetchItem> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Fetch(FetcherRequest { id, .. }) => {
@@ -102,7 +101,7 @@ impl<T: FetcherItem> Display for Event<T> {
                 }
             }
             Event::GotRemotely { item, source } => {
-                write!(formatter, "got {} from {}", item.id(), source)
+                write!(formatter, "got {} from {}", item.fetch_id(), source)
             }
             Event::GotInvalidRemotely { id, source } => {
                 write!(formatter, "invalid item {} from {}", id, source)
@@ -123,7 +122,7 @@ impl<T: FetcherItem> Display for Event<T> {
                 )
             }
             Event::PutToStorage { item, .. } => {
-                write!(formatter, "item {} was put to storage", item.id())
+                write!(formatter, "item {} was put to storage", item.fetch_id())
             }
         }
     }

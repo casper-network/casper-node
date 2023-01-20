@@ -23,7 +23,7 @@ use super::{
     Storage,
 };
 use crate::{
-    components::fetcher::FetchResponse,
+    components::fetcher::{FetchItem, FetchResponse},
     effect::{
         requests::{BlockCompleteConfirmationRequest, StorageRequest},
         Multiple,
@@ -36,8 +36,8 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem,
-        FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
+        LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
