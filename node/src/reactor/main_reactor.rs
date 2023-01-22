@@ -57,7 +57,7 @@ use crate::{
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
     protocol::Message,
@@ -107,10 +107,12 @@ pub(crate) struct MainReactor {
     deploy_buffer: DeployBuffer,
 
     // gossiping components
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>,
-    deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    block_gossiper: Gossiper<Block, MainEvent>,
-    finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
+    address_gossiper:
+        Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress, MainEvent>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy, MainEvent>,
+    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block, MainEvent>,
+    finality_signature_gossiper:
+        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature, MainEvent>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -221,8 +223,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
         )?;
 
-        let address_gossiper =
-            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _, _>::new(
+            "address_gossiper",
+            config.gossip,
+            registry,
+        )?;
 
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
@@ -251,24 +256,25 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::new_for_partial_items(
+        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _, _>::new(
             "block_gossiper",
             config.gossip,
             gossiper::get_block_from_storage::<Block, MainEvent>,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _, _>::new(
             "deploy_gossiper",
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let finality_signature_gossiper = Gossiper::new_for_partial_items(
-            "finality_signature_gossiper",
-            config.gossip,
-            gossiper::get_finality_signature_from_storage::<FinalitySignature, MainEvent>,
-            registry,
-        )?;
+        let finality_signature_gossiper =
+            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _, _>::new(
+                "finality_signature_gossiper",
+                config.gossip,
+                gossiper::get_finality_signature_from_storage::<FinalitySignature, MainEvent>,
+                registry,
+            )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -628,6 +634,7 @@ impl reactor::Reactor for MainReactor {
                         gossiper::Event::ItemReceived {
                             item_id: finality_signature.gossip_id(),
                             source: Source::Ourself,
+                            target: finality_signature.gossip_target(),
                         },
                     ),
                 );
@@ -800,6 +807,7 @@ impl reactor::Reactor for MainReactor {
                             MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
                                 item_id: deploy.gossip_id(),
                                 source,
+                                target: deploy.gossip_target(),
                             }),
                         ));
                         // notify event stream
@@ -1080,6 +1088,7 @@ impl MainReactor {
                 effect_builder,
                 rng,
                 block.hash(),
+                block.gossip_target(),
                 &mut state,
                 &mut effects,
             );
@@ -1163,6 +1172,7 @@ impl MainReactor {
             effect_builder,
             rng,
             block.hash(),
+            block.gossip_target(),
             &mut state,
             &mut effects,
         );
@@ -1234,6 +1244,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         block_hash: &BlockHash,
+        gossip_target: GossipTarget,
         state: &mut MetaBlockState,
         effects: &mut Effects<MainEvent>,
     ) {
@@ -1250,6 +1261,7 @@ impl MainReactor {
                     gossiper::Event::ItemReceived {
                         item_id: *block_hash,
                         source: Source::Ourself,
+                        target: gossip_target,
                     },
                 ),
             ));

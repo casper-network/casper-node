@@ -51,7 +51,7 @@ use casper_types::{
 use crate::{
     components::{
         fetcher::{EmptyValidationMetadata, FetchItem, Tag},
-        gossiper::GossipItem,
+        gossiper::{GossipItem, LargeGossipItem},
     },
     effect::GossipTarget,
     rpcs::docs::DocExample,
@@ -583,6 +583,8 @@ impl GossipItem for Deploy {
         GossipTarget::All
     }
 }
+
+impl LargeGossipItem for Deploy {}
 
 impl Display for Deploy {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {

@@ -6,7 +6,10 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::gossiper::GossipItem, effect::GossipTarget};
+use crate::{
+    components::gossiper::{GossipItem, SmallGossipItem},
+    effect::GossipTarget,
+};
 
 /// Used to gossip our public listening address to peers.
 #[derive(
@@ -38,6 +41,12 @@ impl GossipItem for GossipedAddress {
 
     fn gossip_target(&self) -> GossipTarget {
         GossipTarget::All
+    }
+}
+
+impl SmallGossipItem for GossipedAddress {
+    fn id_as_item(id: &Self::Id) -> &Self {
+        id
     }
 }
 

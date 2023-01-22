@@ -98,7 +98,7 @@ use self::{
     tasks::{MessageQueueItem, NetworkContext},
 };
 use crate::{
-    components::{Component, ComponentState, InitializedComponent},
+    components::{gossiper::GossipItem, Component, ComponentState, InitializedComponent},
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
@@ -1188,7 +1188,7 @@ where
                     );
 
                     let mut effects = effect_builder
-                        .begin_gossip(our_address, Source::Ourself)
+                        .begin_gossip(our_address, Source::Ourself, our_address.gossip_target())
                         .ignore();
                     effects.extend(
                         effect_builder

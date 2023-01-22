@@ -39,7 +39,7 @@ use crate::{
         block_synchronizer::ExecutionResultsChecksum,
         consensus,
         fetcher::{EmptyValidationMetadata, FetchItem, Tag},
-        gossiper::GossipItem,
+        gossiper::{GossipItem, LargeGossipItem},
     },
     effect::GossipTarget,
     rpcs::docs::DocExample,
@@ -1647,6 +1647,8 @@ impl GossipItem for Block {
     }
 }
 
+impl LargeGossipItem for Block {}
+
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockWithMetadata {
@@ -2355,6 +2357,8 @@ impl GossipItem for FinalitySignature {
         GossipTarget::Mixed(self.era_id)
     }
 }
+
+impl LargeGossipItem for FinalitySignature {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, DataSize)]
 pub(crate) struct FinalitySignatureId {

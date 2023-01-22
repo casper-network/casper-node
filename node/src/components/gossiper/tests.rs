@@ -130,7 +130,7 @@ struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
-    deploy_gossiper: Gossiper<Deploy, Event>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy, Event>,
     _storage_tempdir: TempDir,
 }
 
@@ -172,7 +172,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let fake_deploy_acceptor = FakeDeployAcceptor::new();
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _, _>::new(
             "deploy_gossiper",
             config,
             get_deploy_from_storage::<Deploy, Event>,
@@ -239,6 +239,7 @@ impl reactor::Reactor for Reactor {
                 let event = super::Event::ItemReceived {
                     item_id: deploy.gossip_id(),
                     source,
+                    target: deploy.gossip_target(),
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }

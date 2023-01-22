@@ -32,7 +32,7 @@ use crate::{
 };
 pub(crate) use config::Config;
 pub(crate) use event::Event;
-pub(crate) use gossip_item::GossipItem;
+pub(crate) use gossip_item::{GossipItem, LargeGossipItem, SmallGossipItem};
 use gossip_table::{GossipAction, GossipTable};
 pub(crate) use message::Message;
 use metrics::Metrics;
@@ -126,8 +126,7 @@ pub(crate) fn get_block_from_storage<T: GossipItem + 'static, REv: ReactorEventT
 
 /// The component which gossips to peers and handles incoming gossip messages from peers.
 #[allow(clippy::type_complexity)]
-#[derive(DataSize)]
-pub(crate) struct Gossiper<T, REv>
+pub(crate) struct Gossiper<const ID_IS_COMPLETE_ITEM: bool, T, REv>
 where
     T: GossipItem + 'static,
     REv: ReactorEventT<T>,
@@ -135,14 +134,12 @@ where
     table: GossipTable<T::Id>,
     gossip_timeout: Duration,
     get_from_peer_timeout: Duration,
-    #[data_size(skip)] // Not well supported by datasize.
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
-    #[data_size(skip)]
     metrics: Metrics,
 }
 
-impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
+impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<false, T, REv> {
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == false`, i.e.
     /// where the gossip messages themselves don't contain the actual data being gossiped, they
     /// contain just the identifiers.
@@ -155,7 +152,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     ///
     /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
     /// specific gossiper from other potentially present gossipers.
-    pub(crate) fn new_for_partial_items(
+    pub(crate) fn new(
         name: &str,
         config: Config,
         get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
@@ -175,13 +172,15 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             metrics: Metrics::new(name, registry)?,
         })
     }
+}
 
+impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<true, T, REv> {
     /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == true`, i.e.
     /// where the gossip messages themselves contain the actual data being gossiped.
     ///
     /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
     /// specific gossiper from other potentially present gossipers.
-    pub(crate) fn new_for_complete_items(
+    pub(crate) fn new(
         name: &str,
         config: Config,
         registry: &Registry,
@@ -200,7 +199,11 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             metrics: Metrics::new(name, registry)?,
         })
     }
+}
 
+impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEventT<T>>
+    Gossiper<ID_IS_COMPLETE_ITEM, T, REv>
+{
     /// Handles a new item received from a peer or client for which we should begin gossiping.
     ///
     /// Note that this doesn't include items gossiped to us; those are handled in `handle_gossip()`.
@@ -209,9 +212,13 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         source: Source,
+        target: GossipTarget,
     ) -> Effects<Event<T>> {
         debug!(item=%item_id, %source, "received new gossip item");
-        match self.table.new_complete_data(&item_id, source.node_id()) {
+        match self
+            .table
+            .new_complete_data(&item_id, source.node_id(), target)
+        {
             GossipAction::ShouldGossip(should_gossip) => {
                 self.metrics.items_received.inc();
                 self.gossip(
@@ -369,18 +376,15 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         }
     }
 
-    /// Handles an incoming gossip request from a peer on the network.
+    /// Handles an incoming gossip request from a peer on the network, after having registered the
+    /// item in the gossip table.
     fn handle_gossip(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         sender: NodeId,
+        action: GossipAction,
     ) -> Effects<Event<T>> {
-        let action = if T::ID_IS_COMPLETE_ITEM {
-            self.table.new_complete_data(&item_id, Some(sender))
-        } else {
-            self.table.new_partial_data(&item_id, sender)
-        };
         let mut effects = match action {
             GossipAction::ShouldGossip(should_gossip) => {
                 debug!(item=%item_id, %sender, %should_gossip, "received gossip request");
@@ -395,7 +399,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 );
 
                 // If this is a new complete item to us, announce it.
-                if T::ID_IS_COMPLETE_ITEM && !should_gossip.is_already_held {
+                if ID_IS_COMPLETE_ITEM && !should_gossip.is_already_held {
                     debug!(item=%item_id, "announcing new complete gossip item received");
                     effects.extend(
                         effect_builder
@@ -477,7 +481,7 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         let action = if is_already_held {
             self.table.already_infected(&item_id, sender)
         } else {
-            if !T::ID_IS_COMPLETE_ITEM {
+            if !ID_IS_COMPLETE_ITEM {
                 // `sender` doesn't hold the full item; get the item from the component responsible
                 // for holding it, then send it to `sender`.
                 effects.extend((self.get_from_holder)(
@@ -583,9 +587,9 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
     }
 }
 
-impl<T, REv> Component<REv> for Gossiper<T, REv>
+impl<T, REv> Component<REv> for Gossiper<false, T, REv>
 where
-    T: GossipItem + 'static,
+    T: LargeGossipItem + 'static,
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
@@ -600,15 +604,19 @@ where
             Event::BeginGossipRequest(BeginGossipRequest {
                 item_id,
                 source,
+                target,
                 responder,
             }) => {
-                let mut effects = self.handle_item_received(effect_builder, item_id, source);
+                let mut effects =
+                    self.handle_item_received(effect_builder, item_id, source, target);
                 effects.extend(responder.respond(()).ignore());
                 effects
             }
-            Event::ItemReceived { item_id, source } => {
-                self.handle_item_received(effect_builder, item_id, source)
-            }
+            Event::ItemReceived {
+                item_id,
+                source,
+                target,
+            } => self.handle_item_received(effect_builder, item_id, source, target),
             Event::GossipedTo {
                 item_id,
                 requested_count,
@@ -621,7 +629,10 @@ where
                 self.check_get_from_peer_timeout(effect_builder, item_id, peer)
             }
             Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
-                Message::Gossip(item_id) => self.handle_gossip(effect_builder, item_id, sender),
+                Message::Gossip(item_id) => {
+                    let action = self.table.new_partial_data(&item_id, sender);
+                    self.handle_gossip(effect_builder, item_id, sender, action)
+                }
                 Message::GossipResponse {
                     item_id,
                     is_already_held,
@@ -651,7 +662,85 @@ where
     }
 }
 
-impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> {
+impl<T, REv> Component<REv> for Gossiper<true, T, REv>
+where
+    T: SmallGossipItem + 'static,
+    REv: ReactorEventT<T>,
+{
+    type Event = Event<T>;
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        let effects = match event {
+            Event::BeginGossipRequest(BeginGossipRequest {
+                item_id,
+                source,
+                target,
+                responder,
+            }) => {
+                let mut effects =
+                    self.handle_item_received(effect_builder, item_id, source, target);
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
+            Event::ItemReceived {
+                item_id,
+                source,
+                target,
+            } => self.handle_item_received(effect_builder, item_id, source, target),
+            Event::GossipedTo {
+                item_id,
+                requested_count,
+                peers,
+            } => self.gossiped_to(effect_builder, item_id, requested_count, peers),
+            Event::CheckGossipTimeout { item_id, peer } => {
+                self.check_gossip_timeout(effect_builder, item_id, peer)
+            }
+            Event::CheckGetFromPeerTimeout { item_id, peer } => {
+                self.check_get_from_peer_timeout(effect_builder, item_id, peer)
+            }
+            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
+                Message::Gossip(item_id) => {
+                    let target = <T as SmallGossipItem>::id_as_item(&item_id).gossip_target();
+                    let action = self.table.new_complete_data(&item_id, Some(sender), target);
+                    self.handle_gossip(effect_builder, item_id, sender, action)
+                }
+                Message::GossipResponse {
+                    item_id,
+                    is_already_held,
+                } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
+                Message::GetItem(item_id) => {
+                    self.handle_get_item_request(effect_builder, item_id, sender)
+                }
+                Message::Item(item) => {
+                    self.handle_item_received_from_peer(effect_builder, item, sender)
+                }
+            },
+            Event::GetFromHolderResult {
+                item_id,
+                requester,
+                result,
+            } => match *result {
+                Ok(item) => self.got_from_holder(effect_builder, item, requester),
+                Err(error) => self.failed_to_get_from_holder(effect_builder, item_id, error),
+            },
+        };
+        self.update_gossip_table_metrics();
+        effects
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+}
+
+impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEventT<T>> Debug
+    for Gossiper<ID_IS_COMPLETE_ITEM, T, REv>
+{
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
             .debug_struct("Gossiper")
@@ -659,5 +748,28 @@ impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Debug for Gossiper<T, REv> 
             .field("gossip_timeout", &self.gossip_timeout)
             .field("get_from_peer_timeout", &self.get_from_peer_timeout)
             .finish()
+    }
+}
+
+impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEventT<T>> DataSize
+    for Gossiper<ID_IS_COMPLETE_ITEM, T, REv>
+{
+    const IS_DYNAMIC: bool = true;
+
+    const STATIC_HEAP_SIZE: usize = 0;
+
+    #[inline]
+    fn estimate_heap_size(&self) -> usize {
+        let Gossiper {
+            table,
+            gossip_timeout,
+            get_from_peer_timeout,
+            get_from_holder: _,
+            metrics: _,
+        } = self;
+
+        table.estimate_heap_size()
+            + gossip_timeout.estimate_heap_size()
+            + get_from_peer_timeout.estimate_heap_size()
     }
 }

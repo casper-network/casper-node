@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use super::GossipItem;
 use crate::{
-    effect::{incoming::GossiperIncoming, requests::BeginGossipRequest},
+    effect::{incoming::GossiperIncoming, requests::BeginGossipRequest, GossipTarget},
     types::NodeId,
     utils::{DisplayIter, Source},
 };
@@ -20,7 +20,11 @@ pub(crate) enum Event<T: GossipItem> {
     #[from]
     BeginGossipRequest(BeginGossipRequest<T>),
     /// A new item has been received to be gossiped.
-    ItemReceived { item_id: T::Id, source: Source },
+    ItemReceived {
+        item_id: T::Id,
+        source: Source,
+        target: GossipTarget,
+    },
     /// The network component gossiped to the included peers.
     GossipedTo {
         item_id: T::Id,
@@ -57,7 +61,9 @@ impl<T: GossipItem> Display for Event<T> {
                     item_id, source
                 )
             }
-            Event::ItemReceived { item_id, source } => {
+            Event::ItemReceived {
+                item_id, source, ..
+            } => {
                 write!(formatter, "new item {} received from {}", item_id, source)
             }
             Event::GossipedTo { item_id, peers, .. } => write!(

@@ -25,3 +25,10 @@ pub(crate) trait GossipItem:
     /// Identifies the kind of peers which should be targeted for onwards gossiping.
     fn gossip_target(&self) -> GossipTarget;
 }
+
+pub(crate) trait LargeGossipItem: GossipItem {}
+
+pub(crate) trait SmallGossipItem: GossipItem {
+    /// Convert a `Self::Id` into `Self`.
+    fn id_as_item(id: &Self::Id) -> &Self;
+}

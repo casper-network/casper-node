@@ -246,11 +246,9 @@ pub(crate) struct BeginGossipRequest<T>
 where
     T: GossipItem,
 {
-    /// The ID of the item received.
     pub(crate) item_id: T::Id,
-    /// The origin of this request.
     pub(crate) source: Source,
-    /// Responder to notify that gossiping is complete.
+    pub(crate) target: GossipTarget,
     pub(crate) responder: Responder<()>,
 }
 

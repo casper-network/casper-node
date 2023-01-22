@@ -202,12 +202,6 @@ pub(crate) enum GossipTarget {
     All,
 }
 
-impl Default for GossipTarget {
-    fn default() -> Self {
-        GossipTarget::All
-    }
-}
-
 impl Display for GossipTarget {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -1054,7 +1048,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Begins gossiping an item.
-    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source)
+    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source, target: GossipTarget)
     where
         T: GossipItem,
         REv: From<BeginGossipRequest<T>>,
@@ -1063,6 +1057,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| BeginGossipRequest {
                 item_id,
                 source,
+                target,
                 responder,
             },
             QueueKind::Gossip,
