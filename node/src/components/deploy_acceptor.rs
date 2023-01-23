@@ -8,7 +8,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::{
@@ -27,16 +27,22 @@ use casper_types::{
 use crate::{
     components::Component,
     effect::{
-        announcements::DeployAcceptorAnnouncement,
+        announcements::{DeployAcceptorAnnouncement, FatalAnnouncement},
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure},
+    fatal,
+    types::{
+        chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure,
+        FinalizedApprovals,
+    },
     utils::Source,
     NodeRng,
 };
 
 pub(crate) use event::{Event, EventMetadata};
+
+const COMPONENT_NAME: &str = "deploy_acceptor";
 
 const ARG_TARGET: &str = "target";
 
@@ -122,6 +128,7 @@ pub(crate) trait ReactorEventT:
     + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<FatalAnnouncement>
     + Send
 {
 }
@@ -131,6 +138,7 @@ impl<REv> ReactorEventT for REv where
         + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<FatalAnnouncement>
         + Send
 {
 }
@@ -140,12 +148,13 @@ impl<REv> ReactorEventT for REv where
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
-#[derive(Debug)]
+#[derive(Debug, DataSize)]
 pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
     max_associated_keys: u32,
+    #[data_size(skip)]
     metrics: metrics::Metrics,
 }
 
@@ -210,7 +219,7 @@ impl DeployAcceptor {
         }
 
         effect_builder
-            .get_highest_block_header_from_storage()
+            .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {
                 event_metadata: EventMetadata::new(deploy, source, maybe_responder),
                 maybe_block_header: Box::new(maybe_block_header),
@@ -218,17 +227,17 @@ impl DeployAcceptor {
             })
     }
 
-    fn handle_get_block_result<REv: ReactorEventT>(
+    fn handle_get_block_header_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         event_metadata: EventMetadata,
-        maybe_block: Option<BlockHeader>,
+        maybe_block_header: Option<BlockHeader>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
 
-        let block = match maybe_block {
-            Some(block) => block,
+        let block_header = match maybe_block_header {
+            Some(block_header) => block_header,
             None => {
                 // this should be unreachable per current design of the system
                 if let Some(responder) = event_metadata.maybe_responder {
@@ -238,7 +247,7 @@ impl DeployAcceptor {
             }
         };
 
-        let prestate_hash = *block.state_root_hash();
+        let prestate_hash = *block_header.state_root_hash();
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
@@ -346,8 +355,11 @@ impl DeployAcceptor {
             // This would only happen due to programmer error and should crash the node.
             // Balance checks for deploys received by from a peer will cause the network
             // to stall.
-            // TODO: Change this to a fatal!
-            panic!("Balance checks for deploys received from peers should never occur.")
+            return fatal!(
+                effect_builder,
+                "Balance checks for deploys received from peers should never occur."
+            )
+            .ignore();
         }
         match maybe_balance_value {
             None => {
@@ -754,35 +766,6 @@ impl DeployAcceptor {
         }
     }
 
-    fn handle_put_to_storage<REv: ReactorEventT>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
-        is_new: bool,
-        verification_start_timestamp: Timestamp,
-    ) -> Effects<Event> {
-        let EventMetadata {
-            deploy,
-            source,
-            maybe_responder,
-        } = event_metadata;
-        self.metrics.observe_accepted(verification_start_timestamp);
-        let mut effects = Effects::new();
-        if is_new {
-            effects.extend(
-                effect_builder
-                    .announce_new_deploy_accepted(deploy, source)
-                    .ignore(),
-            );
-        }
-
-        // success
-        if let Some(responder) = maybe_responder {
-            effects.extend(responder.respond(Ok(())).ignore());
-        }
-        effects
-    }
-
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -836,11 +819,80 @@ impl DeployAcceptor {
         );
         effects
     }
+
+    fn handle_put_to_storage<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: EventMetadata,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        let mut effects = Effects::new();
+        if is_new {
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(event_metadata.deploy, event_metadata.source)
+                    .ignore(),
+            );
+        } else if matches!(event_metadata.source, Source::Peer(_)) {
+            // If `is_new` is `false`, the deploy was previously stored.  If the source is `Peer`,
+            // we got here as a result of a Fetch<Deploy>, and the incoming deploy could have a
+            // different set of approvals to the one already stored.  We can treat the incoming
+            // approvals as finalized and now try and store them.  If storing them returns `true`,
+            // (indicating the approvals are different to any previously stored) we can announce a
+            // new deploy accepted, causing the fetcher to be notified.
+            return effect_builder
+                .store_finalized_approvals(
+                    *event_metadata.deploy.hash(),
+                    FinalizedApprovals::new(event_metadata.deploy.approvals().clone()),
+                )
+                .event(move |is_new| Event::StoredFinalizedApprovals {
+                    event_metadata,
+                    is_new,
+                    verification_start_timestamp,
+                });
+        }
+        self.metrics.observe_accepted(verification_start_timestamp);
+
+        // success
+        if let Some(responder) = event_metadata.maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+        effects
+    }
+
+    fn handle_stored_finalized_approvals<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: EventMetadata,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        self.metrics.observe_accepted(verification_start_timestamp);
+        let EventMetadata {
+            deploy,
+            source,
+            maybe_responder,
+        } = event_metadata;
+        let mut effects = Effects::new();
+        if is_new {
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(deploy, source)
+                    .ignore(),
+            );
+        }
+
+        // success
+        if let Some(responder) = maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+        effects
+    }
 }
 
 impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
-    type ConstructionError = prometheus::Error;
 
     fn handle_event(
         &mut self,
@@ -848,7 +900,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        trace!(?event, "DeployAcceptor: handling event");
         match event {
             Event::Accept {
                 deploy,
@@ -859,7 +911,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 event_metadata,
                 maybe_block_header,
                 verification_start_timestamp,
-            } => self.handle_get_block_result(
+            } => self.handle_get_block_header_result(
                 effect_builder,
                 event_metadata,
                 *maybe_block_header,
@@ -944,6 +996,20 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 is_new,
                 verification_start_timestamp,
             ),
+            Event::StoredFinalizedApprovals {
+                event_metadata,
+                is_new,
+                verification_start_timestamp,
+            } => self.handle_stored_finalized_approvals(
+                effect_builder,
+                event_metadata,
+                is_new,
+                verification_start_timestamp,
+            ),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

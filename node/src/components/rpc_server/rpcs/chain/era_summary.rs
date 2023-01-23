@@ -56,6 +56,6 @@ pub struct EraSummary {
     pub stored_value: StoredValue,
     /// Hex-encoded hash of the state root
     pub state_root_hash: Digest,
-    /// The merkle proof
+    /// The Merkle proof
     pub merkle_proof: String,
 }

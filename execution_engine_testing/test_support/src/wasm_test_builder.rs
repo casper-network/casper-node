@@ -1402,7 +1402,7 @@ where
         self.engine_state
             .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
-            .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
+            .map(|bytes| bytesrepr::deserialize(bytes.into_inner().into()).unwrap())
     }
 
     /// Returns the costs related to interacting with the auction system contract.

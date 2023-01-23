@@ -2,12 +2,10 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::components::consensus::traits::Context;
-
-use super::validators::ValidatorIndex;
+use crate::components::consensus::{traits::Context, utils::ValidatorIndex};
 
 /// An error due to an invalid endorsement.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub(crate) enum EndorsementError {
     #[error("The creator is not a validator.")]
     Creator,

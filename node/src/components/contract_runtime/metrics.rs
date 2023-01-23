@@ -32,10 +32,6 @@ const COMMIT_STEP_HELP: &str = "time in seconds to commit the step at era end";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
 const GET_BALANCE_HELP: &str = "time in seconds to get the balance of a purse from global state";
 
-const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
-const GET_VALIDATOR_WEIGHTS_HELP: &str =
-    "time in seconds to get validator weights from global state";
-
 const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str =
     "time in seconds to get validators for a given era from global state";
@@ -43,23 +39,21 @@ const GET_ERA_VALIDATORS_HELP: &str =
 const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
 const GET_BIDS_HELP: &str = "time in seconds to get bids from global state";
 
-const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
-const MISSING_TRIE_KEYS_HELP: &str = "time in seconds to get missing trie keys";
-
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
 
 const GET_TRIE_NAME: &str = "contract_runtime_get_trie";
 const GET_TRIE_HELP: &str = "time in seconds to get a trie";
 
-const CHAIN_HEIGHT_NAME: &str = "chain_height";
-const CHAIN_HEIGHT_HELP: &str = "current chain height";
-
 const EXEC_BLOCK_NAME: &str = "contract_runtime_execute_block";
 const EXEC_BLOCK_HELP: &str = "time in seconds to execute all deploys in a block";
 
 const LATEST_COMMIT_STEP_NAME: &str = "contract_runtime_latest_commit_step";
 const LATEST_COMMIT_STEP_HELP: &str = "duration in seconds of latest commit step at era end";
+
+const EXEC_QUEUE_SIZE_NAME: &str = "execution_queue_size";
+const EXEC_QUEUE_SIZE_HELP: &str =
+    "number of blocks that are currently enqueued and waiting for execution";
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
@@ -70,15 +64,13 @@ pub struct Metrics {
     pub(super) run_query: Histogram,
     pub(super) commit_step: Histogram,
     pub(super) get_balance: Histogram,
-    pub(super) get_validator_weights: Histogram,
     pub(super) get_era_validators: Histogram,
     pub(super) get_bids: Histogram,
-    pub(super) missing_trie_keys: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
-    pub(super) chain_height: IntGauge,
     pub(super) exec_block: Histogram,
     pub(super) latest_commit_step: Gauge,
+    pub(super) exec_queue_size: IntGauge,
     registry: Registry,
 }
 
@@ -97,11 +89,11 @@ impl Metrics {
         // Anything above that should be a warning signal.
         let tiny_buckets = prometheus::exponential_buckets(0.001, 2.0, 10)?;
 
-        let chain_height = IntGauge::new(CHAIN_HEIGHT_NAME, CHAIN_HEIGHT_HELP)?;
-        registry.register(Box::new(chain_height.clone()))?;
-
         let latest_commit_step = Gauge::new(LATEST_COMMIT_STEP_NAME, LATEST_COMMIT_STEP_HELP)?;
         registry.register(Box::new(latest_commit_step.clone()))?;
+
+        let exec_queue_size = IntGauge::new(EXEC_QUEUE_SIZE_NAME, EXEC_QUEUE_SIZE_HELP)?;
+        registry.register(Box::new(exec_queue_size.clone()))?;
 
         Ok(Metrics {
             run_execute: utils::register_histogram_metric(
@@ -140,12 +132,6 @@ impl Metrics {
                 GET_BALANCE_HELP,
                 common_buckets.clone(),
             )?,
-            get_validator_weights: utils::register_histogram_metric(
-                registry,
-                GET_VALIDATOR_WEIGHTS_NAME,
-                GET_VALIDATOR_WEIGHTS_HELP,
-                common_buckets.clone(),
-            )?,
             get_era_validators: utils::register_histogram_metric(
                 registry,
                 GET_ERA_VALIDATORS_NAME,
@@ -168,15 +154,8 @@ impl Metrics {
                 registry,
                 PUT_TRIE_NAME,
                 PUT_TRIE_HELP,
-                tiny_buckets.clone(),
-            )?,
-            missing_trie_keys: utils::register_histogram_metric(
-                registry,
-                MISSING_TRIE_KEYS_NAME,
-                MISSING_TRIE_KEYS_HELP,
                 tiny_buckets,
             )?,
-            chain_height,
             exec_block: utils::register_histogram_metric(
                 registry,
                 EXEC_BLOCK_NAME,
@@ -184,6 +163,7 @@ impl Metrics {
                 common_buckets,
             )?,
             latest_commit_step,
+            exec_queue_size,
             registry: registry.clone(),
         })
     }
@@ -197,14 +177,12 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.run_query);
         unregister_metric!(self.registry, self.commit_step);
         unregister_metric!(self.registry, self.get_balance);
-        unregister_metric!(self.registry, self.get_validator_weights);
         unregister_metric!(self.registry, self.get_era_validators);
         unregister_metric!(self.registry, self.get_bids);
-        unregister_metric!(self.registry, self.missing_trie_keys);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);
-        unregister_metric!(self.registry, self.chain_height);
         unregister_metric!(self.registry, self.exec_block);
         unregister_metric!(self.registry, self.latest_commit_step);
+        unregister_metric!(self.registry, self.exec_queue_size);
     }
 }

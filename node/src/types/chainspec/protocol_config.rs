@@ -33,13 +33,13 @@ pub struct ProtocolConfig {
 }
 
 impl ProtocolConfig {
-    /// The the mapping of [`Key`]s to [`StoredValue`]s we will use to update global storage in the
+    /// The mapping of [`Key`]s to [`StoredValue`]s we will use to update global storage in the
     /// event of an emergency update.
     pub(crate) fn get_update_mapping(
         &self,
     ) -> Result<BTreeMap<Key, StoredValue>, bytesrepr::Error> {
         let state_update = match &self.global_state_update {
-            Some(GlobalStateUpdate(state_update)) => state_update,
+            Some(GlobalStateUpdate { entries, .. }) => entries,
             None => return Ok(BTreeMap::default()),
         };
         let mut update_mapping = BTreeMap::new();

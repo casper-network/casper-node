@@ -731,7 +731,7 @@ fn should_get_first_seigniorage_recipients() {
 
     assert!(era_validators.contains_key(&(EraId::from(auction_delay).successor())));
 
-    let era_id = EraId::from(auction_delay) - 1;
+    let era_id = EraId::from(auction_delay);
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(

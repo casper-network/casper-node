@@ -9,6 +9,7 @@ use casper_types::{bytesrepr, crypto, EraId};
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{
     error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
+    FinalitySignature, FinalitySignatureId,
 };
 
 /// A fatal storage component error.
@@ -148,6 +149,22 @@ pub enum FatalStorageError {
     /// `ToBytes` deserialization failure of an item that should never fail to serialize.
     #[error("unexpected deserialization failure: {0}")]
     UnexpectedDeserializationFailure(bytesrepr::Error),
+    /// Stored finalized approvals hashes count doesn't match number of deploys.
+    #[error(
+        "stored finalized approvals hashes count doesn't match number of deploys: \
+        block hash: {block_hash}, expected: {expected}, actual: {actual}"
+    )]
+    ApprovalsHashesLengthMismatch {
+        /// The block hash.
+        block_hash: BlockHash,
+        /// The number of deploys in the block.
+        expected: usize,
+        /// The number of approvals hashes.
+        actual: usize,
+    },
+    /// Error initializing metrics.
+    #[error("failed to initialize metrics for storage: {0}")]
+    Prometheus(#[from] prometheus::Error),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -168,7 +185,15 @@ pub(super) enum GetRequestError {
     /// Failed to serialized an item ID on an incoming item request.
     #[error("failed to deserialize incoming item id")]
     MalformedIncomingItemId(#[source] bincode::Error),
-    /// Received a get request for a gossiped address, which is unanswerable.
-    #[error("received a request for a gossiped address")]
-    GossipedAddressNotGettable,
+    #[error(
+        "id information not matching the finality signature: \
+        requested id: {requested_id},\
+        signature: {finality_signature}"
+    )]
+    FinalitySignatureIdMismatch {
+        // the ID requested
+        requested_id: FinalitySignatureId,
+        // the finality signature read from storage
+        finality_signature: Box<FinalitySignature>,
+    },
 }

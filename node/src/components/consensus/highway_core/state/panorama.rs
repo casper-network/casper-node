@@ -10,9 +10,9 @@ use crate::components::consensus::{
     highway_core::{
         highway::Dependency,
         state::{State, Unit, UnitError},
-        validators::{ValidatorIndex, ValidatorMap},
     },
     traits::Context,
+    utils::{ValidatorIndex, ValidatorMap},
 };
 
 /// The observed behavior of a validator at some point in time.

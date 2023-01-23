@@ -26,10 +26,30 @@ pub enum QueueKind {
     NetworkDemand,
     /// Network events that were initiated by the local node, such as outgoing messages.
     Network,
+    /// NetworkInfo events.
+    NetworkInfo,
+    /// Fetch events.
+    Fetch,
+    /// SyncGlobalState events.
+    SyncGlobalState,
+    /// FinalitySignature events.
+    FinalitySignature,
     /// Events of unspecified priority.
     ///
     /// This is the default queue.
     Regular,
+    /// Gossiper events.
+    Gossip,
+    /// Get from storage events.
+    FromStorage,
+    /// Put to storage events.
+    ToStorage,
+    /// Contract runtime events.
+    ContractRuntime,
+    /// Consensus events.
+    Consensus,
+    /// Validation events.
+    Validation,
     /// Reporting events on the local node.
     ///
     /// Metric events take precedence over most other events since missing a request for metrics
@@ -45,7 +65,17 @@ impl Display for QueueKind {
             QueueKind::NetworkLowPriority => "NetworkLowPriority",
             QueueKind::NetworkDemand => "NetworkDemand",
             QueueKind::Network => "Network",
+            QueueKind::NetworkInfo => "NetworkInfo",
+            QueueKind::Fetch => "Fetch",
             QueueKind::Regular => "Regular",
+            QueueKind::Gossip => "Gossip",
+            QueueKind::FromStorage => "FromStorage",
+            QueueKind::ToStorage => "ToStorage",
+            QueueKind::ContractRuntime => "ContractRuntime",
+            QueueKind::SyncGlobalState => "SyncGlobalState",
+            QueueKind::FinalitySignature => "FinalitySignature",
+            QueueKind::Consensus => "Consensus",
+            QueueKind::Validation => "Validation",
             QueueKind::Api => "Api",
         };
         write!(f, "{}", str_value)
@@ -65,14 +95,24 @@ impl QueueKind {
     /// each event processing round.
     fn weight(self) -> NonZeroUsize {
         NonZeroUsize::new(match self {
-            // Note: Control events should be very rare, but we do want to process them right away.
-            QueueKind::Control => 32,
-            QueueKind::NetworkIncoming => 4,
             QueueKind::NetworkLowPriority => 1,
+            QueueKind::NetworkInfo => 2,
             QueueKind::NetworkDemand => 2,
+            QueueKind::NetworkIncoming => 4,
             QueueKind::Network => 4,
-            QueueKind::Regular => 8,
-            QueueKind::Api => 16,
+            QueueKind::Regular => 4,
+            QueueKind::Fetch => 4,
+            QueueKind::Gossip => 4,
+            QueueKind::FromStorage => 4,
+            QueueKind::ToStorage => 4,
+            QueueKind::ContractRuntime => 4,
+            QueueKind::SyncGlobalState => 4,
+            QueueKind::Consensus => 4,
+            QueueKind::FinalitySignature => 4,
+            QueueKind::Validation => 8,
+            QueueKind::Api => 8,
+            // Note: Control events should be very rare, but we do want to process them right away.
+            QueueKind::Control => 16,
         })
         .expect("weight must be positive")
     }
@@ -91,8 +131,18 @@ impl QueueKind {
             QueueKind::NetworkDemand => "network_demands",
             QueueKind::NetworkLowPriority => "network_low_priority",
             QueueKind::Network => "network",
-            QueueKind::Regular => "regular",
+            QueueKind::NetworkInfo => "network_info",
+            QueueKind::SyncGlobalState => "sync_global_state",
+            QueueKind::Fetch => "fetch",
+            QueueKind::Gossip => "gossip",
+            QueueKind::FromStorage => "from_storage",
+            QueueKind::ToStorage => "to_storage",
+            QueueKind::ContractRuntime => "contract_runtime",
+            QueueKind::Consensus => "consensus",
+            QueueKind::Validation => "validation",
+            QueueKind::FinalitySignature => "finality_signature",
             QueueKind::Api => "api",
+            QueueKind::Regular => "regular",
         }
     }
 }

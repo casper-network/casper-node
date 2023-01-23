@@ -1,10 +1,9 @@
 [core]
-era_duration = '180seconds'
-minimum_era_height = 30
+era_duration = '210seconds'
 auction_delay = 1
 
 [highway]
-maximum_round_exponent = 14
+maximum_round_length = '17seconds'
 
 [deploys]
 delete = { cost = 14_000, arguments = [0, 0] }

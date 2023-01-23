@@ -244,9 +244,6 @@ fn main() {
     );
     execution_engine.update();
 
-    let node_macros = Package::cargo("node_macros", &*regex_data::node_macros::DEPENDENT_FILES);
-    node_macros.update();
-
     let json_rpc = Package::cargo("json_rpc", &*regex_data::json_rpc::DEPENDENT_FILES);
     json_rpc.update();
 

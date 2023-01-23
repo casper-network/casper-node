@@ -330,12 +330,8 @@ where
                 error!("should not remove the chainspec registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
-            Key::BlockEffectsRootHash { .. } => {
-                error!("should not remove the execution results root hash key");
-                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
-            }
-            Key::DeployApprovalsRootHash { .. } => {
-                error!("should not remove the deploy approvals root hash key");
+            Key::ChecksumRegistry => {
+                error!("should not remove the checksum registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
         }
@@ -794,8 +790,7 @@ where
             Key::Dictionary(_) => true,
             Key::SystemContractRegistry => true,
             Key::ChainspecRegistry => true,
-            Key::BlockEffectsRootHash { .. } => true,
-            Key::DeployApprovalsRootHash { .. } => true,
+            Key::ChecksumRegistry => true,
         }
     }
 
@@ -818,8 +813,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::ChainspecRegistry => false,
-            Key::BlockEffectsRootHash { .. } => false,
-            Key::DeployApprovalsRootHash { .. } => false,
+            Key::ChecksumRegistry => false,
         }
     }
 
@@ -842,8 +836,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::ChainspecRegistry => false,
-            Key::BlockEffectsRootHash { .. } => false,
-            Key::DeployApprovalsRootHash { .. } => false,
+            Key::ChecksumRegistry => false,
         }
     }
 

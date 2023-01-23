@@ -181,7 +181,7 @@ mod tests {
         let path = &LOCAL_PATH.join(CHAINSPEC_NAME);
         let chainspec_config = ChainspecConfig::from_chainspec_path(path).unwrap();
         // Check that the loaded values matches values present in the local chainspec.
-        assert_eq!(chainspec_config.core_config.auction_delay, 3);
+        assert_eq!(chainspec_config.core_config.auction_delay, 1);
     }
 
     #[test]
@@ -189,6 +189,6 @@ mod tests {
         let path = &LOCAL_PATH.join(CHAINSPEC_NAME);
         let chainspec_config = ChainspecConfig::from_chainspec_path(path).unwrap();
         let exec_config = ExecConfig::try_from(chainspec_config).unwrap();
-        assert_eq!(exec_config.auction_delay(), 3)
+        assert_eq!(exec_config.auction_delay(), 1)
     }
 }

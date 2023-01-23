@@ -18,7 +18,7 @@ use casper_types::{
 
 use clap::ArgMatches;
 
-use crate::utils::{hash_from_str, validators_diff, ValidatorsDiff};
+use crate::utils::{hash_from_str, validators_diff, ValidatorInfo, ValidatorsDiff};
 
 use self::{
     config::{AccountConfig, Config, Transfer},
@@ -40,26 +40,28 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     update_from_config(builder, config);
 }
 
-pub(crate) fn get_update<T: StateReader>(reader: T, config: Config) -> Update {
+fn get_update<T: StateReader>(reader: T, config: Config) -> Update {
     let mut state_tracker = StateTracker::new(reader);
 
     process_transfers(&mut state_tracker, &config.transfers);
 
     update_account_balances(&mut state_tracker, &config.accounts);
 
-    update_auction_state(
+    let validators = update_auction_state(
         &mut state_tracker,
         &config.accounts,
         config.only_listed_validators,
         config.slash_instead_of_unbonding,
     );
 
-    Update::new(state_tracker.get_entries())
+    let entries = state_tracker.get_entries();
+
+    Update::new(entries, validators)
 }
 
 pub(crate) fn update_from_config<T: StateReader>(reader: T, config: Config) {
     let update = get_update(reader, config);
-    update.print_entries();
+    update.print();
 }
 
 fn process_transfers<T: StateReader>(state: &mut StateTracker<T>, transfers: &[Transfer]) {
@@ -87,12 +89,14 @@ fn update_account_balances<T: StateReader>(
     }
 }
 
+/// Returns the complete set of validators immediately after the upgrade,
+/// if the validator set changed.
 fn update_auction_state<T: StateReader>(
     state: &mut StateTracker<T>,
     accounts: &[AccountConfig],
     only_listed_validators: bool,
     slash: bool,
-) {
+) -> Option<Vec<ValidatorInfo>> {
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = state.read_snapshot();
 
@@ -107,25 +111,44 @@ fn update_auction_state<T: StateReader>(
         gen_snapshot_from_old(old_snapshot.clone(), accounts)
     };
 
-    if new_snapshot != old_snapshot {
-        // Save the write to the snapshot key.
-        state.write_entry(
-            validators_key,
-            StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
-        );
-
-        let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
-
-        add_and_remove_bids(
-            state,
-            &validators_diff,
-            &new_snapshot,
-            only_listed_validators,
-            slash,
-        );
-
-        state.remove_withdraws(&validators_diff.removed);
+    if new_snapshot == old_snapshot {
+        return None;
     }
+
+    // Save the write to the snapshot key.
+    state.write_entry(
+        validators_key,
+        StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
+    );
+
+    let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
+
+    add_and_remove_bids(
+        state,
+        &validators_diff,
+        &new_snapshot,
+        only_listed_validators,
+        slash,
+    );
+
+    state.remove_withdraws(&validators_diff.removed);
+
+    // We need to output the validators for the next era, which are contained in the first entry
+    // in the snapshot.
+    Some(
+        new_snapshot
+            .values()
+            .next()
+            .expect("snapshot should have at least one entry")
+            .iter()
+            .map(|(public_key, seigniorage_recipient)| ValidatorInfo {
+                public_key: public_key.clone(),
+                weight: seigniorage_recipient
+                    .total_stake()
+                    .expect("total validator stake too large"),
+            })
+            .collect(),
+    )
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` based on:
@@ -160,7 +183,7 @@ fn gen_snapshot_only_listed(
 }
 
 /// Generates a new `SeigniorageRecipientsSnapshot` by modifying the stakes listed in the old
-/// snaphot according to the supplied list of configured accounts.
+/// snapshot according to the supplied list of configured accounts.
 fn gen_snapshot_from_old(
     mut snapshot: SeigniorageRecipientsSnapshot,
     accounts: &[AccountConfig],

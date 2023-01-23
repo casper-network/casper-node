@@ -36,10 +36,10 @@ macro_rules! add_unit {
         let panorama = panorama!($($obs),*);
         let seq_number = panorama.next_seq_num(&$state, creator);
         let maybe_parent_hash = panorama[creator].correct();
-        // Use our most recent round exponent, or the configured initial one.
-        let round_exp = maybe_parent_hash.map_or_else(
-            || $state.params().init_round_exp(),
-            |vh| $state.unit(vh).round_exp,
+        // Use our most recent round length, or the configured initial one.
+        let r_len = maybe_parent_hash.map_or_else(
+            || $state.params().init_round_len(),
+            |vh| $state.unit(vh).round_len(),
         );
         let value = Option::from($val);
         // At most two units per round are allowed.
@@ -50,19 +50,18 @@ macro_rules! add_unit {
         // And our timestamp must not be less than any justification's.
         let mut timestamp = panorama
             .iter_correct(&$state)
-            .map(|unit| unit.timestamp + TimeDiff::from(1))
+            .map(|unit| unit.timestamp + TimeDiff::from_millis(1))
             .chain(two_units_limit)
             .max()
             .unwrap_or($state.params().start_timestamp());
         // If this is a block: Find the next time we're a leader.
         if value.is_some() {
-            #[allow(clippy::integer_arithmetic)]
-            let r_len = TimeDiff::from(1 << round_exp);
-            timestamp = state::round_id(timestamp + r_len - TimeDiff::from(1), round_exp);
+            timestamp = state::round_id(timestamp + r_len - TimeDiff::from_millis(1), r_len);
             while $state.leader(timestamp) != creator {
                 timestamp += r_len;
             }
         }
+        let round_exp = (r_len / $state.params().min_round_length()).trailing_zeros() as u8;
         let wunit = WireUnit {
             panorama,
             creator,

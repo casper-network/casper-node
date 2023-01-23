@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a95b33d3196ca47b38fb6d16346318cbfbcd6494087384852a2d4bdb585f1edf # shrinks to stop_at = NextBlock
+cc 5d4cf22796e91f3ca192f4b42ff7738143ba06e6ad7ea088abc9e63784be78a6 # shrinks to stop_at = EraId(EraId(0))

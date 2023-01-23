@@ -559,7 +559,7 @@
       "additionalProperties": false
     },
     "DeployHeader": {
-      "description": "The header portion of a [`Deploy`](struct.Deploy.html).",
+      "description": "The header portion of a [`Deploy`].",
       "type": "object",
       "required": [
         "account",
@@ -1048,7 +1048,7 @@
       ]
     },
     "Approval": {
-      "description": "A struct containing a signature and the public key of the signer.",
+      "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
       "type": "object",
       "required": [
         "signature",

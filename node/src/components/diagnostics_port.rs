@@ -4,6 +4,7 @@
 //! deep debug access to a running node via special commands.
 
 mod command;
+mod stop_at;
 mod tasks;
 mod util;
 
@@ -16,30 +17,27 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::net::UnixListener;
-use tracing::{debug, warn};
+use tokio::{net::UnixListener, sync::watch};
+use tracing::{debug, error, info, warn};
 
-use super::Component;
 use crate::{
+    components::{Component, ComponentState, InitializedComponent, PortBoundComponent},
     effect::{
-        announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
-        requests::NetworkInfoRequest, EffectBuilder, EffectExt, Effects,
+        announcements::ControlAnnouncement,
+        diagnostics_port::DumpConsensusStateRequest,
+        requests::{NetworkInfoRequest, SetNodeStopRequest},
+        EffectBuilder, EffectExt, Effects,
     },
-    reactor::EventQueueHandle,
+    reactor::main_reactor::MainEvent,
     types::NodeRng,
     utils::{umask, DropSwitch, ObservableFuse},
     WithDir,
 };
+pub(crate) use stop_at::StopAtSpec;
 pub use tasks::FileSerializer;
 use util::ShowUnixAddr;
 
-/// Diagnostics port component.
-#[derive(Debug, DataSize)]
-pub(crate) struct DiagnosticsPort {
-    /// Sender, when dropped, will cause server and client connections to exit.
-    #[allow(dead_code)]
-    shutdown_fuse: DropSwitch<ObservableFuse>,
-}
+const COMPONENT_NAME: &str = "diagnostics_port";
 
 /// Diagnostics port configuration.
 #[derive(Clone, DataSize, Debug, Deserialize)]
@@ -62,44 +60,161 @@ impl Default for Config {
     }
 }
 
+/// Diagnostics port component.
+#[derive(Debug, DataSize)]
+pub(crate) struct DiagnosticsPort {
+    state: ComponentState,
+    /// Sender which will cause server and client connections to exit when dropped.
+    #[allow(dead_code)]
+    shutdown_fuse: DropSwitch<ObservableFuse>,
+    config: WithDir<Config>,
+}
+
 impl DiagnosticsPort {
     /// Creates a new diagnostics port component.
-    pub(crate) fn new<REv>(
-        cfg: &WithDir<Config>,
-        event_queue: EventQueueHandle<REv>,
-    ) -> Result<(Self, Effects<Event>), Error>
-    where
-        REv: From<DumpConsensusStateRequest>
-            + From<ControlAnnouncement>
-            + From<NetworkInfoRequest>
-            + Send,
-    {
-        let config = cfg.value();
-        let shutdown_fuse = DropSwitch::new(ObservableFuse::new());
-
-        if !config.enabled {
-            // If not enabled, do not launch a background task, simply exit immediately.
-            //
-            // Having a shutdown sender around still is harmless.
-            debug!("diagnostics port disabled");
-            return Ok((DiagnosticsPort { shutdown_fuse }, Effects::new()));
+    pub(crate) fn new(config: WithDir<Config>) -> Self {
+        DiagnosticsPort {
+            state: ComponentState::Uninitialized,
+            config,
+            _shutdown_sender: None,
         }
+    }
+}
 
-        let socket_path = cfg.with_dir(config.socket_path.clone());
+/// Diagnostics port event.
+#[derive(Debug, Serialize)]
+pub(crate) enum Event {
+    Initialize,
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("diagnostics port event")
+    }
+}
+
+/// A diagnostics port initialization error.
+#[derive(Debug, Error)]
+pub(crate) enum Error {
+    /// Error setting up the diagnostics port's unix socket listener.
+    #[error("could not setup diagnostics port listener")]
+    SetupListener(#[from] io::Error),
+}
+
+impl<REv> Component<REv> for DiagnosticsPort
+where
+    REv: From<Event>
+        + From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
+        + Send,
+{
+    type Event = Event;
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        event: Event,
+    ) -> Effects<Event> {
+        match &self.state {
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => {
+                    if self.state != ComponentState::Initializing {
+                        return Effects::new();
+                    }
+                    let (effects, state) = self.bind(self.config.value().enabled, effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+                    effects
+                }
+            },
+            ComponentState::Initialized => Effects::new(),
+        }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+}
+
+impl<REv> InitializedComponent<REv> for DiagnosticsPort
+where
+    REv: From<Event>
+        + From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
+        + Send,
+{
+    fn state(&self) -> &ComponentState {
+        &self.state
+    }
+
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
+    }
+}
+
+impl<REv> PortBoundComponent<REv> for DiagnosticsPort
+where
+    REv: From<Event>
+        + From<DumpConsensusStateRequest>
+        + From<ControlAnnouncement>
+        + From<NetworkInfoRequest>
+        + From<SetNodeStopRequest>
+        + Send,
+{
+    type Error = Error;
+    type ComponentEvent = Event;
+
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Event>, Self::Error> {
+        let (shutdown_sender, shutdown_receiver) = watch::channel(());
+
+        self._shutdown_sender = Some(shutdown_sender);
+
+        let cfg = self.config.value();
+
+        let socket_path = self.config.with_dir(cfg.socket_path.clone());
         let listener = setup_listener(
             &socket_path,
             // Mac OS X / Linux use different types for the mask, so we need to call .into() here.
             #[allow(clippy::useless_conversion)]
-            config.socket_umask.into(),
+            cfg.socket_umask.into(),
         )?;
         let server = tasks::server(
-            EffectBuilder::new(event_queue),
+            effect_builder,
             socket_path,
             listener,
             shutdown_fuse.inner().clone(),
         );
-
-        Ok((DiagnosticsPort { shutdown_fuse }, server.ignore()))
+        Ok(server.ignore())
     }
 }
 
@@ -128,7 +243,7 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     }
 
     // This is not thread-safe, as it will set the umask for the entire process, but we assume that
-    // initalization happens "sufficiently single-threaded".
+    // initialization happens "sufficiently single-threaded".
     let umask_guard = umask::temp_umask(socket_umask);
     let listener = UnixListener::bind(socket_path)?;
     drop(umask_guard);
@@ -136,41 +251,6 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "diagnostics port listening");
 
     Ok(listener)
-}
-
-/// Diagnostics port event.
-#[derive(Debug, Serialize)]
-pub(crate) struct Event;
-
-/// A diagnostics port initialization error.
-#[derive(Debug, Error)]
-pub(crate) enum Error {
-    /// Error setting up the diagnostics port's unix socket listener.
-    #[error("could not setup diagnostics port listener")]
-    SetupListener(#[from] io::Error),
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str("diagnostics port event")
-    }
-}
-
-impl<REv> Component<REv> for DiagnosticsPort {
-    type Event = Event;
-
-    type ConstructionError = Error;
-
-    fn handle_event(
-        &mut self,
-        _effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        _event: Event,
-    ) -> Effects<Event> {
-        // No events are processed in the component, as all requests are handled per-client in
-        // tasks.
-        Effects::new()
-    }
 }
 
 #[cfg(test)]

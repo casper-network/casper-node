@@ -30,6 +30,7 @@ use crate::{
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "testing", derive(proptest_derive::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct EraId(u64);
 
@@ -62,6 +63,12 @@ impl EraId {
     #[must_use]
     pub fn successor(self) -> EraId {
         EraId::from(self.0.saturating_add(1))
+    }
+
+    /// Returns the predecessor to current era, or `None` if genesis.
+    #[must_use]
+    pub fn predecessor(self) -> Option<EraId> {
+        self.0.checked_sub(1).map(EraId)
     }
 
     /// Returns the current era plus `x`, or `None` if that would overflow

@@ -2,6 +2,7 @@ use std::convert::TryInto;
 
 use datasize::DataSize;
 use itertools::Itertools;
+use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,9 @@ pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
+    #[serde(skip)]
+    #[data_size(skip)]
+    root_hash: OnceCell<Digest>,
 }
 
 impl ToBytes for IndexedMerkleProof {
@@ -48,6 +52,7 @@ impl FromBytes for IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
+                root_hash: OnceCell::new(),
             },
             remainder,
         ))
@@ -103,6 +108,7 @@ impl IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
+                root_hash: OnceCell::new(),
             }),
         }
     }
@@ -123,44 +129,47 @@ impl IndexedMerkleProof {
             index: _,
             count,
             merkle_proof,
+            root_hash,
         } = self;
 
-        let mut hashes = merkle_proof.iter();
-        let raw_root = if let Some(leaf_hash) = hashes.next().cloned() {
-            // Compute whether to hash left or right for the elements of the Merkle proof.
-            // This gives a path to the value with the specified index.
-            // We represent this path as a sequence of 64 bits. 1 here means "hash right".
-            let mut path: u64 = 0;
-            let mut n = self.count;
-            let mut i = self.index;
-            while n > 1 {
-                path <<= 1;
-                let pivot = 1u64 << (63 - (n - 1).leading_zeros());
-                if i < pivot {
-                    n = pivot;
-                } else {
-                    path |= 1;
-                    n -= pivot;
-                    i -= pivot;
+        *root_hash.get_or_init(|| {
+            let mut hashes = merkle_proof.iter();
+            let raw_root = if let Some(leaf_hash) = hashes.next().cloned() {
+                // Compute whether to hash left or right for the elements of the Merkle proof.
+                // This gives a path to the value with the specified index.
+                // We represent this path as a sequence of 64 bits. 1 here means "hash right".
+                let mut path: u64 = 0;
+                let mut n = self.count;
+                let mut i = self.index;
+                while n > 1 {
+                    path <<= 1;
+                    let pivot = 1u64 << (63 - (n - 1).leading_zeros());
+                    if i < pivot {
+                        n = pivot;
+                    } else {
+                        path |= 1;
+                        n -= pivot;
+                        i -= pivot;
+                    }
                 }
-            }
 
-            // Compute the raw Merkle root by hashing the proof from leaf hash up.
-            hashes.fold(leaf_hash, |acc, hash| {
-                let digest = if (path & 1) == 1 {
-                    Digest::hash_pair(hash, &acc)
-                } else {
-                    Digest::hash_pair(&acc, hash)
-                };
-                path >>= 1;
-                digest
-            })
-        } else {
-            Digest::SENTINEL_MERKLE_TREE
-        };
+                // Compute the raw Merkle root by hashing the proof from leaf hash up.
+                hashes.fold(leaf_hash, |acc, hash| {
+                    let digest = if (path & 1) == 1 {
+                        Digest::hash_pair(hash, &acc)
+                    } else {
+                        Digest::hash_pair(&acc, hash)
+                    };
+                    path >>= 1;
+                    digest
+                })
+            } else {
+                Digest::SENTINEL_MERKLE_TREE
+            };
 
-        // The Merkle root is the hash of the count with the raw root.
-        Digest::hash_merkle_root(*count, raw_root)
+            // The Merkle root is the hash of the count with the raw root.
+            Digest::hash_merkle_root(*count, raw_root)
+        })
     }
 
     /// Returns the full collection of hash digests of the proof.
@@ -216,6 +225,7 @@ impl IndexedMerkleProof {
 
 #[cfg(test)]
 mod tests {
+    use once_cell::sync::OnceCell;
     use proptest::prelude::{prop_assert, prop_assert_eq};
     use proptest_attr_macro::proptest;
     use rand::{distributions::Standard, Rng};
@@ -263,6 +273,7 @@ mod tests {
             index: 23,
             count: 4,
             merkle_proof: vec![Digest([0u8; 32]); 3],
+            root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -279,6 +290,7 @@ mod tests {
             index: 1235,
             count: 5647,
             merkle_proof: vec![Digest([0u8; 32]); 13],
+            root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -297,6 +309,7 @@ mod tests {
             index: 0,
             count: 0,
             merkle_proof: vec![Digest([0u8; 32]); 3],
+            root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -310,6 +323,7 @@ mod tests {
             index: 23,
             count: 0,
             merkle_proof: vec![],
+            root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
@@ -327,6 +341,7 @@ mod tests {
             index: 42,
             count: 1 << (PROOF_LENGTH - 1),
             merkle_proof: vec![Digest([0u8; Digest::LENGTH]); PROOF_LENGTH],
+            root_hash: OnceCell::new(),
         };
         let _hash = indexed_merkle_proof.root_hash();
     }
@@ -339,6 +354,7 @@ mod tests {
             index: 0,
             count: 0,
             merkle_proof: vec![],
+            root_hash: OnceCell::new(),
         };
         assert!(indexed_merkle_proof.verify().is_err());
     }
@@ -349,6 +365,7 @@ mod tests {
             index,
             count,
             merkle_proof: vec![],
+            root_hash: OnceCell::new(),
         };
         prop_assert!(indexed_merkle_proof.compute_expected_proof_length() <= 65);
     }
@@ -383,6 +400,7 @@ mod tests {
             index,
             count,
             merkle_proof: vec![],
+            root_hash: OnceCell::new(),
         };
         let expected_proof_length = indexed_merkle_proof.compute_expected_proof_length();
         indexed_merkle_proof.merkle_proof = rand::thread_rng()

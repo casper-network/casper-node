@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use serde::Serialize;
 
-use super::{round_len, TimeDiff, Timestamp};
+use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
 #[derive(Debug, DataSize, Clone, Serialize)]
@@ -9,9 +9,9 @@ pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
     reduced_block_reward: u64,
-    min_round_exp: u8,
-    max_round_exp: u8,
-    init_round_exp: u8,
+    min_round_len: TimeDiff,
+    max_round_len: TimeDiff,
+    init_round_len: TimeDiff,
     end_height: u64,
     start_timestamp: Timestamp,
     end_timestamp: Timestamp,
@@ -30,10 +30,8 @@ impl Params {
     ///   rewards in a `u64`.
     /// * `reduced_block_reward`: The reduced block reward that is paid out even if the heaviest
     ///   summit does not exceed half the total weight.
-    /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
-    ///   minimum round length.
-    /// * `max_round_exp`: The maximum round exponent. `1 << max_round_exp` milliseconds is the
-    ///   maximum round length.
+    /// * `min_round_len`: The minimum round length.
+    /// * `max_round_len`: The maximum round length.
     /// * `end_height`, `end_timestamp`: The last block will be the first one that has at least the
     ///   specified height _and_ is no earlier than the specified timestamp. No children of this
     ///   block can be proposed.
@@ -42,9 +40,9 @@ impl Params {
         seed: u64,
         block_reward: u64,
         reduced_block_reward: u64,
-        min_round_exp: u8,
-        max_round_exp: u8,
-        init_round_exp: u8,
+        min_round_len: TimeDiff,
+        max_round_len: TimeDiff,
+        init_round_len: TimeDiff,
         end_height: u64,
         start_timestamp: Timestamp,
         end_timestamp: Timestamp,
@@ -54,13 +52,14 @@ impl Params {
             reduced_block_reward <= block_reward,
             "reduced block reward must not be greater than the reward for a finalized block"
         );
+        assert_ne!(min_round_len.millis(), 0); // Highway::new_boxed uses at least 1ms.
         Params {
             seed,
             block_reward,
             reduced_block_reward,
-            min_round_exp,
-            max_round_exp,
-            init_round_exp,
+            min_round_len,
+            max_round_len,
+            init_round_len,
             end_height,
             start_timestamp,
             end_timestamp,
@@ -84,31 +83,19 @@ impl Params {
         self.reduced_block_reward
     }
 
-    /// Returns the minimum round exponent. `1 << self.min_round_exp()` milliseconds is the minimum
-    /// round length.
-    pub(crate) fn min_round_exp(&self) -> u8 {
-        self.min_round_exp
-    }
-
-    /// Returns the maximum round exponent. `1 << self.max_round_exp()` milliseconds is the maximum
-    /// round length.
-    pub(crate) fn max_round_exp(&self) -> u8 {
-        self.max_round_exp
-    }
-
-    /// Returns the minimum round length, corresponding to the minimum round exponent.
+    /// Returns the minimum round length. This is always greater than 0.
     pub(crate) fn min_round_length(&self) -> TimeDiff {
-        round_len(self.min_round_exp)
+        self.min_round_len
     }
 
-    /// Returns the maximum round length, corresponding to the maximum round exponent.
+    /// Returns the maximum round length.
     pub(crate) fn max_round_length(&self) -> TimeDiff {
-        round_len(self.max_round_exp)
+        self.max_round_len
     }
 
-    /// Returns the initial round exponent.
-    pub(crate) fn init_round_exp(&self) -> u8 {
-        self.init_round_exp
+    /// Returns the initial round length.
+    pub(crate) fn init_round_len(&self) -> TimeDiff {
+        self.init_round_len
     }
 
     /// Returns the minimum height of the last block.
@@ -141,8 +128,8 @@ impl Params {
         self
     }
 
-    pub(crate) fn with_max_round_exp(mut self, new_max_round_exp: u8) -> Params {
-        self.max_round_exp = new_max_round_exp;
+    pub(crate) fn with_max_round_len(mut self, new_max_round_len: TimeDiff) -> Params {
+        self.max_round_len = new_max_round_len;
         self
     }
 

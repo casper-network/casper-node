@@ -16,14 +16,12 @@ use crate::{
         consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
         protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
         traits::Context,
+        utils::ValidatorMap,
     },
     types::NodeId,
 };
 
-use super::{
-    highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex},
-    validators::ValidatorMap,
-};
+use super::highway::{Dependency, Highway, PreValidatedVertex, ValidVertex, Vertex};
 
 #[cfg(test)]
 mod tests;
@@ -338,7 +336,8 @@ impl<C: Context + 'static> Synchronizer<C> {
             .filter(|dep| highway.has_dependency(dep))
             .cloned()
             .collect_vec();
-        // Safe to unwrap: We know the keys exist. TODO: Replace with BTreeMap::retain once stable.
+        // Safe to unwrap: We know the keys exist.
+        // TODO: Replace with BTreeMap::drain_filter once stable.
         let pvs = satisfied_deps
             .into_iter()
             .flat_map(|dep| {
@@ -434,9 +433,8 @@ impl<C: Context + 'static> Synchronizer<C> {
                 // Otherwise request the missing dependency from the sender.
                 let uuid = thread_rng().next_u64();
                 debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
-                let ser_msg =
-                    HighwayMessage::RequestDependency(uuid, transitive_dependency).serialize();
-                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender));
+                let msg = HighwayMessage::RequestDependency(uuid, transitive_dependency);
+                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender));
                 continue;
             }
             // We found the next vertex to add.
@@ -476,6 +474,7 @@ impl<C: Context + 'static> Synchronizer<C> {
         self.vertices_awaiting_deps.entry(dep).or_default().push(pv)
     }
 
+    #[cfg(test)]
     /// Returns `true` if no vertices are in the queues.
     pub(crate) fn is_empty(&self) -> bool {
         self.vertices_awaiting_deps.is_empty()

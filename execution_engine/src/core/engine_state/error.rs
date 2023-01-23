@@ -75,11 +75,14 @@ pub enum Error {
     #[error(transparent)]
     CommitError(#[from] CommitError),
     /// Missing system contract registry.
-    #[error("Missing SystemContractRegistry")]
+    #[error("Missing system contract registry")]
     MissingSystemContractRegistry,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
+    /// Missing checksum registry.
+    #[error("Missing checksum registry")]
+    MissingChecksumRegistry,
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
@@ -98,6 +101,9 @@ pub enum Error {
     /// Failed to retrieve the current EraId from the auction state.
     #[error("Failed to retrieve the era_id from the auction state")]
     FailedToRetrieveEraId,
+    /// Failed to put a trie node into global state because some of its children were missing.
+    #[error("Failed to put a trie into global state because some of its children were missing")]
+    MissingTrieNodeChildren(Vec<Digest>),
 }
 
 impl Error {

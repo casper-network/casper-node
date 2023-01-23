@@ -4,10 +4,7 @@ use std::{
     ops::Index,
 };
 
-use crate::components::consensus::{
-    highway_core::state::{State, Weight},
-    traits::Context,
-};
+use crate::components::consensus::{highway_core::state::State, traits::Context, utils::Weight};
 
 /// A tally of votes at a specific height. This is never empty: It contains at least one vote.
 ///

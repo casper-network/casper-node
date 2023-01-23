@@ -5,16 +5,30 @@
   "type": "object",
   "required": [
     "api_version",
+    "available_block_range",
+    "block_sync",
     "build_version",
     "chainspec_name",
-    "node_state",
+    "last_progress",
     "peers",
-    "starting_state_root_hash",
+    "reactor_state",
     "uptime"
   ],
   "properties": {
+    "peers": {
+      "description": "The node ID and network address of each connected peer.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/PeersMap"
+        }
+      ]
+    },
     "api_version": {
       "description": "The RPC API version.",
+      "type": "string"
+    },
+    "build_version": {
+      "description": "The compiled node version.",
       "type": "string"
     },
     "chainspec_name": {
@@ -22,19 +36,13 @@
       "type": "string"
     },
     "starting_state_root_hash": {
-      "description": "The state root hash used at the start of the current session.",
-      "deprecated": true,
-      "allOf": [
+      "description": "The state root hash of the lowest block in the available block range.",
+      "anyOf": [
         {
           "$ref": "#/definitions/Digest"
-        }
-      ]
-    },
-    "peers": {
-      "description": "The node ID and network address of each connected peer.",
-      "allOf": [
+        },
         {
-          "$ref": "#/definitions/PeersMap"
+          "type": "null"
         }
       ]
     },
@@ -82,10 +90,6 @@
         }
       ]
     },
-    "build_version": {
-      "description": "The compiled node version.",
-      "type": "string"
-    },
     "uptime": {
       "description": "Time that passed since the node has started.",
       "allOf": [
@@ -94,21 +98,41 @@
         }
       ]
     },
-    "node_state": {
-      "description": "The current state of node.",
+    "reactor_state": {
+      "description": "The current state of node reactor.",
       "allOf": [
         {
-          "$ref": "#/definitions/NodeState"
+          "$ref": "#/definitions/ReactorState"
+        }
+      ]
+    },
+    "last_progress": {
+      "description": "Timestamp of the last recorded progress in the reactor.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Timestamp"
+        }
+      ]
+    },
+    "available_block_range": {
+      "description": "The available block range in storage.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AvailableBlockRange"
+        }
+      ]
+    },
+    "block_sync": {
+      "description": "The status of the block synchronizer builders.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/BlockSynchronizerStatus"
         }
       ]
     }
   },
   "additionalProperties": false,
   "definitions": {
-    "Digest": {
-      "description": "Hex-encoded hash digest.",
-      "type": "string"
-    },
     "PeersMap": {
       "description": "Map of peer IDs to network addresses.",
       "type": "array",
@@ -134,6 +158,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
+      "type": "string"
     },
     "MinimalBlockInfo": {
       "description": "Minimal info of a `Block`.",
@@ -227,343 +255,101 @@
         }
       ]
     },
-    "NodeState": {
-      "description": "The various possible states of operation for the node.",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "participating"
-          ]
-        },
-        {
-          "description": "The node is currently in joining mode.",
-          "type": "object",
-          "required": [
-            "joining"
-          ],
-          "properties": {
-            "joining": {
-              "$ref": "#/definitions/Progress"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The node is currently in participating mode, but also syncing to genesis in the background.",
-          "type": "object",
-          "required": [
-            "participating_and_syncing_to_genesis"
-          ],
-          "properties": {
-            "participating_and_syncing_to_genesis": {
-              "type": "object",
-              "required": [
-                "sync_progress"
-              ],
-              "properties": {
-                "sync_progress": {
-                  "description": "The progress of the chain sync-to-genesis task.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Progress"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "Progress": {
-      "description": "The progress of the chain-synchronizer task.",
-      "anyOf": [
-        {
-          "description": "The chain-synchronizer is performing the fast-sync task.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/FastSync"
-            }
-          ]
-        },
-        {
-          "description": "The chain-synchronizer is performing the sync-to-genesis task.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/SyncToGenesis"
-            }
-          ]
-        }
-      ]
-    },
-    "FastSync": {
-      "description": "The progress of the fast-sync task, performed by all nodes while in joining mode.\n\nThe fast-sync task generally progresses from each variant to the next linearly.  An exception is that it will cycle repeatedly from `FetchingBlockAndDeploysToExecute` to `ExecutingBlock` (and possibly to `RetryingBlockExecution`) as it iterates forwards one block at a time, fetching then executing.",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "not yet started",
-            "starting",
-            "finished"
-          ]
-        },
-        {
-          "description": "Currently fetching the trusted block header.",
-          "type": "object",
-          "required": [
-            "fetching_trusted_block_header"
-          ],
-          "properties": {
-            "fetching_trusted_block_header": {
-              "$ref": "#/definitions/BlockHash"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Currently syncing the trie-store under the given state root hash.",
-          "type": "object",
-          "required": [
-            "fetching_global_state_under_given_block"
-          ],
-          "properties": {
-            "fetching_global_state_under_given_block": {
-              "type": "object",
-              "required": [
-                "block_height",
-                "number_of_remaining_tries_to_fetch",
-                "reason",
-                "state_root_hash"
-              ],
-              "properties": {
-                "block_height": {
-                  "description": "The height of the block containing the given state root hash.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                },
-                "state_root_hash": {
-                  "description": "The global state root hash.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Digest"
-                    }
-                  ]
-                },
-                "reason": {
-                  "description": "The reason for syncing the trie-store.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/FetchingTriesReason"
-                    }
-                  ]
-                },
-                "number_of_remaining_tries_to_fetch": {
-                  "description": "The number of remaining tries to fetch (this value can rise and fall as the task proceeds).",
-                  "type": "integer",
-                  "format": "uint",
-                  "minimum": 0.0
-                }
-              }
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Currently fetching the block at the given height and its deploys in preparation for executing it.",
-          "type": "object",
-          "required": [
-            "fetching_block_and_deploys_at_given_block_height_before_execution"
-          ],
-          "properties": {
-            "fetching_block_and_deploys_at_given_block_height_before_execution": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Currently executing the block at the given height.",
-          "type": "object",
-          "required": [
-            "executing_block_at_height"
-          ],
-          "properties": {
-            "executing_block_at_height": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Currently retrying the execution of the block at the given height, due to an unexpected mismatch in the previous execution result (due to a mismatch in the deploys' approvals).",
-          "type": "object",
-          "required": [
-            "retrying_block_execution"
-          ],
-          "properties": {
-            "retrying_block_execution": {
-              "type": "object",
-              "required": [
-                "attempt",
-                "block_height"
-              ],
-              "properties": {
-                "block_height": {
-                  "description": "The height of the block being executed.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                },
-                "attempt": {
-                  "description": "The retry attempt number.",
-                  "type": "integer",
-                  "format": "uint",
-                  "minimum": 0.0
-                }
-              }
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "FetchingTriesReason": {
-      "description": "The reason for syncing the trie store under a given state root hash.",
+    "ReactorState": {
+      "description": "The state of the reactor.",
       "type": "string",
       "enum": [
-        "for fast sync",
-        "preparing for emergency upgrade",
-        "preparing for upgrade"
+        "Initialize",
+        "CatchUp",
+        "Upgrading",
+        "KeepUp",
+        "Validate",
+        "ShutdownForUpgrade"
       ]
     },
-    "SyncToGenesis": {
-      "description": "The progress of the sync-to-genesis task, only performed by nodes configured to do this, and performed by them while in participating mode.\n\nThe sync-to-genesis task progresses from each variant to the next linearly.",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "not yet started",
-            "starting",
-            "finished"
-          ]
-        },
-        {
-          "description": "Currently fetching block headers in batches back towards the genesis block.",
-          "type": "object",
-          "required": [
-            "fetching_headers_back_to_genesis"
-          ],
-          "properties": {
-            "fetching_headers_back_to_genesis": {
-              "type": "object",
-              "required": [
-                "lowest_block_height"
-              ],
-              "properties": {
-                "lowest_block_height": {
-                  "description": "The current lowest block header retrieved by this fetch-headers-to-genesis task.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                }
-              }
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Currently syncing all blocks from genesis towards the tip of the chain.\n\nThis is done via many parallel sync-block tasks, with each such ongoing task being represented by an entry in the wrapped `Vec`.  The set is sorted ascending by block height.",
-          "type": "object",
-          "required": [
-            "syncing_forward_from_genesis"
-          ],
-          "properties": {
-            "syncing_forward_from_genesis": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/SyncBlock"
-              }
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "SyncBlock": {
-      "description": "Container pairing the given [`SyncBlockFetching`] progress indicator with the height of the relative block.",
+    "AvailableBlockRange": {
+      "description": "An unbroken, inclusive range of blocks.",
       "type": "object",
       "required": [
-        "block_height",
-        "fetching"
+        "high",
+        "low"
       ],
       "properties": {
-        "block_height": {
-          "description": "The height of the block being synced.",
+        "low": {
+          "description": "The inclusive lower bound of the range.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
-        "fetching": {
-          "description": "The progress of the sync-block task.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/SyncBlockFetching"
-            }
-          ]
+        "high": {
+          "description": "The inclusive upper bound of the range.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         }
-      }
+      },
+      "additionalProperties": false
     },
-    "SyncBlockFetching": {
-      "description": "The progress of a single sync-block task, many of which are performed in parallel during sync-to-genesis.\n\nThe task progresses from each variant to the next linearly.",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "block and deploys",
-            "block signatures"
+    "BlockSynchronizerStatus": {
+      "description": "The status of the block synchronizer.",
+      "type": "object",
+      "properties": {
+        "historical": {
+          "description": "The status of syncing a historical block, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
-        {
-          "description": "Currently syncing the trie-store under the state root hash held in the block.",
-          "type": "object",
-          "required": [
-            "global_state_under_given_block"
-          ],
-          "properties": {
-            "global_state_under_given_block": {
-              "type": "object",
-              "required": [
-                "number_of_remaining_tries_to_fetch",
-                "state_root_hash"
-              ],
-              "properties": {
-                "state_root_hash": {
-                  "description": "The global state root hash.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Digest"
-                    }
-                  ]
-                },
-                "number_of_remaining_tries_to_fetch": {
-                  "description": "The number of remaining tries to fetch (this value can rise and fall as the task proceeds).",
-                  "type": "integer",
-                  "format": "uint",
-                  "minimum": 0.0
-                }
-              }
+        "forward": {
+          "description": "The status of syncing a forward block, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
             }
-          },
-          "additionalProperties": false
+          ]
         }
-      ]
+      },
+      "additionalProperties": false
+    },
+    "BlockSyncStatus": {
+      "description": "The status of syncing an individual block.",
+      "type": "object",
+      "required": [
+        "acquisition_state",
+        "block_hash"
+      ],
+      "properties": {
+        "block_hash": {
+          "description": "The block hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "block_height": {
+          "description": "The height of the block, if known.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "acquisition_state": {
+          "description": "The state of acquisition of the data associated with the block.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

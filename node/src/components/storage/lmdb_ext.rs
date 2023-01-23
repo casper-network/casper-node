@@ -168,6 +168,7 @@ where
 /// In case the `value` is of the `UnbondingPurse` type it uses the specialized
 /// function to provide compatibility with the legacy version of the `UnbondingPurse` struct.
 /// See [`serialize_unbonding_purse`] for more details.
+// TODO: Get rid of the 'static bound.
 pub(crate) fn serialize_internal<V: 'static + Serialize>(
     value: &V,
 ) -> Result<Vec<u8>, LmdbExtError> {

@@ -6,12 +6,16 @@ use core::{
     ops::{Add, AddAssign, Div, Mul, Sub},
 };
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use num::Zero;
+use serde::{Deserialize, Serialize};
 
 use crate::{Motes, U512};
 
 /// The `Gas` struct represents a `U512` amount of gas.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Gas(U512);
 
 impl Gas {

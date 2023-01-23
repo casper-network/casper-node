@@ -23,6 +23,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 #[cfg(test)]
@@ -223,15 +224,15 @@ impl Digest {
         Ok(Digest(slice))
     }
 
-    /// Hash bytes into chunks if necessary.
-    pub fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+    /// Hash data into chunks if necessary.
+    pub fn hash_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Digest::hash(bytes)
+            Digest::blake2b_hash(bytes)
         } else {
             Digest::hash_merkle_tree(
                 bytes
                     .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-                    .map(Digest::hash),
+                    .map(Digest::blake2b_hash),
             )
         }
     }
@@ -274,7 +275,7 @@ impl UpperHex for Digest {
 
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:10}", base16::encode_lower(&self.0))
+        write!(f, "{:10}", HexFmt(&self.0))
     }
 }
 
@@ -390,7 +391,7 @@ mod tests {
     #[test]
     fn serde_custom_serialization() {
         let serialized = serde_json::to_string(&Digest::SENTINEL_RFOLD).unwrap();
-        let expected = format!("\"{}\"", Digest::SENTINEL_RFOLD);
+        let expected = format!("\"{:?}\"", Digest::SENTINEL_RFOLD);
         assert_eq!(expected, serialized);
     }
 
@@ -398,7 +399,7 @@ mod tests {
     fn hash_known() {
         // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE_BYTES]
         // are hashed using Blake2B algorithm.
-        // Larger data are chunked and merkle tree hash is calculated.
+        // Larger data are chunked and Merkle tree hash is calculated.
         //
         // Please note that [ChunkWithProof::CHUNK_SIZE_BYTES] is `test` configuration
         // is smaller than in production, to allow testing with more chunks
@@ -625,7 +626,7 @@ mod tests {
         // │     │
         // └─────── R
         //
-        // The merkle root is thus: R = h( h(1..0) || h(a..j) )
+        // The Merkle root is thus: R = h( h(1..0) || h(a..j) )
         //
         // h(1..0) = 807f1ba73147c3a96c2d63b38dd5a5f514f66290a1436bb9821e9f2a72eff263
         // h(a..j) = 499e1cdb476523fedafc9d9db31125e2744f271578ea95b16ab4bd1905f05fea

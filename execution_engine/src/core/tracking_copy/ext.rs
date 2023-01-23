@@ -7,7 +7,11 @@ use casper_types::{
 };
 
 use crate::{
-    core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
+    core::{
+        engine_state::{ChecksumRegistry, SystemContractRegistry},
+        execution,
+        tracking_copy::TrackingCopy,
+    },
     shared::newtypes::CorrelationId,
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
@@ -86,6 +90,12 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
     ) -> Result<SystemContractRegistry, Self::Error>;
+
+    /// Gets the system checksum registry.
+    fn get_checksum_registry(
+        &mut self,
+        correlation_id: CorrelationId,
+    ) -> Result<Option<ChecksumRegistry>, Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -258,6 +268,26 @@ where
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
             None => Err(execution::Error::KeyNotFound(Key::SystemContractRegistry)),
+        }
+    }
+
+    fn get_checksum_registry(
+        &mut self,
+        correlation_id: CorrelationId,
+    ) -> Result<Option<ChecksumRegistry>, Self::Error> {
+        match self
+            .get(correlation_id, &Key::ChecksumRegistry)
+            .map_err(Into::into)?
+        {
+            Some(StoredValue::CLValue(registry)) => {
+                let registry: ChecksumRegistry =
+                    CLValue::into_t(registry).map_err(Self::Error::from)?;
+                Ok(Some(registry))
+            }
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
+            )),
+            None => Ok(None),
         }
     }
 }

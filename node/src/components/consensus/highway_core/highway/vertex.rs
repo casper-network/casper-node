@@ -10,14 +10,14 @@ use crate::components::consensus::{
         endorsement::SignedEndorsement,
         evidence::Evidence,
         highway::{PingError, VertexError},
-        state::{self, Panorama},
-        validators::{ValidatorIndex, Validators},
+        state::Panorama,
     },
     traits::{Context, ValidatorSecret},
+    utils::{ValidatorIndex, Validators},
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -42,7 +42,7 @@ impl<C: Context> Dependency<C> {
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -132,7 +132,7 @@ impl<C: Context> Vertex<C> {
     }
 }
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -217,7 +217,7 @@ impl<'de, C: Context> Deserialize<'de> for HashedWireUnit<C> {
 }
 
 /// A unit as it is sent over the wire, possibly containing a new block.
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(DataSize, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -256,7 +256,6 @@ impl<C: Context> Debug for WireUnit<C> {
             .field("panorama", self.panorama.as_ref())
             .field("round_exp", &self.round_exp)
             .field("endorsed", &self.endorsed)
-            .field("round_id()", &self.round_id())
             .finish()
     }
 }
@@ -264,11 +263,6 @@ impl<C: Context> Debug for WireUnit<C> {
 impl<C: Context> WireUnit<C> {
     pub(crate) fn into_hashed(self) -> HashedWireUnit<C> {
         HashedWireUnit::new(self)
-    }
-
-    /// Returns the time at which the round containing this unit began.
-    pub(crate) fn round_id(&self) -> Timestamp {
-        state::round_id(self.timestamp, self.round_exp)
     }
 
     /// Returns the creator's previous unit.
