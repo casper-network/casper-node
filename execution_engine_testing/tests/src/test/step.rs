@@ -8,12 +8,12 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::{
     genesis::{GenesisAccount, GenesisValidator},
-    RewardItem, SlashItem,
+     SlashItem,
 };
 use casper_types::{
     system::{
         auction::{
-            Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
+            Bids, DelegationRate, SeigniorageRecipientsSnapshot,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -88,8 +88,6 @@ fn should_step() {
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), BLOCK_REWARD / 2))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), BLOCK_REWARD / 2))
         .with_next_era_id(EraId::from(1))
         .build();
 
@@ -165,8 +163,6 @@ fn should_adjust_total_supply() {
         .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
         .with_slash_item(SlashItem::new(ACCOUNT_2_PK.clone()))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), 0))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), BLOCK_REWARD / 2))
         .with_next_era_id(EraId::from(1))
         .build();
 

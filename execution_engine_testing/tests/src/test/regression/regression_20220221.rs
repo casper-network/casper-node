@@ -7,12 +7,12 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
-    EngineConfig, RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    EngineConfig, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
     runtime_args,
     system::{
-        auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
+        auction::{self, DelegationRate, INITIAL_ERA_ID},
         mint,
     },
     EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
@@ -132,7 +132,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .expect("should have last element");
     assert!(era_id > INITIAL_ERA_ID, "{}", era_id);
 
-    let mut step_request = StepRequestBuilder::new()
+    let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(*NEW_PROTOCOL_VERSION)
         // Next era id is used for returning future era validators, which we don't need to inspect
@@ -144,11 +144,6 @@ fn regression_20220221_should_distribute_to_many_validators() {
         trusted_era_validators.len(),
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT as usize
     );
-
-    for (public_key, _stake) in trusted_era_validators.clone().into_iter() {
-        let reward_amount = BLOCK_REWARD / trusted_era_validators.len() as u64;
-        step_request = step_request.with_reward_item(RewardItem::new(public_key, reward_amount));
-    }
 
     let step_request = step_request.build();
 

@@ -2,7 +2,7 @@
 //!
 //! A step request executes auction code, slashes validators, evicts validators and distributes
 //! rewards.
-use std::{collections::BTreeMap, vec::Vec};
+use std::vec::Vec;
 
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, PublicKey};
@@ -23,25 +23,6 @@ impl SlashItem {
     /// Creates a new slash item.
     pub fn new(validator_id: PublicKey) -> Self {
         Self { validator_id }
-    }
-}
-
-/// The definition of a reward item.
-#[derive(Debug, Clone)]
-pub struct RewardItem {
-    /// The public key of the validator that will be rewarded.
-    pub validator_id: PublicKey,
-    /// Amount of motes that will be distributed as rewards.
-    pub value: u64,
-}
-
-impl RewardItem {
-    /// Creates new reward item.
-    pub fn new(validator_id: PublicKey, value: u64) -> Self {
-        Self {
-            validator_id,
-            value,
-        }
     }
 }
 
@@ -70,8 +51,6 @@ pub struct StepRequest {
     ///
     /// A slashed validator is removed from the next validator set.
     pub slash_items: Vec<SlashItem>,
-    /// List of validators that will be rewarded.
-    pub reward_items: Vec<RewardItem>,
     /// List of validators to be evicted.
     ///
     /// Compared to a slashing, evictions are deactivating a given validator, but his stake is
@@ -93,7 +72,6 @@ impl StepRequest {
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
-        reward_items: Vec<RewardItem>,
         evict_items: Vec<EvictItem>,
         next_era_id: EraId,
         era_end_timestamp_millis: u64,
@@ -102,7 +80,6 @@ impl StepRequest {
             pre_state_hash,
             protocol_version,
             slash_items,
-            reward_items,
             evict_items,
             next_era_id,
             era_end_timestamp_millis,
@@ -115,15 +92,6 @@ impl StepRequest {
             .iter()
             .map(|si| si.validator_id.clone())
             .collect()
-    }
-
-    /// Returns all reward factors.
-    pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
-        let mut ret = BTreeMap::new();
-        for reward_item in &self.reward_items {
-            ret.insert(reward_item.validator_id.clone(), reward_item.value);
-        }
-        Ok(ret)
     }
 }
 
@@ -187,6 +155,8 @@ impl From<RuntimeStackOverflow> for StepError {
 }
 
 /// Represents a successfully executed step request.
+// TODO: Rename to something more general, as it is used both for the step and reward distribution
+// requests (see also StepError)
 #[derive(Debug)]
 pub struct StepSuccess {
     /// New state root hash generated after effects were applied.
