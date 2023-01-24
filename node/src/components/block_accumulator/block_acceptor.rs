@@ -228,8 +228,8 @@ impl BlockAcceptor {
         }
 
         let faulty_senders = self.remove_bogus_validators(era_validator_weights);
-        if SignatureWeight::Strict == era_validator_weights.signature_weight(self.signatures.keys())
-        {
+        let signature_weight = era_validator_weights.signature_weight(self.signatures.keys());
+        if SignatureWeight::Strict == signature_weight {
             self.touch();
             if let Some(meta_block) = self.meta_block.as_mut() {
                 let mut block_signatures = BlockSignatures::new(
@@ -300,6 +300,7 @@ impl BlockAcceptor {
 
         debug!(
             %block_hash, no_block, no_sigs,
+            signed_weight=%era_validator_weights.signed_weight(self.signatures.keys()),
             "not storing anything - insufficient finality signatures"
         );
         (ShouldStore::Nothing, faulty_senders)
