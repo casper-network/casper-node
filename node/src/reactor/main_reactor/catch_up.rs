@@ -387,7 +387,7 @@ impl MainReactor {
             CatchUpInstruction::Do(Duration::ZERO, effects)
         } else {
             CatchUpInstruction::CheckLater(
-                format!("block_synchronizer unable to register block {}", block_hash),
+                format!("block_synchronizer is currently working on {}", block_hash),
                 self.control_logic_default_delay.into(),
             )
         }
