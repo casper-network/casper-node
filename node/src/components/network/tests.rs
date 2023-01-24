@@ -173,7 +173,7 @@ impl Payload for Message {
 #[derive(Debug)]
 struct TestReactor {
     net: Network<Event, Message>,
-    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress, Event>,
+    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
 }
 
 impl Reactor for TestReactor {
@@ -200,7 +200,7 @@ impl Reactor for TestReactor {
             ValidatorMatrix::new_with_validator(Arc::new(secret_key)),
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
-        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _, _>::new(
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
             "address_gossiper",
             gossiper_config,
             registry,

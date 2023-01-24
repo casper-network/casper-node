@@ -107,12 +107,11 @@ pub(crate) struct MainReactor {
     deploy_buffer: DeployBuffer,
 
     // gossiping components
-    address_gossiper:
-        Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress, MainEvent>,
-    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy, MainEvent>,
-    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block, MainEvent>,
+    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
     finality_signature_gossiper:
-        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature, MainEvent>,
+        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -223,7 +222,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
         )?;
 
-        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _, _>::new(
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
             "address_gossiper",
             config.gossip,
             registry,
@@ -256,23 +255,20 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _, _>::new(
+        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
-            gossiper::get_block_from_storage::<Block, MainEvent>,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _, _>::new(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config.gossip,
-            gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
         let finality_signature_gossiper =
-            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _, _>::new(
+            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
                 "finality_signature_gossiper",
                 config.gossip,
-                gossiper::get_finality_signature_from_storage::<FinalitySignature, MainEvent>,
                 registry,
             )?;
 

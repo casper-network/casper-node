@@ -47,7 +47,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
+    types::{Block, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
     utils::WithDir,
     NodeRng,
 };
@@ -130,7 +130,7 @@ struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
-    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy, Event>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
     _storage_tempdir: TempDir,
 }
 
@@ -172,10 +172,9 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let fake_deploy_acceptor = FakeDeployAcceptor::new();
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _, _>::new(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config,
-            get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
 

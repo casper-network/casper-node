@@ -236,7 +236,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     /// `new_complete_data`.
     ///
     /// Returns whether we should gossip it, and a list of peers to exclude.
-    pub(super) fn new_partial_data(&mut self, data_id: &T, holder: NodeId) -> GossipAction {
+    pub(super) fn new_data_id(&mut self, data_id: &T, holder: NodeId) -> GossipAction {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
@@ -272,7 +272,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     /// node, `maybe_holder` should be `None`.
     ///
     /// This should only be called once we hold everything locally we need to be able to gossip it
-    /// onwards.  If we aren't able to gossip this data yet, call `new_partial_data` instead.
+    /// onwards.  If we aren't able to gossip this data yet, call `new_data_id` instead.
     ///
     /// Returns whether we should gossip it, and a list of peers to exclude.
     pub(super) fn new_complete_data(
@@ -349,7 +349,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
             if !state.held_by_us() {
                 warn!(
                     item=%data_id,
-                    %peer, "shouldn't have received a gossip response for partial data"
+                    %peer, "shouldn't have received a gossip response for data we don't hold"
                 );
                 return;
             }
@@ -401,12 +401,12 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         let update = |state: &mut State| {
             debug_assert!(
                 state.held_by_us(),
-                "shouldn't check timeout for a gossip response for partial data"
+                "shouldn't check timeout for a gossip response for data we don't hold"
             );
             if !state.held_by_us() {
                 error!(
                     item=%data_id,
-                    %peer, "shouldn't check timeout for a gossip response for partial data"
+                    %peer, "shouldn't check timeout for a gossip response for data we don't hold"
                 );
                 return;
             }
@@ -543,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn new_partial_data() {
+    fn new_data_id() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
@@ -559,43 +559,43 @@ mod tests {
             gossip_table.attempted_to_infect_limit
         );
 
-        // Check new partial data causes `GetRemainder` to be returned.
-        let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Check new data ID causes `GetRemainder` to be returned.
+        let action = gossip_table.new_data_id(&data_id, node_ids[0]);
         let expected = GossipAction::GetRemainder {
             holder: node_ids[0],
         };
         assert_eq!(expected, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);
 
-        // Check same partial data from same source causes `AwaitingRemainder` to be returned.
-        let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Check same data ID from same source causes `AwaitingRemainder` to be returned.
+        let action = gossip_table.new_data_id(&data_id, node_ids[0]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);
 
-        // Check same partial data from different source causes `AwaitingRemainder` to be returned
+        // Check same data ID from different source causes `AwaitingRemainder` to be returned
         // and holders updated.
-        let action = gossip_table.new_partial_data(&data_id, node_ids[1]);
+        let action = gossip_table.new_data_id(&data_id, node_ids[1]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
         check_holders(&node_ids[..2], &gossip_table, &data_id);
 
-        // Finish the gossip by reporting three infections, then check same partial data causes
+        // Finish the gossip by reporting three infections, then check same data ID causes
         // `Noop` to be returned and holders cleared.
         let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
         let limit = 3 + EXPECTED_DEFAULT_INFECTION_TARGET;
         for node_id in &node_ids[3..limit] {
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
-        let action = gossip_table.new_partial_data(&data_id, node_ids[limit]);
+        let action = gossip_table.new_data_id(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..0], &gossip_table, &data_id);
 
-        // Time the finished data out, then check same partial data causes `GetRemainder` to be
+        // Time the finished data out, then check same data ID causes `GetRemainder` to be
         // returned as per a completely new entry.
         let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
             .unwrap()
             .millis();
         Instant::advance_time(millis + 1);
-        let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        let action = gossip_table.new_data_id(&data_id, node_ids[0]);
         let expected = GossipAction::GetRemainder {
             holder: node_ids[0],
         };
@@ -604,7 +604,7 @@ mod tests {
     }
 
     #[test]
-    fn should_noop_if_we_have_partial_data_and_get_gossip_response() {
+    fn should_noop_if_we_dont_hold_data_and_get_gossip_response() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_id = NodeId::random(&mut rng);
@@ -612,7 +612,7 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        let _ = gossip_table.new_partial_data(&data_id, node_id);
+        let _ = gossip_table.new_data_id(&data_id, node_id);
 
         let action = gossip_table.we_infected(&data_id, node_id);
         assert_eq!(GossipAction::AwaitingRemainder, action);
@@ -749,7 +749,7 @@ mod tests {
         // receiving several incoming gossip requests.  Each should remain unfinished.
         let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 1;
         for node_id in node_ids.iter().take(limit) {
-            let _ = gossip_table.new_partial_data(&data_id1, *node_id);
+            let _ = gossip_table.new_data_id(&data_id1, *node_id);
             assert!(!gossip_table.finished.contains(&data_id1));
 
             let _ = gossip_table.new_complete_data(&data_id2, Some(*node_id), GossipTarget::All);
@@ -758,7 +758,7 @@ mod tests {
 
         // Simulate receiving a final gossip request for each, which should cause them both to be
         // moved to the `finished` collection.
-        let action = gossip_table.new_partial_data(
+        let action = gossip_table.new_data_id(
             &data_id1,
             node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT],
         );
@@ -946,16 +946,18 @@ mod tests {
     #[test]
     #[cfg_attr(
         debug_assertions,
-        should_panic(expected = "shouldn't check timeout for a gossip response for partial data")
+        should_panic(
+            expected = "shouldn't check timeout for a gossip response for data we don't hold"
+        )
     )]
-    fn check_timeout_should_panic_for_partial_copy() {
+    fn check_timeout_should_panic_for_data_we_dont_hold() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
         let _ = gossip_table.check_timeout(&data_id, node_ids[0]);
     }
 
@@ -968,9 +970,9 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from nodes 0 and 1.
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[1]);
+        // Add new data ID from nodes 0 and 1.
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
+        let _ = gossip_table.new_data_id(&data_id, node_ids[1]);
 
         // Node 0 should be removed from the holders since it hasn't provided us with the full data,
         // and we should be told to get the remainder from node 1.
@@ -998,8 +1000,8 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from node 0 and record that we have received the full data from it.
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Add new data ID from node 0 and record that we have received the full data from it.
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
         let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
 
         // Node 0 should remain as a holder since we now hold the complete data.
@@ -1018,8 +1020,8 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from node 0, then forcibly finish gossiping.
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Add new data ID from node 0, then forcibly finish gossiping.
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
         assert!(gossip_table.force_finish(&data_id));
         assert!(gossip_table.finished.contains(&data_id));
 

@@ -4,8 +4,10 @@ mod error;
 mod event;
 mod gossip_item;
 mod gossip_table;
+mod item_provider;
 mod message;
 mod metrics;
+mod provider_impls;
 mod tests;
 
 use std::{
@@ -26,7 +28,7 @@ use crate::{
         requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    types::{Block, BlockHash, Deploy, DeployId, FinalitySignature, FinalitySignatureId, NodeId},
+    types::NodeId,
     utils::Source,
     NodeRng,
 };
@@ -34,186 +36,55 @@ pub(crate) use config::Config;
 pub(crate) use event::Event;
 pub(crate) use gossip_item::{GossipItem, LargeGossipItem, SmallGossipItem};
 use gossip_table::{GossipAction, GossipTable};
+use item_provider::ItemProvider;
 pub(crate) use message::Message;
 use metrics::Metrics;
 
-const COMPONENT_NAME: &str = "gossiper";
-
-/// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
-/// work with.
-pub(crate) trait ReactorEventT<T>:
-    From<Event<T>>
-    + From<NetworkRequest<Message<T>>>
-    + From<StorageRequest>
-    + From<GossiperAnnouncement<T>>
-    + Send
-    + 'static
-where
-    T: GossipItem + 'static,
-    <T as GossipItem>::Id: 'static,
-{
-}
-
-impl<REv, T> ReactorEventT<T> for REv
-where
-    T: GossipItem + 'static,
-    <T as GossipItem>::Id: 'static,
-    REv: From<Event<T>>
-        + From<NetworkRequest<Message<T>>>
-        + From<StorageRequest>
-        + From<GossiperAnnouncement<T>>
-        + Send
-        + 'static,
-{
-}
-
-/// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
-/// constructing a `Gossiper<Deploy>`.
-pub(crate) fn get_deploy_from_storage<T: GossipItem + 'static, REv: ReactorEventT<T>>(
-    effect_builder: EffectBuilder<REv>,
-    item_id: DeployId,
-    sender: NodeId,
-) -> Effects<Event<Deploy>> {
-    effect_builder
-        .get_stored_deploy(item_id)
-        .event(move |result| Event::GetFromHolderResult {
-            item_id,
-            requester: sender,
-            result: Box::new(
-                result.ok_or_else(|| format!("failed to get {} from storage", item_id)),
-            ),
-        })
-}
-
-pub(crate) fn get_finality_signature_from_storage<
-    T: GossipItem + 'static,
-    REv: ReactorEventT<T>,
->(
-    effect_builder: EffectBuilder<REv>,
-    item_id: FinalitySignatureId,
-    requester: NodeId,
-) -> Effects<Event<FinalitySignature>> {
-    effect_builder
-        .get_finality_signature_from_storage(item_id.clone())
-        .event(move |results| {
-            let result = results.ok_or_else(|| String::from("finality signature not found"));
-            Event::GetFromHolderResult {
-                item_id,
-                requester,
-                result: Box::new(result),
-            }
-        })
-}
-
-/// This function can be passed in to `Gossiper::new()` as the `get_from_holder` arg when
-/// constructing a `Gossiper<Block>`.
-pub(crate) fn get_block_from_storage<T: GossipItem + 'static, REv: ReactorEventT<T>>(
-    effect_builder: EffectBuilder<REv>,
-    block_hash: BlockHash,
-    sender: NodeId,
-) -> Effects<Event<Block>> {
-    effect_builder
-        .get_block_from_storage(block_hash)
-        .event(move |results| {
-            let result = results.ok_or_else(|| String::from("block not found"));
-            Event::GetFromHolderResult {
-                item_id: block_hash,
-                requester: sender,
-                result: Box::new(result),
-            }
-        })
-}
-
 /// The component which gossips to peers and handles incoming gossip messages from peers.
 #[allow(clippy::type_complexity)]
-pub(crate) struct Gossiper<const ID_IS_COMPLETE_ITEM: bool, T, REv>
+pub(crate) struct Gossiper<const ID_IS_COMPLETE_ITEM: bool, T>
 where
     T: GossipItem + 'static,
-    REv: ReactorEventT<T>,
 {
     table: GossipTable<T::Id>,
     gossip_timeout: Duration,
     get_from_peer_timeout: Duration,
-    get_from_holder:
-        Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
+    name: &'static str,
     metrics: Metrics,
 }
 
-impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<false, T, REv> {
-    /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == false`, i.e.
-    /// where the gossip messages themselves don't contain the actual data being gossiped, they
-    /// contain just the identifiers.
-    ///
-    /// `get_from_holder` is called by the gossiper when handling either a `Message::GossipResponse`
-    /// where the sender indicates it needs the full item, or a `Message::GetRequest`.
-    ///
-    /// For an example of how `get_from_holder` should be implemented, see
-    /// `gossiper::get_deploy_from_store()` which is used by `Gossiper<Deploy>`.
+impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_COMPLETE_ITEM, T> {
+    /// Constructs a new gossiper component.
     ///
     /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
     /// specific gossiper from other potentially present gossipers.
     pub(crate) fn new(
-        name: &str,
+        name: &'static str,
         config: Config,
-        get_from_holder: impl Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>>
-            + Send
-            + 'static,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        assert!(
-            !T::ID_IS_COMPLETE_ITEM,
-            "this should only be called for types where T::ID_IS_COMPLETE_ITEM is false"
-        );
         Ok(Gossiper {
             table: GossipTable::new(config),
             gossip_timeout: config.gossip_request_timeout().into(),
             get_from_peer_timeout: config.get_remainder_timeout().into(),
-            get_from_holder: Box::new(get_from_holder),
+            name,
             metrics: Metrics::new(name, registry)?,
         })
     }
-}
 
-impl<T: GossipItem + 'static, REv: ReactorEventT<T>> Gossiper<true, T, REv> {
-    /// Constructs a new gossiper component for use where `T::ID_IS_COMPLETE_ITEM == true`, i.e.
-    /// where the gossip messages themselves contain the actual data being gossiped.
-    ///
-    /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
-    /// specific gossiper from other potentially present gossipers.
-    pub(crate) fn new(
-        name: &str,
-        config: Config,
-        registry: &Registry,
-    ) -> Result<Self, prometheus::Error> {
-        assert!(
-            T::ID_IS_COMPLETE_ITEM,
-            "this should only be called for types where T::ID_IS_COMPLETE_ITEM is true"
-        );
-        Ok(Gossiper {
-            table: GossipTable::new(config),
-            gossip_timeout: config.gossip_request_timeout().into(),
-            get_from_peer_timeout: config.get_remainder_timeout().into(),
-            get_from_holder: Box::new(|_, item, _| {
-                panic!("gossiper should never try to get {}", item)
-            }),
-            metrics: Metrics::new(name, registry)?,
-        })
-    }
-}
-
-impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEventT<T>>
-    Gossiper<ID_IS_COMPLETE_ITEM, T, REv>
-{
     /// Handles a new item received from a peer or client for which we should begin gossiping.
     ///
     /// Note that this doesn't include items gossiped to us; those are handled in `handle_gossip()`.
-    fn handle_item_received(
+    fn handle_item_received<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         source: Source,
         target: GossipTarget,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>> + From<GossiperAnnouncement<T>> + Send,
+    {
         debug!(item=%item_id, %source, "received new gossip item");
         match self
             .table
@@ -221,7 +92,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
         {
             GossipAction::ShouldGossip(should_gossip) => {
                 self.metrics.items_received.inc();
-                self.gossip(
+                Self::gossip(
                     effect_builder,
                     item_id,
                     should_gossip.target,
@@ -241,14 +112,16 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
     }
 
     /// Gossips the given item ID to `count` random peers excluding the indicated ones.
-    fn gossip(
-        &mut self,
+    fn gossip<REv>(
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         gossip_target: GossipTarget,
         count: usize,
         exclude_peers: HashSet<NodeId>,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>> + Send,
+    {
         let message = Message::Gossip(item_id.clone());
         effect_builder
             .gossip_message(message, gossip_target, count, exclude_peers)
@@ -260,13 +133,16 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
     }
 
     /// Handles the response from the network component detailing which peers it gossiped to.
-    fn gossiped_to(
+    fn gossiped_to<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         requested_count: usize,
         peers: HashSet<NodeId>,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<GossiperAnnouncement<T>> + Send,
+    {
         self.metrics.times_gossiped.inc_by(peers.len() as u64);
         // We don't have any peers to gossip to, so pause the process, which will eventually result
         // in the entry being removed.
@@ -307,14 +183,17 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
     }
 
     /// Checks that the given peer has responded to a previous gossip request we sent it.
-    fn check_gossip_timeout(
+    fn check_gossip_timeout<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         peer: NodeId,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>> + From<GossiperAnnouncement<T>> + Send,
+    {
         match self.table.check_timeout(&item_id, peer) {
-            GossipAction::ShouldGossip(should_gossip) => self.gossip(
+            GossipAction::ShouldGossip(should_gossip) => Self::gossip(
                 effect_builder,
                 item_id,
                 should_gossip.target,
@@ -337,14 +216,17 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
 
     /// Checks that the given peer has responded to a previous gossip response or `GetRequest` we
     /// sent it indicating we wanted to get the full item from it.
-    fn check_get_from_peer_timeout(
+    fn check_get_from_peer_timeout<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         peer: NodeId,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>> + From<GossiperAnnouncement<T>> + Send,
+    {
         match self.table.remove_holder_if_unresponsive(&item_id, peer) {
-            GossipAction::ShouldGossip(should_gossip) => self.gossip(
+            GossipAction::ShouldGossip(should_gossip) => Self::gossip(
                 effect_builder,
                 item_id,
                 should_gossip.target,
@@ -378,19 +260,22 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
 
     /// Handles an incoming gossip request from a peer on the network, after having registered the
     /// item in the gossip table.
-    fn handle_gossip(
+    fn handle_gossip<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         sender: NodeId,
         action: GossipAction,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>> + From<GossiperAnnouncement<T>> + Send,
+    {
         let mut effects = match action {
             GossipAction::ShouldGossip(should_gossip) => {
                 debug!(item=%item_id, %sender, %should_gossip, "received gossip request");
                 self.metrics.items_received.inc();
                 // Gossip the item ID.
-                let mut effects = self.gossip(
+                let mut effects = Self::gossip(
                     effect_builder,
                     item_id.clone(),
                     should_gossip.target,
@@ -470,13 +355,20 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
     }
 
     /// Handles an incoming gossip response from a peer on the network.
-    fn handle_gossip_response(
+    fn handle_gossip_response<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         is_already_held: bool,
         sender: NodeId,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>>
+            + From<StorageRequest>
+            + From<GossiperAnnouncement<T>>
+            + Send,
+        Self: ItemProvider<T>,
+    {
         let mut effects: Effects<_> = Effects::new();
         let action = if is_already_held {
             self.table.already_infected(&item_id, sender)
@@ -484,7 +376,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
             if !ID_IS_COMPLETE_ITEM {
                 // `sender` doesn't hold the full item; get the item from the component responsible
                 // for holding it, then send it to `sender`.
-                effects.extend((self.get_from_holder)(
+                effects.extend(Self::get_from_storage(
                     effect_builder,
                     item_id.clone(),
                     sender,
@@ -494,7 +386,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
         };
 
         match action {
-            GossipAction::ShouldGossip(should_gossip) => effects.extend(self.gossip(
+            GossipAction::ShouldGossip(should_gossip) => effects.extend(Self::gossip(
                 effect_builder,
                 item_id,
                 should_gossip.target,
@@ -519,58 +411,62 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
         effects
     }
 
-    /// Handles the `Ok` case for a `Result` of attempting to get the item from the component
-    /// responsible for holding it, in order to send it to the requester.
-    fn got_from_holder(
-        &mut self,
+    /// Handles the `Ok` case for a `Result` of attempting to get the item from storage in order to
+    /// send it to the requester.
+    fn got_from_storage<REv>(
         effect_builder: EffectBuilder<REv>,
         item: T,
         requester: NodeId,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<NetworkRequest<Message<T>>> + Send,
+    {
         let message = Message::Item(Box::new(item));
         effect_builder.send_message(requester, message).ignore()
     }
 
-    /// Handles the `Err` case for a `Result` of attempting to get the item from the component
-    /// responsible for holding it.
-    fn failed_to_get_from_holder(
+    /// Handles the `Err` case for a `Result` of attempting to get the item from storage.
+    fn failed_to_get_from_holder<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         error: String,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<GossiperAnnouncement<T>> + Send,
+    {
         error!(
-            "finished gossiping {} since failed to get from store: {}",
+            "finished gossiping {} since failed to get from storage: {}",
             item_id, error
         );
 
         if self.table.force_finish(&item_id) {
-            // Currently the only consumer of the `FinishedGossiping` announcement is the
-            // `DeployBuffer`, and it's not a problem to it if the deploy is unavailable in storage
-            // as it should fail to retrieve the deploy too and hence not propose it.  If we need to
-            // differentiate between successful termination of gossiping and this forced termination
-            // in the future, we can emit a new announcement variant here.
             return effect_builder.announce_finished_gossiping(item_id).ignore();
         }
 
         Effects::new()
     }
 
-    fn handle_get_item_request(
-        &mut self,
+    fn handle_get_item_request<REv>(
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         requester: NodeId,
-    ) -> Effects<Event<T>> {
-        (self.get_from_holder)(effect_builder, item_id, requester)
+    ) -> Effects<Event<T>>
+    where
+        REv: From<StorageRequest> + Send,
+        Self: ItemProvider<T>,
+    {
+        Self::get_from_storage(effect_builder, item_id, requester)
     }
 
-    fn handle_item_received_from_peer(
-        &mut self,
+    fn handle_item_received_from_peer<REv>(
         effect_builder: EffectBuilder<REv>,
         item: Box<T>,
         sender: NodeId,
-    ) -> Effects<Event<T>> {
+    ) -> Effects<Event<T>>
+    where
+        REv: From<GossiperAnnouncement<T>> + Send,
+    {
         effect_builder
             .announce_item_body_received_via_gossip(item, sender)
             .ignore()
@@ -587,10 +483,14 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
     }
 }
 
-impl<T, REv> Component<REv> for Gossiper<false, T, REv>
+impl<T, REv> Component<REv> for Gossiper<false, T>
 where
     T: LargeGossipItem + 'static,
-    REv: ReactorEventT<T>,
+    REv: From<NetworkRequest<Message<T>>>
+        + From<StorageRequest>
+        + From<GossiperAnnouncement<T>>
+        + Send,
+    Self: ItemProvider<T>,
 {
     type Event = Event<T>;
 
@@ -630,7 +530,7 @@ where
             }
             Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
                 Message::Gossip(item_id) => {
-                    let action = self.table.new_partial_data(&item_id, sender);
+                    let action = self.table.new_data_id(&item_id, sender);
                     self.handle_gossip(effect_builder, item_id, sender, action)
                 }
                 Message::GossipResponse {
@@ -638,18 +538,18 @@ where
                     is_already_held,
                 } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
                 Message::GetItem(item_id) => {
-                    self.handle_get_item_request(effect_builder, item_id, sender)
+                    Self::handle_get_item_request(effect_builder, item_id, sender)
                 }
                 Message::Item(item) => {
-                    self.handle_item_received_from_peer(effect_builder, item, sender)
+                    Self::handle_item_received_from_peer(effect_builder, item, sender)
                 }
             },
-            Event::GetFromHolderResult {
+            Event::GetFromStorageResult {
                 item_id,
                 requester,
                 result,
             } => match *result {
-                Ok(item) => self.got_from_holder(effect_builder, item, requester),
+                Ok(item) => Self::got_from_storage(effect_builder, item, requester),
                 Err(error) => self.failed_to_get_from_holder(effect_builder, item_id, error),
             },
         };
@@ -658,14 +558,18 @@ where
     }
 
     fn name(&self) -> &str {
-        COMPONENT_NAME
+        self.name
     }
 }
 
-impl<T, REv> Component<REv> for Gossiper<true, T, REv>
+impl<T, REv> Component<REv> for Gossiper<true, T>
 where
     T: SmallGossipItem + 'static,
-    REv: ReactorEventT<T>,
+    REv: From<NetworkRequest<Message<T>>>
+        + From<StorageRequest>
+        + From<GossiperAnnouncement<T>>
+        + Send,
+    Self: ItemProvider<T>,
 {
     type Event = Event<T>;
 
@@ -714,18 +618,18 @@ where
                     is_already_held,
                 } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
                 Message::GetItem(item_id) => {
-                    self.handle_get_item_request(effect_builder, item_id, sender)
+                    Self::handle_get_item_request(effect_builder, item_id, sender)
                 }
                 Message::Item(item) => {
-                    self.handle_item_received_from_peer(effect_builder, item, sender)
+                    Self::handle_item_received_from_peer(effect_builder, item, sender)
                 }
             },
-            Event::GetFromHolderResult {
+            Event::GetFromStorageResult {
                 item_id,
                 requester,
                 result,
             } => match *result {
-                Ok(item) => self.got_from_holder(effect_builder, item, requester),
+                Ok(item) => Self::got_from_storage(effect_builder, item, requester),
                 Err(error) => self.failed_to_get_from_holder(effect_builder, item_id, error),
             },
         };
@@ -734,16 +638,16 @@ where
     }
 
     fn name(&self) -> &str {
-        COMPONENT_NAME
+        self.name
     }
 }
 
-impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEventT<T>> Debug
-    for Gossiper<ID_IS_COMPLETE_ITEM, T, REv>
+impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Debug
+    for Gossiper<ID_IS_COMPLETE_ITEM, T>
 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         formatter
-            .debug_struct("Gossiper")
+            .debug_struct(self.name)
             .field("table", &self.table)
             .field("gossip_timeout", &self.gossip_timeout)
             .field("get_from_peer_timeout", &self.get_from_peer_timeout)
@@ -751,8 +655,8 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
     }
 }
 
-impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEventT<T>> DataSize
-    for Gossiper<ID_IS_COMPLETE_ITEM, T, REv>
+impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> DataSize
+    for Gossiper<ID_IS_COMPLETE_ITEM, T>
 {
     const IS_DYNAMIC: bool = true;
 
@@ -764,12 +668,13 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static, REv: ReactorEvent
             table,
             gossip_timeout,
             get_from_peer_timeout,
-            get_from_holder: _,
+            name,
             metrics: _,
         } = self;
 
         table.estimate_heap_size()
             + gossip_timeout.estimate_heap_size()
             + get_from_peer_timeout.estimate_heap_size()
+            + name.estimate_heap_size()
     }
 }

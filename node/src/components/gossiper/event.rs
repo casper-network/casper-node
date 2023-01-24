@@ -40,9 +40,9 @@ pub(crate) enum Event<T: GossipItem> {
     /// An incoming gossip network message.
     #[from]
     Incoming(GossiperIncoming<T>),
-    /// The result of the gossiper getting an item from the component responsible for holding it.
-    /// If the result is `Ok`, the item should be sent to the requesting peer.
-    GetFromHolderResult {
+    /// The result of the gossiper getting an item from storage. If the result is `Ok`, the item
+    /// should be sent to the requesting peer.
+    GetFromStorageResult {
         item_id: T::Id,
         requester: NodeId,
         result: Box<Result<T, String>>,
@@ -85,7 +85,7 @@ impl<T: GossipItem> Display for Event<T> {
             Event::Incoming(incoming) => {
                 write!(formatter, "incoming: {}", incoming)
             }
-            Event::GetFromHolderResult {
+            Event::GetFromStorageResult {
                 item_id, result, ..
             } => {
                 if result.is_ok() {
