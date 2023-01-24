@@ -147,7 +147,7 @@ fn get_delegator_staked_amount(
     *delegator_entry.staked_amount()
 }
 
-fn get_era_info(builder: &mut InMemoryWasmTestBuilder) -> EraInfo {
+fn get_era_info(builder: &mut LmdbWasmTestBuilder) -> EraInfo {
     let era = builder.get_era();
 
     let era_info_value = builder
