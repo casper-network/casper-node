@@ -1219,6 +1219,33 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         );
                         effects
                     }
+
+                    // this is a request that's separate from a typical block synchronizer flow;
+                    // it's sent when we need to sync global states of an immediate switch block
+                    // and its parent in order to check whether the validators have been
+                    // changed by the upgrade
+                    BlockSynchronizerRequest::SyncGlobalStates(global_states, peers_to_ask) => {
+                        global_states
+                            .into_iter()
+                            .flat_map(move |(block_hash, global_state_hash)| {
+                                // only start syncing the state if we haven't started already
+                                if !self
+                                    .global_sync
+                                    .has_global_state_request(&global_state_hash)
+                                {
+                                    effect_builder
+                                        .sync_global_state(
+                                            block_hash,
+                                            global_state_hash,
+                                            peers_to_ask.clone().into_iter().collect(),
+                                        )
+                                        .ignore()
+                                } else {
+                                    Effects::new()
+                                }
+                            })
+                            .collect()
+                    }
                 },
                 // tunnel event to global state synchronizer
                 // global_state_sync is a black box; we do not hook need next here

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     iter,
     sync::Arc,
@@ -115,6 +115,8 @@ impl SyncLeap {
         &self,
         fault_tolerance_fraction: Ratio<u64>,
     ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
+        let switch_block_heights: HashSet<_> =
+            self.switch_blocks().map(BlockHeader::height).collect();
         self.switch_blocks()
             .find(|block_header| block_header.is_genesis())
             .into_iter()
@@ -125,13 +127,23 @@ impl SyncLeap {
                     fault_tolerance_fraction,
                 ))
             })
-            .chain(self.switch_blocks().flat_map(move |block_header| {
-                Some(EraValidatorWeights::new(
-                    block_header.next_block_era_id(),
-                    block_header.next_era_validator_weights().cloned()?,
-                    fault_tolerance_fraction,
-                ))
-            }))
+            .chain(
+                self.switch_blocks()
+                    // filter out switch blocks preceding immediate switch blocks - we don't want
+                    // to read the era validators directly from them, as they might have been
+                    // altered by the upgrade, we'll get them from the blocks' global states
+                    // instead
+                    .filter(move |block_header| {
+                        !switch_block_heights.contains(&(block_header.height() + 1))
+                    })
+                    .flat_map(move |block_header| {
+                        Some(EraValidatorWeights::new(
+                            block_header.next_block_era_id(),
+                            block_header.next_era_validator_weights().cloned()?,
+                            fault_tolerance_fraction,
+                        ))
+                    }),
+            )
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
