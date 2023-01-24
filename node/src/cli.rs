@@ -6,7 +6,7 @@ pub mod arglang;
 
 use std::{
     alloc::System,
-    env, fs,
+    fs,
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
@@ -149,7 +149,6 @@ impl Cli {
                 setup_signal_hooks();
 
                 let validator_config = Self::init(&config, config_ext)?;
-                info!(version = %crate::VERSION_STRING.as_str(), "node starting up");
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -161,6 +160,12 @@ impl Cli {
 
                 let (chainspec, chainspec_raw_bytes) =
                     <(Chainspec, ChainspecRawBytes)>::from_path(validator_config.dir())?;
+
+                info!(
+                    protocol_version = %chainspec.protocol_version(),
+                    build_version = %crate::VERSION_STRING.as_str(),
+                    "node starting up"
+                );
 
                 if !chainspec.is_valid() {
                     bail!("invalid chainspec");
@@ -200,7 +205,7 @@ impl Cli {
                     .with_context(|| old_config.display().to_string())?;
                 let old_config = toml::from_str(&encoded_old_config)?;
 
-                info!(version = %env!("CARGO_PKG_VERSION"), "migrating config");
+                info!(build_version = %crate::VERSION_STRING.as_str(), "migrating config");
                 crate::config_migration::migrate_config(
                     WithDir::new(old_root, old_config),
                     new_config,
@@ -222,7 +227,7 @@ impl Cli {
                     .with_context(|| old_config.display().to_string())?;
                 let old_config = toml::from_str(&encoded_old_config)?;
 
-                info!(version = %env!("CARGO_PKG_VERSION"), "migrating data");
+                info!(build_version = %crate::VERSION_STRING.as_str(), "migrating data");
                 crate::data_migration::migrate_data(
                     WithDir::new(old_root, old_config),
                     new_config,
