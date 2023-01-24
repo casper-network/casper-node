@@ -76,7 +76,7 @@ impl DiagnosticsPort {
         DiagnosticsPort {
             state: ComponentState::Uninitialized,
             config,
-            _shutdown_sender: None,
+            shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
         }
     }
 }
@@ -212,7 +212,7 @@ where
             effect_builder,
             socket_path,
             listener,
-            shutdown_fuse.inner().clone(),
+            self.shutdown_fuse.inner().clone(),
         );
         Ok(server.ignore())
     }
