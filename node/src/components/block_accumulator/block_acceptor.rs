@@ -298,9 +298,15 @@ impl BlockAcceptor {
             }
         }
 
+        let signed_weight = era_validator_weights.signed_weight(self.signatures.keys());
+        let total_era_weight = era_validator_weights.get_total_weight();
+        let satisfaction_percent = signed_weight * 100 / total_era_weight;
         debug!(
-            %block_hash, no_block, no_sigs,
-            signed_weight=%era_validator_weights.signed_weight(self.signatures.keys()),
+            %block_hash,
+            %signed_weight,
+            %total_era_weight,
+            %satisfaction_percent,
+            no_block, no_sigs,
             "not storing anything - insufficient finality signatures"
         );
         (ShouldStore::Nothing, faulty_senders)
