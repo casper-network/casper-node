@@ -30,6 +30,7 @@ mod counting_format;
 mod error;
 mod event;
 mod gossiped_address;
+mod handshake;
 mod health;
 mod identity;
 mod insights;

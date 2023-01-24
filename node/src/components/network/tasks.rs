@@ -9,6 +9,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, Weak,
     },
+    time::Duration,
 };
 
 use bytes::Bytes;
@@ -54,7 +55,7 @@ use super::{
 };
 
 use crate::{
-    components::network::Config,
+    components::network::{handshake::HandshakeOutcome, Config},
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
     },
@@ -422,125 +423,6 @@ pub(super) async fn server_setup_tls<REv>(
         NodeId::from(validated_peer_cert.public_key_fingerprint()),
         tls_stream,
     ))
-}
-
-/// Negotiates a handshake between two peers.
-async fn negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
-    framed: FramedTransport,
-    connection_id: ConnectionId,
-) -> Result<HandshakeOutcome, ConnectionError>
-where
-    P: Payload,
-{
-    let mut encoder = MessagePackFormat;
-
-    // Manually encode a handshake.
-    let handshake_message = context.chain_info.create_handshake::<P>(
-        context.public_addr.expect("component not initialized"),
-        context.node_key_pair.as_ref(),
-        connection_id,
-        context.is_syncing.load(Ordering::SeqCst),
-    );
-
-    let serialized_handshake_message = Pin::new(&mut encoder)
-        .serialize(&Arc::new(handshake_message))
-        .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
-
-    // To ensure we are not dead-locking, we split the framed transport here and send the handshake
-    // in a background task before awaiting one ourselves. This ensures we can make progress
-    // regardless of the size of the outgoing handshake.
-    let (mut sink, mut stream) = framed.split();
-
-    let handshake_send = tokio::spawn(sink.send(serialized_handshake_message));
-
-    // The remote's message should be a handshake, but can technically be any message. We receive,
-    // deserialize and check it.
-    let remote_message_raw = stream
-        .next()
-        .await
-        .map_err(ConnectionError::HandshakeRecv)?;
-
-    // Ensure the handshake was sent correctly.
-    let sink = handshake_send
-        .await
-        .map_err(ConnectionError::HandshakeSenderCrashed)?
-        .map_err(ConnectionError::HandshakeSend)?;
-
-    let remote_message: Message<P> = Pin::new(&mut encoder)
-        .deserialize(&remote_message_raw)
-        .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
-
-    if let Message::Handshake {
-        network_name,
-        public_addr,
-        protocol_version,
-        consensus_certificate,
-        is_syncing,
-        chainspec_hash,
-    } = remote_message
-    {
-        debug!(%protocol_version, "handshake received");
-
-        // The handshake was valid, we can check the network name.
-        if network_name != context.chain_info.network_name {
-            return Err(ConnectionError::WrongNetwork(network_name));
-        }
-
-        // If there is a version mismatch, we treat it as a connection error. We do not ban peers
-        // for this error, but instead rely on exponential backoff, as bans would result in issues
-        // during upgrades where nodes may have a legitimate reason for differing versions.
-        //
-        // Since we are not using SemVer for versioning, we cannot make any assumptions about
-        // compatibility, so we allow only exact version matches.
-        if protocol_version != context.chain_info.protocol_version {
-            if let Some(threshold) = context.tarpit_version_threshold {
-                if protocol_version <= threshold {
-                    let mut rng = crate::new_rng();
-
-                    if rng.gen_bool(context.tarpit_chance as f64) {
-                        // If tarpitting is enabled, we hold open the connection for a specific
-                        // amount of time, to reduce load on other nodes and keep them from
-                        // reconnecting.
-                        info!(duration=?context.tarpit_duration, "randomly tarpitting node");
-                        tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
-                    } else {
-                        debug!(p = context.tarpit_chance, "randomly not tarpitting node");
-                    }
-                }
-            }
-            return Err(ConnectionError::IncompatibleVersion(protocol_version));
-        }
-
-        // We check the chainspec hash to ensure peer is using the same chainspec as us.
-        // The remote message should always have a chainspec hash at this point since
-        // we checked the protocol version previously.
-        let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
-        if peer_chainspec_hash != context.chain_info.chainspec_hash {
-            return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
-        }
-
-        let peer_consensus_public_key = consensus_certificate
-            .map(|cert| {
-                cert.validate(connection_id)
-                    .map_err(ConnectionError::InvalidConsensusCertificate)
-            })
-            .transpose()?;
-
-        let framed_transport = sink
-            .reunite(stream)
-            .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
-
-        Ok(HandshakeOutcome {
-            framed_transport,
-            public_addr,
-            peer_consensus_public_key,
-            is_peer_syncing: is_syncing,
-        })
-    } else {
-        // Received a non-handshake, this is an error.
-        Err(ConnectionError::DidNotSendHandshake)
-    }
 }
 
 /// Runs the server core acceptor loop.
