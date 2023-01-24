@@ -69,15 +69,16 @@ use muxink::{
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
-use prometheus::Registry;
 use rand::seq::{IteratorRandom, SliceRandom};
-use rand::{prelude::SliceRandom, seq::IteratorRandom};
 use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use thiserror::Error;
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        watch,
+    },
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
@@ -89,7 +90,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    error::{ConnectionError, Result},
+    error::ConnectionError,
     event::{IncomingConnection, OutgoingConnection},
     health::{HealthConfig, TaggedTimestamp},
     limiter::Limiter,
@@ -104,17 +105,9 @@ pub(crate) use self::{
     error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
-    insights::NetworkInsights,
-    message::{Channel, EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
-};
-pub(crate) use self::{
-    config::{Config, IdentityConfig},
-    error::Error,
-    event::Event,
-    gossiped_address::GossipedAddress,
     identity::Identity,
     insights::NetworkInsights,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+    message::{Channel, EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use crate::{
     components::{Component, ComponentState, InitializedComponent},

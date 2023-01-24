@@ -5,7 +5,10 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     pin::Pin,
-    sync::{Arc, Mutex, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, Weak,
+    },
 };
 
 use bytes::Bytes;
@@ -43,25 +46,18 @@ use super::{
     counting_format::ConnectionId,
     error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
-    handshake::{negotiate_handshake, HandshakeOutcome},
     limiter::LimiterHandle,
-    message::ConsensusKeyPair,
     message::NodeKeyPair,
-    message_pack_format::MessagePackFormat,
-    Channel, EstimatorWeights, EstimatorWeights, Event, Event, FramedTransport, FromIncoming,
-    FullTransport, Identity, IncomingCarrier, Message, Message, Metrics, Metrics, OutgoingCarrier,
-    OutgoingCarrierError, OutgoingChannel, Payload, Payload, Transport, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingCarrier, Message, Metrics,
+    OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
     MESSAGE_FRAGMENT_SIZE,
 };
 
 use crate::{
-    components::network::{framed_transport, BincodeFormat, Config, FromIncoming},
-    components::small_network::deserialize_network_message,
+    components::network::Config,
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
-        EffectBuilder,
     },
-    effect::{requests::NetworkRequest, AutoClosingResponder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
@@ -428,35 +424,6 @@ pub(super) async fn server_setup_tls<REv>(
     ))
 }
 
-/// Performs an IO-operation that can time out.
-async fn io_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
-where
-    F: Future<Output = Result<T, E>>,
-    E: StdError + 'static,
-{
-    tokio::time::timeout(duration, future)
-        .await
-        .map_err(|_elapsed| IoError::Timeout)?
-        .map_err(IoError::Error)
-}
-
-/// Performs an IO-operation that can time out or result in a closed connection.
-async fn io_opt_timeout<F, T, E>(duration: Duration, future: F) -> Result<T, IoError<E>>
-where
-    F: Future<Output = Option<Result<T, E>>>,
-    E: StdError + 'static,
-{
-    let item = tokio::time::timeout(duration, future)
-        .await
-        .map_err(|_elapsed| IoError::Timeout)?;
-
-    match item {
-        Some(Ok(value)) => Ok(value),
-        Some(Err(err)) => Err(IoError::Error(err)),
-        None => Err(IoError::UnexpectedEof),
-    }
-}
-
 /// Negotiates a handshake between two peers.
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
@@ -485,14 +452,12 @@ where
     // regardless of the size of the outgoing handshake.
     let (mut sink, mut stream) = framed.split();
 
-    let handshake_send = tokio::spawn(io_timeout(context.handshake_timeout.into(), async move {
-        sink.send(serialized_handshake_message).await?;
-        Ok(sink)
-    }));
+    let handshake_send = tokio::spawn(sink.send(serialized_handshake_message));
 
     // The remote's message should be a handshake, but can technically be any message. We receive,
     // deserialize and check it.
-    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), stream.next())
+    let remote_message_raw = stream
+        .next()
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
 
