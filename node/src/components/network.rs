@@ -407,11 +407,25 @@ where
     /// Queues a message to be sent to validator nodes in the given era.
     fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
         self.net_metrics.broadcast_requests.inc();
+
+        let mut total_connected_validators_in_era = 0;
+        let mut total_outgoing_manager_connected_peers = 0;
+
         for peer_id in self.outgoing_manager.connected_peers() {
+            total_outgoing_manager_connected_peers += 1;
             if self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+                total_connected_validators_in_era += 1;
                 self.send_message(peer_id, msg.clone(), None)
             }
         }
+
+        debug!(
+            msg = %msg,
+            era = era_id.value(),
+            total_connected_validators_in_era,
+            total_outgoing_manager_connected_peers,
+            "broadcast_message_to_validators"
+        );
     }
 
     /// Queues a message to `count` random nodes on the network.
