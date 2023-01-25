@@ -391,7 +391,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
                 if header.block_hash() == *block_hash {
                     info!(
-                        "BlockAcquisition: registering header for: {}, height: {}",
+                        "BlockAcquisition: registering header for: {:?}, height: {}",
                         block_hash,
                         header.height()
                     );

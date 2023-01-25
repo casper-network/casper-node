@@ -15,9 +15,7 @@ impl ItemProvider<Deploy> for Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy> 
             .event(move |result| Event::GetFromStorageResult {
                 item_id,
                 requester,
-                result: Box::new(
-                    result.ok_or_else(|| format!("failed to get {} from storage", item_id)),
-                ),
+                result: Box::new(result.ok_or_else(|| String::from("deploy not found"))),
             })
     }
 }

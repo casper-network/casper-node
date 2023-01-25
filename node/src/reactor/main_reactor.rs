@@ -1051,8 +1051,7 @@ impl MainReactor {
                 self.validator_matrix
                     .register_validator_weights(era_id.successor(), validator_weights.clone());
                 debug!(
-                    "added switch block (notifying components of validator weights at end \
-                            of {})",
+                    "added switch block (notifying components of validator weights at end of {})",
                     era_id
                 );
                 effects.extend(reactor::wrap_effects(

@@ -35,6 +35,6 @@ pub(crate) trait FetchItem:
     /// The ID of the specific item.
     fn fetch_id(&self) -> Self::Id;
 
-    /// Checks cryptographic validity of the item, and returns an error if invalid.
+    /// Checks validity of the item, and returns an error if invalid.
     fn validate(&self, metadata: &Self::ValidationMetadata) -> Result<(), Self::ValidationError>;
 }

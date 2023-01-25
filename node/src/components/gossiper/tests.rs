@@ -54,6 +54,7 @@ use crate::{
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
+const EXPECTED_GOSSIP_TARGET: GossipTarget = GossipTarget::All;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize, Display)]
@@ -205,11 +206,51 @@ impl reactor::Reactor for Reactor {
                 self.fake_deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::DeployGossiper(super::Event::ItemReceived {
+                item_id,
+                source,
+                target,
+            }) => {
+                // Ensure the correct target type for deploys is provided.
+                assert_eq!(target, EXPECTED_GOSSIP_TARGET);
+                let event = super::Event::ItemReceived {
+                    item_id,
+                    source,
+                    target,
+                };
+                reactor::wrap_effects(
+                    Event::DeployGossiper,
+                    self.deploy_gossiper
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::NetworkRequest(NetworkRequest::Gossip {
+                payload,
+                gossip_target,
+                count,
+                exclude,
+                auto_closing_responder,
+            }) => {
+                // Ensure the correct target type for deploys is carried through to the `Network`.
+                assert_eq!(gossip_target, EXPECTED_GOSSIP_TARGET);
+                let request = NetworkRequest::Gossip {
+                    payload,
+                    gossip_target,
+                    count,
+                    exclude,
+                    auto_closing_responder,
+                };
+                reactor::wrap_effects(
+                    Event::Network,
+                    self.network
+                        .handle_event(effect_builder, rng, request.into()),
+                )
+            }
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::Network,
                 self.network
