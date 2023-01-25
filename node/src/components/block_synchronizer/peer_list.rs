@@ -145,7 +145,7 @@ impl PeerList {
         PeersStatus::Sufficient
     }
 
-    fn get_peers_by_quality(
+    fn get_random_peers_by_quality(
         &self,
         rng: &mut NodeRng,
         up_to: usize,
@@ -164,19 +164,19 @@ impl PeerList {
         let up_to = self.max_simultaneous_peers as usize;
 
         // get most useful up to limit
-        let mut peers = self.get_peers_by_quality(rng, up_to, PeerQuality::Reliable);
+        let mut peers = self.get_random_peers_by_quality(rng, up_to, PeerQuality::Reliable);
 
         // if below limit get unknown peers which may or may not be useful
         let missing = up_to.saturating_sub(peers.len());
         if missing > 0 {
-            peers.extend(self.get_peers_by_quality(rng, up_to, PeerQuality::Unknown));
+            peers.extend(self.get_random_peers_by_quality(rng, missing, PeerQuality::Unknown));
         }
 
         // if still below limit try unreliable peers again until we have the chance to refresh the
         // peer list
         let missing = up_to.saturating_sub(peers.len());
         if missing > 0 {
-            peers.extend(self.get_peers_by_quality(rng, up_to, PeerQuality::Unreliable));
+            peers.extend(self.get_random_peers_by_quality(rng, missing, PeerQuality::Unreliable));
         }
 
         peers
