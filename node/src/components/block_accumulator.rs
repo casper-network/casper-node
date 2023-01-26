@@ -233,11 +233,6 @@ impl BlockAccumulator {
         }
     }
 
-    /// Returns the height of the local tip, i.e. the latest executed block.
-    pub(crate) fn local_tip_height(&self) -> Option<u64> {
-        self.local_tip.map(|identifier| identifier.height)
-    }
-
     /// Registers a peer with an existing acceptor, or creates a new one.
     ///
     /// If the era is outdated or the peer has already caused us to create more acceptors than

@@ -1008,28 +1008,6 @@ impl MainReactor {
 
         let mut effects = Effects::new();
 
-        let should_update_switch_block_if_required = match self.block_accumulator.local_tip_height()
-        {
-            Some(local_tip_height) => block.height() > local_tip_height,
-            None => true,
-        };
-        if should_update_switch_block_if_required {
-            if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block = None;
-            }
-        }
-
         if state.register_as_sent_to_deploy_buffer().was_updated() {
             effects.extend(reactor::wrap_effects(
                 MainEvent::DeployBuffer,
@@ -1143,7 +1121,29 @@ impl MainReactor {
             return effects;
         }
 
-        if !state.is_marked_complete() {
+        // Set the current switch block only after the block is marked complete.
+        // We *always* want to initialize the contract runtime with the highest complete block.
+        // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
+        // the immediate switch block is stored and *also* marked complete.
+        // This will allow the contract runtime to initialize properly (see
+        // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
+        // `KeepUp`.
+        if state.is_marked_complete() {
+            if block.header().is_switch_block() {
+                match self.switch_block.as_ref().map(|header| header.height()) {
+                    Some(current_height) => {
+                        if block.height() > current_height {
+                            self.switch_block = Some(block.header().clone());
+                        }
+                    }
+                    None => {
+                        self.switch_block = Some(block.header().clone());
+                    }
+                }
+            } else {
+                self.switch_block = None;
+            }
+        } else {
             error!(
                 block = %*block,
                 ?state,
