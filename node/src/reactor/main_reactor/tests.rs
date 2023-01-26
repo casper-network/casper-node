@@ -65,15 +65,25 @@ impl TestChain {
     /// Instantiates a new test chain configuration.
     ///
     /// Generates secret keys for `size` validators and creates a matching chainspec.
-    fn new(rng: &mut TestRng, size: usize) -> Self {
+    fn new(rng: &mut TestRng, size: usize, initial_stakes: Option<&[U512]>) -> Self {
         let keys: Vec<Arc<SecretKey>> = (0..size)
             .map(|_| Arc::new(SecretKey::random(rng)))
             .collect();
+
+        let stake_values = if let Some(initial_stakes) = initial_stakes {
+            assert_eq!(size, initial_stakes.len());
+            initial_stakes.to_vec()
+        } else {
+            // By default we use very large stakes so we would catch overflow issues.
+            std::iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
+                .take(size)
+                .collect()
+        };
+
         let stakes = keys
             .iter()
-            .map(|secret_key| {
-                // We use very large stakes so we would catch overflow issues.
-                let stake = U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX);
+            .zip(stake_values)
+            .map(|(secret_key, stake)| {
                 let secret_key = secret_key.clone();
                 (PublicKey::from(&*secret_key), stake)
             })
@@ -310,7 +320,7 @@ async fn run_network() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -486,6 +496,74 @@ async fn run_equivocator_network() {
     }
 }
 
+async fn assert_network_shutdown_for_upgrade_with_stakes(rng: &mut TestRng, stakes: &[U512]) {
+    const NETWORK_SIZE: usize = 2;
+    const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
+
+    let mut chain = TestChain::new(rng, NETWORK_SIZE, Some(stakes));
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+
+    let mut net = chain
+        .create_initialized_network(rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait until initialization is finished, so upgrade watcher won't reject test requests.
+    net.settle_on(
+        rng,
+        move |nodes: &Nodes| {
+            nodes
+                .values()
+                .all(|runner| !matches!(runner.main_reactor().state, ReactorState::Initialize))
+        },
+        INITIALIZATION_TIMEOUT,
+    )
+    .await;
+
+    // An upgrade is scheduled for era 2, after the switch block in era 1 (height 2).
+    for runner in net.runners_mut() {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let upgrade = NextUpgrade::new(
+                    ActivationPoint::EraId(2.into()),
+                    ProtocolVersion::from_parts(999, 0, 0),
+                );
+                effect_builder
+                    .announce_upgrade_activation_point_read(upgrade)
+                    .ignore()
+            })
+            .await;
+    }
+
+    // Run until the nodes shut down for the upgrade.
+    let timeout = Duration::from_secs(90);
+    net.settle_on_exit(rng, ExitCode::Success, timeout).await;
+}
+
+#[tokio::test]
+async fn nodes_should_have_enough_signatures_before_upgrade_with_equal_stake() {
+    // Equal stake ensures that one node was able to learn about signatures created by the other, by
+    // whatever means necessary (gossiping, broadcasting, fetching, etc.).
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let stakes = [U512::from(u128::MAX), U512::from(u128::MAX)];
+    assert_network_shutdown_for_upgrade_with_stakes(&mut rng, &stakes).await;
+}
+
+#[tokio::test]
+async fn nodes_should_have_enough_signatures_before_upgrade_with_one_dominant_stake() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let stakes = [U512::from(u128::MAX), U512::from(u8::MAX)];
+    assert_network_shutdown_for_upgrade_with_stakes(&mut rng, &stakes).await;
+}
+
 #[tokio::test]
 async fn dont_upgrade_without_switch_block() {
     testing::init_logging();
@@ -495,7 +573,7 @@ async fn dont_upgrade_without_switch_block() {
     const NETWORK_SIZE: usize = 2;
     const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
 
-    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE);
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
     chain.chainspec_mut().core_config.minimum_era_height = 2;
     chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
     chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
