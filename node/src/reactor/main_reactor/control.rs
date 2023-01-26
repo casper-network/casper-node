@@ -17,7 +17,7 @@ use crate::{
         upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
         utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, Item, MetaBlockState},
+    types::{BlockHash, BlockPayload, FinalizedBlock, MetaBlockState},
     NodeRng,
 };
 
@@ -450,7 +450,7 @@ impl MainReactor {
                 let block_header = block.header();
                 let block_height = block_header.height();
                 let state_root_hash = block_header.state_root_hash();
-                let block_hash = block_header.id();
+                let block_hash = block_header.block_hash();
                 let accumulated_seed = block_header.accumulated_seed();
                 self.initialize_contract_runtime(
                     block_height + 1,

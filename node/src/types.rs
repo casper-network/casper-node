@@ -8,7 +8,6 @@ mod chunkable;
 mod deploy;
 pub mod error;
 mod exit_code;
-mod item;
 pub mod json_compatibility;
 mod node_config;
 mod node_id;
@@ -49,7 +48,6 @@ pub(crate) use deploy::{
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
-pub(crate) use item::{EmptyValidationMetadata, FetcherItem, GossiperItem, Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;

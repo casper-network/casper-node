@@ -16,7 +16,7 @@ use crate::{
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{ActivationPoint, BlockHash, Item, SyncLeap, SyncLeapIdentifier},
+    types::{ActivationPoint, BlockHash, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
@@ -162,7 +162,7 @@ impl MainReactor {
     fn keep_up_idle(&mut self) -> Either<SyncIdentifier, KeepUpInstruction> {
         match self.storage.read_highest_complete_block() {
             Ok(Some(block)) => Either::Left(SyncIdentifier::LocalTip(
-                block.id(),
+                *block.hash(),
                 block.height(),
                 block.header().era_id(),
             )),

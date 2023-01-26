@@ -32,7 +32,9 @@ use casper_types::Timestamp;
 use super::network::blocklist::BlocklistJustification;
 use crate::{
     components::{
-        fetcher::{Error as FetcherError, FetchResult, FetchedData},
+        fetcher::{
+            EmptyValidationMetadata, Error as FetcherError, FetchItem, FetchResult, FetchedData,
+        },
         Component, ComponentState, InitializedComponent, ValidatorBoundComponent,
     },
     effect::{
@@ -48,9 +50,8 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, Deploy, EmptyValidationMetadata, FinalitySignature, FinalitySignatureId,
-        Item, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap, TrieOrChunk,
-        ValidatorMatrix,
+        BlockSignatures, Deploy, FinalitySignature, FinalitySignatureId, LegacyDeploy, MetaBlock,
+        MetaBlockState, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -710,8 +711,8 @@ impl BlockSynchronizer {
             Option<Box<BlockHeader>>,
             Option<NodeId>,
         ) = match result {
-            Ok(FetchedData::FromPeer { item, peer }) => (item.id(), Some(item), Some(peer)),
-            Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
+            Ok(FetchedData::FromPeer { item, peer }) => (item.fetch_id(), Some(item), Some(peer)),
+            Ok(FetchedData::FromStorage { item }) => (item.fetch_id(), Some(item), None),
             Err(err) => {
                 debug!(%err, "BlockSynchronizer: failed to fetch block header");
                 if err.is_peer_fault() {
@@ -848,9 +849,9 @@ impl BlockSynchronizer {
                     "BlockSynchronizer: fetched finality signature {} from peer {}",
                     item, peer
                 );
-                (item.id(), Some(item), Some(peer))
+                (item.fetch_id(), Some(item), Some(peer))
             }
-            Ok(FetchedData::FromStorage { item }) => (item.id(), Some(item), None),
+            Ok(FetchedData::FromStorage { item }) => (item.fetch_id(), Some(item), None),
             Err(err) => {
                 debug!(%err, "BlockSynchronizer: failed to fetch finality signature");
                 if err.is_peer_fault() {
@@ -1024,7 +1025,7 @@ impl BlockSynchronizer {
 
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
-                if let Err(error) = builder.register_deploy(deploy.id(), maybe_peer) {
+                if let Err(error) = builder.register_deploy(deploy.fetch_id(), maybe_peer) {
                     error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
                 }
             }

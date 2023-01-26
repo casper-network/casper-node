@@ -37,7 +37,7 @@ use crate::{
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
-        gossiper::{self, Gossiper},
+        gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
@@ -57,7 +57,7 @@ use crate::{
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
     protocol::Message,
@@ -69,7 +69,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        Item, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -107,10 +107,11 @@ pub(crate) struct MainReactor {
     deploy_buffer: DeployBuffer,
 
     // gossiping components
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>,
-    deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    block_gossiper: Gossiper<Block, MainEvent>,
-    finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
+    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
+    finality_signature_gossiper:
+        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -221,8 +222,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
         )?;
 
-        let address_gossiper =
-            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
+            "address_gossiper",
+            config.gossip,
+            registry,
+        )?;
 
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
@@ -251,24 +255,22 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::new_for_partial_items(
+        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
-            gossiper::get_block_from_storage::<Block, MainEvent>,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config.gossip,
-            gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let finality_signature_gossiper = Gossiper::new_for_partial_items(
-            "finality_signature_gossiper",
-            config.gossip,
-            gossiper::get_finality_signature_from_storage::<FinalitySignature, MainEvent>,
-            registry,
-        )?;
+        let finality_signature_gossiper =
+            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
+                "finality_signature_gossiper",
+                config.gossip,
+                registry,
+            )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -626,8 +628,9 @@ impl reactor::Reactor for MainReactor {
                         effect_builder,
                         rng,
                         gossiper::Event::ItemReceived {
-                            item_id: finality_signature.id(),
+                            item_id: finality_signature.gossip_id(),
                             source: Source::Ourself,
+                            target: finality_signature.gossip_target(),
                         },
                     ),
                 );
@@ -798,8 +801,9 @@ impl reactor::Reactor for MainReactor {
                             effect_builder,
                             rng,
                             MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                item_id: deploy.id(),
+                                item_id: deploy.gossip_id(),
                                 source,
+                                target: deploy.gossip_target(),
                             }),
                         ));
                         // notify event stream
@@ -1025,7 +1029,7 @@ impl MainReactor {
                 let next_era_id = era_id.successor();
                 self.validator_matrix
                     .register_validator_weights(next_era_id, validator_weights.clone());
-                info!(?era_id, ?next_era_id, "validator_matrix updated");
+                info!(%era_id, %next_era_id, "validator_matrix updated");
                 // notify validator bound components
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
@@ -1050,6 +1054,7 @@ impl MainReactor {
                 effect_builder,
                 rng,
                 block.hash(),
+                block.gossip_target(),
                 &mut state,
                 &mut effects,
             );
@@ -1155,6 +1160,7 @@ impl MainReactor {
             effect_builder,
             rng,
             block.hash(),
+            block.gossip_target(),
             &mut state,
             &mut effects,
         );
@@ -1226,6 +1232,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         block_hash: &BlockHash,
+        gossip_target: GossipTarget,
         state: &mut MetaBlockState,
         effects: &mut Effects<MainEvent>,
     ) {
@@ -1242,6 +1249,7 @@ impl MainReactor {
                     gossiper::Event::ItemReceived {
                         item_id: *block_hash,
                         source: Source::Ourself,
+                        target: gossip_target,
                     },
                 ),
             ));

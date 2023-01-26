@@ -76,7 +76,10 @@ use casper_types::{
 };
 
 use crate::{
-    components::{fetcher::FetchResponse, Component},
+    components::{
+        fetcher::{FetchItem, FetchResponse},
+        Component,
+    },
     effect::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
@@ -93,9 +96,8 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SyncLeap,
-        SyncLeapIdentifier, ValueOrChunk,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
+        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{self, display_error, WithDir},
     NodeRng,
@@ -862,7 +864,7 @@ impl Storage {
                     None => None,
                     Some(deploy_with_finalized_approvals) => {
                         let deploy = deploy_with_finalized_approvals.into_naive();
-                        (deploy.id() == deploy_id).then(|| deploy)
+                        (deploy.fetch_id() == deploy_id).then(|| deploy)
                     }
                 };
                 responder.respond(maybe_deploy).ignore()
@@ -2235,7 +2237,7 @@ impl Storage {
 
         let deploy = match txn.get_value::<_, Deploy>(self.deploy_db, deploy_id.deploy_hash())? {
             None => return Ok(None),
-            Some(deploy) if deploy.id() == deploy_id => return Ok(Some(deploy)),
+            Some(deploy) if deploy.fetch_id() == deploy_id => return Ok(Some(deploy)),
             Some(deploy) => deploy,
         };
 
@@ -2346,7 +2348,7 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError>
     where
         REv: From<NetworkRequest<Message>> + Send,
-        T: FetcherItem,
+        T: FetchItem,
     {
         let serialized = fetch_response
             .to_serialized()
@@ -2358,7 +2360,7 @@ impl Storage {
                 .put(serialized_id.into(), Arc::downgrade(&shared));
         }
 
-        let message = Message::new_get_response_from_serialized(<T as FetcherItem>::TAG, shared);
+        let message = Message::new_get_response_from_serialized(<T as FetchItem>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 
@@ -2537,7 +2539,7 @@ impl Storage {
 /// Decodes an item's ID, typically from an incoming request.
 fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
 where
-    T: FetcherItem,
+    T: FetchItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }

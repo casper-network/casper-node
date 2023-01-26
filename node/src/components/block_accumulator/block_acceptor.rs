@@ -7,10 +7,13 @@ use tracing::{debug, error, warn};
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
-    components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
+    components::{
+        block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
+        fetcher::{EmptyValidationMetadata, FetchItem},
+    },
     types::{
-        BlockHash, BlockSignatures, EmptyValidationMetadata, EraValidatorWeights, FetcherItem,
-        FinalitySignature, MetaBlock, NodeId, SignatureWeight,
+        BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock, NodeId,
+        SignatureWeight,
     },
 };
 
