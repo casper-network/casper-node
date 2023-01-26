@@ -563,13 +563,11 @@ impl BlockAccumulator {
         // if we haven't received any messages describing higher blocks
         // for more than the self.dead_air_interval config allows
         // we leap again to poll the network
-        if self.last_progress.elapsed() >= self.dead_air_interval {
-            // we don't want to swamp the network with "are we there yet" leaps.
-            self.last_progress = Timestamp::now();
-            true
-        } else {
-            false
-        }
+        self.last_progress.elapsed() >= self.dead_air_interval
+    }
+
+    pub(crate) fn reset_last_progress(&mut self) {
+        self.last_progress = Timestamp::now();
     }
 
     fn should_leap(&self, from_block_height: u64) -> bool {
@@ -783,7 +781,6 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 block_hash,
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
-            Event::ValidatorMatrixUpdated => self.handle_validators(effect_builder),
             Event::RegisterPeer {
                 block_hash,
                 era_id,
@@ -824,8 +821,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
 }
 
 impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
-    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
-        debug!("handling updated validator matrix");
+    fn handle_validators(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _: &mut NodeRng,
+    ) -> Effects<Self::Event> {
+        info!("BlockAccumulator: handling updated validator matrix");
         let validator_matrix = &self.validator_matrix; // Closure can't borrow all of self.
         let should_stores = self
             .block_acceptors

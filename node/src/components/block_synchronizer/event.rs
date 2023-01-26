@@ -34,7 +34,6 @@ pub(crate) enum Event {
         block_hash: BlockHash,
         is_new: bool,
     },
-    ValidatorMatrixUpdated,
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
@@ -79,9 +78,6 @@ impl Display for Event {
             }
             Event::Initialize => {
                 write!(f, "initialize this component")
-            }
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
             }
             Event::DisconnectFromPeer(peer) => {
                 write!(f, "disconnected from peer {}", peer)
