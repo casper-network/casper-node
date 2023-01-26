@@ -147,23 +147,20 @@ impl Payload for Message {
         match self {
             Message::Consensus(_) => Channel::Consensus,
             Message::DeployGossiper(_) => Channel::BulkGossip,
-            Message::AddressGossiper(_) => Channel::Network,
+            Message::AddressGossiper(_) => Channel::BulkGossip,
             Message::GetRequest {
                 tag,
                 serialized_id: _,
             } => match tag {
-                // TODO: Verify which requests are for sync data.
                 Tag::Deploy => Channel::DataRequests,
-                Tag::FinalizedApprovals => Channel::SyncDataRequests,
-                Tag::Block => Channel::SyncDataRequests,
-                Tag::GossipedAddress => Channel::Network,
-                Tag::BlockAndMetadataByHeight => Channel::SyncDataRequests,
-                Tag::BlockHeaderByHash => Channel::SyncDataRequests,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => Channel::SyncDataRequests,
+                Tag::LegacyDeploy => Channel::SyncDataRequests,
+                Tag::Block => Channel::DataRequests,
+                Tag::BlockHeader => Channel::DataRequests,
                 Tag::TrieOrChunk => Channel::SyncDataRequests,
-                Tag::BlockAndDeploysByHash => Channel::SyncDataRequests,
-                Tag::BlockHeaderBatch => Channel::SyncDataRequests,
-                Tag::FinalitySignaturesByHash => Channel::SyncDataRequests,
+                Tag::FinalitySignature => Channel::DataRequests,
+                Tag::SyncLeap => Channel::SyncDataRequests,
+                Tag::ApprovalsHashes => Channel::SyncDataRequests,
+                Tag::BlockExecutionResults => Channel::SyncDataRequests,
             },
             Message::GetResponse {
                 tag,
@@ -171,18 +168,19 @@ impl Payload for Message {
             } => match tag {
                 // TODO: Verify which responses are for sync data.
                 Tag::Deploy => Channel::DataResponses,
-                Tag::FinalizedApprovals => Channel::SyncDataResponses,
-                Tag::Block => Channel::SyncDataResponses,
-                Tag::GossipedAddress => Channel::Network,
-                Tag::BlockAndMetadataByHeight => Channel::SyncDataResponses,
-                Tag::BlockHeaderByHash => Channel::SyncDataResponses,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => Channel::SyncDataResponses,
+                Tag::LegacyDeploy => Channel::SyncDataResponses,
+                Tag::Block => Channel::DataResponses,
+                Tag::BlockHeader => Channel::DataResponses,
                 Tag::TrieOrChunk => Channel::SyncDataResponses,
-                Tag::BlockAndDeploysByHash => Channel::SyncDataResponses,
-                Tag::BlockHeaderBatch => Channel::SyncDataResponses,
-                Tag::FinalitySignaturesByHash => Channel::SyncDataResponses,
+                Tag::FinalitySignature => Channel::DataResponses,
+                Tag::SyncLeap => Channel::SyncDataResponses,
+                Tag::ApprovalsHashes => Channel::SyncDataResponses,
+                Tag::BlockExecutionResults => Channel::SyncDataResponses,
             },
             Message::FinalitySignature(_) => Channel::Consensus,
+            Message::ConsensusRequest(_) => Channel::Consensus,
+            Message::BlockGossiper(_) => Channel::BulkGossip,
+            Message::FinalitySignatureGossiper(_) => Channel::BulkGossip,
         }
     }
 }

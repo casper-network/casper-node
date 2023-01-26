@@ -17,7 +17,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::{net::UnixListener, sync::watch};
+use tokio::net::UnixListener;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -195,10 +195,6 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Event>, Self::Error> {
-        let (shutdown_sender, shutdown_receiver) = watch::channel(());
-
-        self._shutdown_sender = Some(shutdown_sender);
-
         let cfg = self.config.value();
 
         let socket_path = self.config.with_dir(cfg.socket_path.clone());

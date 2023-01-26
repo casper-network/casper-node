@@ -1,4 +1,4 @@
-use std::{error, io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr};
 
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion};

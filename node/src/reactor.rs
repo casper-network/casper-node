@@ -75,7 +75,7 @@ use crate::{
     utils::{
         self,
         rlimit::{Limit, OpenFiles, ResourceLimit},
-        Fuse, SharedFuse, Source, WeightedRoundRobin,
+        Fuse, SharedFuse, WeightedRoundRobin,
     },
     NodeRng, TERMINATION_REQUESTED,
 };

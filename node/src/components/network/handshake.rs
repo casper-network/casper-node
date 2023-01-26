@@ -113,9 +113,9 @@ where
     P: Payload,
 {
     // Manually encode a handshake.
-    let handshake_message = context.chain_info.create_handshake::<P>(
-        context.public_addr,
-        context.consensus_keys.as_ref(),
+    let handshake_message = context.chain_info().create_handshake::<P>(
+        context.public_addr().expect("TODO: What to do?"),
+        context.node_key_pair(),
         connection_id,
     );
 
@@ -134,10 +134,12 @@ where
 
     // The remote's message should be a handshake, but can technically be any message. We receive,
     // deserialize and check it.
-    let remote_message_raw =
-        read_length_prefixed_frame(context.chain_info.maximum_net_message_size, &mut read_half)
-            .await
-            .map_err(ConnectionError::HandshakeRecv)?;
+    let remote_message_raw = read_length_prefixed_frame(
+        context.chain_info().maximum_net_message_size,
+        &mut read_half,
+    )
+    .await
+    .map_err(ConnectionError::HandshakeRecv)?;
 
     // Ensure the handshake was sent correctly.
     let write_half = handshake_send
@@ -159,7 +161,7 @@ where
         debug!(%protocol_version, "handshake received");
 
         // The handshake was valid, we can check the network name.
-        if network_name != context.chain_info.network_name {
+        if network_name != context.chain_info().network_name {
             return Err(ConnectionError::WrongNetwork(network_name));
         }
 
@@ -169,19 +171,19 @@ where
         //
         // Since we are not using SemVer for versioning, we cannot make any assumptions about
         // compatibility, so we allow only exact version matches.
-        if protocol_version != context.chain_info.protocol_version {
-            if let Some(threshold) = context.tarpit_version_threshold {
+        if protocol_version != context.chain_info().protocol_version {
+            if let Some(threshold) = context.tarpit_version_threshold() {
                 if protocol_version <= threshold {
                     let mut rng = crate::new_rng();
 
-                    if rng.gen_bool(context.tarpit_chance as f64) {
+                    if rng.gen_bool(context.tarpit_chance() as f64) {
                         // If tarpitting is enabled, we hold open the connection for a specific
                         // amount of time, to reduce load on other nodes and keep them from
                         // reconnecting.
-                        info!(duration=?context.tarpit_duration, "randomly tarpitting node");
-                        tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
+                        info!(duration=?context.tarpit_duration(), "randomly tarpitting node");
+                        tokio::time::sleep(Duration::from(context.tarpit_duration())).await;
                     } else {
-                        debug!(p = context.tarpit_chance, "randomly not tarpitting node");
+                        debug!(p = context.tarpit_chance(), "randomly not tarpitting node");
                     }
                 }
             }
@@ -192,7 +194,7 @@ where
         // The remote message should always have a chainspec hash at this point since
         // we checked the protocol version previously.
         let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
-        if peer_chainspec_hash != context.chain_info.chainspec_hash {
+        if peer_chainspec_hash != context.chain_info().chainspec_hash {
             return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
         }
 

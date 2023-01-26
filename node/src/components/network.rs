@@ -67,19 +67,14 @@ use muxink::{
     io::{FrameReader, FrameWriter},
     mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
 };
-use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
-use pkey::{PKey, Private};
+
 use prometheus::Registry;
 use rand::seq::{IteratorRandom, SliceRandom};
-use serde::{Deserialize, Serialize};
 use strum::EnumCount;
-use thiserror::Error;
+
 use tokio::{
     net::TcpStream,
-    sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
-        watch,
-    },
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
@@ -91,7 +86,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    error::ConnectionError,
+    error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
     health::{HealthConfig, TaggedTimestamp},
     limiter::Limiter,
@@ -118,14 +113,11 @@ use crate::{
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     reactor::{Finalize, ReactorEvent},
-    tls::{
-        self, validate_cert_with_authority, LoadCertError, LoadSecretKeyError, TlsCert,
-        ValidationError,
-    },
-    types::NodeId,
+    tls,
+    types::{NodeId, ValidatorMatrix},
     utils::{
         self, display_error, DropSwitch, Fuse, LockedLineWriter, ObservableFuse, Source,
-        TokenizedCount, WithDir,
+        TokenizedCount,
     },
     NodeRng,
 };
@@ -196,10 +188,9 @@ where
     /// Fuse signaling a shutdown of the small network.
     shutdown_fuse: DropSwitch<ObservableFuse>,
 
-    /// Tracks nodes that have announced themselves as nodes that are syncing.
-    syncing_nodes: HashSet<NodeId>,
-
-    channel_management: Option<ChannelManagement>,
+    /// Join handle for the server thread.
+    #[data_size(skip)]
+    server_join_handle: Option<JoinHandle<()>>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -220,29 +211,9 @@ where
 
     /// The state of this component.
     state: ComponentState,
-}
 
-#[derive(DataSize)]
-struct ChannelManagement {
-    /// Channel signaling a shutdown of the network.
-    // Note: This channel is closed when `Network` is dropped, signalling the receivers that
-    // they should cease operation.
-    #[data_size(skip)]
-    shutdown_sender: Option<watch::Sender<()>>,
-    /// Join handle for the server thread.
-    #[data_size(skip)]
-    server_join_handle: Option<JoinHandle<()>>,
-
-    /// Channel signaling a shutdown of the incoming connections.
-    // Note: This channel is closed when we finished syncing, so the `Network` can close all
-    // connections. When they are re-established, the proper value of the now updated `is_syncing`
-    // flag will be exchanged on handshake.
-    #[data_size(skip)]
-    close_incoming_sender: Option<watch::Sender<()>>,
-    /// Handle used by the `message_reader` task to receive a notification that incoming
-    /// connections should be closed.
-    #[data_size(skip)]
-    close_incoming_receiver: watch::Receiver<()>,
+    /// Marker for what kind of payload this small network instance supports.
+    _payload: PhantomData<P>,
 }
 
 impl<REv, P> Network<REv, P>
@@ -265,7 +236,7 @@ where
         registry: &Registry,
         chain_info_source: C,
         validator_matrix: ValidatorMatrix,
-    ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>), Error> {
+    ) -> Result<Network<REv, P>, Error> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_limiter = Limiter::new(
@@ -296,9 +267,24 @@ where
             net_metrics.create_outgoing_metrics(),
         );
 
+        let keylog = match cfg.keylog_path {
+            Some(ref path) => {
+                let keylog = OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .write(true)
+                    .open(path)
+                    .map_err(Error::CannotAppendToKeylog)?;
+                warn!(%path, "keylog enabled, if you are not debugging turn this off in your configuration (`network.keylog_path`)");
+                Some(LockedLineWriter::new(keylog))
+            }
+            None => None,
+        };
+
         let context = Arc::new(NetworkContext::new(
             cfg.clone(),
             our_identity,
+            keylog,
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
             &net_metrics,
@@ -309,20 +295,24 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
-            syncing_nodes: HashSet::new(),
-            channel_management: None,
             net_metrics,
             outgoing_limiter,
             incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
+            shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
+            server_join_handle: None,
+            _payload: PhantomData,
         };
 
         Ok(component)
     }
 
-    fn initialize(&mut self, effect_builder: EffectBuilder<REv>) -> Result<Effects<Event<P>>> {
+    fn initialize(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Event<P>>, Error> {
         let mut known_addresses = HashSet::new();
         for address in &self.cfg.known_addresses {
             match utils::resolve_address(address) {
@@ -376,23 +366,14 @@ where
         let shutdown_fuse = DropSwitch::new(ObservableFuse::new());
 
         let context = self.context.clone();
-        let server_join_handle = tokio::spawn(
+        self.server_join_handle = Some(tokio::spawn(
             tasks::server(
                 context,
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
                 shutdown_fuse.inner().clone(),
             )
             .in_current_span(),
-        );
-
-        let channel_management = ChannelManagement {
-            shutdown_sender: Some(server_shutdown_sender),
-            server_join_handle: Some(server_join_handle),
-            close_incoming_sender: Some(close_incoming_sender),
-            close_incoming_receiver,
-        };
-
-        self.channel_management = Some(channel_management);
+        ));
 
         // Learn all known addresses and mark them as unforgettable.
         let now = Instant::now();
@@ -419,13 +400,6 @@ where
 
         <Self as InitializedComponent<REv>>::set_state(self, ComponentState::Initialized);
         Ok(effects)
-    }
-
-    /// Should only be called after component has been initialized.
-    fn channel_management(&self) -> &ChannelManagement {
-        self.channel_management
-            .as_ref()
-            .expect("component not initialized properly")
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
@@ -531,10 +505,10 @@ where
                 match deserialize_network_message::<P>(refused_message.0.payload()) {
                     Ok(reconstructed_message) => {
                         // We lost the connection, but that fact has not reached us as an event yet.
-                        debug!(our_id=%self.context.our_id, %dest, msg=%reconstructed_message, "dropped outgoing message, lost connection");
+                        debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, lost connection");
                     }
                     Err(err) => {
-                        error!(our_id=%self.context.our_id,
+                        error!(our_id=%self.context.our_id(),
                                %dest,
                                reconstruction_error=%err,
                                payload=?refused_message.0.payload(),
@@ -661,7 +635,7 @@ where
                         carrier,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
-                        self.channel_management().close_incoming_receiver.clone(),
+                        self.shutdown_fuse.inner().clone(),
                         peer_id,
                         span.clone(),
                     )
@@ -847,10 +821,8 @@ where
                     tasks::encoded_message_sender(
                         receivers,
                         carrier,
-                        Arc::from(
-                            self.outgoing_limiter
-                                .create_handle(peer_id, peer_consensus_public_key),
-                        ),
+                        self.outgoing_limiter
+                            .create_handle(peer_id, peer_consensus_public_key),
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
@@ -1092,9 +1064,9 @@ where
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
                 match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.context.our_id, "server exited cleanly"),
+                    Ok(_) => debug!(our_id=%self.context.our_id(), "server exited cleanly"),
                     Err(ref err) => {
-                        error!(%self.context.our_id, err=display_error(err), "could not join server task cleanly")
+                        error!(our_id=%self.context.our_id(), err=display_error(err), "could not join server task cleanly")
                     }
                 }
             }

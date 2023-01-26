@@ -9,7 +9,6 @@ use std::{
     collections::{BTreeSet, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    sync::atomic::Ordering,
     time::{Duration, SystemTime},
 };
 
@@ -36,9 +35,7 @@ pub(crate) struct NetworkInsights {
     /// The public address of the node.
     public_addr: Option<SocketAddr>,
     /// The fingerprint of a consensus key installed.
-    consensus_pub_key: Option<PublicKey>,
-    /// Whether or not the node is syncing.
-    is_syncing: bool,
+    node_key_pair: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
     /// The list of node IDs that are being preferred due to being active validators.
@@ -312,7 +309,10 @@ impl NetworkInsights {
             our_id: net.context.our_id(),
             network_ca: net.context.network_ca().is_some(),
             public_addr: net.context.public_addr(),
-            is_syncing: net.context.is_syncing().load(Ordering::Relaxed),
+            node_key_pair: net
+                .context
+                .node_key_pair()
+                .map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
             privileged_active_outgoing_nodes,
             privileged_upcoming_outgoing_nodes,
@@ -334,7 +334,12 @@ impl Display for NetworkInsights {
         } else {
             f.write_str("Private ")?;
         }
-        writeln!(f, "node {} @ {}", self.our_id, self.public_addr)?;
+        writeln!(
+            f,
+            "node {} @ {}",
+            self.our_id,
+            OptDisplay::new(self.public_addr, "no listen addr")
+        )?;
         writeln!(
             f,
             "active era: {} unspent_bandwidth_allowance_bytes: {}",

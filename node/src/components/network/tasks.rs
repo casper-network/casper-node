@@ -5,11 +5,7 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex, Weak,
-    },
-    time::Duration,
+    sync::{Arc, Mutex, Weak},
 };
 
 use bytes::Bytes;
@@ -55,7 +51,11 @@ use super::{
 };
 
 use crate::{
-    components::network::{handshake::HandshakeOutcome, Config},
+    components::network::{
+        deserialize_network_message,
+        handshake::{negotiate_handshake, HandshakeOutcome},
+        Config,
+    },
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
     },
@@ -244,14 +244,13 @@ where
     tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     max_in_flight_demands: usize,
-    /// Flag indicating whether this node is syncing.
-    is_syncing: AtomicBool,
 }
 
 impl<REv> NetworkContext<REv> {
     pub(super) fn new(
         cfg: Config,
         our_identity: Identity,
+        keylog: Option<LockedLineWriter>,
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
@@ -286,7 +285,7 @@ impl<REv> NetworkContext<REv> {
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands,
-            is_syncing: AtomicBool::new(false),
+            keylog,
         }
     }
 
@@ -325,8 +324,20 @@ impl<REv> NetworkContext<REv> {
         self.network_ca.as_ref()
     }
 
-    pub(crate) fn is_syncing(&self) -> &AtomicBool {
-        &self.is_syncing
+    pub(crate) fn node_key_pair(&self) -> Option<&NodeKeyPair> {
+        self.node_key_pair.as_ref()
+    }
+
+    pub(crate) fn tarpit_chance(&self) -> f32 {
+        self.tarpit_chance
+    }
+
+    pub(crate) fn tarpit_duration(&self) -> TimeDiff {
+        self.tarpit_duration
+    }
+
+    pub(crate) fn tarpit_version_threshold(&self) -> Option<ProtocolVersion> {
+        self.tarpit_version_threshold
     }
 }
 
@@ -504,8 +515,8 @@ pub(super) async fn server<P, REv>(
 pub(super) async fn multi_channel_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     carrier: Arc<Mutex<IncomingCarrier>>,
-    limiter: Box<dyn LimiterHandle>,
-    close_incoming: ObservableFuse,
+    limiter: LimiterHandle,
+    shutdown: ObservableFuse,
     peer_id: NodeId,
     span: Span,
 ) -> Result<(), MessageReaderError>
@@ -533,7 +544,7 @@ where
     // Core receival loop.
     loop {
         let next_item = select.next();
-        let wait_for_close_incoming = close_incoming.wait();
+        let wait_for_close_incoming = shutdown.wait();
         pin_mut!(next_item);
         pin_mut!(wait_for_close_incoming);
 
@@ -584,6 +595,7 @@ where
 
         context
             .event_queue
+            .expect("TODO: What to do if event queue is missing here?")
             .schedule(
                 Event::IncomingMessage {
                     peer_id: Box::new(peer_id),
@@ -609,7 +621,7 @@ where
 pub(super) async fn encoded_message_sender(
     queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
     carrier: OutgoingCarrier,
-    limiter: Arc<dyn LimiterHandle>,
+    limiter: LimiterHandle,
 ) -> Result<(), OutgoingCarrierError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize
     // `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
@@ -656,7 +668,7 @@ async fn shovel_data<S>(
     mut source: UnboundedReceiver<EncodedMessage>,
     mut dest: S,
     stop: ObservableFuse,
-    limiter: Arc<dyn LimiterHandle>,
+    limiter: LimiterHandle,
 ) -> Result<(), <S as Sink<Bytes>>::Error>
 where
     S: Sink<Bytes> + Unpin,

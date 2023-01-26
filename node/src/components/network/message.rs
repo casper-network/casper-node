@@ -117,12 +117,14 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => Channel::Network,
             Message::Payload(payload) => payload.get_channel(),
+            Message::Ping { nonce } => Channel::Network,
+            Message::Pong { nonce } => Channel::Network,
         }
     }
 }
 
 /// A pair of secret keys used by consensus.
-pub(super) struct NodeKeyPair {
+pub(crate) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
 }
@@ -139,6 +141,11 @@ impl NodeKeyPair {
     /// Sign a value using this keypair.
     fn sign<T: AsRef<[u8]>>(&self, value: T) -> Signature {
         crypto::sign(value, &self.secret_key, &self.public_key)
+    }
+
+    /// Returns a reference to the public key of this key pair.
+    pub(super) fn public_key(&self) -> &PublicKey {
+        &self.public_key
     }
 }
 
@@ -351,7 +358,7 @@ impl Display for MessageKind {
 )]
 #[repr(u8)]
 pub enum Channel {
-    /// Networking layer messages, e.g. address gossip.
+    /// Networking layer messages, handshakes and ping/pong.
     Network = 0,
     /// Data solely used for syncing being requested.
     ///

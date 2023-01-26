@@ -186,7 +186,7 @@ enum PeerClass {
 }
 
 /// A per-peer handle for `Limiter`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct LimiterHandle {
     /// Data shared between handles and limiter.
     data: Arc<LimiterData>,
@@ -281,7 +281,7 @@ impl LimiterHandle {
 }
 
 /// An identity for a consumer.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct ConsumerId {
     /// The peer's ID.
     _peer_id: NodeId,
