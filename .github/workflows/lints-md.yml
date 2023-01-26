@@ -1,0 +1,30 @@
+---
+name: lints
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - dev
+      - trying
+      - staging
+      - 'release-**'
+      - 'feat-**'
+    paths:
+      - '**.md'
+
+  pull_request:
+    branches:
+      - dev
+      - 'release-**'
+      - 'feat-**'
+    paths:
+      - '**.md'
+
+jobs:
+  lints:
+    name: lints
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "Markdown only change, no lints required"'
