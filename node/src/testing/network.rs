@@ -143,8 +143,13 @@ where
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         rng: &'b mut NodeRng,
     ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>> =
-            Runner::new(cfg, chainspec, chainspec_raw_bytes, rng).await?;
+        let node_idx = self.nodes.len();
+        let span = error_span!("node", node_idx, node_id = field::Empty);
+        let runner: Box<Runner<ConditionCheckReactor<R>>> = Box::new(
+            Runner::new(cfg, chainspec, chainspec_raw_bytes, rng)
+                .instrument(span.clone())
+                .await?,
+        );
 
         let node_id = runner.reactor().node_id();
         span.record("node_id", field::display(node_id));

@@ -461,7 +461,7 @@ mod tests {
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-    use crate::{components::small_network::handshake, protocol};
+    use crate::{components::network::handshake, protocol};
 
     use super::*;
 
@@ -634,7 +634,6 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
@@ -642,7 +641,6 @@ mod tests {
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
             assert!(consensus_certificate.is_none());
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -658,16 +656,13 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
-            assert!(!is_syncing);
             assert_eq!(network_name, "serialization-test");
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
             assert!(consensus_certificate.is_none());
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -683,14 +678,12 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
             assert_eq!(network_name, "example-handshake");
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
-            assert!(!is_syncing);
             let ConsensusCertificate {
                 public_key,
                 signature,
@@ -711,7 +704,6 @@ mod tests {
                 )
                 .unwrap()
             );
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -727,11 +719,9 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
-            assert!(!is_syncing);
             assert_eq!(network_name, "example-handshake");
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
@@ -755,7 +745,6 @@ mod tests {
                 )
                 .unwrap()
             );
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")

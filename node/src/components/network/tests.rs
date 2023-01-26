@@ -22,7 +22,7 @@ use casper_types::SecretKey;
 
 use super::{
     chain_info::ChainInfo, unbounded_channels, Config, Event as NetworkEvent, FromIncoming,
-    GossipedAddress, MessageKind, Payload, SmallNetwork,
+    GossipedAddress, Identity, MessageKind, Network, Payload,
 };
 use crate::{
     components::{
