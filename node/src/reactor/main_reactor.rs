@@ -46,7 +46,7 @@ use crate::{
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
-        Component,
+        Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
@@ -1048,27 +1048,20 @@ impl MainReactor {
         if state.register_updated_validator_matrix().was_updated() {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
                 let era_id = block.header().era_id();
+                let next_era_id = era_id.successor();
                 self.validator_matrix
-                    .register_validator_weights(era_id.successor(), validator_weights.clone());
-                debug!(
-                    "added switch block (notifying components of validator weights at end of {})",
-                    era_id
-                );
+                    .register_validator_weights(next_era_id, validator_weights.clone());
+                info!(%era_id, %next_era_id, "validator_matrix updated");
+                // notify validator bound components
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ValidatorMatrixUpdated,
-                    ),
+                    self.block_accumulator
+                        .handle_validators(effect_builder, rng),
                 ));
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockSynchronizer,
-                    self.block_synchronizer.handle_event(
-                        effect_builder,
-                        rng,
-                        block_synchronizer::Event::ValidatorMatrixUpdated,
-                    ),
+                    self.block_synchronizer
+                        .handle_validators(effect_builder, rng),
                 ));
             }
         }
