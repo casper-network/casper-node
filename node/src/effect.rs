@@ -196,8 +196,6 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 pub(crate) enum GossipTarget {
     /// Both validators and non validators.
     Mixed(EraId),
-    /// Peers which are not validators in the given era.
-    NonValidators(EraId),
     /// All peers.
     All,
 }
@@ -206,9 +204,6 @@ impl Display for GossipTarget {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             GossipTarget::Mixed(era_id) => write!(formatter, "gossip target mixed for {}", era_id),
-            GossipTarget::NonValidators(era_id) => {
-                write!(formatter, "gossip target non-validators for {}", era_id)
-            }
             GossipTarget::All => write!(formatter, "gossip target all"),
         }
     }
