@@ -76,7 +76,10 @@ use casper_types::{
 };
 
 use crate::{
-    components::{fetcher::FetchResponse, Component},
+    components::{
+        fetcher::{FetchItem, FetchResponse},
+        Component,
+    },
     effect::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
@@ -93,9 +96,8 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SyncLeap,
-        SyncLeapIdentifier, ValueOrChunk,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
+        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{self, display_error, WithDir},
     NodeRng,
@@ -862,7 +864,7 @@ impl Storage {
                     None => None,
                     Some(deploy_with_finalized_approvals) => {
                         let deploy = deploy_with_finalized_approvals.into_naive();
-                        (deploy.id() == deploy_id).then(|| deploy)
+                        (deploy.fetch_id() == deploy_id).then(|| deploy)
                     }
                 };
                 responder.respond(maybe_deploy).ignore()
@@ -1146,22 +1148,29 @@ impl Storage {
             responder,
         }: BlockCompleteConfirmationRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
-        self.mark_block_complete(block_height)?;
-        Ok(responder.respond(()).ignore())
+        let is_new = self.mark_block_complete(block_height)?;
+        Ok(responder.respond(is_new).ignore())
     }
 
     /// Marks the block at height `block_height` as complete by inserting it
     /// into the `completed_blocks` index and storing it to disk.
-    fn mark_block_complete(&mut self, block_height: u64) -> Result<(), FatalStorageError> {
-        self.completed_blocks.insert(block_height);
-        self.persist_completed_blocks()?;
-        info!(
-            "Storage: marked block {} complete: {}",
-            block_height,
-            self.get_available_block_range()
-        );
-        self.update_chain_height_metrics();
-        Ok(())
+    fn mark_block_complete(&mut self, block_height: u64) -> Result<bool, FatalStorageError> {
+        let is_new = self.completed_blocks.insert(block_height);
+        if is_new {
+            self.persist_completed_blocks()?;
+            info!(
+                "Storage: marked block {} complete: {}",
+                block_height,
+                self.get_available_block_range()
+            );
+            self.update_chain_height_metrics();
+        } else {
+            debug!(
+                "Storage: tried to mark already-complete block {} complete",
+                block_height
+            );
+        }
+        Ok(is_new)
     }
 
     /// Persists the completed blocks disjoint sequences state to the database.
@@ -1367,7 +1376,7 @@ impl Storage {
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
             // Update the `completed_blocks` index only if the block was actually stored.
-            self.mark_block_complete(block.height())?;
+            let _ = self.mark_block_complete(block.height())?;
             txn.commit()?;
         }
         Ok(wrote)
@@ -2228,7 +2237,7 @@ impl Storage {
 
         let deploy = match txn.get_value::<_, Deploy>(self.deploy_db, deploy_id.deploy_hash())? {
             None => return Ok(None),
-            Some(deploy) if deploy.id() == deploy_id => return Ok(Some(deploy)),
+            Some(deploy) if deploy.fetch_id() == deploy_id => return Ok(Some(deploy)),
             Some(deploy) => deploy,
         };
 
@@ -2339,7 +2348,7 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError>
     where
         REv: From<NetworkRequest<Message>> + Send,
-        T: FetcherItem,
+        T: FetchItem,
     {
         let serialized = fetch_response
             .to_serialized()
@@ -2351,7 +2360,7 @@ impl Storage {
                 .put(serialized_id.into(), Arc::downgrade(&shared));
         }
 
-        let message = Message::new_get_response_from_serialized(<T as FetcherItem>::TAG, shared);
+        let message = Message::new_get_response_from_serialized(<T as FetchItem>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 
@@ -2530,7 +2539,7 @@ impl Storage {
 /// Decodes an item's ID, typically from an incoming request.
 fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
 where
-    T: FetcherItem,
+    T: FetchItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }
@@ -2831,6 +2840,26 @@ impl Storage {
             .expect("LMDB panicked trying to get switch block");
         txn.commit().expect("Could not commit transaction");
         Ok(switch_block)
+    }
+
+    /// Directly returns a deploy from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_finality_signatures_for_block(
+        &self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let res = txn
+            .get_value(self.block_metadata_db, &block_hash)
+            .expect("could not retrieve value from storage");
+        txn.commit().expect("Could not commit transaction");
+        res
     }
 }
 

@@ -7,8 +7,8 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    components::gossiper::{GossipItem, SmallGossipItem},
     effect::GossipTarget,
-    types::{GossiperItem, Item},
 };
 
 /// Used to gossip our public listening address to peers.
@@ -29,20 +29,24 @@ impl Display for GossipedAddress {
     }
 }
 
-impl Item for GossipedAddress {
-    type Id = GossipedAddress;
-
-    fn id(&self) -> Self::Id {
-        *self
-    }
-}
-
-impl GossiperItem for GossipedAddress {
+impl GossipItem for GossipedAddress {
     const ID_IS_COMPLETE_ITEM: bool = true;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = false;
 
-    fn target(&self) -> GossipTarget {
+    type Id = GossipedAddress;
+
+    fn gossip_id(&self) -> Self::Id {
+        *self
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
         GossipTarget::All
+    }
+}
+
+impl SmallGossipItem for GossipedAddress {
+    fn id_as_item(id: &Self::Id) -> &Self {
+        id
     }
 }
 

@@ -222,20 +222,15 @@ impl BlockAccumulator {
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
     pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
-        self.purge();
         let new_local_tip = match self.local_tip {
             Some(current) => current.height < height && current.era_id <= era_id,
             None => true,
         };
         if new_local_tip {
+            self.purge();
             self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
             info!(local_tip=?self.local_tip, "new local tip detected");
         }
-    }
-
-    /// Returns the height of the local tip, i.e. the latest executed block.
-    pub(crate) fn local_tip_height(&self) -> Option<u64> {
-        self.local_tip.map(|identifier| identifier.height)
     }
 
     /// Registers a peer with an existing acceptor, or creates a new one.
@@ -563,13 +558,11 @@ impl BlockAccumulator {
         // if we haven't received any messages describing higher blocks
         // for more than the self.dead_air_interval config allows
         // we leap again to poll the network
-        if self.last_progress.elapsed() >= self.dead_air_interval {
-            // we don't want to swamp the network with "are we there yet" leaps.
-            self.last_progress = Timestamp::now();
-            true
-        } else {
-            false
-        }
+        self.last_progress.elapsed() >= self.dead_air_interval
+    }
+
+    pub(crate) fn reset_last_progress(&mut self) {
+        self.last_progress = Timestamp::now();
     }
 
     fn should_leap(&self, from_block_height: u64) -> bool {
@@ -783,7 +776,6 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 block_hash,
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
-            Event::ValidatorMatrixUpdated => self.handle_validators(effect_builder),
             Event::RegisterPeer {
                 block_hash,
                 era_id,
@@ -824,8 +816,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
 }
 
 impl<REv: ReactorEvent> ValidatorBoundComponent<REv> for BlockAccumulator {
-    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event> {
-        debug!("handling updated validator matrix");
+    fn handle_validators(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _: &mut NodeRng,
+    ) -> Effects<Self::Event> {
+        info!("BlockAccumulator: handling updated validator matrix");
         let validator_matrix = &self.validator_matrix; // Closure can't borrow all of self.
         let should_stores = self
             .block_acceptors

@@ -14,7 +14,7 @@ use casper_hashing::{
 
 use super::Chunkable;
 use crate::{
-    types::{EmptyValidationMetadata, FetcherItem, Item, Tag},
+    components::fetcher::{EmptyValidationMetadata, FetchItem, Tag},
     utils::ds,
 };
 
@@ -152,10 +152,14 @@ impl HashingTrieRaw {
 /// Represents an enum that can contain either a whole trie or a chunk of it.
 pub type TrieOrChunk = ValueOrChunk<HashingTrieRaw>;
 
-impl Item for TrieOrChunk {
+impl FetchItem for TrieOrChunk {
     type Id = TrieOrChunkId;
+    type ValidationError = ChunkWithProofVerificationError;
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::TrieOrChunk;
+
+    fn fetch_id(&self) -> Self::Id {
         match self {
             TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, trie_raw.hash()),
             TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
@@ -164,12 +168,6 @@ impl Item for TrieOrChunk {
             ),
         }
     }
-}
-
-impl FetcherItem for TrieOrChunk {
-    type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = EmptyValidationMetadata;
-    const TAG: Tag = Tag::TrieOrChunk;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         match self {

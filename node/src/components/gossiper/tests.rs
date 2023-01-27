@@ -47,13 +47,14 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
+    types::{Block, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
     utils::WithDir,
     NodeRng,
 };
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
+const EXPECTED_GOSSIP_TARGET: GossipTarget = GossipTarget::All;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize, Display)]
@@ -130,7 +131,7 @@ struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
-    deploy_gossiper: Gossiper<Deploy, Event>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
     _storage_tempdir: TempDir,
 }
 
@@ -172,10 +173,9 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let fake_deploy_acceptor = FakeDeployAcceptor::new();
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config,
-            get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
 
@@ -206,11 +206,51 @@ impl reactor::Reactor for Reactor {
                 self.fake_deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::DeployGossiper(super::Event::ItemReceived {
+                item_id,
+                source,
+                target,
+            }) => {
+                // Ensure the correct target type for deploys is provided.
+                assert_eq!(target, EXPECTED_GOSSIP_TARGET);
+                let event = super::Event::ItemReceived {
+                    item_id,
+                    source,
+                    target,
+                };
+                reactor::wrap_effects(
+                    Event::DeployGossiper,
+                    self.deploy_gossiper
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::NetworkRequest(NetworkRequest::Gossip {
+                payload,
+                gossip_target,
+                count,
+                exclude,
+                auto_closing_responder,
+            }) => {
+                // Ensure the correct target type for deploys is carried through to the `Network`.
+                assert_eq!(gossip_target, EXPECTED_GOSSIP_TARGET);
+                let request = NetworkRequest::Gossip {
+                    payload,
+                    gossip_target,
+                    count,
+                    exclude,
+                    auto_closing_responder,
+                };
+                reactor::wrap_effects(
+                    Event::Network,
+                    self.network
+                        .handle_event(effect_builder, rng, request.into()),
+                )
+            }
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::Network,
                 self.network
@@ -237,8 +277,9 @@ impl reactor::Reactor for Reactor {
                 source,
             }) => {
                 let event = super::Event::ItemReceived {
-                    item_id: deploy.id(),
+                    item_id: deploy.gossip_id(),
                     source,
+                    target: deploy.gossip_target(),
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }

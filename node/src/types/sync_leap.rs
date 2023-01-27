@@ -15,10 +15,10 @@ use casper_types::{crypto, EraId};
 use tracing::error;
 
 use crate::{
+    components::fetcher::{FetchItem, Tag},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights, FetcherItem,
-        Item, Tag,
+        BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights,
     },
     utils::{self, BlockSignatureError},
 };
@@ -177,21 +177,19 @@ impl Display for SyncLeap {
     }
 }
 
-impl Item for SyncLeap {
+impl FetchItem for SyncLeap {
     type Id = SyncLeapIdentifier;
+    type ValidationError = SyncLeapValidationError;
+    type ValidationMetadata = Arc<Chainspec>;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::SyncLeap;
+
+    fn fetch_id(&self) -> Self::Id {
         SyncLeapIdentifier {
             block_hash: self.trusted_block_header.block_hash(),
             trusted_ancestor_only: self.trusted_ancestor_only,
         }
     }
-}
-
-impl FetcherItem for SyncLeap {
-    type ValidationError = SyncLeapValidationError;
-    type ValidationMetadata = Arc<Chainspec>;
-    const TAG: Tag = Tag::SyncLeap;
 
     fn validate(&self, chainspec: &Arc<Chainspec>) -> Result<(), Self::ValidationError> {
         if self.trusted_ancestor_headers.is_empty() && self.trusted_block_header.height() > 0 {

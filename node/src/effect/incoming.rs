@@ -11,9 +11,9 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use crate::{
-    components::{consensus, gossiper},
+    components::{consensus, fetcher::Tag, gossiper},
     protocol::Message,
-    types::{FinalitySignature, NodeId, Tag, TrieOrChunkIdDisplay},
+    types::{FinalitySignature, NodeId, TrieOrChunkIdDisplay},
 };
 
 use super::AutoClosingResponder;
