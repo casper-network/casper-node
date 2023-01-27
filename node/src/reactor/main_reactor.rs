@@ -17,14 +17,14 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
@@ -1019,13 +1019,20 @@ impl reactor::Reactor for MainReactor {
                     // the ones we would use normally.
                     validators_in_block
                 };
-                self.validator_matrix
-                    .register_validator_weights(era_id, validators_to_register.clone());
+                let mut effects = self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    era_id,
+                    validators_to_register.clone(),
+                );
                 // Crank the reactor so that any synchronizing tasks blocked by the lack of
                 // validators for `era_id` can resume.
-                effect_builder
-                    .immediately()
-                    .event(|_| MainEvent::ReactorCrank)
+                effects.extend(
+                    effect_builder
+                        .immediately()
+                        .event(|_| MainEvent::ReactorCrank),
+                );
+                effects
             }
 
             // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
@@ -1054,6 +1061,30 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
+    fn update_validator_weights(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+        validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Effects<MainEvent> {
+        self.validator_matrix
+            .register_validator_weights(era_id, validator_weights);
+        info!(%era_id, "validator_matrix updated");
+        // notify validator bound components
+        let mut effects = reactor::wrap_effects(
+            MainEvent::BlockAccumulator,
+            self.block_accumulator
+                .handle_validators(effect_builder, rng),
+        );
+        effects.extend(reactor::wrap_effects(
+            MainEvent::BlockSynchronizer,
+            self.block_synchronizer
+                .handle_validators(effect_builder, rng),
+        ));
+        effects
+    }
+
     fn handle_meta_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -1095,19 +1126,11 @@ impl MainReactor {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
                 let era_id = block.header().era_id();
                 let next_era_id = era_id.successor();
-                self.validator_matrix
-                    .register_validator_weights(next_era_id, validator_weights.clone());
-                info!(%era_id, %next_era_id, "validator_matrix updated");
-                // notify validator bound components
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator
-                        .handle_validators(effect_builder, rng),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockSynchronizer,
-                    self.block_synchronizer
-                        .handle_validators(effect_builder, rng),
+                effects.extend(self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    next_era_id,
+                    validator_weights.clone(),
                 ));
             }
         }

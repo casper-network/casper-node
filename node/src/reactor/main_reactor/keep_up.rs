@@ -461,7 +461,7 @@ impl MainReactor {
                 best_available,
                 from_peers: _,
                 ..
-            } => self.sync_back_leap_received(effect_builder, best_available),
+            } => self.sync_back_leap_received(best_available),
             LeapState::Failed { error, .. } => {
                 self.sync_back_leap_failed(effect_builder, rng, parent_hash, error)
             }
@@ -517,11 +517,7 @@ impl MainReactor {
         KeepUpInstruction::Do(offset, effects)
     }
 
-    fn sync_back_leap_received(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        best_available: Box<SyncLeap>,
-    ) -> KeepUpInstruction {
+    fn sync_back_leap_received(&mut self, best_available: Box<SyncLeap>) -> KeepUpInstruction {
         // use the leap response to update our recent switch block data (if relevant) and
         // era validator weights. if there are other processes which are holding on discovery
         // of relevant newly-seen era validator weights, they should naturally progress
@@ -544,20 +540,7 @@ impl MainReactor {
                 debug!(%era_id, "historical: era already present or is not relevant");
             }
         }
-
-        // We put all the headers we received into storage - if the SyncLeap was valid, we can
-        // trust them, and they will be useful for determining which blocks are immediate switch
-        // blocks.
-        let effects = best_available
-            .headers()
-            .flat_map(move |block_header| {
-                effect_builder
-                    .put_block_header_to_storage(Box::new(block_header.clone()))
-                    .ignore()
-            })
-            .collect();
-
-        KeepUpInstruction::Do(Duration::ZERO, effects)
+        KeepUpInstruction::CheckLater("historical sync leap received".to_string(), Duration::ZERO)
     }
 
     fn sync_back_register(
@@ -639,16 +622,15 @@ impl MainReactor {
                             .storage
                             .read_block_header(parent_block_header.parent_hash())
                             .map_err(|err| err.to_string())?
-                            .and_then(|parent_parent_header| {
+                            .and_then(|grandparent_header| {
                                 (parent_block_header.is_switch_block()
-                                    && parent_parent_header.is_switch_block())
+                                    && grandparent_header.is_switch_block())
                                 .then(|| ParentMetadata {
                                     global_state_hash: *parent_block_header.state_root_hash(),
                                     protocol_version: parent_block_header.protocol_version(),
-                                    parent_hash: parent_parent_header.block_hash(),
-                                    parent_state_hash: *parent_parent_header.state_root_hash(),
-                                    parent_protocol_version: parent_parent_header
-                                        .protocol_version(),
+                                    parent_hash: grandparent_header.block_hash(),
+                                    parent_state_hash: *grandparent_header.state_root_hash(),
+                                    parent_protocol_version: grandparent_header.protocol_version(),
                                 })
                             });
                         Ok(Some(SyncBackInstruction::Sync {
