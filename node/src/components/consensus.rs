@@ -35,7 +35,10 @@ use casper_types::{EraId, PublicKey, Timestamp};
 use crate::{
     components::Component,
     effect::{
-        announcements::{ConsensusAnnouncement, FatalAnnouncement, PeerBehaviorAnnouncement},
+        announcements::{
+            ConsensusAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
+            PeerBehaviorAnnouncement,
+        },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{ConsensusDemand, ConsensusMessageIncoming},
         requests::{
@@ -155,9 +158,9 @@ pub struct ActionId(pub u8);
 
 #[derive(DataSize, Debug, From)]
 pub struct NewBlockPayload {
-    era_id: EraId,
-    block_payload: Arc<BlockPayload>,
-    block_context: BlockContext<ClContext>,
+    pub(crate) era_id: EraId,
+    pub(crate) block_payload: Arc<BlockPayload>,
+    pub(crate) block_context: BlockContext<ClContext>,
 }
 
 #[derive(DataSize, Debug, From)]
@@ -337,6 +340,7 @@ pub(crate) trait ReactorEventT:
     + From<ContractRuntimeRequest>
     + From<ChainspecRawBytesRequest>
     + From<PeerBehaviorAnnouncement>
+    + From<MetaBlockAnnouncement>
     + From<FatalAnnouncement>
 {
 }
@@ -355,6 +359,7 @@ impl<REv> ReactorEventT for REv where
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
         + From<PeerBehaviorAnnouncement>
+        + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
 {
 }

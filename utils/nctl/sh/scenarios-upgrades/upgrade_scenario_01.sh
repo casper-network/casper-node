@@ -116,17 +116,29 @@ function _step_05()
 function _step_06()
 {
     local N1_PROTOCOL_VERSION_INITIAL=${1}
+    local TIMEOUT=${2:-'60'}
     local HEIGHT_1
     local HEIGHT_2
     local NODE_ID
 
     log_step_upgrades 6 "asserting node upgrades"
 
-    # Assert no nodes have stopped.
-    if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
-        log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
-        exit 1
-    fi
+    while [ "$TIMEOUT" -ge 0 ]; do
+        # Assert no nodes have stopped.
+        if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
+            if [ "$TIMEOUT" != '0' ]; then
+                log "...waiting for nodes to come up, timeout=$TIMEOUT"
+                sleep 1
+                TIMEOUT=$((TIMEOUT-1))
+            else
+                log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
+                exit 1
+            fi
+        else
+            log "... all nodes up! [continuing]"
+            break
+        fi
+    done
 
     # Assert no nodes have stalled.
     HEIGHT_1=$(get_chain_height)
@@ -135,7 +147,7 @@ function _step_06()
     do
         HEIGHT_2=$(get_chain_height "$NODE_ID")
         if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
-            log "ERROR :: protocol upgrade failure - >= 1 nodes have stalled"
+            log "ERROR :: protocol upgrade failure - node $NODE_ID has stalled - current height $HEIGHT_2 is <= starting height $HEIGHT_1"
             exit 1
         fi
     done
@@ -183,8 +195,8 @@ function _step_07()
         fi
     done
 
-    log "... awaiting auction bid acceptance (3 eras + 1 block)"
-    nctl-await-n-eras offset='3' sleep_interval='5.0' timeout='180'
+    log "... awaiting auction bid acceptance (2 eras + 1 block)"
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 
     log "... starting nodes"

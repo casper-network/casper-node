@@ -17,7 +17,7 @@ use crate::{
         upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
         utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, Item},
+    types::{BlockHash, BlockPayload, FinalizedBlock, MetaBlockState},
     NodeRng,
 };
 
@@ -337,8 +337,13 @@ impl MainReactor {
             next_block_height,
             PublicKey::System,
         );
+
         Ok(effect_builder
-            .enqueue_block_for_execution(finalized_block, vec![])
+            .enqueue_block_for_execution(
+                finalized_block,
+                vec![],
+                MetaBlockState::new_not_to_be_gossiped(),
+            )
             .ignore())
     }
 
@@ -393,7 +398,11 @@ impl MainReactor {
                         PublicKey::System,
                     );
                     Ok(effect_builder
-                        .enqueue_block_for_execution(finalized_block, vec![])
+                        .enqueue_block_for_execution(
+                            finalized_block,
+                            vec![],
+                            MetaBlockState::new_not_to_be_gossiped(),
+                        )
                         .ignore())
                 }
                 Err(err) => Err(err.to_string()),
@@ -412,9 +421,12 @@ impl MainReactor {
         };
 
         if let Some(block_header) = recent_switch_block_headers.last() {
-            return self
-                .upgrade_watcher
-                .should_upgrade_after(block_header.era_id());
+            let highest_block_complete =
+                self.storage.highest_complete_block_height() == Some(block_header.height());
+            return highest_block_complete
+                && self
+                    .upgrade_watcher
+                    .should_upgrade_after(block_header.era_id());
         }
         false
     }
@@ -435,10 +447,11 @@ impl MainReactor {
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
         match self.storage.read_highest_complete_block() {
             Ok(Some(block)) => {
-                let block_height = block.height();
-                let state_root_hash = block.state_root_hash();
-                let block_hash = block.id();
-                let accumulated_seed = block.header().accumulated_seed();
+                let block_header = block.header();
+                let block_height = block_header.height();
+                let state_root_hash = block_header.state_root_hash();
+                let block_hash = block_header.block_hash();
+                let accumulated_seed = block_header.accumulated_seed();
                 self.initialize_contract_runtime(
                     block_height + 1,
                     *state_root_hash,
@@ -449,7 +462,7 @@ impl MainReactor {
             Ok(None) => {
                 Ok(()) // noop
             }
-            Err(error) => Err(format!("failed to read highest complete block: {}", error)),
+            Err(error) => Err(format!("failed to read highest block: {}", error)),
         }
     }
 

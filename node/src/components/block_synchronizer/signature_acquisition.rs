@@ -14,6 +14,7 @@ enum SignatureState {
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(super) struct SignatureAcquisition {
     inner: BTreeMap<PublicKey, SignatureState>,
+    maybe_is_checkable: Option<bool>,
 }
 
 impl SignatureAcquisition {
@@ -22,7 +23,11 @@ impl SignatureAcquisition {
             .into_iter()
             .map(|validator| (validator, SignatureState::Vacant))
             .collect();
-        SignatureAcquisition { inner }
+        let maybe_is_checkable = None;
+        SignatureAcquisition {
+            inner,
+            maybe_is_checkable,
+        }
     }
 
     // Returns `true` if new signature was registered.
@@ -40,5 +45,17 @@ impl SignatureAcquisition {
             SignatureState::Vacant => None,
             SignatureState::Signature(_finality_signature) => Some(k),
         })
+    }
+
+    pub(crate) fn set_is_checkable(&mut self, is_checkable: bool) {
+        self.maybe_is_checkable = Some(is_checkable)
+    }
+
+    pub(crate) fn requires_strict_finality(&self, is_recent_block: bool) -> bool {
+        if is_recent_block {
+            return true;
+        }
+
+        self.maybe_is_checkable.unwrap_or(false)
     }
 }

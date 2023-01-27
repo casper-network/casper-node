@@ -15,6 +15,8 @@ use crate::{
     utils::{External, LoadError, Loadable},
 };
 
+const DEFAULT_MAX_EXECUTION_DELAY: u64 = 3;
+
 /// Consensus configuration.
 #[derive(DataSize, Debug, Deserialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -37,7 +39,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             secret_key_path: External::Missing,
-            max_execution_delay: 3,
+            max_execution_delay: DEFAULT_MAX_EXECUTION_DELAY,
             highway: HighwayConfig::default(),
             zug: ZugConfig::default(),
         }
