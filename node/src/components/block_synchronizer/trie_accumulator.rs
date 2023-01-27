@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
@@ -16,7 +19,9 @@ use casper_types::bytesrepr::{self, Bytes};
 
 use crate::{
     components::{
-        fetcher::{Error as FetcherError, FetchResult, FetchedData},
+        fetcher::{
+            EmptyValidationMetadata, Error as FetcherError, FetchItem, FetchResult, FetchedData,
+        },
         Component,
     },
     effect::{
@@ -24,7 +29,7 @@ use crate::{
         requests::{FetcherRequest, TrieAccumulatorRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{EmptyValidationMetadata, Item, NodeId, TrieOrChunk, TrieOrChunkId},
+    types::{NodeId, TrieOrChunk, TrieOrChunkId},
     NodeRng,
 };
 
@@ -130,7 +135,7 @@ impl TrieAccumulator {
     where
         REv: From<FetcherRequest<TrieOrChunk>> + From<PeerBehaviorAnnouncement> + Send,
     {
-        let TrieOrChunkId(_index, hash) = trie_or_chunk.id();
+        let TrieOrChunkId(_index, hash) = trie_or_chunk.fetch_id();
         match trie_or_chunk {
             TrieOrChunk::Value(trie) => match self.partial_chunks.remove(&hash) {
                 None => {

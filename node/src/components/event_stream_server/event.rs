@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp};
 use itertools::Itertools;
@@ -8,7 +11,7 @@ use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalityS
 #[derive(Debug)]
 pub enum Event {
     Initialize,
-    BlockAdded(Box<Block>),
+    BlockAdded(Arc<Block>),
     DeployAccepted(Box<Deploy>),
     DeployProcessed {
         deploy_hash: DeployHash,

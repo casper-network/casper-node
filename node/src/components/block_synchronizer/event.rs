@@ -29,8 +29,11 @@ pub(crate) enum Event {
         result: Option<(FinalizedBlock, Vec<Deploy>)>,
     },
     MarkBlockExecutionEnqueued(BlockHash),
-    MarkBlockCompleted(BlockHash),
-    ValidatorMatrixUpdated,
+    MarkBlockExecuted(BlockHash),
+    MarkBlockCompleted {
+        block_hash: BlockHash,
+        is_new: bool,
+    },
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
@@ -75,9 +78,6 @@ impl Display for Event {
             }
             Event::Initialize => {
                 write!(f, "initialize this component")
-            }
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
             }
             Event::DisconnectFromPeer(peer) => {
                 write!(f, "disconnected from peer {}", peer)
@@ -153,7 +153,10 @@ impl Display for Event {
             Event::MarkBlockExecutionEnqueued(..) => {
                 write!(f, "mark block enqueued for execution")
             }
-            Event::MarkBlockCompleted(..) => {
+            Event::MarkBlockExecuted(..) => {
+                write!(f, "block execution complete")
+            }
+            Event::MarkBlockCompleted { .. } => {
                 write!(f, "mark block completed")
             }
         }

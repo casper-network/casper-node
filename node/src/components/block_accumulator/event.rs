@@ -1,18 +1,18 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::EraId;
 use derive_more::From;
+
+use casper_types::EraId;
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, BlockHash, FinalitySignature, NodeId},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, NodeId},
 };
 
 #[derive(Debug, From)]
 pub(crate) enum Event {
     #[from]
     Request(BlockAccumulatorRequest),
-    ValidatorMatrixUpdated,
     RegisterPeer {
         block_hash: BlockHash,
         era_id: Option<EraId>,
@@ -30,11 +30,11 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ExecutedBlock {
-        block: Box<Block>,
+        meta_block: MetaBlock,
     },
     Stored {
-        block: Option<Box<Block>>,
-        finality_signatures: Vec<FinalitySignature>,
+        maybe_meta_block: Option<MetaBlock>,
+        maybe_block_signatures: Option<BlockSignatures>,
     },
 }
 
@@ -47,9 +47,6 @@ impl Display for Event {
                     "block accumulator peers request for block: {}",
                     block_hash
                 )
-            }
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
             }
             Event::RegisterPeer {
                 block_hash, sender, ..
@@ -72,21 +69,34 @@ impl Display for Event {
             } => {
                 write!(f, "received {} from {}", finality_signature, sender)
             }
-            // Event::UpdatedValidatorMatrix { era_id } => {
-            //     write!(f, "validator matrix update for era {}", era_id)
-            // }
-            Event::ExecutedBlock { block } => {
-                write!(f, "executed block: hash={}", block.hash())
+            Event::ExecutedBlock { meta_block } => {
+                write!(f, "executed block {}", meta_block.block.hash())
             }
             Event::Stored {
-                block,
-                finality_signatures,
+                maybe_meta_block: Some(meta_block),
+                maybe_block_signatures,
             } => {
                 write!(
                     f,
-                    "stored {:?} and {} finality signatures",
-                    block.as_ref().map(|block| *block.hash()),
-                    finality_signatures.len()
+                    "stored {} and {} finality signatures",
+                    meta_block.block.hash(),
+                    maybe_block_signatures
+                        .as_ref()
+                        .map(|sigs| sigs.proofs.len())
+                        .unwrap_or_default()
+                )
+            }
+            Event::Stored {
+                maybe_meta_block: None,
+                maybe_block_signatures,
+            } => {
+                write!(
+                    f,
+                    "stored {} finality signatures",
+                    maybe_block_signatures
+                        .as_ref()
+                        .map(|sigs| sigs.proofs.len())
+                        .unwrap_or_default()
                 )
             }
         }

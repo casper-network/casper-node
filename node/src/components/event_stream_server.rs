@@ -241,7 +241,7 @@ where
                 }
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
-                    block: Box::new(JsonBlock::new(*block, None)),
+                    block: Box::new(JsonBlock::new(&*block, None)),
                 }),
                 Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
                     deploy: Arc::new(*deploy),

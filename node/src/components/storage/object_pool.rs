@@ -117,7 +117,7 @@ mod tests {
     use datasize::DataSize;
 
     use super::ObjectPool;
-    use crate::types::{Deploy, Item};
+    use crate::{components::fetcher::FetchItem, types::Deploy};
 
     impl<I> ObjectPool<I>
     where
@@ -130,13 +130,13 @@ mod tests {
 
     #[test]
     fn can_load_and_store_items() {
-        let mut pool: ObjectPool<<Deploy as Item>::Id> = ObjectPool::new(5);
+        let mut pool: ObjectPool<<Deploy as FetchItem>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
         let d1 = Deploy::random(&mut rng);
         let d2 = Deploy::random(&mut rng);
-        let d1_id = d1.id();
-        let d2_id = d2.id();
+        let d1_id = d1.fetch_id();
+        let d2_id = d2.fetch_id();
         let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
         let d2_serialized = bincode::serialize(&d2).expect("could not serialize second deploy");
 
@@ -166,11 +166,11 @@ mod tests {
 
     #[test]
     fn frees_memory_after_reference_loss() {
-        let mut pool: ObjectPool<<Deploy as Item>::Id> = ObjectPool::new(5);
+        let mut pool: ObjectPool<<Deploy as FetchItem>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
         let d1 = Deploy::random(&mut rng);
-        let d1_id = d1.id();
+        let d1_id = d1.fetch_id();
         let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
 
         let d1_shared = d1_serialized.into();
@@ -189,14 +189,14 @@ mod tests {
 
     #[test]
     fn garbage_is_collected() {
-        let mut pool: ObjectPool<<Deploy as Item>::Id> = ObjectPool::new(5);
+        let mut pool: ObjectPool<<Deploy as FetchItem>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
         assert_eq!(pool.num_entries(), 0);
 
         for i in 0..5 {
             let deploy = Deploy::random(&mut rng);
-            let id = deploy.id();
+            let id = deploy.fetch_id();
             let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
             let shared = serialized.into();
             pool.put(id, Arc::downgrade(&shared));
@@ -206,7 +206,7 @@ mod tests {
         }
 
         let deploy = Deploy::random(&mut rng);
-        let id = deploy.id();
+        let id = deploy.fetch_id();
         let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
         let shared = serialized.into();
         pool.put(id, Arc::downgrade(&shared));
