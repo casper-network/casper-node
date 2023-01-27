@@ -284,7 +284,7 @@ impl MainReactor {
                     parent_hash,
                     era_id,
                 } => {
-                    debug!(%parent_hash, ?era_id, validator_matrix=?self.validator_matrix.read_inner().keys(), "historical: sync back instruction");
+                    debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "historical: sync back instruction");
                     match self.validator_matrix.has_era(&era_id) {
                         true => Some(self.sync_back_register(effect_builder, rng, parent_hash)),
                         false => Some(self.sync_back_leap(effect_builder, rng, parent_hash)),
