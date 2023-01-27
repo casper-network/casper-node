@@ -194,5 +194,9 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
 }
 
 pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
-    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event>;
+    fn handle_validators(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+    ) -> Effects<Self::Event>;
 }

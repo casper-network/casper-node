@@ -16,7 +16,7 @@ casper-hashing = { version = "1.4.3", path = "../../hashing" }
 casper-types = { version = "1.5.0", path = "../../types" }
 humantime = "2"
 filesize = "0.2.0"
-lmdb = "0.8.0"
+lmdb-rkv = "0.14"
 log = "0.4.14"
 num-rational = "0.4.0"
 num-traits = "0.2.14"

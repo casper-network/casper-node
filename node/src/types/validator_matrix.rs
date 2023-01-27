@@ -305,6 +305,15 @@ impl EraValidatorWeights {
         self.validator_weights.contains_key(public_key)
     }
 
+    pub(crate) fn signed_weight<'a>(
+        &self,
+        validator_keys: impl Iterator<Item = &'a PublicKey>,
+    ) -> U512 {
+        validator_keys
+            .map(|validator_key| self.get_weight(validator_key))
+            .sum()
+    }
+
     pub(crate) fn signature_weight<'a>(
         &self,
         validator_keys: impl Iterator<Item = &'a PublicKey>,
@@ -318,9 +327,8 @@ impl EraValidatorWeights {
         let finality_threshold_fraction = self.finality_threshold_fraction;
         let strict = Ratio::new(1, 2) * (Ratio::from_integer(1) + finality_threshold_fraction);
         let total_era_weight = self.get_total_weight();
-        let signature_weight: U512 = validator_keys
-            .map(|validator_key| self.get_weight(validator_key))
-            .sum();
+
+        let signature_weight = self.signed_weight(validator_keys);
         if signature_weight * U512::from(*strict.denom())
             >= total_era_weight * U512::from(*strict.numer())
         {

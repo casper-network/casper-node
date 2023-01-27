@@ -138,7 +138,8 @@ use crate::{
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         deploy_acceptor,
         diagnostics_port::StopAtSpec,
-        fetcher::FetchResult,
+        fetcher::{FetchItem, FetchResult},
+        gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
@@ -147,18 +148,18 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FetcherItem, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, GossiperItem, HotBlock,
-        HotBlockState, LegacyDeploy, NodeId, TrieOrChunk, TrieOrChunkId,
+        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
+        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
+        MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
-    BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
-    ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-    DeployBufferAnnouncement, FatalAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
-    PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+    BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
+    GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
+    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -193,15 +194,18 @@ pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 /// The type of peers that should receive the gossip message.
 #[derive(Debug, Serialize, PartialEq, Eq, Hash, Copy, Clone, DataSize)]
 pub(crate) enum GossipTarget {
-    /// Peers which are not validators in the given era.
-    NonValidators(EraId),
+    /// Both validators and non validators.
+    Mixed(EraId),
     /// All peers.
     All,
 }
 
-impl Default for GossipTarget {
-    fn default() -> Self {
-        GossipTarget::All
+impl Display for GossipTarget {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            GossipTarget::Mixed(era_id) => write!(formatter, "gossip target mixed for {}", era_id),
+            GossipTarget::All => write!(formatter, "gossip target all"),
+        }
     }
 }
 
@@ -822,10 +826,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
-    pub(crate) async fn announce_complete_item_received_via_gossip<T: GossiperItem>(
-        self,
-        item: T::Id,
-    ) where
+    pub(crate) async fn announce_complete_item_received_via_gossip<T: GossipItem>(self, item: T::Id)
+    where
         REv: From<GossiperAnnouncement<T>>,
     {
         assert!(
@@ -843,7 +845,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Announces that a gossiper has received a full item, where the item's ID is NOT the complete
     /// item.
-    pub(crate) async fn announce_item_body_received_via_gossip<T: GossiperItem>(
+    pub(crate) async fn announce_item_body_received_via_gossip<T: GossipItem>(
         self,
         item: Box<T>,
         sender: NodeId,
@@ -858,18 +860,6 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// The block synchronizer has ensured that all the parts of this block are stored
-    pub(crate) async fn announce_completed_block(self, block: Arc<Block>)
-    where
-        REv: From<BlockSynchronizerAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                BlockSynchronizerAnnouncement::CompletedBlock { block },
-                QueueKind::Validation,
-            )
-            .await;
-    }
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
@@ -912,7 +902,7 @@ impl<REv> EffectBuilder<REv> {
     /// Completion means that the block itself (along with its header) and all of its deploys have
     /// been persisted to storage and its global state root hash is missing no dependencies in the
     /// global state.
-    pub(crate) async fn mark_block_completed(self, block_height: u64)
+    pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
         REv: From<BlockCompleteConfirmationRequest>,
     {
@@ -962,7 +952,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_gossip_received<T>(self, item_id: T::Id, sender: NodeId)
     where
         REv: From<GossiperAnnouncement<T>>,
-        T: GossiperItem,
+        T: GossipItem,
     {
         self.event_queue
             .schedule(
@@ -976,7 +966,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_finished_gossiping<T>(self, item_id: T::Id)
     where
         REv: From<GossiperAnnouncement<T>>,
-        T: GossiperItem,
+        T: GossipItem,
     {
         self.event_queue
             .schedule(
@@ -1053,15 +1043,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Begins gossiping an item.
-    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source)
+    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source, target: GossipTarget)
     where
-        T: GossiperItem,
+        T: GossipItem,
         REv: From<BeginGossipRequest<T>>,
     {
         self.make_request(
             |responder| BeginGossipRequest {
                 item_id,
                 source,
+                target,
                 responder,
             },
             QueueKind::Gossip,
@@ -1206,6 +1197,23 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::GetBlockSignature {
                 block_hash,
                 public_key: Box::new(public_key),
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_execution_results_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetExecutionResults {
+                block_hash,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1623,7 +1631,7 @@ impl<REv> EffectBuilder<REv> {
     ) -> FetchResult<T>
     where
         REv: From<FetcherRequest<T>>,
-        T: FetcherItem + 'static,
+        T: FetchItem + 'static,
     {
         self.make_request(
             |responder| FetcherRequest {
@@ -1676,7 +1684,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-        hot_block_state: HotBlockState,
+        meta_block_state: MetaBlockState,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1685,7 +1693,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
-                    hot_block_state,
+                    meta_block_state,
                 },
                 QueueKind::ContractRuntime,
             )
@@ -1739,13 +1747,13 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announces that a hot block has been created or its state has changed.
-    pub(crate) async fn announce_hot_block(self, hot_block: HotBlock)
+    /// Announces that a meta block has been created or its state has changed.
+    pub(crate) async fn announce_meta_block(self, meta_block: MetaBlock)
     where
-        REv: From<HotBlockAnnouncement>,
+        REv: From<MetaBlockAnnouncement>,
     {
         self.event_queue
-            .schedule(HotBlockAnnouncement(hot_block), QueueKind::Regular)
+            .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
             .await
     }
 

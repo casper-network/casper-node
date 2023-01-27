@@ -76,7 +76,10 @@ use casper_types::{
 };
 
 use crate::{
-    components::{fetcher::FetchResponse, Component},
+    components::{
+        fetcher::{FetchItem, FetchResponse},
+        Component,
+    },
     effect::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
@@ -92,10 +95,9 @@ use crate::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, DeployId, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, EraValidatorWeights, FetcherItem, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, LegacyDeploy, NodeId, SignatureWeight, SyncLeap,
-        SyncLeapIdentifier, ValueOrChunk,
+        BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
+        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{self, display_error, WithDir},
     NodeRng,
@@ -400,7 +402,8 @@ impl Storage {
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
-        for (_, raw_val) in cursor.iter() {
+        for row in cursor.iter() {
+            let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             let maybe_block_body =
@@ -861,11 +864,17 @@ impl Storage {
                     None => None,
                     Some(deploy_with_finalized_approvals) => {
                         let deploy = deploy_with_finalized_approvals.into_naive();
-                        (deploy.id() == deploy_id).then(|| deploy)
+                        (deploy.fetch_id() == deploy_id).then(|| deploy)
                     }
                 };
                 responder.respond(maybe_deploy).ignore()
             }
+            StorageRequest::GetExecutionResults {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_execution_results(&block_hash)?)
+                .ignore(),
             StorageRequest::GetBlockExecutionResultsOrChunk { id, responder } => responder
                 .respond(self.read_block_execution_results_or_chunk(&id)?)
                 .ignore(),
@@ -1139,22 +1148,29 @@ impl Storage {
             responder,
         }: BlockCompleteConfirmationRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
-        self.mark_block_complete(block_height)?;
-        Ok(responder.respond(()).ignore())
+        let is_new = self.mark_block_complete(block_height)?;
+        Ok(responder.respond(is_new).ignore())
     }
 
     /// Marks the block at height `block_height` as complete by inserting it
     /// into the `completed_blocks` index and storing it to disk.
-    fn mark_block_complete(&mut self, block_height: u64) -> Result<(), FatalStorageError> {
-        self.completed_blocks.insert(block_height);
-        self.persist_completed_blocks()?;
-        info!(
-            "Storage: marked block {} complete: {}",
-            block_height,
-            self.get_available_block_range()
-        );
-        self.update_chain_height_metrics();
-        Ok(())
+    fn mark_block_complete(&mut self, block_height: u64) -> Result<bool, FatalStorageError> {
+        let is_new = self.completed_blocks.insert(block_height);
+        if is_new {
+            self.persist_completed_blocks()?;
+            info!(
+                "Storage: marked block {} complete: {}",
+                block_height,
+                self.get_available_block_range()
+            );
+            self.update_chain_height_metrics();
+        } else {
+            debug!(
+                "Storage: tried to mark already-complete block {} complete",
+                block_height
+            );
+        }
+        Ok(is_new)
     }
 
     /// Persists the completed blocks disjoint sequences state to the database.
@@ -1228,6 +1244,13 @@ impl Storage {
             None => return Ok(None),
         };
         self.read_block_header_by_hash(highest_block_hash)
+    }
+
+    /// Retrieves the height of the highest complete block (if any).
+    pub(crate) fn highest_complete_block_height(&self) -> Option<u64> {
+        self.completed_blocks
+            .highest_sequence()
+            .map(|sequence| sequence.high())
     }
 
     /// Retrieves the highest complete block from the storage, if one exists.
@@ -1353,7 +1376,7 @@ impl Storage {
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
             // Update the `completed_blocks` index only if the block was actually stored.
-            self.mark_block_complete(block.height())?;
+            let _ = self.mark_block_complete(block.height())?;
             txn.commit()?;
         }
         Ok(wrote)
@@ -1747,8 +1770,8 @@ impl Storage {
         &self,
         txn: &mut Tx,
     ) -> Result<Option<Block>, FatalStorageError> {
-        let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
-            Some(sequence) => sequence.high(),
+        let highest_complete_block_height = match self.highest_complete_block_height() {
+            Some(height) => height,
             None => {
                 return Ok(None);
             }
@@ -2144,63 +2167,6 @@ impl Storage {
         Ok(maybe_signatures.and_then(|signatures| signatures.get_finality_signature(public_key)))
     }
 
-    /// Walks an era backwards from its switch block; returns true if every block in the era
-    /// has sufficient finality signatures, else false
-    pub(crate) fn era_has_sufficient_finality_signatures(
-        &self,
-        era_validator_weights: &EraValidatorWeights,
-    ) -> Result<bool, FatalStorageError> {
-        let era_id = era_validator_weights.era_id();
-        if let Some(mut block_hash) = self.switch_block_era_id_index.get(&era_id).copied() {
-            let mut txn = self.env.begin_ro_txn()?;
-            loop {
-                if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
-                    if block.header().era_id() != era_id {
-                        return Ok(true);
-                    }
-                    if self.block_has_sufficient_finality_signatures(
-                        &mut txn,
-                        &block_hash,
-                        era_validator_weights,
-                    ) == false
-                    {
-                        return Ok(false);
-                    }
-                    if let Some(parent_hash) = block.parent() {
-                        block_hash = *parent_hash;
-                    }
-                }
-            }
-        }
-        Ok(false)
-    }
-
-    /// Determines if a given block has sufficient finality signatures for its era.
-    fn block_has_sufficient_finality_signatures<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_hash: &BlockHash,
-        era_validator_weights: &EraValidatorWeights,
-    ) -> bool {
-        let era_id = era_validator_weights.era_id();
-        if let Ok(Some(block_signatures)) = self.get_block_signatures(txn, block_hash) {
-            if block_signatures.era_id != era_id {
-                return false;
-            }
-            if let Some(validator_keys) = block_signatures.public_keys() {
-                match era_validator_weights.signature_weight(validator_keys.iter()) {
-                    SignatureWeight::Strict => {
-                        return true;
-                    }
-                    SignatureWeight::Insufficient | SignatureWeight::Weak => {
-                        return false;
-                    }
-                }
-            }
-        }
-        false
-    }
-
     /// Retrieves block signatures for a block with a given block hash.
     fn read_block_signatures(
         &self,
@@ -2271,7 +2237,7 @@ impl Storage {
 
         let deploy = match txn.get_value::<_, Deploy>(self.deploy_db, deploy_id.deploy_hash())? {
             None => return Ok(None),
-            Some(deploy) if deploy.id() == deploy_id => return Ok(Some(deploy)),
+            Some(deploy) if deploy.fetch_id() == deploy_id => return Ok(Some(deploy)),
             Some(deploy) => deploy,
         };
 
@@ -2382,7 +2348,7 @@ impl Storage {
     ) -> Result<Effects<Event>, FatalStorageError>
     where
         REv: From<NetworkRequest<Message>> + Send,
-        T: FetcherItem,
+        T: FetchItem,
     {
         let serialized = fetch_response
             .to_serialized()
@@ -2394,7 +2360,7 @@ impl Storage {
                 .put(serialized_id.into(), Arc::downgrade(&shared));
         }
 
-        let message = Message::new_get_response_from_serialized(<T as FetcherItem>::TAG, shared);
+        let message = Message::new_get_response_from_serialized(<T as FetchItem>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 
@@ -2435,10 +2401,11 @@ impl Storage {
         None
     }
 
-    fn read_block_execution_results_or_chunk(
+    fn get_execution_results<Tx: Transaction>(
         &self,
-        request: &BlockExecutionResultsOrChunkId,
-    ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
+        txn: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
         // There's no mapping between block_hash -> execution results.
         // We store execution results under the deploy hash for the txn.
         // In order to pull it out, we have to:
@@ -2447,20 +2414,18 @@ impl Storage {
         // 3. For every txns in the block's body, we load its deploy metadata.
         // 4. We extract txn's execution results from the `deploy_metadata` for the block
         // we're interested in.
-        let block_hash = request.block_hash();
-        let mut txn = self.env.begin_rw_txn()?;
-        let block_header: BlockHeader = match self.get_single_block_header(&mut txn, block_hash)? {
+        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_for_block_header(&mut txn, block_header.body_hash(), self.block_body_db);
+            get_body_for_block_header(txn, block_header.body_hash(), self.block_body_db);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
-                info!(
+                debug!(
                     %block_hash,
-                    "read_block_execution_results_or_chunk: retrieved block header but block body is missing from database"
+                    "retrieved block header but block body is absent"
                 );
                 return Ok(None);
             }
@@ -2468,27 +2433,28 @@ impl Storage {
 
         let mut execution_results = vec![];
         for deploy_hash in block_body.deploy_and_transfer_hashes() {
-            match self.get_deploy_metadata(&mut txn, deploy_hash)? {
+            match self.get_deploy_metadata(txn, deploy_hash)? {
                 None => {
-                    // We have the block and the body but not the deploy. This could happen
-                    // for a node that is still syncing and probably shouldn't be a fatal
-                    // error.
+                    debug!(
+                        %block_hash,
+                        %deploy_hash,
+                        "retrieved block but deploy is absent"
+                    );
                     return Ok(None);
                 }
                 Some(mut metadata) => {
-                    match metadata.execution_results.remove(request.block_hash()) {
-                        Some(results) => {
-                            execution_results.push(results);
+                    match metadata.execution_results.remove(block_hash) {
+                        Some(execution_result) => {
+                            execution_results.push((*deploy_hash, execution_result));
                         }
                         None => {
-                            // We have the block, we've got the deploy but its metadata
-                            // doesn't include the reference to the block.
-                            // This is an error b/c even though types seem to allow for a
-                            // single deploy map to multiple blocks, it shouldn't happen in
-                            // practice.
+                            // We have the block, we've got the deploy but its metadata doesn't
+                            // include the reference to the block. This is an error b/c even though
+                            // types seem to allow for a single deploy map to multiple blocks, it
+                            // shouldn't happen in practice.
                             error!(
                                 %block_hash,
-                                ?deploy_hash,
+                                %deploy_hash,
                                 "missing execution results for a deploy in particular block"
                             );
                             return Ok(None);
@@ -2497,13 +2463,55 @@ impl Storage {
                 }
             }
         }
+        Ok(Some(execution_results))
+    }
 
+    #[allow(clippy::type_complexity)]
+    fn read_execution_results(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>, FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let execution_results = match self.get_execution_results(&mut txn, block_hash)? {
+            Some(execution_results) => execution_results,
+            None => return Ok(None),
+        };
+
+        let mut ret = Vec::with_capacity(execution_results.len());
+        for (deploy_hash, execution_result) in execution_results {
+            match txn.get_value::<_, Deploy>(self.deploy_db, &deploy_hash)? {
+                None => {
+                    error!(
+                        %block_hash,
+                        %deploy_hash,
+                        "missing deploy"
+                    );
+                    return Ok(None);
+                }
+                Some(deploy) => ret.push((deploy_hash, deploy.take_header(), execution_result)),
+            };
+        }
+        Ok(Some(ret))
+    }
+
+    fn read_block_execution_results_or_chunk(
+        &self,
+        request: &BlockExecutionResultsOrChunkId,
+    ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let execution_results = match self.get_execution_results(&mut txn, request.block_hash())? {
+            Some(execution_results) => execution_results
+                .into_iter()
+                .map(|(_deploy_hash, execution_result)| execution_result)
+                .collect(),
+            None => return Ok(None),
+        };
         let value_or_chunk = match ValueOrChunk::new(execution_results, request.chunk_index()) {
             Ok(value_or_chunk) => value_or_chunk,
             Err(error) => {
                 // Failure shouldn't be fatal as the node can continue operating but won't be able
-                // to answer this particular query. We choose to return `None`
-                // instead, signaling other nodes to not query this one for that data.
+                // to answer this particular query. We choose to return `None` instead, signaling
+                // other nodes to not query this one for that data.
                 error!(
                     ?request,
                     ?error,
@@ -2531,7 +2539,7 @@ impl Storage {
 /// Decodes an item's ID, typically from an incoming request.
 fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
 where
-    T: FetcherItem,
+    T: FetchItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }
@@ -2795,6 +2803,7 @@ impl Storage {
 
         cursor
             .iter()
+            .map(Result::unwrap)
             .map(|(raw_key, _)| {
                 DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
             })
@@ -2832,6 +2841,26 @@ impl Storage {
         txn.commit().expect("Could not commit transaction");
         Ok(switch_block)
     }
+
+    /// Directly returns a deploy from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_finality_signatures_for_block(
+        &self,
+        block_hash: BlockHash,
+    ) -> Option<BlockSignatures> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let res = txn
+            .get_value(self.block_metadata_db, &block_hash)
+            .expect("could not retrieve value from storage");
+        txn.commit().expect("Could not commit transaction");
+        res
+    }
 }
 
 fn construct_block_body_to_block_header_reverse_lookup(
@@ -2839,7 +2868,8 @@ fn construct_block_body_to_block_header_reverse_lookup(
     block_header_db: &Database,
 ) -> Result<BTreeMap<Digest, BlockHeader>, LmdbExtError> {
     let mut block_body_hash_to_header_map: BTreeMap<Digest, BlockHeader> = BTreeMap::new();
-    for (_raw_key, raw_val) in txn.open_ro_cursor(*block_header_db)?.iter() {
+    for row in txn.open_ro_cursor(*block_header_db)?.iter() {
+        let (_raw_key, raw_val) = row?;
         let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
         block_body_hash_to_header_map.insert(block_header.body_hash().to_owned(), block_header);
     }
@@ -2861,7 +2891,8 @@ fn initialize_block_body_db(
 
     let mut cursor = txn.open_rw_cursor(*block_body_db)?;
 
-    for (raw_key, _raw_val) in cursor.iter() {
+    for row in cursor.iter() {
+        let (raw_key, _raw_val) = row?;
         let block_body_hash =
             Digest::try_from(raw_key).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
         if !block_body_hash_to_header_map.contains_key(&block_body_hash) {
@@ -2901,7 +2932,8 @@ fn initialize_block_metadata_db(
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
 
-    for (raw_key, _) in cursor.iter() {
+    for row in cursor.iter() {
+        let (raw_key, _) = row?;
         if deleted_block_hashes.contains(raw_key) {
             cursor.del(WriteFlags::empty())?;
             continue;

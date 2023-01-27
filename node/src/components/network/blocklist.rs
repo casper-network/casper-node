@@ -9,7 +9,7 @@ use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::{components::block_accumulator, types::Tag};
+use crate::components::{block_accumulator, fetcher::Tag};
 
 /// Reasons why a peer was blocked.
 #[derive(DataSize, Debug, Serialize)]

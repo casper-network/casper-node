@@ -6,14 +6,13 @@ use casper_types::EraId;
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, HotBlock, NodeId},
+    types::{Block, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, NodeId},
 };
 
 #[derive(Debug, From)]
 pub(crate) enum Event {
     #[from]
     Request(BlockAccumulatorRequest),
-    ValidatorMatrixUpdated,
     RegisterPeer {
         block_hash: BlockHash,
         era_id: Option<EraId>,
@@ -31,10 +30,10 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ExecutedBlock {
-        hot_block: HotBlock,
+        meta_block: MetaBlock,
     },
     Stored {
-        maybe_hot_block: Option<HotBlock>,
+        maybe_meta_block: Option<MetaBlock>,
         maybe_block_signatures: Option<BlockSignatures>,
     },
 }
@@ -48,9 +47,6 @@ impl Display for Event {
                     "block accumulator peers request for block: {}",
                     block_hash
                 )
-            }
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
             }
             Event::RegisterPeer {
                 block_hash, sender, ..
@@ -73,17 +69,17 @@ impl Display for Event {
             } => {
                 write!(f, "received {} from {}", finality_signature, sender)
             }
-            Event::ExecutedBlock { hot_block } => {
-                write!(f, "executed block {}", hot_block.block.hash())
+            Event::ExecutedBlock { meta_block } => {
+                write!(f, "executed block {}", meta_block.block.hash())
             }
             Event::Stored {
-                maybe_hot_block: Some(hot_block),
+                maybe_meta_block: Some(meta_block),
                 maybe_block_signatures,
             } => {
                 write!(
                     f,
                     "stored {} and {} finality signatures",
-                    hot_block.block.hash(),
+                    meta_block.block.hash(),
                     maybe_block_signatures
                         .as_ref()
                         .map(|sigs| sigs.proofs.len())
@@ -91,7 +87,7 @@ impl Display for Event {
                 )
             }
             Event::Stored {
-                maybe_hot_block: None,
+                maybe_meta_block: None,
                 maybe_block_signatures,
             } => {
                 write!(

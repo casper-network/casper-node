@@ -37,7 +37,7 @@ use crate::{
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
-        gossiper::{self, Gossiper},
+        gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
@@ -46,28 +46,30 @@ use crate::{
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
-        Component,
+        Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
-            BlockAccumulatorAnnouncement, BlockSynchronizerAnnouncement, ConsensusAnnouncement,
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            DeployBufferAnnouncement, GossiperAnnouncement, HotBlockAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
+            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
     protocol::Message,
     reactor::{
-        self, event_queue_metrics::EventQueueMetrics, main_reactor::fetchers::Fetchers,
+        self,
+        event_queue_metrics::EventQueueMetrics,
+        main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
         EventQueueHandle, QueueKind,
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        HotBlock, HotBlockState, Item, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -149,10 +151,11 @@ pub(crate) struct MainReactor {
     deploy_buffer: DeployBuffer,
 
     // gossiping components
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>,
-    deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    block_gossiper: Gossiper<Block, MainEvent>,
-    finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
+    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
+    finality_signature_gossiper:
+        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -182,6 +185,7 @@ pub(crate) struct MainReactor {
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
     sync_to_genesis: bool,
+    signature_gossip_tracker: SignatureGossipTracker,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -262,8 +266,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
         )?;
 
-        let address_gossiper =
-            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
+            "address_gossiper",
+            config.gossip,
+            registry,
+        )?;
 
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
@@ -292,24 +299,22 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::new_for_partial_items(
+        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
-            gossiper::get_block_from_storage::<Block, MainEvent>,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config.gossip,
-            gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let finality_signature_gossiper = Gossiper::new_for_partial_items(
-            "finality_signature_gossiper",
-            config.gossip,
-            gossiper::get_finality_signature_from_storage::<FinalitySignature, MainEvent>,
-            registry,
-        )?;
+        let finality_signature_gossiper =
+            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
+                "finality_signature_gossiper",
+                config.gossip,
+                registry,
+            )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -384,6 +389,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix,
             switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
+            signature_gossip_tracker: SignatureGossipTracker::new(),
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -439,8 +445,8 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::HotBlockAnnouncement(HotBlockAnnouncement(hot_block)) => {
-                self.handle_hot_block(effect_builder, rng, hot_block)
+            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
+                self.handle_meta_block(effect_builder, rng, meta_block)
             }
 
             // LOCAL I/O BOUND COMPONENTS
@@ -653,39 +659,6 @@ impl reactor::Reactor for MainReactor {
                 self.block_synchronizer
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockSynchronizerAnnouncement(
-                BlockSynchronizerAnnouncement::CompletedBlock { block },
-            ) => {
-                let mut effects = reactor::wrap_effects(
-                    MainEvent::DeployBuffer,
-                    self.deploy_buffer.handle_event(
-                        effect_builder,
-                        rng,
-                        deploy_buffer::Event::Block(Arc::clone(&block)),
-                    ),
-                );
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Consensus,
-                    self.consensus.handle_event(
-                        effect_builder,
-                        rng,
-                        consensus::Event::BlockAdded {
-                            header: Box::new(block.header().clone()),
-                            header_hash: *block.hash(),
-                        },
-                    ),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::BlockAdded(Arc::clone(&block)),
-                    ),
-                ));
-                // TODO - fetch execution results from storage and send to event stream
-                effects
-            }
             MainEvent::BlockAccumulatorAnnouncement(
                 BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature },
             ) => {
@@ -699,8 +672,9 @@ impl reactor::Reactor for MainReactor {
                         effect_builder,
                         rng,
                         gossiper::Event::ItemReceived {
-                            item_id: finality_signature.id(),
+                            item_id: finality_signature.gossip_id(),
                             source: Source::Ourself,
+                            target: finality_signature.gossip_target(),
                         },
                     ),
                 );
@@ -835,8 +809,12 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::FinalitySignatureGossiperAnnouncement(
-                GossiperAnnouncement::FinishedGossiping(_gossiped_finality_signature_id),
-            ) => Effects::new(),
+                GossiperAnnouncement::FinishedGossiping(gossiped_finality_signature_id),
+            ) => {
+                self.signature_gossip_tracker
+                    .register_signature(gossiped_finality_signature_id);
+                Effects::new()
+            }
 
             // DEPLOYS
             MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
@@ -867,8 +845,9 @@ impl reactor::Reactor for MainReactor {
                             effect_builder,
                             rng,
                             MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                item_id: deploy.id(),
+                                item_id: deploy.gossip_id(),
                                 source,
+                                target: deploy.gossip_target(),
                             }),
                         ));
                         // notify event stream
@@ -1051,18 +1030,18 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
-    fn handle_hot_block(
+    fn handle_meta_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-        HotBlock {
+        MetaBlock {
             block,
             execution_results,
             mut state,
-        }: HotBlock,
+        }: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
-            "handling hot block {} {} {:?}",
+            "handling meta block {} {} {:?}",
             block.height(),
             block.hash(),
             state
@@ -1076,28 +1055,6 @@ impl MainReactor {
         }
 
         let mut effects = Effects::new();
-
-        let should_update_switch_block_if_required = match self.block_accumulator.local_tip_height()
-        {
-            Some(local_tip_height) => block.height() > local_tip_height,
-            None => true,
-        };
-        if should_update_switch_block_if_required {
-            if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block = None;
-            }
-        }
 
         if state.register_as_sent_to_deploy_buffer().was_updated() {
             effects.extend(reactor::wrap_effects(
@@ -1113,28 +1070,20 @@ impl MainReactor {
         if state.register_updated_validator_matrix().was_updated() {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
                 let era_id = block.header().era_id();
+                let next_era_id = era_id.successor();
                 self.validator_matrix
-                    .register_validator_weights(era_id.successor(), validator_weights.clone());
-                debug!(
-                    "added switch block (notifying components of validator weights at end \
-                            of {})",
-                    era_id
-                );
+                    .register_validator_weights(next_era_id, validator_weights.clone());
+                info!(%era_id, %next_era_id, "validator_matrix updated");
+                // notify validator bound components
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ValidatorMatrixUpdated,
-                    ),
+                    self.block_accumulator
+                        .handle_validators(effect_builder, rng),
                 ));
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockSynchronizer,
-                    self.block_synchronizer.handle_event(
-                        effect_builder,
-                        rng,
-                        block_synchronizer::Event::ValidatorMatrixUpdated,
-                    ),
+                    self.block_synchronizer
+                        .handle_validators(effect_builder, rng),
                 ));
             }
         }
@@ -1145,10 +1094,11 @@ impl MainReactor {
             .validator_matrix
             .is_self_validator_in_era(block.header().era_id())
         {
-            self.update_hot_block_gossip_state(
+            self.update_meta_block_gossip_state(
                 effect_builder,
                 rng,
                 block.hash(),
+                block.gossip_target(),
                 &mut state,
                 &mut effects,
             );
@@ -1187,10 +1137,7 @@ impl MainReactor {
             }
         }
 
-        if state
-            .register_as_sent_to_consensus_post_execution()
-            .was_updated()
-        {
+        if state.register_as_consensus_notified().was_updated() {
             effects.extend(reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(
@@ -1204,11 +1151,8 @@ impl MainReactor {
             ));
         }
 
-        if state
-            .register_as_sent_to_accumulator_post_execution()
-            .was_updated()
-        {
-            let hot_block = HotBlock {
+        if state.register_as_accumulator_notified().was_updated() {
+            let meta_block = MetaBlock {
                 block,
                 execution_results,
                 state,
@@ -1218,7 +1162,7 @@ impl MainReactor {
                 self.block_accumulator.handle_event(
                     effect_builder,
                     rng,
-                    block_accumulator::Event::ExecutedBlock { hot_block },
+                    block_accumulator::Event::ExecutedBlock { meta_block },
                 ),
             ));
             // We've done as much as we can for now, we need to wait for the block
@@ -1226,7 +1170,29 @@ impl MainReactor {
             return effects;
         }
 
-        if !state.is_marked_complete() {
+        // Set the current switch block only after the block is marked complete.
+        // We *always* want to initialize the contract runtime with the highest complete block.
+        // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
+        // the immediate switch block is stored and *also* marked complete.
+        // This will allow the contract runtime to initialize properly (see
+        // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
+        // `KeepUp`.
+        if state.is_marked_complete() {
+            if block.header().is_switch_block() {
+                match self.switch_block.as_ref().map(|header| header.height()) {
+                    Some(current_height) => {
+                        if block.height() > current_height {
+                            self.switch_block = Some(block.header().clone());
+                        }
+                    }
+                    None => {
+                        self.switch_block = Some(block.header().clone());
+                    }
+                }
+            } else {
+                self.switch_block = None;
+            }
+        } else {
             error!(
                 block = %*block,
                 ?state,
@@ -1234,21 +1200,42 @@ impl MainReactor {
             );
         }
 
-        self.update_hot_block_gossip_state(
+        self.update_meta_block_gossip_state(
             effect_builder,
             rng,
             block.hash(),
+            block.gossip_target(),
             &mut state,
             &mut effects,
         );
 
+        if state.register_as_synchronizer_notified().was_updated() {
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockSynchronizer,
+                self.block_synchronizer.handle_event(
+                    effect_builder,
+                    rng,
+                    block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
+                ),
+            ));
+        }
+
         debug_assert!(
             state.verify_complete(),
-            "hot block {} at height {} has invalid state: {:?}",
+            "meta block {} at height {} has invalid state: {:?}",
             block.hash(),
             block.height(),
             state
         );
+
+        if state.register_all_actions_done().was_already_registered() {
+            error!(
+                block = %*block,
+                ?state,
+                "duplicate meta block announcement emitted"
+            );
+            return effects;
+        }
 
         effects.extend(reactor::wrap_effects(
             MainEvent::EventStreamServer,
@@ -1284,12 +1271,13 @@ impl MainReactor {
         effects
     }
 
-    fn update_hot_block_gossip_state(
+    fn update_meta_block_gossip_state(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         block_hash: &BlockHash,
-        state: &mut HotBlockState,
+        gossip_target: GossipTarget,
+        state: &mut MetaBlockState,
         effects: &mut Effects<MainEvent>,
     ) {
         if state.register_as_gossiped().was_updated() {
@@ -1305,6 +1293,7 @@ impl MainReactor {
                     gossiper::Event::ItemReceived {
                         item_id: *block_hash,
                         source: Source::Ourself,
+                        target: gossip_target,
                     },
                 ),
             ));

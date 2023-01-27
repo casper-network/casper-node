@@ -9,14 +9,14 @@ use tracing::{debug, error, trace};
 
 use super::{Error, Event, FetchResponder, FetchedData, ItemHandle, Metrics};
 use crate::{
-    components::network::blocklist::BlocklistJustification,
+    components::{fetcher::FetchItem, network::blocklist::BlocklistJustification},
     effect::{
         announcements::PeerBehaviorAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    types::{FetcherItem, Item, NodeId},
+    types::NodeId,
 };
 
 pub(super) enum StoringState<'a, T> {
@@ -25,7 +25,7 @@ pub(super) enum StoringState<'a, T> {
 }
 
 #[async_trait]
-pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
+pub(super) trait ItemFetcher<T: FetchItem + 'static> {
     /// Indicator on whether it is safe to respond to all of our responders. For example, [Deploy]s
     /// and [BlockHeader]s are safe because their [Item::id] is all that is needed for
     /// authentication. But other structures have _finality signatures_ or have substructures that
@@ -79,7 +79,7 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where
-        <T as Item>::Id: 'static,
+        <T as FetchItem>::Id: 'static,
         REv: From<NetworkRequest<Message>> + Send,
     {
         let peer_timeout = self.peer_timeout();
@@ -138,12 +138,12 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
 
         let validation_metadata = match self
             .item_handles()
-            .get(&item.id())
+            .get(&item.fetch_id())
             .and_then(|item_handles| item_handles.get(&peer))
         {
             Some(item_handle) => item_handle.validation_metadata(),
             None => {
-                debug!(item_id = %item.id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
+                debug!(item_id = %item.fetch_id(), tag = ?T::TAG, %peer, "got unexpected item from peer");
                 return Effects::new();
             }
         };
@@ -161,7 +161,7 @@ pub(super) trait ItemFetcher<T: FetcherItem + 'static> {
                 .ignore()
         } else {
             match Self::put_to_storage(effect_builder, *item.clone()) {
-                StoringState::WontStore(item) => self.signal(item.id(), Ok(item), peer),
+                StoringState::WontStore(item) => self.signal(item.fetch_id(), Ok(item), peer),
                 StoringState::Enqueued(store_future) => {
                     store_future.event(move |_| Event::PutToStorage { item, peer })
                 }

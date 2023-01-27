@@ -162,6 +162,34 @@ function get_node_protocol_version()
 }
 
 #######################################
+# Returns the lowest complete block the node has.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_lowest_available_block()
+{
+    local NODE_ID=${1}
+
+    echo $(get_node_status "$NODE_ID") | \
+        jq '.available_block_range.low' | \
+        sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
+# Returns the highest complete block the node has.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_highest_available_block()
+{
+    local NODE_ID=${1}
+
+    echo $(get_node_status "$NODE_ID") | \
+        jq '.available_block_range.high' | \
+        sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
 # Returns protocol version being run by a node by inspecting it's bin folder.
 # Arguments:
 #   Node ordinal identifier.

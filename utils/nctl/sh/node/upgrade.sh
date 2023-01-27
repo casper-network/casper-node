@@ -40,5 +40,6 @@ function do_upgrade() {
 
 # Upgrade node(s).
 log "upgrade node(s) begins ... please wait"
+shopt -s expand_aliases
 do_upgrade "$PROTOCOL_VERSION" "$ACTIVATE_ERA"
 log "upgrade node(s) complete"

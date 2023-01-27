@@ -36,7 +36,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::{
-            ConsensusAnnouncement, FatalAnnouncement, HotBlockAnnouncement,
+            ConsensusAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
             PeerBehaviorAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
@@ -340,7 +340,7 @@ pub(crate) trait ReactorEventT:
     + From<ContractRuntimeRequest>
     + From<ChainspecRawBytesRequest>
     + From<PeerBehaviorAnnouncement>
-    + From<HotBlockAnnouncement>
+    + From<MetaBlockAnnouncement>
     + From<FatalAnnouncement>
 {
 }
@@ -359,7 +359,7 @@ impl<REv> ReactorEventT for REv where
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
         + From<PeerBehaviorAnnouncement>
-        + From<HotBlockAnnouncement>
+        + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
 {
 }
