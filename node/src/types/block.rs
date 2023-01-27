@@ -2,6 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 mod approvals_hashes;
+mod meta_block;
 
 use std::{
     array::TryFromSliceError,
@@ -15,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::Into;
-use itertools::Itertools;
 use once_cell::sync::{Lazy, OnceCell};
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
@@ -33,18 +33,25 @@ use casper_types::{
 use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 use crate::{
-    components::{block_synchronizer::ExecutionResultsChecksum, consensus},
+    components::{
+        block_synchronizer::ExecutionResultsChecksum,
+        consensus,
+        fetcher::{EmptyValidationMetadata, FetchItem, Tag},
+        gossiper::{GossipItem, LargeGossipItem},
+    },
     effect::GossipTarget,
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
         Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployId,
-        DeployOrTransferHash, EmptyValidationMetadata, FetcherItem, GossiperItem, Item, JsonBlock,
-        JsonBlockHeader, Tag, ValueOrChunk,
+        DeployOrTransferHash, JsonBlock, JsonBlockHeader, ValueOrChunk,
     },
     utils::{ds, DisplayIter},
 };
 pub(crate) use approvals_hashes::ApprovalsHashes;
+pub(crate) use meta_block::{
+    MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
+};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -167,7 +174,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let signature = crypto::sign(block.hash.inner(), secret_key, &public_key);
     block_signature.insert_proof(public_key, signature);
 
-    JsonBlock::new(block, Some(block_signature))
+    JsonBlock::new(&block, Some(block_signature))
 });
 static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     let block_header = Block::doc_example().header().clone();
@@ -1032,18 +1039,16 @@ impl FromBytes for BlockHeader {
     }
 }
 
-impl Item for BlockHeader {
+impl FetchItem for BlockHeader {
     type Id = BlockHash;
-
-    fn id(&self) -> Self::Id {
-        self.block_hash()
-    }
-}
-
-impl FetcherItem for BlockHeader {
     type ValidationError = Infallible;
     type ValidationMetadata = EmptyValidationMetadata;
+
     const TAG: Tag = Tag::BlockHeader;
+
+    fn fetch_id(&self) -> Self::Id {
+        self.block_hash()
+    }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         Ok(())
@@ -1245,15 +1250,6 @@ impl BlockSignatures {
         self.proofs.iter().map(move |(public_key, signature)| {
             FinalitySignature::new(self.block_hash, self.era_id, *signature, public_key.clone())
         })
-    }
-
-    pub(crate) fn public_keys(&self) -> Option<Vec<PublicKey>> {
-        if self.proofs.is_empty() {
-            None
-        } else {
-            let public_keys = self.proofs.keys().cloned().collect_vec();
-            Some(public_keys)
-        }
     }
 }
 
@@ -1537,6 +1533,26 @@ impl Block {
         )
         .expect("Could not create random block with specifics")
     }
+
+    /// Generates a random invalid instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_invalid(rng: &mut TestRng) -> Self {
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+
+        let mut block = Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+            None,
+        );
+        block.hash = BlockHash::random(rng);
+        assert!(block.verify().is_err());
+        block
+    }
 }
 
 impl DocExample for Block {
@@ -1594,32 +1610,39 @@ impl FromBytes for Block {
     }
 }
 
-impl Item for Block {
+impl FetchItem for Block {
     type Id = BlockHash;
-
-    fn id(&self) -> Self::Id {
-        *self.hash()
-    }
-}
-
-impl FetcherItem for Block {
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
+
     const TAG: Tag = Tag::Block;
+
+    fn fetch_id(&self) -> Self::Id {
+        *self.hash()
+    }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.verify()
     }
 }
 
-impl GossiperItem for Block {
+impl GossipItem for Block {
+    type Id = BlockHash;
+
     const ID_IS_COMPLETE_ITEM: bool = false;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
-    fn target(&self) -> GossipTarget {
-        GossipTarget::NonValidators(self.header.era_id)
+    fn gossip_id(&self) -> Self::Id {
+        *self.hash()
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
+        // Validators make their own blocks thus we only gossip blocks to non validators.
+        GossipTarget::Mixed(self.header.era_id)
     }
 }
+
+impl LargeGossipItem for Block {}
 
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1729,10 +1752,14 @@ impl PartialEq for BlockExecutionResultsOrChunk {
     }
 }
 
-impl Item for BlockExecutionResultsOrChunk {
+impl FetchItem for BlockExecutionResultsOrChunk {
     type Id = BlockExecutionResultsOrChunkId;
+    type ValidationError = ChunkWithProofVerificationError;
+    type ValidationMetadata = ExecutionResultsChecksum;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::BlockExecutionResults;
+
+    fn fetch_id(&self) -> Self::Id {
         let chunk_index = match &self.value {
             ValueOrChunk::Value(_) => 0,
             ValueOrChunk::ChunkWithProof(chunks) => chunks.proof().index(),
@@ -1742,12 +1769,6 @@ impl Item for BlockExecutionResultsOrChunk {
             block_hash: self.block_hash,
         }
     }
-}
-
-impl FetcherItem for BlockExecutionResultsOrChunk {
-    type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = ExecutionResultsChecksum;
-    const TAG: Tag = Tag::BlockExecutionResults;
 
     fn validate(&self, metadata: &ExecutionResultsChecksum) -> Result<(), Self::ValidationError> {
         if let ValueOrChunk::ChunkWithProof(chunk_with_proof) = &self.value {
@@ -2023,8 +2044,8 @@ pub(crate) mod json_compatibility {
         transfer_hashes: Vec<DeployHash>,
     }
 
-    impl From<BlockBody> for JsonBlockBody {
-        fn from(body: BlockBody) -> Self {
+    impl From<&BlockBody> for JsonBlockBody {
+        fn from(body: &BlockBody) -> Self {
             JsonBlockBody {
                 proposer: body.proposer().clone(),
                 deploy_hashes: body.deploy_hashes().clone(),
@@ -2060,10 +2081,10 @@ pub(crate) mod json_compatibility {
 
     impl JsonBlock {
         /// Create a new JSON Block with a Linear chain block and its associated signatures.
-        pub fn new(block: Block, maybe_signatures: Option<BlockSignatures>) -> Self {
+        pub fn new(block: &Block, maybe_signatures: Option<BlockSignatures>) -> Self {
             let hash = *block.hash();
             let header = JsonBlockHeader::from(block.header.clone());
-            let body = JsonBlockBody::from(block.body);
+            let body = JsonBlockBody::from(&block.body);
             let proofs = maybe_signatures
                 .map(|signatures| signatures.proofs.into_iter().map(JsonProof::from).collect())
                 .unwrap_or_default();
@@ -2135,7 +2156,7 @@ pub(crate) mod json_compatibility {
             let mut rng = TestRng::new();
             let block: Block = Block::random(&mut rng);
             let empty_signatures = BlockSignatures::new(*block.hash(), block.header().era_id);
-            let json_block = JsonBlock::new(block.clone(), Some(empty_signatures));
+            let json_block = JsonBlock::new(&block, Some(empty_signatures));
             let block_deserialized = Block::from(json_block);
             assert_eq!(block, block_deserialized);
         }
@@ -2293,36 +2314,46 @@ impl Display for FinalitySignature {
     }
 }
 
-impl Item for FinalitySignature {
+impl FetchItem for FinalitySignature {
     type Id = FinalitySignatureId;
+    type ValidationError = crypto::Error;
+    type ValidationMetadata = EmptyValidationMetadata;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::FinalitySignature;
+
+    fn fetch_id(&self) -> Self::Id {
         FinalitySignatureId {
             block_hash: self.block_hash,
             era_id: self.era_id,
             public_key: self.public_key.clone(),
         }
     }
-}
-
-impl GossiperItem for FinalitySignature {
-    const ID_IS_COMPLETE_ITEM: bool = false;
-    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
-
-    fn target(&self) -> GossipTarget {
-        GossipTarget::All
-    }
-}
-
-impl FetcherItem for FinalitySignature {
-    type ValidationError = crypto::Error;
-    type ValidationMetadata = EmptyValidationMetadata;
-    const TAG: Tag = Tag::FinalitySignature;
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
         self.is_verified()
     }
 }
+
+impl GossipItem for FinalitySignature {
+    type Id = FinalitySignatureId;
+
+    const ID_IS_COMPLETE_ITEM: bool = false;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
+
+    fn gossip_id(&self) -> Self::Id {
+        FinalitySignatureId {
+            block_hash: self.block_hash,
+            era_id: self.era_id,
+            public_key: self.public_key.clone(),
+        }
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
+        GossipTarget::Mixed(self.era_id)
+    }
+}
+
+impl LargeGossipItem for FinalitySignature {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, DataSize)]
 pub(crate) struct FinalitySignatureId {
@@ -2559,7 +2590,7 @@ mod tests {
             };
 
             let next = Block::new(
-                self.block.id(),
+                *self.block.hash(),
                 self.block.header().accumulated_seed(),
                 *self.block.header().state_root_hash(),
                 FinalizedBlock::random_with_specifics(
@@ -2593,7 +2624,7 @@ mod tests {
             );
             assert_eq!(
                 current_block.header().parent_hash(),
-                &parent_block.id(),
+                parent_block.hash(),
                 "block's parent should point at previous block"
             );
             parent_block = current_block;

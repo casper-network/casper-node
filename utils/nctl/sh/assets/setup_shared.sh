@@ -248,7 +248,6 @@ function setup_asset_chainspec()
             "cfg['protocol']['activation_point']='$ACTIVATION_POINT';"
             "cfg['protocol']['version']='$PROTOCOL_VERSION';"
             "cfg['network']['name']='$(get_chain_name)';"
-            "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
         )
     else
         SCRIPT=(
@@ -257,9 +256,15 @@ function setup_asset_chainspec()
             "cfg['protocol']['activation_point']=$ACTIVATION_POINT;"
             "cfg['protocol']['version']='$PROTOCOL_VERSION';"
             "cfg['network']['name']='$(get_chain_name)';"
-            "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
         )
     fi
+
+    if [[ "$PATH_TO_CHAINSPEC_TEMPLATE" == *"resources/local/chainspec.toml.in"* ]] || \
+       [[ "$PATH_TO_CHAINSPEC_TEMPLATE" == *"stages"* ]]; then
+        SCRIPT+=("cfg['core']['validator_slots']=$COUNT_NODES;")
+    fi
+
+    SCRIPT+=("toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));")
 
     python3 -c "${SCRIPT[*]}"
 }

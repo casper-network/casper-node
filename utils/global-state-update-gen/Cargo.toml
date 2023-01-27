@@ -16,7 +16,7 @@ casper-storage = { version = "1.4.3", path = "../../storage" }
 casper-hashing = { path = "../../hashing" }
 casper-types = { path = "../../types" }
 clap = "2.33"
-lmdb = "0.8"
+lmdb-rkv = "0.14"
 rand = "0.8"
 serde = "1"
 toml = "0.5"

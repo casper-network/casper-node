@@ -32,7 +32,7 @@ function get_chain_era()
         STATUS=$(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status")
         ERA=$(echo $STATUS | jq '.last_added_block_info.era_id')
         if [ "$ERA" == "null" ]; then
-            echo 0
+            echo -2
         else
             echo $ERA
         fi
@@ -159,6 +159,34 @@ function get_node_protocol_version()
     echo $(get_node_status "$NODE_ID") | \
          jq '.api_version' | \
          sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
+# Returns the lowest complete block the node has.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_lowest_available_block()
+{
+    local NODE_ID=${1}
+
+    echo $(get_node_status "$NODE_ID") | \
+        jq '.available_block_range.low' | \
+        sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
+# Returns the highest complete block the node has.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_highest_available_block()
+{
+    local NODE_ID=${1}
+
+    echo $(get_node_status "$NODE_ID") | \
+        jq '.available_block_range.high' | \
+        sed -e 's/^"//' -e 's/"$//'
 }
 
 #######################################

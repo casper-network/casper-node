@@ -129,6 +129,7 @@ pub fn run_blocks_with_transfers_and_step(
 
         let existing_keys = cursor
             .iter()
+            .map(Result::unwrap)
             .map(|(key, _)| Digest::try_from(key).expect("should be a digest"));
         necessary_tries.extend(existing_keys);
     }

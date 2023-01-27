@@ -39,7 +39,7 @@ impl ChainInfo {
         let network_name = "rust-tests-network";
         ChainInfo {
             network_name: network_name.to_string(),
-            maximum_net_message_size: 22 * 1024 * 1024, // Hardcoded at 22M.
+            maximum_net_message_size: 24 * 1024 * 1024, // Hardcoded at 24M.
             protocol_version: ProtocolVersion::V1_0_0,
             chainspec_hash: Digest::hash(format!("{}-chainspec", network_name)),
         }

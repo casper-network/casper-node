@@ -1,12 +1,14 @@
 mod config;
 mod error;
 mod event;
+mod fetch_item;
 mod fetch_response;
 mod fetched_data;
 mod fetcher_impls;
 mod item_fetcher;
 mod item_handle;
 mod metrics;
+mod tag;
 mod tests;
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
@@ -23,7 +25,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{FetcherItem, NodeId},
+    types::NodeId,
     utils::Source,
     NodeRng,
 };
@@ -31,11 +33,13 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
+pub(crate) use fetch_item::{EmptyValidationMetadata, FetchItem};
 pub(crate) use fetch_response::FetchResponse;
 pub(crate) use fetched_data::FetchedData;
 use item_fetcher::{ItemFetcher, StoringState};
 use item_handle::ItemHandle;
 use metrics::Metrics;
+pub(crate) use tag::Tag;
 
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
 pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
@@ -46,7 +50,7 @@ const COMPONENT_NAME: &str = "fetcher";
 #[derive(DataSize, Debug)]
 pub(crate) struct Fetcher<T>
 where
-    T: FetcherItem,
+    T: FetchItem,
 {
     get_from_peer_timeout: Duration,
     item_handles: HashMap<T::Id, HashMap<NodeId, ItemHandle<T>>>,
@@ -54,7 +58,7 @@ where
     metrics: Metrics,
 }
 
-impl<T: FetcherItem> Fetcher<T> {
+impl<T: FetchItem> Fetcher<T> {
     pub(crate) fn new(
         name: &str,
         config: &Config,
@@ -71,7 +75,7 @@ impl<T: FetcherItem> Fetcher<T> {
 impl<T, REv> Component<REv> for Fetcher<T>
 where
     Fetcher<T>: ItemFetcher<T>,
-    T: FetcherItem + 'static,
+    T: FetchItem + 'static,
     REv: From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<NetworkRequest<Message>>
@@ -133,7 +137,7 @@ where
             Event::TimeoutPeer { id, peer } => {
                 self.signal(id.clone(), Err(Error::TimedOut { id, peer }), peer)
             }
-            Event::PutToStorage { item, peer } => self.signal(item.id(), Ok(*item), peer),
+            Event::PutToStorage { item, peer } => self.signal(item.fetch_id(), Ok(*item), peer),
         }
     }
 

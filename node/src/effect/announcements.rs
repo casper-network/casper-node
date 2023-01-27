@@ -13,21 +13,19 @@ use datasize::DataSize;
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp, U512};
+use casper_types::{EraId, ExecutionEffect, PublicKey, Timestamp, U512};
 
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
+        gossiper::GossipItem,
         network::blocklist::BlocklistJustification,
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{
-        ApprovalsHashes, Block, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalizedBlock, GossiperItem, Item, NodeId,
-    },
+    types::{Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
 
@@ -118,19 +116,17 @@ impl Display for FatalAnnouncement {
     }
 }
 
-#[derive(Clone, DataSize, Serialize, Debug)]
-#[must_use]
-pub(crate) enum ReactorAnnouncement {
-    CompletedBlock { block: Box<Block> },
-}
+#[derive(DataSize, Serialize, Debug)]
+pub(crate) struct MetaBlockAnnouncement(pub(crate) MetaBlock);
 
-impl Display for ReactorAnnouncement {
+impl Display for MetaBlockAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ReactorAnnouncement::CompletedBlock { block } => {
-                write!(f, "added complete block block_height: {}", block.height())
-            }
-        }
+        write!(
+            f,
+            "announcement for meta block {} at height {}",
+            self.0.block.hash(),
+            self.0.block.height(),
+        )
     }
 }
 
@@ -302,7 +298,7 @@ impl Display for PeerBehaviorAnnouncement {
 
 /// A Gossiper announcement.
 #[derive(Debug)]
-pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
+pub(crate) enum GossiperAnnouncement<T: GossipItem> {
     /// A new gossip has been received, but not necessarily the full item.
     GossipReceived { item_id: T::Id, sender: NodeId },
 
@@ -316,7 +312,7 @@ pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
     FinishedGossiping(T::Id),
 }
 
-impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
+impl<T: GossipItem> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             GossiperAnnouncement::GossipReceived { item_id, sender } => {
@@ -324,7 +320,7 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
             }
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
             GossiperAnnouncement::NewItemBody { item, sender } => {
-                write!(f, "new item body {} from {}", item.id(), sender)
+                write!(f, "new item body {} from {}", item.gossip_id(), sender)
             }
             GossiperAnnouncement::FinishedGossiping(item_id) => {
                 write!(f, "finished gossiping {}", item_id)
@@ -353,16 +349,6 @@ impl Display for UpgradeWatcherAnnouncement {
 /// A ContractRuntime announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum ContractRuntimeAnnouncement {
-    /// A new block was executed.
-    ExecutedBlock {
-        /// The block.
-        block: Box<Block>,
-        /// Approval hashes.
-        approvals_hashes: Box<ApprovalsHashes>,
-        /// The results of executing the deploys in this block.
-        // #[serde(skip_serializing)]
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
-    },
     /// A step was committed successfully and has altered global state.
     CommitStepSuccess {
         /// The era id in which the step was committed to global state.
@@ -382,9 +368,6 @@ pub(crate) enum ContractRuntimeAnnouncement {
 impl Display for ContractRuntimeAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractRuntimeAnnouncement::ExecutedBlock { block, .. } => {
-                write!(f, "executed block {}", block.hash())
-            }
             ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
                 write!(f, "commit step completed for {}", era_id)
             }
@@ -403,8 +386,6 @@ impl Display for ContractRuntimeAnnouncement {
 
 #[derive(Debug, Serialize)]
 pub(crate) enum BlockAccumulatorAnnouncement {
-    /// A block which wasn't previously stored on this node has been accepted and stored.
-    AcceptedNewBlock { block: Box<Block> },
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
@@ -415,27 +396,12 @@ pub(crate) enum BlockAccumulatorAnnouncement {
 impl Display for BlockAccumulatorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockAccumulatorAnnouncement::AcceptedNewBlock { block } => {
-                write!(f, "block {} accepted", block.hash())
-            }
             BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
-                write!(f, "finality signature {} accepted", finality_signature.id())
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) enum BlockSynchronizerAnnouncement {
-    /// A block which wasn't previously stored on this node has been accepted and stored.
-    CompletedBlock { block: Box<Block> },
-}
-
-impl Display for BlockSynchronizerAnnouncement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockSynchronizerAnnouncement::CompletedBlock { block } => {
-                write!(f, "block {} completed", block.hash())
+                write!(
+                    f,
+                    "finality signature {} accepted",
+                    finality_signature.gossip_id()
+                )
             }
         }
     }

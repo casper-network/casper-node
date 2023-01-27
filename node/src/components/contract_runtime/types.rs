@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 
@@ -8,7 +8,7 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
-use crate::types::{ApprovalsHashes, Block, BlockHeader, DeployHash, DeployHeader};
+use crate::types::{ApprovalsHashes, Block, DeployHash, DeployHeader};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +98,7 @@ pub(crate) struct StepEffectAndUpcomingEraValidators {
 #[derive(Clone, Debug, DataSize)]
 pub struct BlockAndExecutionResults {
     /// The [`Block`] the contract runtime executed.
-    pub(crate) block: Box<Block>,
+    pub(crate) block: Arc<Block>,
     /// The [`ApprovalsHashes`] for the deploys in this block.
     pub(crate) approvals_hashes: Box<ApprovalsHashes>,
     /// The results from executing the deploys in the block.
@@ -106,17 +106,4 @@ pub struct BlockAndExecutionResults {
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
     pub(crate) maybe_step_effect_and_upcoming_era_validators:
         Option<StepEffectAndUpcomingEraValidators>,
-}
-
-impl BlockAndExecutionResults {
-    #[doc(hidden)]
-    pub fn block_header(&self) -> &BlockHeader {
-        self.block.header()
-    }
-}
-
-impl From<BlockAndExecutionResults> for Block {
-    fn from(block_and_execution_results: BlockAndExecutionResults) -> Self {
-        *block_and_execution_results.block
-    }
 }
