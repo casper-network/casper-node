@@ -468,6 +468,28 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         false
     }
 
+    /// If the data has not been deemed valid by the component responsible for it (i.e.
+    /// `state.held_by_us` is false) it should not be gossiped onwards by us.  The entry will be
+    /// marked as `finished` and eventually be purged.
+    ///
+    /// Returns `true` if such an entry was found and marked `finished`.
+    pub(super) fn finish_if_not_held_by_us(&mut self, data_id: &T) -> bool {
+        if self
+            .current
+            .get(data_id)
+            .map(|state| !state.held_by_us())
+            .unwrap_or(false)
+        {
+            return self.force_finish(data_id);
+        }
+        false
+    }
+
+    /// Returns `true` if the given ID is in `current` or `finished`.
+    pub(super) fn has_entry(&self, data_id: &T) -> bool {
+        self.current.contains_key(data_id) || self.finished.contains(data_id)
+    }
+
     /// Updates the entry under `data_id` in `self.current` and returns the action we should now
     /// take, or `None` if the entry does not exist.
     ///
@@ -506,6 +528,11 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         for expired_finished in self.timeouts.purge(&now) {
             let _ = self.finished.remove(&expired_finished);
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.current.is_empty() && self.finished.is_empty()
     }
 }
 
