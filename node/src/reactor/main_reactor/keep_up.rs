@@ -310,7 +310,8 @@ impl MainReactor {
         // signatures against. we use the leaper to gain awareness of the necessary
         // trusted ancestors to our earliest contiguous block to do necessary validation.
         let leap_status = self.sync_leaper.leap_status();
-        info!(%parent_hash, ?leap_status, "historical status");
+        info!(%parent_hash, %leap_status, "historical status");
+        debug!(?parent_hash, ?leap_status, "historical sync back state");
         match leap_status {
             LeapState::Idle => {
                 debug!("historical: sync leaper idle");
@@ -390,8 +391,8 @@ impl MainReactor {
         }
         let block_hash = best_available.highest_block_hash();
         let block_height = best_available.highest_block_height();
-        info!(
-            ?best_available, %block_height, %block_hash, "historical: leap received");
+        info!(%best_available, %block_height, %block_hash, "historical: leap received");
+        debug!(?best_available, %block_height, %block_hash, "historical: best available leap received");
 
         let era_validator_weights =
             best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
