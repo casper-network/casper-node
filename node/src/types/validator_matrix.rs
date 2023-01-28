@@ -17,7 +17,7 @@ use super::{BlockHeader, FinalitySignature};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 
-#[derive(Eq, PartialEq, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, DataSize)]
 pub(crate) enum SignatureWeight {
     /// Too few signatures to make any guarantees about the block's finality.
     Insufficient,

@@ -140,7 +140,8 @@ impl BlockBuilder {
             SignatureAcquisition::new(validator_weights.validator_public_keys().cloned().collect());
         if let Some(signatures) = maybe_sigs {
             for finality_signature in signatures.finality_signatures() {
-                signature_acquisition.apply_signature(finality_signature);
+                let _ =
+                    signature_acquisition.apply_signature(finality_signature, &validator_weights);
             }
         }
         let acquisition_state = BlockAcquisitionState::HaveWeakFinalitySignatures(

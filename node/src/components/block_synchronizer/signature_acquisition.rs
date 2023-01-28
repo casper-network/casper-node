@@ -2,8 +2,10 @@ use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;
 
-use crate::types::FinalitySignature;
 use casper_types::PublicKey;
+
+use super::block_acquisition::Acceptance;
+use crate::types::{EraValidatorWeights, FinalitySignature, SignatureWeight};
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 enum SignatureState {
@@ -16,6 +18,7 @@ enum SignatureState {
 pub(super) struct SignatureAcquisition {
     inner: BTreeMap<PublicKey, SignatureState>,
     maybe_is_checkable: Option<bool>,
+    signature_weight: SignatureWeight,
 }
 
 impl SignatureAcquisition {
@@ -28,6 +31,7 @@ impl SignatureAcquisition {
         SignatureAcquisition {
             inner,
             maybe_is_checkable,
+            signature_weight: SignatureWeight::Insufficient,
         }
     }
 
@@ -45,13 +49,23 @@ impl SignatureAcquisition {
     }
 
     /// Returns `true` if new signature was registered.
-    pub(super) fn apply_signature(&mut self, finality_signature: FinalitySignature) -> bool {
-        self.inner
-            .insert(
-                finality_signature.public_key.clone(),
-                SignatureState::Signature(Box::new(finality_signature)),
-            )
-            .is_none()
+    pub(super) fn apply_signature(
+        &mut self,
+        finality_signature: FinalitySignature,
+        validator_weights: &EraValidatorWeights,
+    ) -> Acceptance {
+        let acceptance = match self.inner.insert(
+            finality_signature.public_key.clone(),
+            SignatureState::Signature(Box::new(finality_signature)),
+        ) {
+            Some(_) => Acceptance::HadIt,
+            None => Acceptance::NeededIt,
+        };
+
+        if self.signature_weight != SignatureWeight::Strict {
+            self.signature_weight = validator_weights.signature_weight(self.have_signatures());
+        }
+        acceptance
     }
 
     pub(super) fn have_signatures(&self) -> impl Iterator<Item = &PublicKey> {
@@ -79,19 +93,23 @@ impl SignatureAcquisition {
         self.inner.iter().all(|(_, v)| *v != SignatureState::Vacant)
     }
 
-    pub(crate) fn set_is_checkable(&mut self, is_checkable: bool) {
+    pub(super) fn set_is_checkable(&mut self, is_checkable: bool) {
         self.maybe_is_checkable = Some(is_checkable)
     }
 
-    pub(crate) fn is_checkable(&self) -> bool {
+    pub(super) fn is_checkable(&self) -> bool {
         self.maybe_is_checkable.unwrap_or(false)
     }
 
-    pub(crate) fn requires_strict_finality(&self, is_recent_block: bool) -> bool {
+    pub(super) fn requires_strict_finality(&self, is_recent_block: bool) -> bool {
         if is_recent_block {
             return true;
         }
 
         self.maybe_is_checkable.unwrap_or(false)
+    }
+
+    pub(super) fn signature_weight(&self) -> SignatureWeight {
+        self.signature_weight
     }
 }
