@@ -83,6 +83,10 @@ impl SignatureAcquisition {
         self.maybe_is_checkable = Some(is_checkable)
     }
 
+    pub(crate) fn is_checkable(&self) -> bool {
+        self.maybe_is_checkable.unwrap_or(false)
+    }
+
     pub(crate) fn requires_strict_finality(&self, is_recent_block: bool) -> bool {
         if is_recent_block {
             return true;

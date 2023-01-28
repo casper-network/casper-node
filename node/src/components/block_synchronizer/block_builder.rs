@@ -451,9 +451,11 @@ impl BlockBuilder {
             .validator_weights
             .as_ref()
             .ok_or(Error::MissingValidatorWeights(self.block_hash))?;
-        let acceptance = self
-            .acquisition_state
-            .register_finality_signature(finality_signature, validator_weights);
+        let acceptance = self.acquisition_state.register_finality_signature(
+            finality_signature,
+            validator_weights,
+            self.should_fetch_execution_state,
+        );
         self.handle_acceptance(maybe_peer, acceptance)
     }
 
