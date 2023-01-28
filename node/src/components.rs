@@ -80,9 +80,15 @@ use crate::{
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///
+///     Start --> Uninitialized
 ///     Uninitialized --> Initializing
 ///     Initializing --> Initialized
 ///     Initializing --> Fatal
+///     Initialized --> End
+///     Fatal --> End
 /// ```
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
 pub(crate) enum ComponentState {
