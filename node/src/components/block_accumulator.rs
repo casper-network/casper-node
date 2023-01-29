@@ -168,6 +168,7 @@ impl BlockAccumulator {
                     Some(height) => height,
                     None => {
                         // we have no height for this block hash, so we must leap
+                        debug!(%block_hash, "Leap: Block Accumulator: we have no height for this block hash, so we must leap");
                         return SyncInstruction::Leap { block_hash };
                     }
                 }
@@ -180,11 +181,13 @@ impl BlockAccumulator {
             info!(local_tip=?self.local_tip, "new local tip detected");
             if had_no_local_tip {
                 // force a leap when accumulator is starting cold.
+                debug!(%block_hash, "Leap: Block Accumulator: force a leap when accumulator is starting cold.");
                 return SyncInstruction::Leap { block_hash };
             }
         }
 
         if self.should_leap(block_height) {
+            debug!(%block_hash, "Leap: Block Accumulator: leap because the execution threshold is exceeded.");
             return SyncInstruction::Leap { block_hash };
         }
 
@@ -211,6 +214,7 @@ impl BlockAccumulator {
             }
             None => {
                 if self.is_stalled() {
+                    debug!(%block_hash, "Leap: Block Accumulator: stalled; leaping.");
                     SyncInstruction::Leap { block_hash }
                 } else {
                     SyncInstruction::CaughtUp { block_hash }

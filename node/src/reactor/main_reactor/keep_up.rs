@@ -46,6 +46,7 @@ enum SyncBackInstruction {
 }
 
 // Additional data for syncing immediate switch blocks
+#[derive(Debug)]
 struct ParentMetadata {
     // Global state and protocol version of the immediate switch block
     global_state_hash: Digest,
@@ -110,6 +111,7 @@ impl MainReactor {
 
         // we appear to be keeping up with the network and have some cycles to get other work done
         // check to see if we should attempt to sync a missing historical block (if any)
+        debug!("KeepUp: keeping up with the network; try to sync an historical block");
         if let Some(keep_up_instruction) = self.sync_back_keep_up_instruction(effect_builder, rng) {
             return keep_up_instruction;
         }
@@ -279,42 +281,54 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> Option<KeepUpInstruction> {
         let sync_back_progress = self.block_synchronizer.historical_progress();
+        debug!(?sync_back_progress, "historical: sync back progress");
         self.update_last_progress(&sync_back_progress, true);
         match self.sync_back_instruction(&sync_back_progress) {
             Ok(Some(sync_back_instruction)) => match sync_back_instruction {
                 SyncBackInstruction::TtlSynced | SyncBackInstruction::GenesisSynced => {
                     // we don't need to sync any historical blocks currently
+                    debug!("historical: synced to TTL or Genesis");
                     self.block_synchronizer.purge_historical();
                     None
                 }
-                SyncBackInstruction::Syncing => Some(KeepUpInstruction::CheckLater(
-                    format!("historical {}", SyncBackInstruction::Syncing),
-                    self.control_logic_default_delay.into(),
-                )),
+                SyncBackInstruction::Syncing => {
+                    debug!("historical: syncing; checking later");
+                    Some(KeepUpInstruction::CheckLater(
+                        format!("historical {}", SyncBackInstruction::Syncing),
+                        self.control_logic_default_delay.into(),
+                    ))
+                }
                 SyncBackInstruction::Sync {
                     parent_hash,
                     maybe_parent_metadata,
                     era_id,
-                } => match (
-                    self.validator_matrix.has_era(&era_id),
-                    maybe_parent_metadata,
-                ) {
-                    (true, _) => Some(self.sync_back_register(effect_builder, rng, parent_hash)),
-                    (false, None) => Some(self.sync_back_leap(effect_builder, rng, parent_hash)),
-                    (false, Some(parent_metadata)) => {
-                        // The validators matrix doesn't have the validators _and_ we are trying to
-                        // sync an immediate switch block; we need to read the validators from the
-                        // global states of the block and its parent and compare them in order to
-                        // decide which validators to use - might require syncing global states in
-                        // the process.
-                        Some(self.try_read_validators_for_immediate_switch_block(
-                            effect_builder,
-                            parent_hash,
-                            era_id,
-                            parent_metadata,
-                        ))
+                } => {
+                    debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "historical: sync back instruction");
+                    match (
+                        self.validator_matrix.has_era(&era_id),
+                        maybe_parent_metadata,
+                    ) {
+                        (true, _) => {
+                            Some(self.sync_back_register(effect_builder, rng, parent_hash))
+                        }
+                        (false, None) => {
+                            Some(self.sync_back_leap(effect_builder, rng, parent_hash))
+                        }
+                        (false, Some(parent_metadata)) => {
+                            // The validators matrix doesn't have the validators _and_ we are trying to
+                            // sync an immediate switch block; we need to read the validators from the
+                            // global states of the block and its parent and compare them in order to
+                            // decide which validators to use - might require syncing global states in
+                            // the process.
+                            Some(self.try_read_validators_for_immediate_switch_block(
+                                effect_builder,
+                                parent_hash,
+                                era_id,
+                                parent_metadata,
+                            ))
+                        }
                     }
-                },
+                }
             },
             Ok(None) => None,
             Err(msg) => Some(KeepUpInstruction::Fatal(msg)),
@@ -449,8 +463,10 @@ impl MainReactor {
         // trusted ancestors to our earliest contiguous block to do necessary validation.
         let leap_status = self.sync_leaper.leap_status();
         info!(%parent_hash, %leap_status, "historical status");
+        debug!(?parent_hash, ?leap_status, "historical sync back state");
         match leap_status {
             LeapState::Idle => {
+                debug!("historical: sync leaper idle");
                 self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
             }
             LeapState::Awaiting { .. } => KeepUpInstruction::CheckLater(
@@ -527,13 +543,14 @@ impl MainReactor {
         }
         let block_hash = best_available.highest_block_hash();
         let block_height = best_available.highest_block_height();
-        info!(
-            %best_available, %block_height, %block_hash, "historical: leap received");
+        info!(%best_available, %block_height, %block_hash, "historical: leap received");
+        debug!(?best_available, %block_height, %block_hash, "historical: best available leap received");
 
         let era_validator_weights =
             best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
+            debug!(%era_id, "historical: attempt to register validators for era");
             if self.validator_matrix.register_era_validator_weights(evw) {
                 info!(%era_id, "historical: got era");
             } else {
@@ -590,6 +607,7 @@ impl MainReactor {
             block_synchronizer_progress,
             BlockSynchronizerProgress::Syncing(_, _, _)
         ) {
+            debug!("historical: sync_back_instruction: still syncing");
             return Ok(Some(SyncBackInstruction::Syncing));
         }
         // in this flow there is no significant difference between Idle & Synced, as unlike in
@@ -606,6 +624,7 @@ impl MainReactor {
                     return Ok(Some(SyncBackInstruction::TtlSynced));
                 }
                 let parent_hash = block_header.parent_hash();
+                debug!(?block_header, %parent_hash, "historical: highest orphaned block");
                 match self.storage.read_block_header(parent_hash) {
                     Ok(Some(parent_block_header)) => {
                         // even if we don't have a complete block (all parts and dependencies)
@@ -633,27 +652,39 @@ impl MainReactor {
                                     parent_protocol_version: grandparent_header.protocol_version(),
                                 })
                             });
+                        debug!(
+                            ?parent_block_header,
+                            ?maybe_parent_metadata,
+                            "historical: found parent block header in storage"
+                        );
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: parent_block_header.block_hash(),
                             maybe_parent_metadata,
                             era_id: parent_block_header.era_id(),
                         }))
                     }
-                    Ok(None) => match block_header.era_id().predecessor() {
-                        // we do not have the parent header and thus don't know what era
-                        // the parent block is in (it could be the same era or the previous era).
-                        // we assume the worst case and ask for the earlier era's proof
-                        Some(previous_era_id) => Ok(Some(SyncBackInstruction::Sync {
-                            parent_hash: *parent_hash,
-                            maybe_parent_metadata: None,
-                            era_id: previous_era_id,
-                        })),
-                        None => Ok(None),
-                    },
+                    Ok(None) => {
+                        debug!(%parent_hash, "historical: did not find block header in storage");
+                        match block_header.era_id().predecessor() {
+                            // we do not have the parent header and thus don't know what era
+                            // the parent block is in (it could be the same era or the previous
+                            // era). we assume the worst case and ask
+                            // for the earlier era's proof
+                            Some(previous_era_id) => Ok(Some(SyncBackInstruction::Sync {
+                                parent_hash: *parent_hash,
+                                maybe_parent_metadata: None,
+                                era_id: previous_era_id,
+                            })),
+                            None => Ok(None),
+                        }
+                    }
                     Err(err) => Err(err.to_string()),
                 }
             }
-            None => Ok(None),
+            None => {
+                debug!("historical: did not find any orphaned block headers");
+                Ok(None)
+            }
         }
     }
 

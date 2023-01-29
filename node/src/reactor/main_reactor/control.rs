@@ -24,8 +24,6 @@ use crate::{
 /// Cranking delay when encountered a non-switch block when checking the validator status.
 const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
 
-/// Allow the runner to shut down cleanly before shutting down the reactor.
-
 impl MainReactor {
     pub(super) fn crank(
         &mut self,

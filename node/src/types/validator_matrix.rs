@@ -223,6 +223,10 @@ impl ValidatorMatrix {
     fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
         self.inner.read().unwrap()
     }
+
+    pub(crate) fn eras(&self) -> Vec<EraId> {
+        self.read_inner().keys().copied().collect_vec()
+    }
 }
 
 impl Debug for ValidatorMatrix {
