@@ -674,6 +674,7 @@ impl BlockAcquisitionState {
         execution_results_checksum: ExecutionResultsChecksum,
         need_execution_state: bool,
     ) -> Result<(), BlockAcquisitionError> {
+        debug!(state=%self, need_execution_state, "BlockAcquisitionState: register_execution_results_checksum");
         match self {
             BlockAcquisitionState::HaveGlobalState(
                 block,
@@ -713,6 +714,9 @@ impl BlockAcquisitionState {
         need_execution_state: bool,
     ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, BlockAcquisitionError>
     {
+        debug!(state=%self, need_execution_state,
+            block_execution_results_or_chunk=%block_execution_results_or_chunk,
+            "register_execution_results_or_chunk");
         let (new_state, ret) = match self {
             BlockAcquisitionState::HaveGlobalState(
                 block,
@@ -733,25 +737,34 @@ impl BlockAcquisitionState {
                     ) {
                     Ok(new_effects) => match new_effects {
                         ExecutionResultsAcquisition::Needed { .. }
-                        | ExecutionResultsAcquisition::Pending { .. } => return Ok(None),
-                        ExecutionResultsAcquisition::Complete { ref results, .. } => (
-                            BlockAcquisitionState::HaveGlobalState(
-                                block.clone(),
-                                signatures.clone(),
-                                deploys.clone(),
-                                new_effects.clone(),
-                            ),
-                            Some(results.clone()),
-                        ),
-                        ExecutionResultsAcquisition::Acquiring { .. } => (
-                            BlockAcquisitionState::HaveGlobalState(
-                                block.clone(),
-                                signatures.clone(),
-                                deploys.clone(),
-                                new_effects,
-                            ),
-                            None,
-                        ),
+                        | ExecutionResultsAcquisition::Pending { .. } => {
+                            debug!("apply_block_execution_results_or_chunk: Needed | Pending");
+                            return Ok(None);
+                        }
+                        ExecutionResultsAcquisition::Complete { ref results, .. } => {
+                            debug!("apply_block_execution_results_or_chunk: Complete");
+                            (
+                                BlockAcquisitionState::HaveGlobalState(
+                                    block.clone(),
+                                    signatures.clone(),
+                                    deploys.clone(),
+                                    new_effects.clone(),
+                                ),
+                                Some(results.clone()),
+                            )
+                        }
+                        ExecutionResultsAcquisition::Acquiring { .. } => {
+                            debug!("apply_block_execution_results_or_chunk: Acquiring");
+                            (
+                                BlockAcquisitionState::HaveGlobalState(
+                                    block.clone(),
+                                    signatures.clone(),
+                                    deploys.clone(),
+                                    new_effects,
+                                ),
+                                None,
+                            )
+                        }
                     },
                     Err(error) => {
                         warn!(%error, "failed to apply execution results");

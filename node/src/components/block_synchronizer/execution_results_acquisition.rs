@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use tracing::error;
+use tracing::{debug, error};
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
@@ -225,6 +225,7 @@ impl ExecutionResultsAcquisition {
     pub(super) fn apply_checksum(self, checksum: ExecutionResultsChecksum) -> Result<Self, Error> {
         match self {
             ExecutionResultsAcquisition::Needed { block_hash } => {
+                debug!("apply_checksum - Needed");
                 Ok(ExecutionResultsAcquisition::Pending {
                     block_hash,
                     checksum,
@@ -233,6 +234,7 @@ impl ExecutionResultsAcquisition {
             ExecutionResultsAcquisition::Pending { block_hash, .. }
             | ExecutionResultsAcquisition::Acquiring { block_hash, .. }
             | ExecutionResultsAcquisition::Complete { block_hash, .. } => {
+                debug!("apply_checksum - Pending | Acquiring | Complete");
                 Err(Error::InvalidAttemptToApplyChecksum { block_hash })
             }
         }
@@ -246,8 +248,14 @@ impl ExecutionResultsAcquisition {
         let block_hash = *block_execution_results_or_chunk.block_hash();
         let value = block_execution_results_or_chunk.into_value();
 
+        debug!(%block_hash, state=?self, "apply_block_execution_results_or_chunk");
+
         let expected_block_hash = self.block_hash();
         if expected_block_hash != block_hash {
+            debug!(
+                %block_hash,
+                "apply_block_execution_results_or_chunk: Error::BlockHashMismatch"
+            );
             return Err(Error::BlockHashMismatch {
                 expected: expected_block_hash,
                 actual: block_hash,
@@ -262,31 +270,39 @@ impl ExecutionResultsAcquisition {
             | (
                 ExecutionResultsAcquisition::Acquiring { checksum, .. },
                 ValueOrChunk::Value(execution_results),
-            ) => (checksum, execution_results),
+            ) => {
+                debug!(
+                    "apply_block_execution_results_or_chunk: (Pending, Value) | (Acquiring, Value)"
+                );
+                (checksum, execution_results)
+            }
             (
                 ExecutionResultsAcquisition::Pending { checksum, .. },
                 ValueOrChunk::ChunkWithProof(chunk),
-            ) => match apply_chunk(block_hash, checksum, HashMap::new(), chunk, None) {
-                Ok(ApplyChunkOutcome::NeedNext {
-                    chunks,
-                    chunk_count,
-                    next,
-                }) => {
-                    return Ok(ExecutionResultsAcquisition::Acquiring {
-                        block_hash,
-                        checksum,
+            ) => {
+                debug!("apply_block_execution_results_or_chunk: (Pending, ChunkWithProof)");
+                match apply_chunk(block_hash, checksum, HashMap::new(), chunk, None) {
+                    Ok(ApplyChunkOutcome::NeedNext {
                         chunks,
                         chunk_count,
                         next,
-                    });
+                    }) => {
+                        return Ok(ExecutionResultsAcquisition::Acquiring {
+                            block_hash,
+                            checksum,
+                            chunks,
+                            chunk_count,
+                            next,
+                        });
+                    }
+                    Ok(ApplyChunkOutcome::Complete { execution_results }) => {
+                        (checksum, execution_results)
+                    }
+                    Err(err) => {
+                        return Err(err);
+                    }
                 }
-                Ok(ApplyChunkOutcome::Complete { execution_results }) => {
-                    (checksum, execution_results)
-                }
-                Err(err) => {
-                    return Err(err);
-                }
-            },
+            }
             (
                 ExecutionResultsAcquisition::Acquiring {
                     checksum,
@@ -295,36 +311,45 @@ impl ExecutionResultsAcquisition {
                     ..
                 },
                 ValueOrChunk::ChunkWithProof(chunk),
-            ) => match apply_chunk(block_hash, checksum, chunks, chunk, Some(chunk_count)) {
-                Ok(ApplyChunkOutcome::NeedNext {
-                    chunks,
-                    chunk_count,
-                    next,
-                }) => {
-                    return Ok(ExecutionResultsAcquisition::Acquiring {
-                        block_hash,
-                        checksum,
+            ) => {
+                debug!("apply_block_execution_results_or_chunk: (Acquiring, ChunkWithProof)");
+                match apply_chunk(block_hash, checksum, chunks, chunk, Some(chunk_count)) {
+                    Ok(ApplyChunkOutcome::NeedNext {
                         chunks,
                         chunk_count,
                         next,
-                    });
+                    }) => {
+                        return Ok(ExecutionResultsAcquisition::Acquiring {
+                            block_hash,
+                            checksum,
+                            chunks,
+                            chunk_count,
+                            next,
+                        });
+                    }
+                    Ok(ApplyChunkOutcome::Complete { execution_results }) => {
+                        (checksum, execution_results)
+                    }
+                    Err(err) => {
+                        return Err(err);
+                    }
                 }
-                Ok(ApplyChunkOutcome::Complete { execution_results }) => {
-                    (checksum, execution_results)
-                }
-                Err(err) => {
-                    return Err(err);
-                }
-            },
+            }
             (ExecutionResultsAcquisition::Needed { block_hash }, _) => {
+                debug!("apply_block_execution_results_or_chunk: (Needed, _)");
                 return Err(Error::AttemptToApplyDataWhenMissingChecksum { block_hash });
             }
             (ExecutionResultsAcquisition::Complete { .. }, _) => {
+                debug!("apply_block_execution_results_or_chunk: (Complete, _)");
                 return Err(Error::AttemptToApplyDataAfterCompleted { block_hash });
             }
         };
 
         if deploy_hashes.len() != execution_results.len() {
+            debug!(
+                %block_hash,
+                "apply_block_execution_results_or_chunk: Error::ExecutionResultToDeployHashLengthDiscrepancy"
+            );
             return Err(Error::ExecutionResultToDeployHashLengthDiscrepancy {
                 block_hash,
                 expected: deploy_hashes.len(),
@@ -332,6 +357,10 @@ impl ExecutionResultsAcquisition {
             });
         }
         let results = deploy_hashes.into_iter().zip(execution_results).collect();
+        debug!(
+            %block_hash,
+            "apply_block_execution_results_or_chunk: returning ExecutionResultsAcquisition::Complete"
+        );
         Ok(ExecutionResultsAcquisition::Complete {
             block_hash,
             results,
@@ -393,11 +422,13 @@ fn apply_chunk(
     let index = chunk.proof().index();
     let chunk_count = chunk.proof().count();
     if chunk_count == 1 {
+        debug!(%block_hash, "apply_chunk: Error::InvalidChunkCount");
         return Err(Error::InvalidChunkCount { block_hash });
     }
 
     if let Some(expected) = expected_count {
         if expected != chunk_count {
+            debug!(%block_hash, "apply_chunk: Error::ChunkCountMismatch");
             return Err(Error::ChunkCountMismatch {
                 block_hash,
                 expected,
@@ -409,6 +440,7 @@ fn apply_chunk(
     // ExecutionResultsChecksum::Uncheckable has no checksum, otherwise check it
     if let ExecutionResultsChecksum::Checkable(expected) = checksum {
         if expected != digest {
+            debug!(%block_hash, "apply_chunk: Error::ChecksumMismatch");
             return Err(Error::ChecksumMismatch {
                 block_hash,
                 expected,
@@ -418,6 +450,7 @@ fn apply_chunk(
     } else if let Some(other_chunk) = chunks.values().next() {
         let existing_chunk_digest = other_chunk.proof().root_hash();
         if existing_chunk_digest != digest {
+            debug!(%block_hash, "apply_chunk: Error::ChunksWithDifferentChecksum");
             return Err(Error::ChunksWithDifferentChecksum {
                 block_hash,
                 expected: existing_chunk_digest,
@@ -436,7 +469,10 @@ fn apply_chunk(
                 .copied()
                 .collect();
             match bytesrepr::deserialize(serialized) {
-                Ok(results) => Ok(ApplyChunkOutcome::execution_results(results)),
+                Ok(results) => {
+                    debug!(%block_hash, "apply_chunk: ApplyChunkOutcome::execution_results");
+                    Ok(ApplyChunkOutcome::execution_results(results))
+                }
                 Err(error) => {
                     error!(%error, "failed to deserialize execution results");
                     Err(Error::FailedToDeserialize { block_hash })
