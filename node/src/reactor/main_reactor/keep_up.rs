@@ -315,10 +315,12 @@ impl MainReactor {
                             Some(self.sync_back_leap(effect_builder, rng, parent_hash))
                         }
                         (false, Some(parent_metadata)) => {
-                            // The validators matrix doesn't have the validators _and_ we are trying to
-                            // sync an immediate switch block; we need to read the validators from the
-                            // global states of the block and its parent and compare them in order to
-                            // decide which validators to use - might require syncing global states in
+                            // The validators matrix doesn't have the validators _and_ we are trying
+                            // to sync an immediate switch block; we
+                            // need to read the validators from the
+                            // global states of the block and its parent and compare them in order
+                            // to decide which validators to use - might
+                            // require syncing global states in
                             // the process.
                             Some(self.try_read_validators_for_immediate_switch_block(
                                 effect_builder,
