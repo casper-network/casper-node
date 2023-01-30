@@ -17,14 +17,14 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
@@ -1004,6 +1004,81 @@ impl reactor::Reactor for MainReactor {
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
 
+            // This event gets emitted when we manage to read the era validators from the global
+            // states of an immediate switch block and its parent. Once that happens, we can check
+            // for the signs of any changes happening during the upgrade and register the correct
+            // set of validators in the validators matrix.
+            MainEvent::GotImmediateSwitchBlockEraValidators(
+                era_id,
+                parent_era_validators,
+                block_era_validators,
+            ) => {
+                // `era_id`, being the era of the immediate switch block, will be absent in the
+                // validators stored in the immediate switch block - therefore we will use its
+                // successor for the comparison.
+                let era_to_check = era_id.successor();
+                // We read the validators for era_id+1 from the parent of the immediate switch
+                // block.
+                let validators_in_parent = match parent_era_validators.get(&era_to_check) {
+                    Some(validators) => validators,
+                    None => {
+                        return fatal!(
+                            effect_builder,
+                            "couldn't find validators for era {} in parent_era_validators",
+                            era_to_check
+                        )
+                        .ignore();
+                    }
+                };
+                // We also read the validators from the immediate switch block itself.
+                let validators_in_block = match block_era_validators.get(&era_to_check) {
+                    Some(validators) => validators,
+                    None => {
+                        return fatal!(
+                            effect_builder,
+                            "couldn't find validators for era {} in block_era_validators",
+                            era_to_check
+                        )
+                        .ignore();
+                    }
+                };
+                // Decide which validators to use for `era_id` in the validators matrix.
+                let validators_to_register = if validators_in_parent == validators_in_block {
+                    // Nothing interesting happened - register the regular validators, ie. the
+                    // ones stored for `era_id` in the parent of the immediate switch block.
+                    match parent_era_validators.get(&era_id) {
+                        Some(validators) => validators,
+                        None => {
+                            return fatal!(
+                                effect_builder,
+                                "couldn't find validators for era {} in parent_era_validators",
+                                era_id
+                            )
+                            .ignore();
+                        }
+                    }
+                } else {
+                    // We had an upgrade changing the validators! We use the same validators that
+                    // will be used for the era after the immediate switch block, as we can't trust
+                    // the ones we would use normally.
+                    validators_in_block
+                };
+                let mut effects = self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    era_id,
+                    validators_to_register.clone(),
+                );
+                // Crank the reactor so that any synchronizing tasks blocked by the lack of
+                // validators for `era_id` can resume.
+                effects.extend(
+                    effect_builder
+                        .immediately()
+                        .event(|_| MainEvent::ReactorCrank),
+                );
+                effects
+            }
+
             // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::LegacyDeployFetcher(..)
             | MainEvent::LegacyDeployFetcherRequest(..)
@@ -1030,6 +1105,30 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
+    fn update_validator_weights(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+        validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Effects<MainEvent> {
+        self.validator_matrix
+            .register_validator_weights(era_id, validator_weights);
+        info!(%era_id, "validator_matrix updated");
+        // notify validator bound components
+        let mut effects = reactor::wrap_effects(
+            MainEvent::BlockAccumulator,
+            self.block_accumulator
+                .handle_validators(effect_builder, rng),
+        );
+        effects.extend(reactor::wrap_effects(
+            MainEvent::BlockSynchronizer,
+            self.block_synchronizer
+                .handle_validators(effect_builder, rng),
+        ));
+        effects
+    }
+
     fn handle_meta_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -1071,19 +1170,11 @@ impl MainReactor {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
                 let era_id = block.header().era_id();
                 let next_era_id = era_id.successor();
-                self.validator_matrix
-                    .register_validator_weights(next_era_id, validator_weights.clone());
-                info!(%era_id, %next_era_id, "validator_matrix updated");
-                // notify validator bound components
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator
-                        .handle_validators(effect_builder, rng),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockSynchronizer,
-                    self.block_synchronizer
-                        .handle_validators(effect_builder, rng),
+                effects.extend(self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    next_era_id,
+                    validator_weights.clone(),
                 ));
             }
         }

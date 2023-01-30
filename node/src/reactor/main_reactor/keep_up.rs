@@ -5,16 +5,21 @@ use std::{
 };
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, Timestamp};
+use casper_execution_engine::core::engine_state::GetEraValidatorsError;
+use casper_hashing::Digest;
+use casper_types::{EraId, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
+        contract_runtime::EraValidatorsRequest,
         sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
-    effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
+    },
     reactor::main_reactor::{MainEvent, MainReactor},
     types::{ActivationPoint, BlockHash, SyncLeap, SyncLeapIdentifier},
     NodeRng,
@@ -32,11 +37,24 @@ pub(super) enum KeepUpInstruction {
 enum SyncBackInstruction {
     Sync {
         parent_hash: BlockHash,
+        maybe_parent_metadata: Option<ParentMetadata>,
         era_id: EraId,
     },
     Syncing,
     TtlSynced,
     GenesisSynced,
+}
+
+// Additional data for syncing immediate switch blocks
+#[derive(Debug)]
+struct ParentMetadata {
+    // Global state and protocol version of the immediate switch block
+    global_state_hash: Digest,
+    protocol_version: ProtocolVersion,
+    // Hash, global state and protocol version of the parent of the immediate switch block
+    parent_hash: BlockHash,
+    parent_state_hash: Digest,
+    parent_protocol_version: ProtocolVersion,
 }
 
 impl Display for SyncBackInstruction {
@@ -282,18 +300,154 @@ impl MainReactor {
                 }
                 SyncBackInstruction::Sync {
                     parent_hash,
+                    maybe_parent_metadata,
                     era_id,
                 } => {
                     debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "historical: sync back instruction");
-                    match self.validator_matrix.has_era(&era_id) {
-                        true => Some(self.sync_back_register(effect_builder, rng, parent_hash)),
-                        false => Some(self.sync_back_leap(effect_builder, rng, parent_hash)),
+                    match (
+                        self.validator_matrix.has_era(&era_id),
+                        maybe_parent_metadata,
+                    ) {
+                        (true, _) => {
+                            Some(self.sync_back_register(effect_builder, rng, parent_hash))
+                        }
+                        (false, None) => {
+                            Some(self.sync_back_leap(effect_builder, rng, parent_hash))
+                        }
+                        (false, Some(parent_metadata)) => {
+                            // The validators matrix doesn't have the validators _and_ we are trying
+                            // to sync an immediate switch block; we
+                            // need to read the validators from the
+                            // global states of the block and its parent and compare them in order
+                            // to decide which validators to use - might
+                            // require syncing global states in
+                            // the process.
+                            Some(self.try_read_validators_for_immediate_switch_block(
+                                effect_builder,
+                                parent_hash,
+                                era_id,
+                                parent_metadata,
+                            ))
+                        }
                     }
                 }
             },
             Ok(None) => None,
             Err(msg) => Some(KeepUpInstruction::Fatal(msg)),
         }
+    }
+
+    // Attempts to read the validators from the global states of the immediate switch block and its
+    // parent; initiates fetching of the missing global states, if any.
+    fn try_read_validators_for_immediate_switch_block(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        block_hash: BlockHash,
+        block_era_id: EraId,
+        parent_metadata: ParentMetadata,
+    ) -> KeepUpInstruction {
+        let simultaneous_peer_requests =
+            self.chainspec.core_config.simultaneous_peer_requests as usize;
+
+        // We try to read the validator sets from global states of two blocks - if either returns
+        // `RootNotFound`, we'll initiate fetching of the corresponding global state.
+        let effects = async move {
+            // Send the requests to contract runtime.
+            let parent_era_validators_request = EraValidatorsRequest::new(
+                parent_metadata.parent_state_hash,
+                parent_metadata.parent_protocol_version,
+            );
+            let parent_era_validators_result = effect_builder
+                .get_era_validators_from_contract_runtime(parent_era_validators_request)
+                .await;
+            let block_era_validators_request = EraValidatorsRequest::new(
+                parent_metadata.global_state_hash,
+                parent_metadata.protocol_version,
+            );
+            let block_era_validators_result = effect_builder
+                .get_era_validators_from_contract_runtime(block_era_validators_request)
+                .await;
+
+            // Check the results.
+            // A return value of `Ok` means that validators were read successfully.
+            // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
+            // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
+            let result = match (parent_era_validators_result, block_era_validators_result) {
+                // Both states were present - return the result.
+                (Ok(parent_era_validators), Ok(block_era_validators)) => {
+                    Ok((parent_era_validators, block_era_validators))
+                }
+                // Both were absent - fetch global states for both blocks.
+                (
+                    Err(GetEraValidatorsError::RootNotFound),
+                    Err(GetEraValidatorsError::RootNotFound),
+                ) => Err(vec![
+                    (
+                        parent_metadata.parent_hash,
+                        parent_metadata.parent_state_hash,
+                    ),
+                    (block_hash, parent_metadata.global_state_hash),
+                ]),
+                // The block's global state was missing - return the hashes.
+                (Ok(_), Err(GetEraValidatorsError::RootNotFound)) => {
+                    Err(vec![(block_hash, parent_metadata.global_state_hash)])
+                }
+                // The parent's global state was missing - return the hashes.
+                (Err(GetEraValidatorsError::RootNotFound), Ok(_)) => Err(vec![(
+                    parent_metadata.parent_hash,
+                    parent_metadata.parent_state_hash,
+                )]),
+                // We got some error other than `RootNotFound` - just log the error and don't
+                // synchronize anything.
+                (parent_result, block_result) => {
+                    error!(
+                        ?parent_result,
+                        ?block_result,
+                        "couldn't read era validators from global state in block"
+                    );
+                    Err(vec![])
+                }
+            };
+
+            match result {
+                // If we got `Err`, we initiate syncing of the global states.
+                Err(global_state_hashes) => {
+                    let peers_to_ask = effect_builder
+                        .get_fully_connected_peers(simultaneous_peer_requests)
+                        .await;
+                    if peers_to_ask.is_empty() {
+                        // If no peers, we do nothing - this should effectively wait and retry
+                        // later.
+                        Err((vec![], vec![]))
+                    } else {
+                        // Return the hashes and peers.
+                        Err((global_state_hashes, peers_to_ask))
+                    }
+                }
+                // Nothing to do with an `Ok` result.
+                Ok(res) => Ok(res),
+            }
+        }
+        .result(
+            // We got the era validators - just emit the event that will cause them to be compared,
+            // validators matrix to be updated and reactor to be cranked.
+            move |(parent_era_validators, block_era_validators)| {
+                MainEvent::GotImmediateSwitchBlockEraValidators(
+                    block_era_id,
+                    parent_era_validators,
+                    block_era_validators,
+                )
+            },
+            // A global state was missing - we ask the BlockSynchronizer to fetch what is needed.
+            |(global_states_to_sync, peers_to_ask)| {
+                MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::SyncGlobalStates(
+                    global_states_to_sync,
+                    peers_to_ask,
+                ))
+            },
+        );
+        // In either case, there are effects to be processed by the reactor.
+        KeepUpInstruction::Do(Duration::ZERO, effects)
     }
 
     fn sync_back_leap(
@@ -478,13 +632,36 @@ impl MainReactor {
                         // even if we don't have a complete block (all parts and dependencies)
                         // we may have the parent's block header; if we do we also
                         // know its era which allows us to know if we have the validator
-                        // set for that era or not
+                        // set for that era or not;
+                        // note: there is a special case here where the parent might be an
+                        // immediate switch block - we check for that case by attempting to read
+                        // its parent and seeing whether it is also a switch block; if it is, we
+                        // pass the parent metadata on in the Sync instruction, so that we can read
+                        // the correct set of validators if the validators matrix doesn't have the
+                        // validators for the parent's era yet
+                        let maybe_parent_metadata = self
+                            .storage
+                            .read_block_header(parent_block_header.parent_hash())
+                            .map_err(|err| err.to_string())?
+                            .and_then(|grandparent_header| {
+                                (parent_block_header.is_switch_block()
+                                    && grandparent_header.is_switch_block())
+                                .then(|| ParentMetadata {
+                                    global_state_hash: *parent_block_header.state_root_hash(),
+                                    protocol_version: parent_block_header.protocol_version(),
+                                    parent_hash: grandparent_header.block_hash(),
+                                    parent_state_hash: *grandparent_header.state_root_hash(),
+                                    parent_protocol_version: grandparent_header.protocol_version(),
+                                })
+                            });
                         debug!(
                             ?parent_block_header,
+                            ?maybe_parent_metadata,
                             "historical: found parent block header in storage"
                         );
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: parent_block_header.block_hash(),
+                            maybe_parent_metadata,
                             era_id: parent_block_header.era_id(),
                         }))
                     }
@@ -497,6 +674,7 @@ impl MainReactor {
                             // for the earlier era's proof
                             Some(previous_era_id) => Ok(Some(SyncBackInstruction::Sync {
                                 parent_hash: *parent_hash,
+                                maybe_parent_metadata: None,
                                 era_id: previous_era_id,
                             })),
                             None => Ok(None),
