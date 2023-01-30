@@ -13,7 +13,6 @@ use crate::{
 pub(crate) enum Event {
     #[from]
     Request(BlockAccumulatorRequest),
-    ValidatorMatrixUpdated,
     RegisterPeer {
         block_hash: BlockHash,
         era_id: Option<EraId>,
@@ -48,9 +47,6 @@ impl Display for Event {
                     "block accumulator peers request for block: {}",
                     block_hash
                 )
-            }
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
             }
             Event::RegisterPeer {
                 block_hash, sender, ..
