@@ -8,7 +8,7 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},
@@ -140,7 +140,8 @@ impl BlockBuilder {
             SignatureAcquisition::new(validator_weights.validator_public_keys().cloned().collect());
         if let Some(signatures) = maybe_sigs {
             for finality_signature in signatures.finality_signatures() {
-                signature_acquisition.apply_signature(finality_signature);
+                let _ =
+                    signature_acquisition.apply_signature(finality_signature, &validator_weights);
             }
         }
         let acquisition_state = BlockAcquisitionState::HaveWeakFinalitySignatures(
@@ -339,7 +340,11 @@ impl BlockBuilder {
         self.peer_list.flush_dishonest_peers();
     }
 
-    pub(super) fn block_acquisition_action(&mut self, rng: &mut NodeRng) -> BlockAcquisitionAction {
+    pub(super) fn block_acquisition_action(
+        &mut self,
+        rng: &mut NodeRng,
+        max_simultaneous_peers: usize,
+    ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
                 trace!(
@@ -376,6 +381,7 @@ impl BlockBuilder {
             validator_weights,
             rng,
             self.should_fetch_execution_state,
+            max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
             Err(err) => {
@@ -432,6 +438,11 @@ impl BlockBuilder {
         self.handle_acceptance(maybe_peer, acceptance)
     }
 
+    pub(super) fn register_finality_signature_pending(&mut self, validator: PublicKey) {
+        self.acquisition_state
+            .register_finality_signature_pending(validator);
+    }
+
     pub(super) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
@@ -441,9 +452,11 @@ impl BlockBuilder {
             .validator_weights
             .as_ref()
             .ok_or(Error::MissingValidatorWeights(self.block_hash))?;
-        let acceptance = self
-            .acquisition_state
-            .register_finality_signature(finality_signature, validator_weights);
+        let acceptance = self.acquisition_state.register_finality_signature(
+            finality_signature,
+            validator_weights,
+            self.should_fetch_execution_state,
+        );
         self.handle_acceptance(maybe_peer, acceptance)
     }
 
@@ -575,7 +588,10 @@ impl BlockBuilder {
                 self.touch();
                 self.promote_peer(maybe_peer);
             }
-            Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
+            Ok(Some(Acceptance::HadIt)) => {
+                self.in_flight_latch = None;
+            }
+            Ok(None) => (),
             Err(error) => {
                 self.disqualify_peer(maybe_peer);
                 return Err(Error::BlockAcquisition(error));
