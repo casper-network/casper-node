@@ -25,6 +25,7 @@ use crate::{
     },
     reactor,
     types::{BlockHash, NodeId, TrieOrChunk},
+    utils::DisplayIter,
     NodeRng,
 };
 
@@ -32,9 +33,9 @@ const COMPONENT_NAME: &str = "global_state_synchronizer";
 
 #[derive(Debug, Clone, Error)]
 pub(crate) enum Error {
-    #[error("trie accumulator encountered an error while fetching a trie; unreliable peers {0:?}")]
+    #[error("trie accumulator encountered an error while fetching a trie; unreliable peers {}", DisplayIter::new(.0))]
     TrieAccumulator(Vec<NodeId>),
-    #[error("ContractRuntime failed to put a trie into global state: {0}; unreliable peers {1:?}")]
+    #[error("ContractRuntime failed to put a trie into global state: {0}; unreliable peers {}", DisplayIter::new(.1))]
     PutTrie(engine_state::Error, Vec<NodeId>),
     #[error("no peers available to ask for a trie: {0}")]
     NoPeersAvailable(Digest),

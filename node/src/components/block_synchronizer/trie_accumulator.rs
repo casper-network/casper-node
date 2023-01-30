@@ -28,6 +28,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{EmptyValidationMetadata, Item, NodeId, TrieOrChunk, TrieOrChunkId},
+    utils::DisplayIter,
     NodeRng,
 };
 
@@ -35,9 +36,9 @@ const COMPONENT_NAME: &str = "trie_accumulator";
 
 #[derive(Debug, From, Error, Clone, Serialize)]
 pub(crate) enum Error {
-    #[error("trie accumulator ran out of peers trying to fetch item with error: {0}; unreliable peers: {1:?}")]
+    #[error("trie accumulator ran out of peers trying to fetch item with error: {0}; unreliable peers: {}", DisplayIter::new(.1))]
     PeersExhausted(FetcherError<TrieOrChunk>, Vec<NodeId>),
-    #[error("trie accumulator couldn't fetch trie chunk ({0}, {1}); unreliable peers: {2:?}")]
+    #[error("trie accumulator couldn't fetch trie chunk ({0}, {1}); unreliable peers: {}", DisplayIter::new(.2))]
     Absent(Digest, u64, Vec<NodeId>),
     #[error("request contained no peers; trie = {0}")]
     NoPeers(Digest),
