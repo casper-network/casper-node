@@ -592,6 +592,7 @@ impl BlockSynchronizer {
                 NeedNext::ExecutionResults(block_hash, id, checksum) => {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
+                        debug!("attempting to fetch BlockExecutionResultsOrChunk");
                         effect_builder
                             .fetch::<BlockExecutionResultsOrChunk>(id, node_id, checksum)
                             .event(move |result| Event::ExecutionResultsFetched {
@@ -959,6 +960,7 @@ impl BlockSynchronizer {
     where
         REv: From<StorageRequest> + Send,
     {
+        debug!(%block_hash, "execution_results_fetched");
         let (maybe_value_or_chunk, maybe_peer_id) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => {
                 debug!(
@@ -978,15 +980,21 @@ impl BlockSynchronizer {
                 }
             }
         };
+        debug!(
+            ?maybe_value_or_chunk,
+            ?maybe_peer_id,
+            "execution_results_fetched"
+        );
 
         if let Some(builder) = &mut self.historical {
             if builder.block_hash() != block_hash {
-                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+                debug!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
                 return Effects::new();
             }
 
             match maybe_value_or_chunk {
                 None => {
+                    debug!(%block_hash, "execution_results_fetched: No maybe_value_or_chunk");
                     builder.demote_peer(maybe_peer_id);
                 }
                 Some(value_or_chunk) => {
@@ -997,11 +1005,14 @@ impl BlockSynchronizer {
                     match builder.register_fetched_execution_results(maybe_peer_id, *value_or_chunk)
                     {
                         Ok(Some(execution_results)) => {
+                            debug!(%block_hash, "execution_results_fetched: putting execution results to storage");
                             return effect_builder
                                 .put_execution_results_to_storage(block_hash, execution_results)
                                 .event(move |()| Event::ExecutionResultsStored(block_hash));
                         }
-                        Ok(None) => {}
+                        Ok(None) => {
+                            debug!(%block_hash, "execution_results_fetched: Ok(None)");
+                        }
                         Err(error) => {
                             error!(%block_hash, %error, "BlockSynchronizer: failed to apply execution results or chunk");
                         }
@@ -1015,9 +1026,9 @@ impl BlockSynchronizer {
     fn register_execution_results_stored(&mut self, block_hash: BlockHash) {
         if let Some(builder) = &mut self.historical {
             if builder.block_hash() != block_hash {
-                trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+                debug!(%block_hash, "BlockSynchronizer: register_execution_results_stored: not currently synchronizing block");
             } else if let Err(error) = builder.register_execution_results_stored_notification() {
-                error!(%block_hash, %error, "BlockSynchronizer: failed to apply stored execution results");
+                error!(%block_hash, %error, "BlockSynchronizer: register_execution_results_stored: failed to apply stored execution results");
             }
         }
     }

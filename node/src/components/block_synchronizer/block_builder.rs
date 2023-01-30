@@ -325,6 +325,7 @@ impl BlockBuilder {
     }
 
     pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
+        debug!(?peer, "disqualify_peer");
         self.peer_list.disqualify_peer(peer);
     }
 
@@ -475,10 +476,12 @@ impl BlockBuilder {
         &mut self,
         execution_results_checksum: ExecutionResultsChecksum,
     ) -> Result<(), Error> {
+        debug!(block_hash=%self.block_hash, "register_execution_results_checksum");
         if let Err(err) = self.acquisition_state.register_execution_results_checksum(
             execution_results_checksum,
             self.should_fetch_execution_state,
         ) {
+            debug!(block_hash=%self.block_hash, %err, "register_execution_results_checksum: Error::BlockAcquisition");
             return Err(Error::BlockAcquisition(err));
         }
         self.touch();
@@ -490,11 +493,13 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
+        debug!(block_hash=%self.block_hash, "register_fetched_execution_results");
         match self.acquisition_state.register_execution_results_or_chunk(
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
         ) {
             Ok(maybe) => {
+                debug!("register_fetched_execution_results: Ok(maybe)");
                 self.touch();
                 self.promote_peer(maybe_peer);
                 Ok(maybe)
@@ -509,7 +514,9 @@ impl BlockBuilder {
                     // programmer error
                     execution_results_acquisition::Error::BlockHashMismatch { .. }
                     | execution_results_acquisition::Error::InvalidAttemptToApplyChecksum { .. }
-                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. } => {},
+                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. } => {
+                        debug!("register_fetched_execution_results: BlockHashMismatch | InvalidAttemptToApplyChecksum | AttemptToApplyDataWhenMissingChecksum");
+                    },
                     // malicious peer if checksum is available.
                     execution_results_acquisition::Error::ChunkCountMismatch { .. } => {
                         let is_checkable = match &self.acquisition_state {
@@ -521,6 +528,7 @@ impl BlockBuilder {
                             ) => execution_results_acquisition.is_checkable(),
                             _ => false,
                         };
+                        debug!(is_checkable, "register_fetched_execution_results: ChunkCountMismatch");
                         if is_checkable {
                             self.disqualify_peer(maybe_peer);
                         }
@@ -530,10 +538,14 @@ impl BlockBuilder {
                     | execution_results_acquisition::Error::ChecksumMismatch { .. }
                     | execution_results_acquisition::Error::FailedToDeserialize { .. }
                     | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
+                        debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToDeployHashLengthDiscrepancy");
                         self.disqualify_peer(maybe_peer);
                     }
                     // checksum unavailable, so unknown if this peer is malicious
-                    execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {}
+                    execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {
+                        debug!("register_fetched_execution_results: ChunksWithDifferentChecksum");
+
+                    }
                 }
                 Err(Error::BlockAcquisition(
                     BlockAcquisitionError::ExecutionResults(error),
@@ -547,10 +559,12 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_execution_results_stored_notification(&mut self) -> Result<(), Error> {
+        debug!(block_hash=%self.block_hash, "register_execution_results_stored_notification");
         if let Err(err) = self
             .acquisition_state
             .register_execution_results_stored_notification(self.should_fetch_execution_state)
         {
+            debug!(block_hash=%self.block_hash, "register_execution_results_stored_notification: abort");
             self.abort();
             return Err(Error::BlockAcquisition(err));
         }
