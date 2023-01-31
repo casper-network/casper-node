@@ -17,14 +17,14 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
@@ -37,7 +37,7 @@ use crate::{
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
-        gossiper::{self, Gossiper},
+        gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
@@ -46,7 +46,7 @@ use crate::{
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
-        Component,
+        Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
@@ -57,7 +57,7 @@ use crate::{
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
     protocol::Message,
@@ -69,7 +69,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        Item, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -82,6 +82,50 @@ pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
 
 /// Main node reactor.
+///
+/// This following diagram represents how the components involved in the **sync process** interact
+/// with each other.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     G((Network))
+///     E((BlockAccumulator))
+///     H[(Storage)]
+///     I((SyncLeaper))
+///     A(("Reactor<br/>(control logic)"))
+///     B((ContractRuntime))
+///     C((BlockSynchronizer))
+///     D((Consensus))
+///     K((Gossiper))
+///     J((Fetcher))
+///     F((DeployBuffer))
+///
+///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
+///     linkStyle 0 fill:none,stroke:red,color:red
+///     
+///     A -->|"Execute block<br/>(genesis or upgrade)"| B
+///
+///     G -->|Peers| C
+///     G -->|Peers| D
+///
+///     C -->|Block data| E
+///
+///     J -->|Block data| C
+///
+///     D -->|Execute block| B
+///
+///     A -->|SyncLeap| I
+///
+///     B -->|Put block| H
+///     C -->|Mark block complete| H
+///     E -->|Mark block complete| H
+///     C -->|Execute block| B
+///
+///     C -->|Complete block<br/>with Deploys| F
+///
+///     K -->|Deploy| F
+///     K -->|Block data| E
+/// ```
 #[derive(DataSize, Debug)]
 pub(crate) struct MainReactor {
     // components
@@ -107,10 +151,11 @@ pub(crate) struct MainReactor {
     deploy_buffer: DeployBuffer,
 
     // gossiping components
-    address_gossiper: Gossiper<GossipedAddress, MainEvent>,
-    deploy_gossiper: Gossiper<Deploy, MainEvent>,
-    block_gossiper: Gossiper<Block, MainEvent>,
-    finality_signature_gossiper: Gossiper<FinalitySignature, MainEvent>,
+    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
+    finality_signature_gossiper:
+        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -221,8 +266,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
         )?;
 
-        let address_gossiper =
-            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
+            "address_gossiper",
+            config.gossip,
+            registry,
+        )?;
 
         let rpc_server = RpcServer::new(
             config.rpc_server.clone(),
@@ -251,24 +299,22 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::new_for_partial_items(
+        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
-            gossiper::get_block_from_storage::<Block, MainEvent>,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config.gossip,
-            gossiper::get_deploy_from_storage::<Deploy, MainEvent>,
             registry,
         )?;
-        let finality_signature_gossiper = Gossiper::new_for_partial_items(
-            "finality_signature_gossiper",
-            config.gossip,
-            gossiper::get_finality_signature_from_storage::<FinalitySignature, MainEvent>,
-            registry,
-        )?;
+        let finality_signature_gossiper =
+            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
+                "finality_signature_gossiper",
+                config.gossip,
+                registry,
+            )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -626,8 +672,9 @@ impl reactor::Reactor for MainReactor {
                         effect_builder,
                         rng,
                         gossiper::Event::ItemReceived {
-                            item_id: finality_signature.id(),
+                            item_id: finality_signature.gossip_id(),
                             source: Source::Ourself,
+                            target: finality_signature.gossip_target(),
                         },
                     ),
                 );
@@ -798,8 +845,9 @@ impl reactor::Reactor for MainReactor {
                             effect_builder,
                             rng,
                             MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                item_id: deploy.id(),
+                                item_id: deploy.gossip_id(),
                                 source,
+                                target: deploy.gossip_target(),
                             }),
                         ));
                         // notify event stream
@@ -956,6 +1004,81 @@ impl reactor::Reactor for MainReactor {
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
 
+            // This event gets emitted when we manage to read the era validators from the global
+            // states of an immediate switch block and its parent. Once that happens, we can check
+            // for the signs of any changes happening during the upgrade and register the correct
+            // set of validators in the validators matrix.
+            MainEvent::GotImmediateSwitchBlockEraValidators(
+                era_id,
+                parent_era_validators,
+                block_era_validators,
+            ) => {
+                // `era_id`, being the era of the immediate switch block, will be absent in the
+                // validators stored in the immediate switch block - therefore we will use its
+                // successor for the comparison.
+                let era_to_check = era_id.successor();
+                // We read the validators for era_id+1 from the parent of the immediate switch
+                // block.
+                let validators_in_parent = match parent_era_validators.get(&era_to_check) {
+                    Some(validators) => validators,
+                    None => {
+                        return fatal!(
+                            effect_builder,
+                            "couldn't find validators for era {} in parent_era_validators",
+                            era_to_check
+                        )
+                        .ignore();
+                    }
+                };
+                // We also read the validators from the immediate switch block itself.
+                let validators_in_block = match block_era_validators.get(&era_to_check) {
+                    Some(validators) => validators,
+                    None => {
+                        return fatal!(
+                            effect_builder,
+                            "couldn't find validators for era {} in block_era_validators",
+                            era_to_check
+                        )
+                        .ignore();
+                    }
+                };
+                // Decide which validators to use for `era_id` in the validators matrix.
+                let validators_to_register = if validators_in_parent == validators_in_block {
+                    // Nothing interesting happened - register the regular validators, ie. the
+                    // ones stored for `era_id` in the parent of the immediate switch block.
+                    match parent_era_validators.get(&era_id) {
+                        Some(validators) => validators,
+                        None => {
+                            return fatal!(
+                                effect_builder,
+                                "couldn't find validators for era {} in parent_era_validators",
+                                era_id
+                            )
+                            .ignore();
+                        }
+                    }
+                } else {
+                    // We had an upgrade changing the validators! We use the same validators that
+                    // will be used for the era after the immediate switch block, as we can't trust
+                    // the ones we would use normally.
+                    validators_in_block
+                };
+                let mut effects = self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    era_id,
+                    validators_to_register.clone(),
+                );
+                // Crank the reactor so that any synchronizing tasks blocked by the lack of
+                // validators for `era_id` can resume.
+                effects.extend(
+                    effect_builder
+                        .immediately()
+                        .event(|_| MainEvent::ReactorCrank),
+                );
+                effects
+            }
+
             // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::LegacyDeployFetcher(..)
             | MainEvent::LegacyDeployFetcherRequest(..)
@@ -982,6 +1105,30 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
+    fn update_validator_weights(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+        validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Effects<MainEvent> {
+        self.validator_matrix
+            .register_validator_weights(era_id, validator_weights);
+        info!(%era_id, "validator_matrix updated");
+        // notify validator bound components
+        let mut effects = reactor::wrap_effects(
+            MainEvent::BlockAccumulator,
+            self.block_accumulator
+                .handle_validators(effect_builder, rng),
+        );
+        effects.extend(reactor::wrap_effects(
+            MainEvent::BlockSynchronizer,
+            self.block_synchronizer
+                .handle_validators(effect_builder, rng),
+        ));
+        effects
+    }
+
     fn handle_meta_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -1008,28 +1155,6 @@ impl MainReactor {
 
         let mut effects = Effects::new();
 
-        let should_update_switch_block_if_required = match self.block_accumulator.local_tip_height()
-        {
-            Some(local_tip_height) => block.height() > local_tip_height,
-            None => true,
-        };
-        if should_update_switch_block_if_required {
-            if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block = None;
-            }
-        }
-
         if state.register_as_sent_to_deploy_buffer().was_updated() {
             effects.extend(reactor::wrap_effects(
                 MainEvent::DeployBuffer,
@@ -1044,28 +1169,12 @@ impl MainReactor {
         if state.register_updated_validator_matrix().was_updated() {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
                 let era_id = block.header().era_id();
-                self.validator_matrix
-                    .register_validator_weights(era_id.successor(), validator_weights.clone());
-                debug!(
-                    "added switch block (notifying components of validator weights at end \
-                            of {})",
-                    era_id
-                );
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ValidatorMatrixUpdated,
-                    ),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockSynchronizer,
-                    self.block_synchronizer.handle_event(
-                        effect_builder,
-                        rng,
-                        block_synchronizer::Event::ValidatorMatrixUpdated,
-                    ),
+                let next_era_id = era_id.successor();
+                effects.extend(self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    next_era_id,
+                    validator_weights.clone(),
                 ));
             }
         }
@@ -1080,6 +1189,7 @@ impl MainReactor {
                 effect_builder,
                 rng,
                 block.hash(),
+                block.gossip_target(),
                 &mut state,
                 &mut effects,
             );
@@ -1151,7 +1261,29 @@ impl MainReactor {
             return effects;
         }
 
-        if !state.is_marked_complete() {
+        // Set the current switch block only after the block is marked complete.
+        // We *always* want to initialize the contract runtime with the highest complete block.
+        // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
+        // the immediate switch block is stored and *also* marked complete.
+        // This will allow the contract runtime to initialize properly (see
+        // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
+        // `KeepUp`.
+        if state.is_marked_complete() {
+            if block.header().is_switch_block() {
+                match self.switch_block.as_ref().map(|header| header.height()) {
+                    Some(current_height) => {
+                        if block.height() > current_height {
+                            self.switch_block = Some(block.header().clone());
+                        }
+                    }
+                    None => {
+                        self.switch_block = Some(block.header().clone());
+                    }
+                }
+            } else {
+                self.switch_block = None;
+            }
+        } else {
             error!(
                 block = %*block,
                 ?state,
@@ -1163,6 +1295,7 @@ impl MainReactor {
             effect_builder,
             rng,
             block.hash(),
+            block.gossip_target(),
             &mut state,
             &mut effects,
         );
@@ -1234,6 +1367,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         block_hash: &BlockHash,
+        gossip_target: GossipTarget,
         state: &mut MetaBlockState,
         effects: &mut Effects<MainEvent>,
     ) {
@@ -1250,6 +1384,7 @@ impl MainReactor {
                     gossiper::Event::ItemReceived {
                         item_id: *block_hash,
                         source: Source::Ourself,
+                        target: gossip_target,
                     },
                 ),
             ));

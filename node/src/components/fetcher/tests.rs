@@ -44,8 +44,8 @@ use crate::{
         ConditionCheckReactor, FakeDeployAcceptor,
     },
     types::{
-        Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, EmptyValidationMetadata,
-        FinalitySignature, Item, NodeId,
+        Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, FinalitySignature,
+        NodeId,
     },
     utils::WithDir,
 };
@@ -507,7 +507,7 @@ async fn should_fetch_from_local() {
 
     // Try to fetch the deploy from a node that holds it.
     let node_id = node_ids[0];
-    let deploy_id = deploy.id();
+    let deploy_id = deploy.fetch_id();
     let fetched = Arc::new(Mutex::new((false, None)));
     network
         .process_injected_effect_on(
@@ -553,7 +553,7 @@ async fn should_fetch_from_peer() {
     store_deploy(&deploy, &node_with_deploy, &mut network, None, &mut rng).await;
 
     let node_without_deploy = node_ids[1];
-    let deploy_id = deploy.id();
+    let deploy_id = deploy.fetch_id();
     let fetched = Arc::new(Mutex::new((false, None)));
 
     // Try to fetch the deploy from a node that does not hold it; should get from peer.
@@ -596,7 +596,7 @@ async fn should_timeout_fetch_from_peer() {
 
     // Create a random deploy.
     let deploy = Deploy::random_valid_native_transfer(&mut rng);
-    let deploy_id = deploy.id();
+    let deploy_id = deploy.fetch_id();
 
     let holding_node = node_ids[0];
     let requesting_node = node_ids[1];

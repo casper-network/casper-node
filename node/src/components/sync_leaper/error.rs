@@ -16,12 +16,22 @@ pub(crate) enum LeapActivityError {
 impl Display for LeapActivityError {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            LeapActivityError::TooOld(bh, ..) => write!(formatter, "too old: {}", bh),
-            LeapActivityError::Unobtainable(bh, ..) => {
-                write!(formatter, "unable to acquire data for: {}", bh)
+            LeapActivityError::TooOld(sync_leap_identifier, ..) => {
+                write!(formatter, "too old: {}", sync_leap_identifier)
             }
-            LeapActivityError::NoPeers(bh) => {
-                write!(formatter, "sync leaper has no peers for: {}", bh)
+            LeapActivityError::Unobtainable(sync_leap_identifier, ..) => {
+                write!(
+                    formatter,
+                    "unable to acquire data for: {}",
+                    sync_leap_identifier
+                )
+            }
+            LeapActivityError::NoPeers(sync_leap_identifier) => {
+                write!(
+                    formatter,
+                    "sync leaper has no peers for: {}",
+                    sync_leap_identifier
+                )
             }
         }
     }

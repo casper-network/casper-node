@@ -125,8 +125,12 @@ impl PeerList {
     }
 
     pub(super) fn need_peers(&mut self) -> PeersStatus {
-        if self.peer_list.is_empty() {
-            debug!("PeerList: is empty");
+        if !self
+            .peer_list
+            .iter()
+            .any(|(_, pq)| *pq != PeerQuality::Dishonest)
+        {
+            debug!("PeerList: no honest peers");
             return PeersStatus::Insufficient;
         }
 

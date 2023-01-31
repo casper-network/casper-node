@@ -208,6 +208,11 @@ impl GlobalStateSynchronizer {
         self.last_progress
     }
 
+    /// Returns whether we are already processing a request for the given hash.
+    pub(super) fn has_global_state_request(&self, global_state_hash: &Digest) -> bool {
+        self.request_states.contains_key(global_state_hash)
+    }
+
     fn handle_request<REv>(
         &mut self,
         request: SyncGlobalStateRequest,

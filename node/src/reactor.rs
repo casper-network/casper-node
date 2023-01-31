@@ -58,7 +58,8 @@ use tracing_futures::Instrument;
 
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor, fetcher,
+        block_accumulator, deploy_acceptor,
+        fetcher::{self, FetchItem},
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
     },
     effect::{
@@ -68,8 +69,8 @@ use crate::{
     },
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
-        ChainspecRawBytes, Deploy, ExitCode, FetcherItem, FinalitySignature, LegacyDeploy, NodeId,
-        SyncLeap, TrieOrChunk,
+        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, LegacyDeploy, NodeId, SyncLeap,
+        TrieOrChunk,
     },
     unregister_metric,
     utils::{
@@ -892,7 +893,7 @@ fn handle_fetch_response<R, I>(
     serialized_item: &[u8],
 ) -> Effects<<R as Reactor>::Event>
 where
-    I: FetcherItem,
+    I: FetchItem,
     R: Reactor,
     <R as Reactor>::Event: From<fetcher::Event<I>> + From<PeerBehaviorAnnouncement>,
 {

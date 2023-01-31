@@ -20,14 +20,12 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
+        gossiper::GossipItem,
         network::blocklist::BlocklistJustification,
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{
-        Deploy, DeployHash, FinalitySignature, FinalizedBlock, GossiperItem, Item, MetaBlock,
-        NodeId,
-    },
+    types::{Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
 
@@ -300,7 +298,7 @@ impl Display for PeerBehaviorAnnouncement {
 
 /// A Gossiper announcement.
 #[derive(Debug)]
-pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
+pub(crate) enum GossiperAnnouncement<T: GossipItem> {
     /// A new gossip has been received, but not necessarily the full item.
     GossipReceived { item_id: T::Id, sender: NodeId },
 
@@ -314,7 +312,7 @@ pub(crate) enum GossiperAnnouncement<T: GossiperItem> {
     FinishedGossiping(T::Id),
 }
 
-impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
+impl<T: GossipItem> Display for GossiperAnnouncement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             GossiperAnnouncement::GossipReceived { item_id, sender } => {
@@ -322,7 +320,7 @@ impl<T: GossiperItem> Display for GossiperAnnouncement<T> {
             }
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
             GossiperAnnouncement::NewItemBody { item, sender } => {
-                write!(f, "new item body {} from {}", item.id(), sender)
+                write!(f, "new item body {} from {}", item.gossip_id(), sender)
             }
             GossiperAnnouncement::FinishedGossiping(item_id) => {
                 write!(f, "finished gossiping {}", item_id)
@@ -399,7 +397,11 @@ impl Display for BlockAccumulatorAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BlockAccumulatorAnnouncement::AcceptedNewFinalitySignature { finality_signature } => {
-                write!(f, "finality signature {} accepted", finality_signature.id())
+                write!(
+                    f,
+                    "finality signature {} accepted",
+                    finality_signature.gossip_id()
+                )
             }
         }
     }

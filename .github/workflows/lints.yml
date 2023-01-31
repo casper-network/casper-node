@@ -11,12 +11,16 @@ on:
       - staging
       - 'release-**'
       - 'feat-**'
+    paths-ignore:
+      - '**.md'
 
   pull_request:
     branches:
       - dev
       - 'release-**'
       - 'feat-**'
+    paths-ignore:
+      - '**.md'
 
 jobs:
   lints:

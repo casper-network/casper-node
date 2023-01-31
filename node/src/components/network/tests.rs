@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
     components::{
-        gossiper::{self, Gossiper},
+        gossiper::{self, GossipItem, Gossiper},
         Component, InitializedComponent,
     },
     effect::{
@@ -173,7 +173,7 @@ impl Payload for Message {
 #[derive(Debug)]
 struct TestReactor {
     net: Network<Event, Message>,
-    address_gossiper: Gossiper<GossipedAddress, Event>,
+    address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
 }
 
 impl Reactor for TestReactor {
@@ -200,8 +200,11 @@ impl Reactor for TestReactor {
             ValidatorMatrix::new_with_validator(Arc::new(secret_key)),
         )?;
         let gossiper_config = gossiper::Config::new_with_small_timeouts();
-        let address_gossiper =
-            Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
+            "address_gossiper",
+            gossiper_config,
+            registry,
+        )?;
 
         net.start_initialization();
         let effects = smallvec![async { smallvec![Event::Net(NetworkEvent::Initialize)] }.boxed()];

@@ -30,7 +30,7 @@ function main() {
     # 2. Send batch of native transfers
     do_send_transfers
     # 3. Wait until they're all included in the chain.
-    do_await_deploy_inclusion
+    do_await_deploy_inclusion '1'
     # 4. Stop the network for the emergency upgrade.
     do_stop_network
     # 5. Prepare the nodes for the emergency upgrade.
@@ -44,7 +44,7 @@ function main() {
     # 9. Send batch of native transfers
     do_send_transfers
     # 10. Wait until they're all included in the chain.
-    do_await_deploy_inclusion
+    do_await_deploy_inclusion '6'
     # 11. Prepare the second upgrade.
     do_upgrade_second_time
     # 12. Await the second upgrade.
@@ -54,14 +54,13 @@ function main() {
     # 14. Wait until node 1 syncs back to genesis.
     do_await_node_1_historical_sync
     # 15. Run Health Checks
-    # ... restarts=16: due to nodes being stopped and started
-    # ... crashes=5: expected in an emergency restart scenario?
-    # (TODO: double check the numbers once the test can properly finish)
+    # ... restarts=16: due to nodes being stopped and started; node 1 3 times, nodes 2-5 2 times,
+    # ................ node 6-10 1 time
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \
             equivocators=0 \
             doppels=0 \
-            crashes=5 \
+            crashes=0 \
             restarts=16 \
             ejections=0
 
@@ -158,9 +157,10 @@ function do_send_transfers() {
 }
 
 function do_await_deploy_inclusion() {
+    local NODE_ID=${1}
     # Should be enough to await for one era.
     log_step "awaiting one era…"
-    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180'
+    nctl-await-n-eras node_id=$NODE_ID offset='1' sleep_interval='5.0' timeout='180'
 }
 
 function do_upgrade_second_time() {
@@ -192,8 +192,8 @@ function do_reset_node_1() {
     local PATH_TO_STORAGE="${PATH_TO_NODE}/storage/$(get_chain_name)"
     # remove all storage, so that the node will start fresh
     rm -r "$PATH_TO_STORAGE"/*
-    # use node 2 for the latest block hash
-    TRUSTED_HASH=$(get_chain_latest_block_hash "2")
+    # use node 7 for the latest block hash
+    TRUSTED_HASH=$(get_chain_latest_block_hash "7")
     do_node_start "1" "$TRUSTED_HASH"
 }
 
