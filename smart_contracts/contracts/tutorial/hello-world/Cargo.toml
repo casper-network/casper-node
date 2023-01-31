@@ -5,8 +5,8 @@ authors = ["darthsiroftardis <karan@casperlabs.io>", "Michał Papierski <michal@
 edition = "2021"
 
 [dependencies]
-casper-contract = "1.4.4"
-casper-types = "1.5.0"
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
 
 [[bin]]
 name = "hello_world"

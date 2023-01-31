@@ -703,7 +703,7 @@ impl From<&PublicKey> for Vec<u8> {
         match public_key {
             PublicKey::System => Vec::new(),
             PublicKey::Ed25519(key) => key.to_bytes().into(),
-            PublicKey::Secp256k1(key) => key.to_bytes().into(),
+            PublicKey::Secp256k1(key) => key.to_bytes().as_slice().into(),
         }
     }
 }

@@ -811,7 +811,7 @@ fn should_construct_secp256k1_from_uncompressed_bytes() {
     rng.fill_bytes(&mut secret_key_bytes[..]);
 
     // Construct a secp256k1 secret key and use that to construct a public key.
-    let secp256k1_secret_key = k256::SecretKey::from_bytes(secret_key_bytes).unwrap();
+    let secp256k1_secret_key = k256::SecretKey::from_be_bytes(&secret_key_bytes).unwrap();
     let secp256k1_public_key = secp256k1_secret_key.public_key();
 
     // Construct a CL secret key and public key from that (which will be a compressed key).

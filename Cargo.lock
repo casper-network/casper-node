@@ -6,40 +6,40 @@ version = 3
 name = "activate-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-associated-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-gas-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-update-associated-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -174,16 +174,16 @@ dependencies = [
 name = "auction-bidding"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "auction-bids"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -212,6 +212,12 @@ name = "base16"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d27c3610c36aee21ce8ac510e6224498de4228ad772a171ed65643a24693a5a8"
+
+[[package]]
+name = "base16ct"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349a06037c7bf932dd7e7d1f653678b2038b9ad46a74102f1fc7bd7872678cce"
 
 [[package]]
 name = "base64"
@@ -256,23 +262,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "bitvec"
-version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98fcd36dda4e17b7d7abc64cb549bf0201f4ab71e00700c798ca7e62ed3761fa"
-dependencies = [
- "funty",
- "radium",
- "wyz",
-]
-
-[[package]]
 name = "blake2"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a4e37d16930f5459780f5621038b6382b9bb37c19016f39fb6b5808d831f174"
 dependencies = [
- "crypto-mac 0.8.0",
+ "crypto-mac",
  "digest 0.9.0",
  "opaque-debug",
 ]
@@ -281,8 +276,8 @@ dependencies = [
 name = "blake2b"
 version = "0.8.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -368,20 +363,9 @@ checksum = "dfb24e866b15a1af2a1b663f10c6b6b8f397a84aadb828f12e5b289ec23a3a3c"
 name = "casper-contract"
 version = "1.4.4"
 dependencies = [
- "casper-types 1.5.0",
+ "casper-types",
  "hex_fmt",
  "version-sync",
- "wee_alloc",
-]
-
-[[package]]
-name = "casper-contract"
-version = "1.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "790b76807d64788758208757b0a17970bf756cb7c392f55b1a22021a34f95991"
-dependencies = [
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hex_fmt",
  "wee_alloc",
 ]
 
@@ -391,7 +375,7 @@ version = "2.2.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
- "casper-types 1.5.0",
+ "casper-types",
  "filesize",
  "humantime",
  "lmdb-rkv",
@@ -412,11 +396,11 @@ version = "0.1.0"
 dependencies = [
  "assert_matches",
  "base16",
- "casper-contract 1.4.4",
+ "casper-contract",
  "casper-engine-test-support",
  "casper-execution-engine",
  "casper-hashing",
- "casper-types 1.5.0",
+ "casper-types",
  "clap 2.34.0",
  "criterion",
  "crossbeam-channel 0.5.6",
@@ -451,7 +435,7 @@ dependencies = [
  "base16",
  "bincode",
  "casper-hashing",
- "casper-types 1.5.0",
+ "casper-types",
  "criterion",
  "datasize",
  "hex-buffer-serde 0.2.2",
@@ -493,7 +477,7 @@ dependencies = [
  "base16",
  "bincode",
  "blake2",
- "casper-types 1.5.0",
+ "casper-types",
  "criterion",
  "datasize",
  "hex",
@@ -546,7 +530,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-hashing",
  "casper-json-rpc",
- "casper-types 1.5.0",
+ "casper-types",
  "datasize",
  "derive_more",
  "ed25519-dalek",
@@ -666,36 +650,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "casper-types"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a13e82a13d1784104fd021a38da56c69da94e84b26b03c2cf3d8da3895a16c8c"
-dependencies = [
- "base16",
- "base64 0.13.1",
- "bitflags",
- "blake2",
- "ed25519-dalek",
- "hex",
- "hex_fmt",
- "k256",
- "num",
- "num-derive",
- "num-integer",
- "num-rational 0.4.1",
- "num-traits",
- "rand 0.8.5",
- "serde",
- "serde_bytes",
- "serde_json",
- "uint",
-]
-
-[[package]]
 name = "casper-updater"
 version = "0.3.0"
 dependencies = [
- "casper-types 1.5.0",
+ "casper-types",
  "clap 2.34.0",
  "once_cell",
  "regex",
@@ -707,7 +665,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base16",
- "casper-types 1.5.0",
+ "casper-types",
  "clap 3.2.23",
  "derive_more",
  "hex",
@@ -807,11 +765,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-oid"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cec318a675afcb6a1ea1d4340e2d377e56e47c266f28043ceccbf4412ddfdd3b"
+
+[[package]]
 name = "contract-context"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -840,8 +804,8 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 name = "counter-installer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -866,24 +830,24 @@ dependencies = [
 name = "create-accounts"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "create-purse-01"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "create-purses"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -912,8 +876,8 @@ name = "create-test-node-shared"
 version = "0.1.0"
 dependencies = [
  "base16",
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1074,6 +1038,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
+name = "crypto-bigint"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef2b4b23cddf68b89b8f8069890e8c270d54e2d5fe1b143820234805e4cb17ef"
+dependencies = [
+ "generic-array",
+ "rand_core 0.6.4",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1088,16 +1064,6 @@ name = "crypto-mac"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b584a330336237c1eecd3e94266efb216c56ed91225d634cb2991c5f3fd1aeab"
-dependencies = [
- "generic-array",
- "subtle",
-]
-
-[[package]]
-name = "crypto-mac"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bff07008ec701e8028e2ceb8f83f0e4274ee62bd2dbdc4fefff2e9a91824081a"
 dependencies = [
  "generic-array",
  "subtle",
@@ -1137,9 +1103,9 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek"
-version = "3.2.1"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90f9d052967f590a76e62eb387bd0bbb1b000182c3cefe5364db6b7211651bc0"
+checksum = "0b9fdf9972b2bd6af2d913799d9ebc165ea4d2e65878e329d9c6b372c4491b61"
 dependencies = [
  "byteorder",
  "digest 0.9.0",
@@ -1176,8 +1142,17 @@ dependencies = [
 name = "delegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "der"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1a467a65c5e759bce6e65eaf91cc29f466cdc57cb65777bd646872a8a1fd4de"
+dependencies = [
+ "const-oid",
 ]
 
 [[package]]
@@ -1206,24 +1181,24 @@ dependencies = [
 name = "deserialize-error"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "dictionary"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "dictionary-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "dictionary",
 ]
 
@@ -1231,16 +1206,16 @@ dependencies = [
 name = "dictionary-item-key-length"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "dictionary-read"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1266,37 +1241,38 @@ checksum = "8168378f4e5023e7218c89c891c0fd8ecdb5e5e4f18cb78f38cf245dd021e76f"
 dependencies = [
  "block-buffer 0.10.3",
  "crypto-common",
+ "subtle",
 ]
 
 [[package]]
 name = "do-nothing"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
+ "casper-contract",
 ]
 
 [[package]]
 name = "do-nothing-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "do-nothing-stored-caller"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "do-nothing-stored-upgrader"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "create-purse-01",
 ]
 
@@ -1314,12 +1290,13 @@ checksum = "c9b0705efd4599c15a38151f4721f7bc388306f61084d3bfd50bd07fbca5cb60"
 
 [[package]]
 name = "ecdsa"
-version = "0.10.2"
+version = "0.14.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fbdb4ff710acb4db8ca29f93b897529ea6d6a45626d5183b47e012aa6ae7e4"
+checksum = "413301934810f597c1d19ca71c8710e99a3f1ba28a0d2ebc01551a2daeea3c5c"
 dependencies = [
+ "der",
  "elliptic-curve",
- "hmac",
+ "rfc6979",
  "signature",
 ]
 
@@ -1344,7 +1321,7 @@ dependencies = [
  "rand 0.7.3",
  "serde",
  "serde_bytes",
- "sha2",
+ "sha2 0.9.9",
  "zeroize",
 ]
 
@@ -1364,175 +1341,175 @@ dependencies = [
 name = "ee-1071-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-1129-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-1217-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-1225-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-221-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-401-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-401-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-441-rng-state"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-460-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-532-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
+ "casper-contract",
 ]
 
 [[package]]
 name = "ee-536-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-539-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-549-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-550-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-572-regression-create"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-572-regression-escalate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-584-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-597-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-598-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-599-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-601-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-771-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1550,17 +1527,19 @@ dependencies = [
 
 [[package]]
 name = "elliptic-curve"
-version = "0.8.5"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2db227e61a43a34915680bdda462ec0e212095518020a88a1f91acd16092c39"
+checksum = "e7bb888ab5300a19b8e5bceef25ac745ad065f3c9f7efc6de1b91958110891d3"
 dependencies = [
- "bitvec",
- "digest 0.9.0",
+ "base16ct",
+ "crypto-bigint",
+ "der",
+ "digest 0.10.6",
  "ff",
- "funty",
  "generic-array",
  "group",
- "rand_core 0.5.1",
+ "rand_core 0.6.4",
+ "sec1",
  "subtle",
  "zeroize",
 ]
@@ -1578,8 +1557,8 @@ dependencies = [
 name = "endless-loop"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1675,8 +1654,8 @@ dependencies = [
 name = "expensive-calculation"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1698,27 +1677,26 @@ dependencies = [
 name = "faucet"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "faucet-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "faucet",
 ]
 
 [[package]]
 name = "ff"
-version = "0.8.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01646e077d4ebda82b73f1bca002ea1e91561a77df2431a9e79729bcc31950ef"
+checksum = "d013fc25338cc558c5c2cfbad646908fb23591e2404481826742b651c9af7160"
 dependencies = [
- "bitvec",
- "rand_core 0.5.1",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -1735,8 +1713,8 @@ dependencies = [
 name = "finalize-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1794,12 +1772,6 @@ name = "fs_extra"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2022715d62ab30faffd124d40b76f4134a550a87792276512b18d63272333394"
-
-[[package]]
-name = "funty"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 
 [[package]]
 name = "futures"
@@ -1904,24 +1876,24 @@ dependencies = [
 name = "get-arg"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-blocktime"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-call-stack-call-recursive-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "get-call-stack-recursive-subcall",
 ]
 
@@ -1929,48 +1901,48 @@ dependencies = [
 name = "get-call-stack-recursive-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-caller"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-caller-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-payment-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-phase"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-phase-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2000,16 +1972,16 @@ dependencies = [
 name = "gh-1470-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-1470-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "gh-1470-regression",
 ]
 
@@ -2017,40 +1989,40 @@ dependencies = [
 name = "gh-1688-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-2280-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-2280-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-3097-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-3097-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2093,7 +2065,7 @@ dependencies = [
  "casper-engine-test-support",
  "casper-execution-engine",
  "casper-hashing",
- "casper-types 1.5.0",
+ "casper-types",
  "clap 2.34.0",
  "lmdb-rkv",
  "rand 0.8.5",
@@ -2103,12 +2075,12 @@ dependencies = [
 
 [[package]]
 name = "group"
-version = "0.8.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc11f9f5fbf1943b48ae7c2bf6846e7d827a512d1be4f23af708f5ca5d01dde1"
+checksum = "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7"
 dependencies = [
  "ff",
- "rand_core 0.5.1",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -2116,8 +2088,8 @@ dependencies = [
 name = "groups"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2195,8 +2167,8 @@ checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
 name = "hello-world"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2254,28 +2226,27 @@ checksum = "b07f60793ff0a4d9cef0f18e63b5357e06209987153a64648c972c1e5aff336f"
 
 [[package]]
 name = "hmac"
-version = "0.10.1"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1441c6b1e930e2817404b5046f1f989899143a12bf92de603b69f4e0aee1e15"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
- "crypto-mac 0.10.1",
- "digest 0.9.0",
+ "digest 0.10.6",
 ]
 
 [[package]]
 name = "host-function-costs"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "host-function-metrics"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "rand 0.8.5",
 ]
 
@@ -2381,8 +2352,8 @@ dependencies = [
 name = "increment-counter"
 version = "1.0.0"
 dependencies = [
- "casper-contract 1.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2470,22 +2441,22 @@ dependencies = [
 
 [[package]]
 name = "k256"
-version = "0.7.3"
+version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4476a0808212a9e81ce802eb1a0cfc60e73aea296553bacc0fac7e1268bc572a"
+checksum = "72c1e0b51e7ec0a97369623508396067a486bd0cbed95a2659a4b863d28cfc8b"
 dependencies = [
  "cfg-if 1.0.0",
  "ecdsa",
  "elliptic-curve",
- "sha2",
+ "sha2 0.10.6",
 ]
 
 [[package]]
 name = "key-management-thresholds"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2540,16 +2511,16 @@ checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 name = "list-authorization-keys"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "list-named-keys"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2609,16 +2580,16 @@ dependencies = [
 name = "main-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "manage-groups"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2646,8 +2617,8 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 name = "measure-gas-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2715,8 +2686,8 @@ dependencies = [
 name = "mint-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2753,48 +2724,48 @@ dependencies = [
 name = "multisig-authorization"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-dictionary-test"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-keys"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-keys-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-keys-stored-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-purse-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2819,15 +2790,15 @@ dependencies = [
 name = "nctl-dictionary"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "new-named-uref"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
+ "casper-contract",
 ]
 
 [[package]]
@@ -3047,8 +3018,8 @@ dependencies = [
 name = "ordered-transforms"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3076,8 +3047,8 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 name = "overwrite-uref-content"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3426,24 +3397,24 @@ dependencies = [
 name = "purse-holder-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "purse-holder-stored-caller"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "purse-holder-stored-upgrader"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3501,12 +3472,6 @@ checksum = "8856d8364d252a14d474036ea1358d63c9e6965c8e5c1885c18f73d70bff9c7b"
 dependencies = [
  "proc-macro2 1.0.50",
 ]
-
-[[package]]
-name = "radium"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "def50a86306165861203e7f84ecffbbdfdea79f0e51039b33de1e952358c47ac"
 
 [[package]]
 name = "rand"
@@ -3596,16 +3561,16 @@ dependencies = [
 name = "random-bytes"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "random-bytes-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3643,16 +3608,16 @@ dependencies = [
 name = "read-from-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "redelegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3668,8 +3633,8 @@ dependencies = [
 name = "refund-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3702,136 +3667,136 @@ checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
 name = "regression-20210707"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20210831"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220204"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220204-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220204-nontrivial"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220207"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220208"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220211"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220211-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220222"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-add-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-delegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-transfer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression_20211110"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression_20220119"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "remove-associated-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3886,8 +3851,19 @@ dependencies = [
 name = "revert"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "rfc6979"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7743f17af12fa0b03b803ba12cd6a8d9483a587e89c69445e3909655c0b9fabb"
+dependencies = [
+ "crypto-bigint",
+ "hmac",
+ "zeroize",
 ]
 
 [[package]]
@@ -4020,6 +3996,19 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "sec1"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3be24c1842290c45df0a7bf069e0c268a747ad05a192f2fd7dcfdbc1cba40928"
+dependencies = [
+ "base16ct",
+ "der",
+ "generic-array",
+ "subtle",
+ "zeroize",
+]
 
 [[package]]
 name = "security-framework"
@@ -4157,8 +4146,8 @@ dependencies = [
 name = "set-action-thresholds"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4197,6 +4186,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82e6b795fe2e3b1e845bafcb27aa35405c4d47cdfc92af5fc8d3002f76cebdc0"
+dependencies = [
+ "cfg-if 1.0.0",
+ "cpufeatures",
+ "digest 0.10.6",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4232,20 +4232,20 @@ dependencies = [
 
 [[package]]
 name = "signature"
-version = "1.2.2"
+version = "1.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29f060a7d147e33490ec10da418795238fd7545bba241504d6b31a409f2e6210"
+checksum = "74233d3b3b2f6d4b006dc19dee745e73e2a6bfb6f93607cd3b02bd5b00797d7c"
 dependencies = [
- "digest 0.9.0",
- "rand_core 0.5.1",
+ "digest 0.10.6",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
 name = "simple-transfer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4280,8 +4280,8 @@ dependencies = [
 name = "state-initializer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4300,8 +4300,8 @@ checksum = "5c0e04424e733e69714ca1bbb9204c1a57f09f5493439520f9f68c132ad25eec"
 name = "storage-costs"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4415,8 +4415,8 @@ dependencies = [
 name = "system-contract-hashes"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4446,8 +4446,8 @@ dependencies = [
 name = "test-payment-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4790,32 +4790,32 @@ dependencies = [
 name = "transfer-main-purse-to-new-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-main-purse-to-two-purses"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-account"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-account-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "transfer-purse-to-account",
 ]
 
@@ -4823,24 +4823,24 @@ dependencies = [
 name = "transfer-purse-to-account-with-id"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-accounts"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-accounts-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "transfer-purse-to-accounts",
 ]
 
@@ -4848,72 +4848,72 @@ dependencies = [
 name = "transfer-purse-to-accounts-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-public-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-account"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-account-u512"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-existing-account"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-named-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-public-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4972,8 +4972,8 @@ dependencies = [
 name = "undelegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -5481,21 +5481,15 @@ dependencies = [
 name = "withdraw-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
-name = "wyz"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
-
-[[package]]
 name = "zeroize"
-version = "1.3.0"
+version = "1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4756f7db3f7b5574938c3eb1c117038b8e07f95ee6718c0efad4ac21508f1efd"
+checksum = "c394b5bd0c6f669e7275d9c20aa90ae064cb22e75a1cad54e1b34088034b149f"
 dependencies = [
  "zeroize_derive",
 ]
