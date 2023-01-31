@@ -737,10 +737,24 @@ impl Storage {
                 )?)
             }
             NetRequest::BlockExecutionResults(ref serialized_id) => {
+                debug!(
+                    "got net request for execution results from {}",
+                    incoming.sender
+                );
                 let item_id = decode_item_id::<BlockExecutionResultsOrChunk>(serialized_id)?;
+
+                debug!(
+                    "successfully decoded execution results ID for {}",
+                    incoming.sender
+                );
+
                 let opt_item = self.read_block_execution_results_or_chunk(&item_id)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
 
+                debug!(
+                    "successfully read execution results for {} - sending response",
+                    incoming.sender
+                );
                 Ok(self.update_pool_and_send(
                     effect_builder,
                     incoming.sender,

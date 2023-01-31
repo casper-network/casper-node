@@ -1,4 +1,5 @@
 use std::{
+    any::TypeId,
     collections::{hash_map::Entry, HashMap},
     time::Duration,
 };
@@ -16,7 +17,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    types::NodeId,
+    types::{BlockExecutionResultsOrChunkId, NodeId},
 };
 
 pub(super) enum StoringState<'a, T> {
@@ -82,6 +83,13 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         <T as FetchItem>::Id: 'static,
         REv: From<NetworkRequest<Message>> + Send,
     {
+        let fetching_execution_results =
+            TypeId::of::<BlockExecutionResultsOrChunkId>() == TypeId::of::<T::Id>();
+
+        if fetching_execution_results {
+            debug!("now trying to fetch execution results");
+        }
+
         let peer_timeout = self.peer_timeout();
         // Capture responder for later signalling.
         let item_handles = self.item_handles();
@@ -108,6 +116,9 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
             Ok(message) => {
                 self.metrics().fetch_total.inc();
                 async move {
+                    if fetching_execution_results {
+                        debug!("fetch execution results from {}", peer);
+                    }
                     effect_builder.send_message(peer, message).await;
                     effect_builder.set_timeout(peer_timeout).await
                 }
@@ -134,6 +145,9 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
     where
         REv: From<StorageRequest> + From<PeerBehaviorAnnouncement> + Send,
     {
+        let fetching_execution_results =
+            TypeId::of::<BlockExecutionResultsOrChunkId>() == TypeId::of::<T::Id>();
+
         self.metrics().found_on_peer.inc();
 
         let validation_metadata = match self
@@ -148,6 +162,10 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
             }
         };
 
+        if fetching_execution_results {
+            debug!("validating execution results from {}", peer);
+        }
+
         if let Err(err) = item.validate(validation_metadata) {
             debug!(%peer, %err, ?item, "peer sent invalid item");
             effect_builder
@@ -160,6 +178,9 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
                 )
                 .ignore()
         } else {
+            if fetching_execution_results {
+                debug!("putting to storage execution results from {}", peer);
+            }
             match Self::put_to_storage(effect_builder, *item.clone()) {
                 StoringState::WontStore(item) => self.signal(item.fetch_id(), Ok(item), peer),
                 StoringState::Enqueued(store_future) => {

@@ -759,7 +759,7 @@ impl BlockAcquisitionState {
                 acq @ ExecutionResultsAcquisition::Needed { .. },
             ) if need_execution_state => {
                 info!(
-                    "BlockAcquisition: registering execution results hash for: {}",
+                    "BlockAcquisition: registering execution results checksum for: {}",
                     block.hash()
                 );
                 *acq = acq

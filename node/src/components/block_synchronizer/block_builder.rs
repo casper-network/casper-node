@@ -493,7 +493,7 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
-        debug!(block_hash=%self.block_hash, "register_fetched_execution_results");
+        debug!(block_hash=%self.block_hash, %block_execution_results_or_chunk, "register_fetched_execution_results");
         match self.acquisition_state.register_execution_results_or_chunk(
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
