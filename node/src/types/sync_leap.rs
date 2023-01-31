@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     iter,
     sync::Arc,
@@ -15,10 +15,10 @@ use casper_types::{crypto, EraId};
 use tracing::error;
 
 use crate::{
+    components::fetcher::{FetchItem, Tag},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights, FetcherItem,
-        Item, Tag,
+        BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights,
     },
     utils::{self, BlockSignatureError},
 };
@@ -115,6 +115,8 @@ impl SyncLeap {
         &self,
         fault_tolerance_fraction: Ratio<u64>,
     ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
+        let switch_block_heights: HashSet<_> =
+            self.switch_blocks().map(BlockHeader::height).collect();
         self.switch_blocks()
             .find(|block_header| block_header.is_genesis())
             .into_iter()
@@ -125,13 +127,23 @@ impl SyncLeap {
                     fault_tolerance_fraction,
                 ))
             })
-            .chain(self.switch_blocks().flat_map(move |block_header| {
-                Some(EraValidatorWeights::new(
-                    block_header.next_block_era_id(),
-                    block_header.next_era_validator_weights().cloned()?,
-                    fault_tolerance_fraction,
-                ))
-            }))
+            .chain(
+                self.switch_blocks()
+                    // filter out switch blocks preceding immediate switch blocks - we don't want
+                    // to read the era validators directly from them, as they might have been
+                    // altered by the upgrade, we'll get them from the blocks' global states
+                    // instead
+                    .filter(move |block_header| {
+                        !switch_block_heights.contains(&(block_header.height() + 1))
+                    })
+                    .flat_map(move |block_header| {
+                        Some(EraValidatorWeights::new(
+                            block_header.next_block_era_id(),
+                            block_header.next_era_validator_weights().cloned()?,
+                            fault_tolerance_fraction,
+                        ))
+                    }),
+            )
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
@@ -177,21 +189,19 @@ impl Display for SyncLeap {
     }
 }
 
-impl Item for SyncLeap {
+impl FetchItem for SyncLeap {
     type Id = SyncLeapIdentifier;
+    type ValidationError = SyncLeapValidationError;
+    type ValidationMetadata = Arc<Chainspec>;
 
-    fn id(&self) -> Self::Id {
+    const TAG: Tag = Tag::SyncLeap;
+
+    fn fetch_id(&self) -> Self::Id {
         SyncLeapIdentifier {
             block_hash: self.trusted_block_header.block_hash(),
             trusted_ancestor_only: self.trusted_ancestor_only,
         }
     }
-}
-
-impl FetcherItem for SyncLeap {
-    type ValidationError = SyncLeapValidationError;
-    type ValidationMetadata = Arc<Chainspec>;
-    const TAG: Tag = Tag::SyncLeap;
 
     fn validate(&self, chainspec: &Arc<Chainspec>) -> Result<(), Self::ValidationError> {
         if self.trusted_ancestor_headers.is_empty() && self.trusted_block_header.height() > 0 {

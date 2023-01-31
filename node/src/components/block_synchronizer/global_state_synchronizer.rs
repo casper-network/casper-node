@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 
 use datasize::DataSize;
@@ -205,6 +208,11 @@ impl GlobalStateSynchronizer {
         self.last_progress
     }
 
+    /// Returns whether we are already processing a request for the given hash.
+    pub(super) fn has_global_state_request(&self, global_state_hash: &Digest) -> bool {
+        self.request_states.contains_key(global_state_hash)
+    }
+
     fn handle_request<REv>(
         &mut self,
         request: SyncGlobalStateRequest,
@@ -301,12 +309,13 @@ impl GlobalStateSynchronizer {
             Ok(trie_raw) => trie_raw,
             Err(error) => {
                 debug!(%error, "error fetching a trie");
-                return request_root_hashes
-                    .into_iter()
-                    .flat_map(|root_hash| {
-                        self.cancel_request(root_hash, Error::TrieAccumulator(error.clone()))
-                    })
-                    .collect();
+                let mut effects = Effects::new();
+                effects.extend(request_root_hashes.into_iter().flat_map(|root_hash| {
+                    self.cancel_request(root_hash, Error::TrieAccumulator(error.clone()))
+                }));
+                // continue fetching other requests if any
+                effects.extend(self.parallel_fetch(effect_builder));
+                return effects;
             }
         };
 

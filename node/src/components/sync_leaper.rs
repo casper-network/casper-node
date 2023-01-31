@@ -112,6 +112,29 @@ impl SyncLeaper {
         }
     }
 
+    #[cfg_attr(doc, aquamarine::aquamarine)]
+    /// ```mermaid
+    /// flowchart TD
+    ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+    ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+    ///
+    ///     title[SyncLeap process - AttemptLeap]
+    ///     title---Start
+    ///     style title fill:#FFF,stroke:#FFF
+    ///     linkStyle 0 stroke-width:0;
+    ///
+    ///     Start --> A{have at least<br>one peer?}
+    ///     A -->|Yes| B{is other sync<br>leap in progress?}
+    ///     A -->|No| End
+    ///     B -->|Yes| C{do sync leap<br>identifiers match?}
+    ///     C -->|No| End
+    ///     C -->|Yes| D[fetch SyncLeap from potentially<br>newly learned peers]
+    ///     B -->|No| G[fetch SyncLeap<br>from all peers]
+    ///     G --> E
+    ///     D --> E[SyncLeap arrives]
+    ///     E --> F[SyncLeap is stored]
+    ///     F --> End
+    /// ```
     fn register_leap_attempt(
         &mut self,
         sync_leap_identifier: SyncLeapIdentifier,

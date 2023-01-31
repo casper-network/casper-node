@@ -1,18 +1,17 @@
 use datasize::DataSize;
 
-use super::FetchResponder;
-use crate::types::FetcherItem;
+use super::{FetchItem, FetchResponder};
 
 #[derive(Debug, DataSize)]
 pub(crate) struct ItemHandle<T>
 where
-    T: FetcherItem,
+    T: FetchItem,
 {
     validation_metadata: T::ValidationMetadata,
     responders: Vec<FetchResponder<T>>,
 }
 
-impl<T: FetcherItem> ItemHandle<T> {
+impl<T: FetchItem> ItemHandle<T> {
     pub(super) fn new(
         validation_metadata: T::ValidationMetadata,
         responder: FetchResponder<T>,

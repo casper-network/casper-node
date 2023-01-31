@@ -29,8 +29,11 @@ pub(crate) enum Event {
         result: Option<(FinalizedBlock, Vec<Deploy>)>,
     },
     MarkBlockExecutionEnqueued(BlockHash),
-    MarkBlockCompleted(BlockHash),
-    ValidatorMatrixUpdated,
+    MarkBlockExecuted(BlockHash),
+    MarkBlockCompleted {
+        block_hash: BlockHash,
+        is_new: bool,
+    },
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
@@ -70,14 +73,22 @@ impl Display for Event {
             Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
                 write!(f, "block synchronizer need next request")
             }
+            Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states, _)) => {
+                write!(f, "global states to be synced: [")?;
+                for (block_hash, global_state_hash) in global_states {
+                    write!(
+                        f,
+                        "(block {}, global state {}), ",
+                        block_hash, global_state_hash
+                    )?;
+                }
+                write!(f, "]")
+            }
             Event::Request(_) => {
                 write!(f, "block synchronizer request from effect builder")
             }
             Event::Initialize => {
                 write!(f, "initialize this component")
-            }
-            Event::ValidatorMatrixUpdated => {
-                write!(f, "validator matrix updated")
             }
             Event::DisconnectFromPeer(peer) => {
                 write!(f, "disconnected from peer {}", peer)
@@ -153,7 +164,10 @@ impl Display for Event {
             Event::MarkBlockExecutionEnqueued(..) => {
                 write!(f, "mark block enqueued for execution")
             }
-            Event::MarkBlockCompleted(..) => {
+            Event::MarkBlockExecuted(..) => {
+                write!(f, "block execution complete")
+            }
+            Event::MarkBlockCompleted { .. } => {
                 write!(f, "mark block completed")
             }
         }

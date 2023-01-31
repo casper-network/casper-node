@@ -3,10 +3,10 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::error;
 
-use crate::types::{FetcherItem, NodeId};
+use crate::{components::fetcher::FetchItem, types::NodeId};
 
 #[derive(Clone, Debug, Error, PartialEq, Eq, Serialize)]
-pub(crate) enum Error<T: FetcherItem> {
+pub(crate) enum Error<T: FetchItem> {
     #[error("could not fetch item with id {id:?} from peer {peer:?}")]
     Absent { id: T::Id, peer: NodeId },
 
@@ -31,7 +31,7 @@ pub(crate) enum Error<T: FetcherItem> {
     },
 }
 
-impl<T: FetcherItem> Error<T> {
+impl<T: FetchItem> Error<T> {
     pub(crate) fn is_peer_fault(&self) -> bool {
         match self {
             // The peer claimed to have the item, so it should not be absent.
@@ -62,7 +62,7 @@ impl<T: FetcherItem> Error<T> {
     }
 }
 
-impl<T: FetcherItem> DataSize for Error<T>
+impl<T: FetchItem> DataSize for Error<T>
 where
     T::Id: DataSize,
 {

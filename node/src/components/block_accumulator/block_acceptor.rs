@@ -7,10 +7,13 @@ use tracing::{debug, error, warn};
 use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
-    components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
+    components::{
+        block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
+        fetcher::{EmptyValidationMetadata, FetchItem},
+    },
     types::{
-        BlockHash, BlockSignatures, EmptyValidationMetadata, EraValidatorWeights, FetcherItem,
-        FinalitySignature, MetaBlock, NodeId, SignatureWeight,
+        BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock, NodeId,
+        SignatureWeight,
     },
 };
 
@@ -23,7 +26,7 @@ pub(super) struct BlockAcceptor {
     last_progress: Timestamp,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub(super) enum ShouldStore {
     SufficientlySignedBlock {
@@ -228,8 +231,8 @@ impl BlockAcceptor {
         }
 
         let faulty_senders = self.remove_bogus_validators(era_validator_weights);
-        if SignatureWeight::Strict == era_validator_weights.signature_weight(self.signatures.keys())
-        {
+        let signature_weight = era_validator_weights.signature_weight(self.signatures.keys());
+        if SignatureWeight::Strict == signature_weight {
             self.touch();
             if let Some(meta_block) = self.meta_block.as_mut() {
                 let mut block_signatures = BlockSignatures::new(
@@ -298,8 +301,15 @@ impl BlockAcceptor {
             }
         }
 
+        let signed_weight = era_validator_weights.signed_weight(self.signatures.keys());
+        let total_era_weight = era_validator_weights.get_total_weight();
+        let satisfaction_percent = signed_weight * 100 / total_era_weight;
         debug!(
-            %block_hash, no_block, no_sigs,
+            %block_hash,
+            %signed_weight,
+            %total_era_weight,
+            %satisfaction_percent,
+            no_block, no_sigs,
             "not storing anything - insufficient finality signatures"
         );
         (ShouldStore::Nothing, faulty_senders)
@@ -387,5 +397,44 @@ impl BlockAcceptor {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
+    }
+}
+
+#[cfg(test)]
+impl BlockAcceptor {
+    pub(super) fn executed(&self) -> bool {
+        self.meta_block
+            .as_ref()
+            .map_or(false, |meta_block| meta_block.state.is_executed())
+    }
+
+    pub(super) fn meta_block(&self) -> Option<MetaBlock> {
+        self.meta_block.clone()
+    }
+
+    pub(super) fn set_last_progress(&mut self, last_progress: Timestamp) {
+        self.last_progress = last_progress;
+    }
+
+    pub(super) fn set_meta_block(&mut self, meta_block: Option<MetaBlock>) {
+        self.meta_block = meta_block;
+    }
+
+    pub(super) fn set_sufficient_finality(&mut self, has_sufficient_finality: bool) {
+        if let Some(meta_block) = self.meta_block.as_mut() {
+            meta_block
+                .state
+                .set_sufficient_finality(has_sufficient_finality);
+        }
+    }
+
+    pub(super) fn signatures(&self) -> &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+        &self.signatures
+    }
+
+    pub(super) fn signatures_mut(
+        &mut self,
+    ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+        &mut self.signatures
     }
 }

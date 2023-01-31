@@ -3,6 +3,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use derive_more::From;
 use serde::Serialize;
 
+use casper_types::{system::auction::EraValidators, EraId};
+
 use crate::{
     components::{
         block_accumulator,
@@ -224,6 +226,9 @@ pub(crate) enum MainEvent {
     MainReactorRequest(ReactorStatusRequest),
     #[from]
     MetaBlockAnnouncement(MetaBlockAnnouncement),
+
+    // Event related to figuring out validators for immediate switch blocks.
+    GotImmediateSwitchBlockEraValidators(EraId, EraValidators, EraValidators),
 }
 
 impl ReactorEvent for MainEvent {
@@ -331,6 +336,9 @@ impl ReactorEvent for MainEvent {
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
             MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
+            MainEvent::GotImmediateSwitchBlockEraValidators(_, _, _) => {
+                "GotImmediateSwitchBlockEraValidators"
+            }
         }
     }
 }
@@ -505,6 +513,13 @@ impl Display for MainEvent {
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
             MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
+            MainEvent::GotImmediateSwitchBlockEraValidators(era_id, _, _) => {
+                write!(
+                    f,
+                    "got immediate switch block era validators for era {}",
+                    era_id
+                )
+            }
         }
     }
 }

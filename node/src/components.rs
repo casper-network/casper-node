@@ -80,9 +80,15 @@ use crate::{
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///
+///     Start --> Uninitialized
 ///     Uninitialized --> Initializing
 ///     Initializing --> Initialized
 ///     Initializing --> Fatal
+///     Initialized --> End
+///     Fatal --> End
 /// ```
 #[derive(Clone, PartialEq, Eq, DataSize, Debug, Deserialize, Default)]
 pub(crate) enum ComponentState {
@@ -188,5 +194,9 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
 }
 
 pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
-    fn handle_validators(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Self::Event>;
+    fn handle_validators(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+    ) -> Effects<Self::Event>;
 }
