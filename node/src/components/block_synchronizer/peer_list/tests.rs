@@ -116,3 +116,17 @@ fn unreliable_peer_becomes_reliable_when_promoted() {
     peer_list.promote_peer(Some(test_peer));
     assert!(peer_list.is_peer_reliable(&test_peer));
 }
+
+#[test]
+fn unreliable_peer_remains_unreliable_if_demoted() {
+    let mut rng = TestRng::new();
+    let mut peer_list = PeerList::new(5, TimeDiff::from_seconds(1));
+    let test_peer = NodeId::random(&mut rng);
+
+    peer_list.register_peer(test_peer);
+    assert!(peer_list.is_peer_unknown(&test_peer));
+    peer_list.demote_peer(Some(test_peer));
+    assert!(peer_list.is_peer_unreliable(&test_peer));
+    peer_list.demote_peer(Some(test_peer));
+    assert!(peer_list.is_peer_unreliable(&test_peer));
+}
