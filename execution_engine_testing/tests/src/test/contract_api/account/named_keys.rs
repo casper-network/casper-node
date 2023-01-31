@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512};
 
@@ -44,7 +44,7 @@ fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestBuilder, key
 fn should_run_named_keys_contract() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 

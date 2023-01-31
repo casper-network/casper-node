@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
@@ -57,7 +57,7 @@ fn should_fail_to_add_bid_from_stored_session_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
         .exec(store_call_auction_request)
@@ -99,7 +99,7 @@ fn should_fail_to_add_bid_from_stored_contract_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
         .exec(store_call_auction_request)
@@ -152,7 +152,7 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(add_bid_request).commit().expect_success();
 
@@ -207,7 +207,7 @@ fn should_fail_to_withdraw_bid_from_stored_contract_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(add_bid_request).commit().expect_success();
 
@@ -282,7 +282,7 @@ fn should_fail_to_delegate_from_stored_session_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
         .exec(validator_fund_request)
@@ -362,7 +362,7 @@ fn should_fail_to_delegate_from_stored_contract_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
         .exec(validator_fund_request)
@@ -430,7 +430,7 @@ fn should_fail_to_undelegate_from_stored_session_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -524,7 +524,7 @@ fn should_fail_to_undelegate_from_stored_contract_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -609,7 +609,7 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(add_bid_request).commit().expect_success();
     builder.exec(withdraw_bid_request).commit().expect_success();
@@ -675,7 +675,7 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(add_bid_request).commit().expect_success();
     builder.exec(withdraw_bid_request).commit().expect_success();

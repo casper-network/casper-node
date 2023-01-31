@@ -6,7 +6,7 @@ use parity_wasm::{
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_WASM_CONFIG,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
@@ -89,7 +89,7 @@ fn should_fail_to_overflow_gas_counter() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request).commit();
 
@@ -182,7 +182,7 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()

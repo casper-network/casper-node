@@ -6,7 +6,7 @@ use regex::Regex;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_MAX_ASSOCIATED_KEYS,
-    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -282,7 +282,7 @@ fn gh_2605_large_write_exact_trie_limit() {
 fn setup(custom_upgrade_request: Setup) -> (InMemoryWasmTestBuilder, ProtocolVersion) {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_config = make_upgrade_request(*OLD_PROTOCOL_VERSION, *NEW_PROTOCOL_VERSION);
     let engine_config = match custom_upgrade_request {
