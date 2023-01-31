@@ -13,7 +13,7 @@ use crate::{
 
 use super::{Error, SyncLeaper};
 
-pub(crate) fn make_default_sync_leap(rng: &mut TestRng) -> SyncLeap {
+pub(crate) fn make_test_sync_leap(rng: &mut TestRng) -> SyncLeap {
     let block = Block::random(rng);
     SyncLeap {
         trusted_ancestor_only: false,
@@ -177,7 +177,7 @@ fn fetch_received_from_storage() {
     let mut rng = TestRng::new();
 
     let mut sync_leaper = make_sync_leaper(&mut rng);
-    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap = make_test_sync_leap(&mut rng);
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
     let peer_1 = NodeId::random(&mut rng);
@@ -197,7 +197,7 @@ fn fetch_received_identifier_mismatch() {
     let mut rng = TestRng::new();
 
     let mut sync_leaper = make_sync_leaper(&mut rng);
-    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap = make_test_sync_leap(&mut rng);
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
     let peer = NodeId::random(&mut rng);
@@ -221,7 +221,7 @@ fn fetch_received_unexpected_response() {
     let mut rng = TestRng::new();
 
     let mut sync_leaper = make_sync_leaper(&mut rng);
-    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap = make_test_sync_leap(&mut rng);
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
     let peer = NodeId::random(&mut rng);
@@ -241,7 +241,7 @@ fn fetch_received_from_unknown_peer() {
     let mut rng = TestRng::new();
 
     let mut sync_leaper = make_sync_leaper(&mut rng);
-    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap = make_test_sync_leap(&mut rng);
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
     let peer = NodeId::random(&mut rng);
@@ -264,7 +264,7 @@ fn fetch_received_correctly() {
     let mut rng = TestRng::new();
 
     let mut sync_leaper = make_sync_leaper(&mut rng);
-    let sync_leap = make_default_sync_leap(&mut rng);
+    let sync_leap = make_test_sync_leap(&mut rng);
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
     let peer = NodeId::random(&mut rng);

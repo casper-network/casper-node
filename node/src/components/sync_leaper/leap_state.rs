@@ -92,7 +92,7 @@ mod tests {
     use casper_types::testing::TestRng;
 
     use crate::{
-        components::sync_leaper::{tests::make_default_sync_leap, LeapActivityError, LeapState},
+        components::sync_leaper::{tests::make_test_sync_leap, LeapActivityError, LeapState},
         types::{BlockHash, SyncLeapIdentifier},
     };
 
@@ -136,7 +136,7 @@ mod tests {
         assert!(leap_state.active());
         assert_eq!(leap_state.in_flight(), 1);
 
-        let sync_leap = make_default_sync_leap(&mut rng);
+        let sync_leap = make_test_sync_leap(&mut rng);
         let leap_state = LeapState::Received {
             best_available: Box::new(sync_leap.clone()),
             from_peers: vec![],

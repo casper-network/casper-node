@@ -78,7 +78,7 @@ impl LeapActivity {
             .count();
 
         let mut peers = vec![];
-        let mut maybe_ret: Option<&Box<SyncLeap>> = None;
+        let mut maybe_ret = None;
         for (peer, peer_state) in &self.peers {
             match peer_state {
                 PeerState::Fetched(sync_leap) => match &maybe_ret {
@@ -158,8 +158,8 @@ mod tests {
 
     use crate::{
         components::sync_leaper::{
-            leap_activity::LeapActivity, tests::make_default_sync_leap, LeapActivityError,
-            LeapState, PeerState,
+            leap_activity::LeapActivity, tests::make_test_sync_leap, LeapActivityError, LeapState,
+            PeerState,
         },
         types::{Block, BlockHash, BlockHeader, NodeId, SyncLeap, SyncLeapIdentifier},
     };
@@ -203,7 +203,7 @@ mod tests {
 
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
-        let sync_leap = make_default_sync_leap(&mut rng);
+        let sync_leap = make_test_sync_leap(&mut rng);
         let peer_1 = (
             NodeId::random(&mut rng),
             PeerState::Fetched(Box::new(sync_leap.clone())),
@@ -242,7 +242,7 @@ mod tests {
     fn best_response_with_multiple_peers() {
         let mut rng = TestRng::new();
 
-        // Create 10 sync leaps, each with a distinct height. The height is not greater than 10
+        // Create 10 sync leaps, each with a distinct height. The height is not greater than 10.
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
         let mut heights: Vec<u64> = (0..10).collect();
         heights.shuffle(&mut rng);
@@ -449,7 +449,7 @@ mod tests {
 
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
 
-        let sync_leap = make_default_sync_leap(&mut rng);
+        let sync_leap = make_test_sync_leap(&mut rng);
         let peer_1 = (
             NodeId::random(&mut rng),
             PeerState::Fetched(Box::new(sync_leap)),

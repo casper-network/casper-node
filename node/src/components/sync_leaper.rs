@@ -49,7 +49,7 @@ enum RegisterLeapAttemptOutcome {
 
 #[derive(Debug, Error)]
 enum Error {
-    #[error("fetched a sync leap from storage - should never happen - {0}")]
+    #[error("fetched a sync leap from storage - {0}")]
     FetchedSyncLeapFromStorage(SyncLeapIdentifier),
     #[error("received a sync leap response while no requests were in progress - {0}")]
     UnexpectedSyncLeapResponse(SyncLeapIdentifier),
