@@ -48,7 +48,6 @@ impl SignatureAcquisition {
         }
     }
 
-    /// Returns `true` if new signature was registered.
     pub(super) fn apply_signature(
         &mut self,
         finality_signature: FinalitySignature,
