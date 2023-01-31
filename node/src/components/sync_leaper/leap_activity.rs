@@ -301,7 +301,38 @@ mod tests {
 
         let (actual_sync_leap, mut actual_peers) = leap_activity.best_response().unwrap();
 
-        // Expect two recently added peers with best sync leap to be reported..
+        // Expect two recently added peers with best sync leap to be reported.
+        let mut expected_peers = vec![peer_2_best_node_id, peer_3_best_node_id];
+        actual_peers.sort_unstable();
+        expected_peers.sort_unstable();
+
+        assert_eq!(actual_peers.len(), 2);
+        assert_eq!(actual_peers, expected_peers);
+        assert_eq!(actual_sync_leap, best_sync_leap);
+
+        // Add two more peers with worse response.
+        let block = make_random_block_with_height(&mut rng, 1);
+        let worse_sync_leap = make_sync_leap_with_trusted_block_header(block.header().clone());
+        let peer_3_worse_node_id = NodeId::random(&mut rng);
+        let peer_4_worse_node_id = NodeId::random(&mut rng);
+        leap_activity.peers.extend(
+            [
+                (
+                    peer_3_worse_node_id,
+                    PeerState::Fetched(Box::new(worse_sync_leap.clone())),
+                ),
+                (
+                    peer_4_worse_node_id,
+                    PeerState::Fetched(Box::new(worse_sync_leap)),
+                ),
+            ]
+            .iter()
+            .cloned(),
+        );
+
+        let (actual_sync_leap, mut actual_peers) = leap_activity.best_response().unwrap();
+
+        // Expect two previously added best peers with best sync leap to be reported.
         let mut expected_peers = vec![peer_2_best_node_id, peer_3_best_node_id];
         actual_peers.sort_unstable();
         expected_peers.sort_unstable();
