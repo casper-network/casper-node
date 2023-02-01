@@ -62,13 +62,14 @@ impl StateProvider for DataAccessLayer {
 
     type Reader = ScratchGlobalStateView;
 
-    fn commit(
+    fn apply_effects(
         &self,
         correlation_id: shared::CorrelationId,
         prestate_hash: casper_hashing::Digest,
         effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
     ) -> Result<casper_hashing::Digest, Self::Error> {
-        self.state.commit(correlation_id, prestate_hash, effects)
+        self.state
+            .apply_effects(correlation_id, prestate_hash, effects)
     }
 
     fn checkout(

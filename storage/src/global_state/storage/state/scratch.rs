@@ -152,7 +152,7 @@ impl StateProvider for ScratchGlobalState {
 
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(
+    fn apply_effects(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
@@ -389,7 +389,7 @@ mod tests {
         };
 
         let scratch_root_hash = scratch
-            .commit(correlation_id, root_hash, effects.clone())
+            .apply_effects(correlation_id, root_hash, effects.clone())
             .unwrap();
 
         assert_eq!(
@@ -397,7 +397,9 @@ mod tests {
             "ScratchGlobalState should not modify the state root, as it does no hashing"
         );
 
-        let lmdb_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let lmdb_hash = state
+            .apply_effects(correlation_id, root_hash, effects)
+            .unwrap();
         let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
 
         let all_keys = updated_checkout
@@ -450,19 +452,19 @@ mod tests {
 
         // Commit effects to both databases.
         scratch
-            .commit(correlation_id, root_hash, effects.clone())
+            .apply_effects(correlation_id, root_hash, effects.clone())
             .unwrap();
         let updated_hash = state2
-            .commit(correlation_id, state_2_root_hash, effects)
+            .apply_effects(correlation_id, state_2_root_hash, effects)
             .unwrap();
 
         // Create add transforms as well
         let add_effects = create_test_transforms();
         scratch
-            .commit(correlation_id, root_hash, add_effects.clone())
+            .apply_effects(correlation_id, root_hash, add_effects.clone())
             .unwrap();
         let updated_hash = state2
-            .commit(correlation_id, updated_hash, add_effects)
+            .apply_effects(correlation_id, updated_hash, add_effects)
             .unwrap();
 
         let scratch_checkout = scratch.checkout(root_hash).unwrap().unwrap();
@@ -505,7 +507,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = scratch.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = scratch
+            .apply_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = scratch.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

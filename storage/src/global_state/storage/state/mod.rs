@@ -90,7 +90,8 @@ pub trait StateProvider {
 
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
+    /// Whether to flush to disk or not is left up to the implementation.
+    fn apply_effects(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,

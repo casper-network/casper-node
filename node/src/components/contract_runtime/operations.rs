@@ -64,7 +64,7 @@ pub fn execute_finalized_block(
     } = execution_pre_state;
     // This root hash will be use in-mem to generate several others, but we must "commit_to_disk"
     // with the original.
-    let mut state_root_hash = pre_state_root_hash;
+    let mut new_state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
         Vec::with_capacity(deploys.len());
     // Run any deploys that must be executed
@@ -76,9 +76,9 @@ pub fn execute_finalized_block(
 
     // Pay out block rewards
     let proposer = *finalized_block.proposer();
-    state_root_hash = engine_state.distribute_block_rewards(
+    new_state_root_hash = engine_state.distribute_block_rewards(
         CorrelationId::new(),
-        state_root_hash,
+        new_state_root_hash,
         protocol_version,
         proposer,
         next_block_height,
@@ -90,7 +90,7 @@ pub fn execute_finalized_block(
         let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
-            state_root_hash,
+            new_state_root_hash,
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
@@ -106,15 +106,15 @@ pub fn execute_finalized_block(
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) = apply_execution_results(
+        let (per_deploy_state_hash, execution_result) = apply_execution_results(
             engine_state,
             metrics.clone(),
-            state_root_hash,
+            new_state_root_hash,
             deploy_hash.into(),
             result,
         )?;
         execution_results.push((deploy_hash, deploy_header, execution_result));
-        state_root_hash = state_hash;
+        new_state_root_hash = per_deploy_state_hash;
     }
 
     // Write the deploy approvals and execution results Merkle root hashes to global state if there
@@ -139,7 +139,8 @@ pub fn execute_finalized_block(
                 .into(),
         ),
     );
-    state_root_hash = engine_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+    new_state_root_hash =
+        engine_state.apply_effect(CorrelationId::new(), new_state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -152,17 +153,18 @@ pub fn execute_finalized_block(
             let StepSuccess {
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
-            } = commit_step(
+            } = apply_step(
                 engine_state,
                 metrics,
                 protocol_version,
-                state_root_hash,
+                new_state_root_hash,
                 era_report,
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
 
-            state_root_hash = engine_state.commit_to_disk(pre_state_root_hash)?;
+            tracing::info!("commit_to_disk - switch block {pre_state_root_hash}");
+            new_state_root_hash = engine_state.commit_to_disk(pre_state_root_hash)?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -171,8 +173,9 @@ pub fn execute_finalized_block(
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
                 system_contract_registry,
-                GetEraValidatorsRequest::new(state_root_hash, protocol_version),
+                GetEraValidatorsRequest::new(new_state_root_hash, protocol_version),
             )?;
+            println!("upcoming era validators {:?}", upcoming_era_validators);
             Some(StepEffectAndUpcomingEraValidators {
                 step_execution_journal,
                 upcoming_era_validators,
@@ -180,7 +183,7 @@ pub fn execute_finalized_block(
         } else {
             // Finally, the new state-root-hash from the cumulative changes to global state is
             // returned when they are written to LMDB.
-            state_root_hash = engine_state.commit_to_disk(pre_state_root_hash)?;
+            new_state_root_hash = engine_state.commit_to_disk(pre_state_root_hash)?;
             None
         };
 
@@ -188,7 +191,7 @@ pub fn execute_finalized_block(
     engine_state.flush_environment()?;
 
     let proof_of_checksum_registry =
-        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
+        engine_state.get_checksum_registry_proof(CorrelationId::new(), new_state_root_hash)?;
 
     let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators
@@ -206,7 +209,7 @@ pub fn execute_finalized_block(
     let block = Arc::new(Block::new(
         parent_hash,
         parent_seed,
-        state_root_hash,
+        new_state_root_hash,
         finalized_block,
         next_era_validator_weights,
         protocol_version,
@@ -274,11 +277,11 @@ where
     }
     .into();
     let new_state_root =
-        commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
+        apply_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
     Ok((new_state_root, json_execution_result))
 }
 
-fn commit_transforms<S>(
+fn apply_transforms<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
@@ -364,7 +367,7 @@ where
     result
 }
 
-fn commit_step<S>(
+fn apply_step<S>(
     engine_state: &EngineState<S>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
@@ -402,10 +405,10 @@ where
         era_end_timestamp_millis,
     };
 
-    // Have the EE commit the step.
+    // Have the EE apply the step.
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.commit_step(correlation_id, step_request);
+    let result = engine_state.apply_step(correlation_id, step_request);
     if let Some(metrics) = maybe_metrics {
         let elapsed = start.elapsed().as_secs_f64();
         metrics.commit_step.observe(elapsed);

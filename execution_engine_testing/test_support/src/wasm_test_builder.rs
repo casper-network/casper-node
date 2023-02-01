@@ -699,13 +699,13 @@ impl WasmTestBuilder {
     pub fn step(&mut self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
         let step_result = self
             .engine_state
-            .commit_step(CorrelationId::new(), step_request);
+            .apply_step(CorrelationId::new(), step_request);
 
-        if let Ok(StepSuccess {
-            post_state_hash, ..
-        }) = &step_result
-        {
-            self.post_state_hash = Some(*post_state_hash);
+        if step_result.is_ok() {
+            self.post_state_hash = Some(
+                self.engine_state
+                    .commit_to_disk(self.get_post_state_hash())?,
+            );
         }
 
         step_result

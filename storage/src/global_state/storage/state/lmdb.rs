@@ -212,7 +212,8 @@ impl StateProvider for LmdbGlobalState {
 
     type Reader = LmdbGlobalStateView;
 
-    fn commit(
+    /// The LmdbGlobalState implementation will commit to disk here.
+    fn apply_effects(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
@@ -320,7 +321,7 @@ pub fn make_temporary_global_state(
     }
 
     root_hash = lmdb_global_state
-        .commit(CorrelationId::default(), root_hash, m)
+        .apply_effects(CorrelationId::default(), root_hash, m)
         .expect("Creation of account should be a success.");
 
     (lmdb_global_state, root_hash, tempdir)
@@ -397,7 +398,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state
+            .apply_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -424,7 +427,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state
+            .apply_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for (key, value) in test_pairs_updated.iter().cloned() {

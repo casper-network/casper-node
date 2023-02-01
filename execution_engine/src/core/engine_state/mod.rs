@@ -218,7 +218,7 @@ where
 
         let post_state_hash = self
             .state
-            .commit(
+            .apply_effects(
                 correlation_id,
                 initial_root_hash,
                 execution_effect.transforms.to_owned(),
@@ -427,7 +427,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(
+            .apply_effects(
                 correlation_id,
                 pre_state_hash,
                 execution_effect.transforms.to_owned(),
@@ -1641,7 +1641,7 @@ where
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Error> {
         self.state
-            .commit(correlation_id, pre_state_hash, effects)
+            .apply_effects(correlation_id, pre_state_hash, effects)
             .map_err(|err| Error::Exec(err.into()))
     }
 
@@ -1845,18 +1845,19 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(correlation_id, pre_state_hash, execution_effect.transforms)
+            .apply_effects(correlation_id, pre_state_hash, execution_effect.transforms)
             .map_err(Into::into)?;
 
         Ok(post_state_hash)
     }
 
     /// Executes a step request.
-    pub fn commit_step(
+    pub fn apply_step(
         &self,
         correlation_id: CorrelationId,
         step_request: StepRequest,
     ) -> Result<StepSuccess, StepError> {
+        println!("EngineState::<S>::apply_step");
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
             Err(error) => return Err(StepError::TrackingCopyError(error)),
             Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
@@ -1887,8 +1888,10 @@ where
         };
 
         let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();
+        tracing::info!("slashed validators {:?}", slashed_validators);
 
         if !slashed_validators.is_empty() {
+            tracing::info!("will slash {:?}", slashed_validators);
             let slash_args = {
                 let mut runtime_args = RuntimeArgs::new();
                 runtime_args
@@ -1938,6 +1941,7 @@ where
         })?;
 
         let run_auction_stack = self.get_new_system_call_stack();
+        println!("call contract: run_auction");
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
             DirectSystemContractCall::RunAuction,
             run_auction_args,
@@ -1954,6 +1958,7 @@ where
             // RunAuction should not consume tokens.
             U512::zero(),
         );
+        println!("call contract: run_auction complete");
 
         if let Some(exec_error) = execution_result.take_error() {
             return Err(StepError::AuctionError(exec_error));
@@ -1965,7 +1970,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(
+            .apply_effects(
                 correlation_id,
                 step_request.pre_state_hash,
                 execution_effect.transforms,
