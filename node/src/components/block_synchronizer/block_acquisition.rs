@@ -1102,7 +1102,7 @@ impl BlockAcquisitionState {
                 None => {
                     debug!(
                         "BlockAcquisition: finality signature for {:?} from {} while not actively \
-                        trying to actively acquire finality signatures",
+                        trying to acquire finality signatures",
                         block_hash, signer
                     );
                 }
