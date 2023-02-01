@@ -65,6 +65,10 @@ fn host_function_metrics_has_acceptable_size() {
         "Performance improvement: contract host-function-metrics became only {} bytes long; please adjust this regression test.",
         size
     );
+    println!(
+        "contract host-function-metrics byte size: {}, ubound: {}",
+        size, HOST_FUNCTION_METRICS_MAX_SIZE
+    )
 }
 
 fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {

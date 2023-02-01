@@ -7,7 +7,7 @@ use casper_execution_engine::core::{
     engine_state::{
         self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
         EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-        GetEraValidatorsRequest, RewardItem, StepError, StepRequest, StepSuccess,
+        GetEraValidatorsRequest, StepError, StepRequest, StepSuccess,
     },
     execution,
 };
@@ -24,19 +24,19 @@ use casper_types::{
     CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
-use super::SpeculativeExecutionState;
 use crate::{
     components::{
         consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
+            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
+        fetcher::FetchItem,
     },
-    contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
     types::{
         self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, Deploy, DeployHeader,
-        FinalizedBlock, Item,
+        FinalizedBlock,
     },
 };
 
@@ -60,7 +60,7 @@ pub fn execute_finalized_block(
         pre_state_root_hash,
         parent_hash,
         parent_seed,
-        next_block_height: _,
+        next_block_height,
     } = execution_pre_state;
     // This root hash will be use in-mem to generate several others, but we must "commit_to_disk"
     // with the original.
@@ -70,9 +70,20 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
-    let deploy_ids = deploys.iter().map(|deploy| deploy.id()).collect_vec();
+    let deploy_ids = deploys.iter().map(|deploy| deploy.fetch_id()).collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockCreationError::BytesRepr)?;
+
+    // Pay out block rewards
+    let proposer = *finalized_block.proposer();
+    state_root_hash = engine_state.distribute_block_rewards(
+        CorrelationId::new(),
+        state_root_hash,
+        protocol_version,
+        proposer,
+        next_block_height,
+        block_time,
+    )?;
 
     // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
     for deploy in deploys {
@@ -192,7 +203,7 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
-    let block = Box::new(Block::new(
+    let block = Arc::new(Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
@@ -369,14 +380,9 @@ where
     // Extract the rewards and the inactive validators if this is a switch block
     let EraReport {
         equivocators,
-        rewards,
         inactive_validators,
+        ..
     } = era_report;
-
-    let reward_items = rewards
-        .iter()
-        .map(|(vid, value)| RewardItem::new(vid.clone(), *value))
-        .collect();
 
     // Both inactive validators and equivocators are evicted
     let evict_items = inactive_validators
@@ -389,7 +395,6 @@ where
     let step_request = StepRequest {
         pre_state_hash: pre_state_root_hash,
         protocol_version,
-        reward_items,
         // Note: The Casper Network does not slash, but another network could
         slash_items: vec![],
         evict_items,

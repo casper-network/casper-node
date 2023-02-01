@@ -20,7 +20,7 @@ use casper_execution_engine::{
                 DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             },
             genesis::{GenesisAccount, GenesisValidator},
-            EngineConfig, RewardItem,
+            EngineConfig,
         },
         execution,
     },
@@ -790,7 +790,7 @@ fn should_get_first_seigniorage_recipients() {
 
     assert!(era_validators.contains_key(&(EraId::from(auction_delay).successor())));
 
-    let era_id = EraId::from(auction_delay) - 1;
+    let era_id = EraId::from(auction_delay);
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
@@ -3329,7 +3329,7 @@ fn should_delegate_and_redelegate() {
             .expect_success();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
@@ -3364,11 +3364,6 @@ fn should_delegate_and_redelegate() {
 
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
 
-    let rewards = vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
-    ];
-
     for _ in 0..=DEFAULT_UNBONDING_DELAY {
         let delegator_1_redelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
@@ -3377,7 +3372,7 @@ fn should_delegate_and_redelegate() {
             delegator_1_redelegate_purse_balance
         );
 
-        builder.advance_era(rewards.clone())
+        builder.advance_era()
     }
 
     // Since a redelegation has been processed no funds should have transferred back to the purse.
@@ -3517,7 +3512,7 @@ fn should_handle_redelegation_to_inactive_validator() {
             .expect_success();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_main_purse = builder
         .get_account(*DELEGATOR_1_ADDR)
@@ -3547,10 +3542,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         .apply()
         .commit_to_disk();
 
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
-    ]);
+    builder.advance_era();
 
     let valid_redelegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -3573,16 +3565,11 @@ fn should_handle_redelegation_to_inactive_validator() {
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_main_purse);
     let delegator_2_purse_balance_before = builder.get_purse_balance(delegator_2_main_purse);
 
-    let rewards = vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
-    ];
-
     for _ in 0..=DEFAULT_UNBONDING_DELAY {
         let delegator_2_purse_balance = builder.get_purse_balance(delegator_2_main_purse);
         assert_eq!(delegator_2_purse_balance, delegator_2_purse_balance_before);
 
-        builder.advance_era(rewards.clone());
+        builder.advance_era();
     }
 
     // The invalid redelegation will force an unbond which will transfer funds to

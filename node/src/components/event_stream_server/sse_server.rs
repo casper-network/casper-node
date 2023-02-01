@@ -151,7 +151,7 @@ impl SseData {
         let block = Block::random(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block, None)),
+            block: Box::new(JsonBlock::new(&block, None)),
         }
     }
 

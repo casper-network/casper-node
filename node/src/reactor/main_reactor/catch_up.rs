@@ -13,7 +13,10 @@ use crate::{
         ValidatorBoundComponent,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
-    reactor::main_reactor::{MainEvent, MainReactor},
+    reactor::{
+        main_reactor::{MainEvent, MainReactor},
+        wrap_effects,
+    },
     types::{ActivationPoint, BlockHash, NodeId, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
@@ -77,6 +80,15 @@ impl MainReactor {
             BlockSynchronizerProgress::Syncing(block_hash, maybe_block_height, last_progress) => {
                 // working on syncing a block
                 self.catch_up_syncing(block_hash, maybe_block_height, last_progress)
+            }
+            BlockSynchronizerProgress::Executing(block_hash, _, _) => {
+                // this code path should be unreachable because we're not
+                // supposed to enqueue historical blocks for execution.
+                Either::Right(CatchUpInstruction::Fatal(format!(
+                    "CatchUp: block synchronizer attempted to execute \
+                                        block: {}",
+                    block_hash
+                )))
             }
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => Either::Left(
                 // for a synced CatchUp block -> we have header, body, global state, any execution
@@ -276,7 +288,7 @@ impl MainReactor {
                 best_available,
                 from_peers,
                 ..
-            } => self.catch_up_leap_received(effect_builder, best_available, from_peers),
+            } => self.catch_up_leap_received(effect_builder, rng, best_available, from_peers),
             LeapState::Failed { error, .. } => {
                 self.catch_up_leap_failed(effect_builder, rng, block_hash, error)
             }
@@ -316,6 +328,10 @@ impl MainReactor {
                 self.chainspec.core_config.minimum_block_time.into(),
             );
         }
+
+        // latch accumulator progress to allow sync-leap time to do work
+        self.block_accumulator.reset_last_progress();
+
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
         let effects = effect_builder.immediately().event(move |_| {
             MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
@@ -329,6 +345,7 @@ impl MainReactor {
     fn catch_up_leap_received(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
         best_available: Box<SyncLeap>,
         from_peers: Vec<NodeId>,
     ) -> CatchUpInstruction {
@@ -352,12 +369,23 @@ impl MainReactor {
                 .register_era_validator_weights(validator_weights);
         }
 
+        let mut effects = Effects::new();
+
+        effects.extend(wrap_effects(
+            MainEvent::BlockAccumulator,
+            self.block_accumulator
+                .handle_validators(effect_builder, rng),
+        ));
+
+        effects.extend(wrap_effects(
+            MainEvent::BlockSynchronizer,
+            self.block_synchronizer
+                .handle_validators(effect_builder, rng),
+        ));
+
         self.block_synchronizer
             .register_sync_leap(&*best_available, from_peers, true);
-        self.block_accumulator.handle_validators(effect_builder);
-        let effects = effect_builder
-            .immediately()
-            .event(|_| MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::NeedNext));
+
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }
 
@@ -378,7 +406,7 @@ impl MainReactor {
             CatchUpInstruction::Do(Duration::ZERO, effects)
         } else {
             CatchUpInstruction::CheckLater(
-                format!("block_synchronizer unable to register block {}", block_hash),
+                format!("block_synchronizer is currently working on {}", block_hash),
                 self.control_logic_default_delay.into(),
             )
         }

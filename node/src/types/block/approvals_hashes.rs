@@ -14,8 +14,11 @@ use casper_types::{bytesrepr, Key};
 
 use super::{Block, BlockHash};
 use crate::{
-    components::contract_runtime::APPROVALS_CHECKSUM_NAME,
-    types::{self, ApprovalsHash, DeployId, FetcherItem, Item, Tag},
+    components::{
+        contract_runtime::APPROVALS_CHECKSUM_NAME,
+        fetcher::{FetchItem, Tag},
+    },
+    types::{self, ApprovalsHash, DeployId},
     utils::ds,
 };
 
@@ -109,18 +112,16 @@ impl ApprovalsHashes {
     }
 }
 
-impl Item for ApprovalsHashes {
+impl FetchItem for ApprovalsHashes {
     type Id = BlockHash;
-
-    fn id(&self) -> Self::Id {
-        self.block_hash
-    }
-}
-
-impl FetcherItem for ApprovalsHashes {
     type ValidationError = ApprovalsHashesValidationError;
     type ValidationMetadata = Block;
+
     const TAG: Tag = Tag::ApprovalsHashes;
+
+    fn fetch_id(&self) -> Self::Id {
+        self.block_hash
+    }
 
     fn validate(&self, block: &Block) -> Result<(), Self::ValidationError> {
         self.is_verified.get_or_init(|| self.verify(block)).clone()

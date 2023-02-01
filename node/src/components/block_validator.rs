@@ -28,6 +28,7 @@ use casper_types::Timestamp;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
+        fetcher::EmptyValidationMetadata,
         Component,
     },
     effect::{
@@ -36,8 +37,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, EmptyValidationMetadata,
-        LegacyDeploy, NodeId,
+        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
     },
     NodeRng,
 };

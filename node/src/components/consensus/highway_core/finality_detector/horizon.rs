@@ -97,6 +97,7 @@ impl<'a, C: Context> Horizon<'a, C> {
     ///
     /// Panics if a member of the committee is not in `self.latest`. This can never happen if the
     /// committee was computed from a `Horizon` that originated from the same `level0` as this one.
+    #[allow(dead_code)]
     pub(super) fn committee_quorum(&self, committee: &[ValidatorIndex]) -> Option<Weight> {
         let seen_weight = |idx: &ValidatorIndex| {
             self.seen_weight(self.state.unit(self.latest[*idx].unwrap()), committee)
