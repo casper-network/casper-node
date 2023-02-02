@@ -553,7 +553,10 @@ impl MainReactor {
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "historical: attempt to register validators for era");
-            if self.validator_matrix.register_era_validator_weights(evw) {
+            if self
+                .validator_matrix
+                .register_era_validator_weights_and_infer_era_0(evw)
+            {
                 info!(%era_id, "historical: got era");
             } else {
                 debug!(%era_id, "historical: era already present or is not relevant");
@@ -667,18 +670,24 @@ impl MainReactor {
                     }
                     Ok(None) => {
                         debug!(%parent_hash, "historical: did not find block header in storage");
-                        match block_header.era_id().predecessor() {
+                        let maybe_sync_era = if block_header.era_id() == EraId::from(0) {
+                            // if the block is in era 0 its parent can only be in era 0
+                            Some(EraId::from(0))
+                        } else {
                             // we do not have the parent header and thus don't know what era
                             // the parent block is in (it could be the same era or the previous
                             // era). we assume the worst case and ask
                             // for the earlier era's proof
-                            Some(previous_era_id) => Ok(Some(SyncBackInstruction::Sync {
+                            block_header.era_id().predecessor()
+                        };
+
+                        maybe_sync_era.map_or(Ok(None), |era_id| {
+                            Ok(Some(SyncBackInstruction::Sync {
                                 parent_hash: *parent_hash,
                                 maybe_parent_metadata: None,
-                                era_id: previous_era_id,
-                            })),
-                            None => Ok(None),
-                        }
+                                era_id,
+                            }))
+                        })
                     }
                     Err(err) => Err(err.to_string()),
                 }

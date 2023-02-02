@@ -1869,7 +1869,7 @@ impl Storage {
                 };
 
             result.push(parent_block_header.clone());
-            if parent_block_header.is_switch_block() {
+            if parent_block_header.is_switch_block() || parent_block_header.is_genesis() {
                 break;
             }
             current_trusted_block_header = parent_block_header;
