@@ -1571,6 +1571,27 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves a single complete block header by height by looking it up in
+    /// the index and returning it.
+    pub fn read_complete_block_header_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let res = self
+            .block_height_index
+            .get(&height)
+            .and_then(|block_hash| {
+                self.get_single_block_header(&mut txn, block_hash)
+                    .transpose()
+            })
+            .transpose();
+        if !(self.should_return_block(height, true)?) {
+            return Ok(None);
+        }
+        res
+    }
+
     /// Retrieves a single block header by hash.
     pub fn read_block_header(
         &self,

@@ -53,7 +53,7 @@ use crate::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -447,6 +447,42 @@ impl reactor::Reactor for MainReactor {
             }
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
                 self.handle_meta_block(effect_builder, rng, meta_block)
+            }
+            MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
+                if let Ok(Some(block_header)) = self
+                    .storage
+                    .read_complete_block_header_by_height(block_height)
+                {
+                    let block_hash = block_header.block_hash();
+                    reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(block_header),
+                                header_hash: block_hash,
+                            },
+                        ),
+                    )
+                } else {
+                    // Warn logging here because this codepath of handling an
+                    // `UnexecutedBlockAnnouncement` is coming from the
+                    // contract runtime when a block with a lower height than
+                    // the next expected executable height is enqueued. This
+                    // happens after restarts when consensus is creating the
+                    // required eras and attempts to retrace its steps in the
+                    // era by enqueuing all finalized blocks starting from the
+                    // first one in that era, blocks which should have already
+                    // been executed and marked complete in storage.
+                    warn!(
+                        "Finalized block with height {} enqueued for execution, \
+                        but a complete block header with the same height is \
+                        not present in storage.",
+                        block_height
+                    );
+                    Effects::new()
+                }
             }
 
             // LOCAL I/O BOUND COMPONENTS

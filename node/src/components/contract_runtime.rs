@@ -42,7 +42,10 @@ use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
+        announcements::{
+            ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
+            UnexecutedBlockAnnouncement,
+        },
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -217,6 +220,7 @@ where
         + From<NetworkRequest<Message>>
         + From<StorageRequest>
         + From<MetaBlockAnnouncement>
+        + From<UnexecutedBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send,
 {
@@ -324,6 +328,7 @@ impl ContractRuntime {
             + From<ContractRuntimeAnnouncement>
             + From<StorageRequest>
             + From<MetaBlockAnnouncement>
+            + From<UnexecutedBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -459,6 +464,11 @@ impl ContractRuntime {
                         debug!(
                             "ContractRuntime: finalized block({}) precedes expected next block({})",
                             finalized_block_height, next_block_height
+                        );
+                        effects.extend(
+                            effect_builder
+                                .announce_unexecuted_block(finalized_block_height)
+                                .ignore(),
                         );
                     }
                     Ordering::Equal => {
