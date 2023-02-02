@@ -92,6 +92,27 @@ impl ValidatorMatrix {
         }
     }
 
+    // When the chain starts, the validator weights will be the same until the unbonding delay is
+    // elapsed. This allows us to possibly infer the weights of other eras if the era registered is
+    // within the unbonding delay.
+    // Currently we only infer the validator weights for era 0 from the set registered for era 1.
+    // This is needed for the case where we want to sync leap to a block in era 0 of a pre 1.5.0
+    // network for which we cant get the validator weights from a switch block.
+    pub(crate) fn register_era_validator_weights_and_infer_era_0(
+        &mut self,
+        validators: EraValidatorWeights,
+    ) -> bool {
+        let was_present = self.register_era_validator_weights(validators.clone());
+        if validators.era_id() == EraId::from(1) {
+            self.register_era_validator_weights(EraValidatorWeights::new(
+                EraId::from(0),
+                validators.validator_weights,
+                validators.finality_threshold_fraction,
+            ));
+        }
+        was_present
+    }
+
     pub(crate) fn register_era_validator_weights(
         &mut self,
         validators: EraValidatorWeights,
