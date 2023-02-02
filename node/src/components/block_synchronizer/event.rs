@@ -9,7 +9,10 @@ use casper_execution_engine::core::engine_state;
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
-    components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
+    components::{
+        block_synchronizer::{GlobalStateSynchronizerError, GlobalStateSynchronizerResponse},
+        fetcher::FetchResult,
+    },
     effect::requests::BlockSynchronizerRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
@@ -45,7 +48,7 @@ pub(crate) enum Event {
     GlobalStateSynced {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
-        result: Result<Digest, GlobalStateSynchronizerError>,
+        result: Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>,
     },
     GotExecutionResultsChecksum {
         block_hash: BlockHash,
@@ -121,7 +124,7 @@ impl Display for Event {
                 block_hash: _,
                 result,
             } => match result {
-                Ok(root_hash) => write!(f, "synced global state under root {}", root_hash),
+                Ok(response) => write!(f, "synced global state under root {}", response.hash()),
                 Err(error) => write!(f, "failed to sync global state: {}", error),
             },
             Event::GotExecutionResultsChecksum {
