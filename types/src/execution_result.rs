@@ -37,7 +37,7 @@ use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo, UnbondingPurse},
+    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
@@ -94,6 +94,7 @@ enum TransformTag {
     AddUInt512 = 15,
     AddKeys = 16,
     Failure = 17,
+    WriteUnbonding = 18,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -536,7 +537,7 @@ pub enum Transform {
     /// Writes the given Bid to global state.
     WriteBid(Box<Bid>),
     /// Writes the given Withdraw to global state.
-    WriteWithdraw(Vec<UnbondingPurse>),
+    WriteWithdraw(Vec<WithdrawPurse>),
     /// Adds the given `i32`.
     AddInt32(i32),
     /// Adds the given `u64`.
@@ -551,6 +552,8 @@ pub enum Transform {
     AddKeys(Vec<NamedKey>),
     /// A failed transformation, containing an error message.
     Failure(String),
+    /// Writes the given Unbonding to global state.
+    WriteUnbonding(Vec<UnbondingPurse>),
 }
 
 impl Transform {
@@ -574,6 +577,7 @@ impl Transform {
             Transform::AddUInt512(_) => TransformTag::AddUInt512,
             Transform::AddKeys(_) => TransformTag::AddKeys,
             Transform::Failure(_) => TransformTag::Failure,
+            Transform::WriteUnbonding(_) => TransformTag::WriteUnbonding,
         }
     }
 }
@@ -631,6 +635,9 @@ impl ToBytes for Transform {
             Transform::Failure(value) => {
                 buffer.extend(value.to_bytes()?);
             }
+            Transform::WriteUnbonding(value) => {
+                buffer.extend(value.to_bytes()?);
+            }
         }
         Ok(buffer)
     }
@@ -655,6 +662,7 @@ impl ToBytes for Transform {
             | Transform::WriteContractPackage => 0,
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
+            Transform::WriteUnbonding(value) => value.serialized_length(),
         };
         U8_SERIALIZED_LENGTH + body_len
     }
@@ -721,9 +729,14 @@ impl FromBytes for Transform {
                 Ok((Transform::WriteBid(Box::new(bid)), remainder))
             }
             TransformTag::WriteWithdraw => {
+                let (withdraw_purses, remainder) =
+                    <Vec<WithdrawPurse> as FromBytes>::from_bytes(remainder)?;
+                Ok((Transform::WriteWithdraw(withdraw_purses), remainder))
+            }
+            TransformTag::WriteUnbonding => {
                 let (unbonding_purses, remainder) =
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
-                Ok((Transform::WriteWithdraw(unbonding_purses), remainder))
+                Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
             }
         }
     }
