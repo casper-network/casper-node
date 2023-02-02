@@ -18,7 +18,7 @@ use strum::{Display, EnumCount, EnumIter, FromRepr};
 
 use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
-use super::{counting_format::ConnectionId, health::Nonce};
+use super::{connection_id::ConnectionId, health::Nonce};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -94,6 +94,7 @@ impl<P: Payload> Message<P> {
     /// Attempts to create a demand-event from this message.
     ///
     /// Succeeds if the outer message contains a payload that can be converted into a demand.
+    #[allow(dead_code)] // TODO: Readd if necessary for backpressure.
     pub(super) fn try_into_demand<REv>(
         self,
         effect_builder: EffectBuilder<REv>,

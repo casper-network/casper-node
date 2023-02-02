@@ -10,7 +10,7 @@ use casper_types::ProtocolVersion;
 use datasize::DataSize;
 
 use super::{
-    counting_format::ConnectionId,
+    connection_id::ConnectionId,
     message::{ConsensusCertificate, NodeKeyPair},
     Message,
 };

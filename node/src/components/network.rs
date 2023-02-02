@@ -26,7 +26,7 @@
 pub(crate) mod blocklist;
 mod chain_info;
 mod config;
-mod counting_format;
+mod connection_id;
 mod error;
 mod event;
 mod gossiped_address;

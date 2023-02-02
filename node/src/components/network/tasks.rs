@@ -40,7 +40,7 @@ use casper_types::{ProtocolVersion, TimeDiff};
 
 use super::{
     chain_info::ChainInfo,
-    counting_format::ConnectionId,
+    connection_id::ConnectionId,
     error::{ConnectionError, MessageReaderError},
     event::{IncomingConnection, OutgoingConnection},
     limiter::LimiterHandle,
@@ -225,6 +225,7 @@ where
     /// Logfile to log TLS keys to. If given, automatically enables logging.
     pub(super) keylog: Option<LockedLineWriter>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
+    #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
     net_metrics: Weak<Metrics>,
     /// Chain info extract from chainspec.
     chain_info: ChainInfo,
@@ -233,6 +234,7 @@ where
     /// Our own public listening address.
     public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
+    #[allow(dead_code)] // TODO: Readd once handshake timeout is readded.
     handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
     payload_weights: EstimatorWeights,
@@ -243,6 +245,7 @@ where
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
+    #[allow(dead_code)] // TODO: Readd if necessary for backpressure.
     max_in_flight_demands: usize,
 }
 

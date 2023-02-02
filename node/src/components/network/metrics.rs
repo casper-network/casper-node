@@ -568,6 +568,7 @@ impl Metrics {
     }
 
     /// Records that a trie request has been started.
+    #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
     pub(super) fn record_trie_request_start(this: &Weak<Self>) {
         if let Some(metrics) = this.upgrade() {
             metrics.requests_for_trie_accepted.inc();
@@ -577,6 +578,8 @@ impl Metrics {
     }
 
     /// Records that a trie request has ended.
+
+    #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
     pub(super) fn record_trie_request_end(this: &Weak<Self>) {
         if let Some(metrics) = this.upgrade() {
             metrics.requests_for_trie_finished.inc();

@@ -16,7 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, info};
 
 use super::{
-    counting_format::ConnectionId,
+    connection_id::ConnectionId,
     error::{ConnectionError, RawFrameIoError},
     tasks::NetworkContext,
     Message, Payload, Transport,
