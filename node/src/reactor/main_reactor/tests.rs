@@ -438,14 +438,22 @@ async fn run_equivocator_network() {
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
 
-    // Since this setup sometimes produces an equivocation in era 2 rather than era 1, we set an
-    // offset here.
+    // Since this setup sometimes produces no equivocation or an equivocation in era 2 rather than
+    // era 1, we set an offset here.  If neither eras has an equivocation, exit early.
     // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
-    let offset = if switch_blocks.equivocators(1).is_empty() {
+    for switch_block in &switch_blocks.headers {
+        let era_id = switch_block.era_id();
+        let count = switch_blocks.equivocators(era_id.value()).len();
+        info!("equivocators in {}: {}", era_id, count);
+    }
+    let offset = if !switch_blocks.equivocators(1).is_empty() {
+        0
+    } else if !switch_blocks.equivocators(2).is_empty() {
         error!("failed to equivocate in era 1 - asserting equivocation detected in era 2");
         1
     } else {
-        0
+        error!("failed to equivocate in era 1");
+        return;
     };
 
     // Era 0 consists only of the genesis block.
