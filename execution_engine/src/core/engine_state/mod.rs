@@ -499,7 +499,7 @@ where
                     .withdraw_to_unbond()
                     .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
 
-                let _ = tracking_copy
+                tracking_copy
                     .borrow_mut()
                     .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
             }
