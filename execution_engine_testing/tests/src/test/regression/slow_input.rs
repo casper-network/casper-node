@@ -2,7 +2,7 @@ use std::mem;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{engine_state::Error, execution},
@@ -65,7 +65,7 @@ const SLOW_INPUT: &str = r#"(module
 fn should_measure_slow_input() {
     let module_bytes = wat::parse_str(SLOW_INPUT).unwrap();
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     let exec_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
         module_bytes,
@@ -83,7 +83,7 @@ fn should_measure_slow_input_with_infinite_br_loop() {
     let module_bytes = make_cpu_burner_br();
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     let exec_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
         module_bytes,
@@ -100,7 +100,7 @@ fn should_measure_slow_input_with_infinite_br_loop() {
 fn should_measure_br_if_cpu_burner_with_br_if_iterations() {
     let module_bytes = cpu_burner_br_if(u32::MAX as i64);
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     let exec_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
         module_bytes,
@@ -118,7 +118,7 @@ fn should_measure_br_table_cpu_burner_with_br_table_iterations() {
     let module_bytes = cpu_burner_br_table(u32::MAX as i64);
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     let exec_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
         module_bytes,
@@ -134,7 +134,7 @@ fn should_measure_br_table_cpu_burner_with_br_table_iterations() {
 #[test]
 fn should_charge_extra_per_amount_of_br_table_elements() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     const FIXED_BLOCK_AMOUNT: usize = 256;
     const N_ELEMENTS: u32 = 5;

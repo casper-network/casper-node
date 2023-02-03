@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
@@ -23,7 +23,7 @@ fn should_get_funds_from_faucet() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
-        .run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit();
@@ -60,7 +60,7 @@ fn should_fail_if_already_funded() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
-        .run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit()

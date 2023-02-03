@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{bytesrepr::Bytes, runtime_args, ContractHash, RuntimeArgs};
 
@@ -30,7 +30,7 @@ fn should_measure_gas_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -98,7 +98,7 @@ fn should_measure_nested_host_function_call_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -176,7 +176,7 @@ fn should_measure_argument_size_in_host_function_call() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
 

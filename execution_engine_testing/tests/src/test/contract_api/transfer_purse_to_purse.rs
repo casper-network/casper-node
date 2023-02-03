@@ -4,7 +4,7 @@ use casper_types::{runtime_args, system::mint, ApiError, CLValue, RuntimeArgs, U
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_PURSE: &str = "transfer_purse_to_purse.wasm";
@@ -32,7 +32,7 @@ fn should_run_purse_to_purse_transfer() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit();
@@ -96,7 +96,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .build();
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit();

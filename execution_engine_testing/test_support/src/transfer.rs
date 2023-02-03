@@ -3,7 +3,7 @@ use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U
 
 use crate::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
 const CONTRACT_CREATE_ACCOUNTS: &str = "create_accounts.wasm";
@@ -45,7 +45,7 @@ pub fn create_initial_accounts_and_run_genesis(
 ) {
     let exec_request = create_accounts_request(accounts, amount);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit();

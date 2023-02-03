@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -36,7 +36,7 @@ fn setup() -> InMemoryWasmTestBuilder {
     };
 
     let mut ctx = InMemoryWasmTestBuilder::default();
-    ctx.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    ctx.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
         .commit()

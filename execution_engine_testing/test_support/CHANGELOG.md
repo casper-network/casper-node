@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
 
 
+### Deprecated
+* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
 ## 2.1.0
 

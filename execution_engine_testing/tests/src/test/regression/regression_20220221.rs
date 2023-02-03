@@ -3,8 +3,8 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     EngineConfig, RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
@@ -63,7 +63,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
     .build();
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = UpgradeRequestBuilder::default()
         .with_new_validator_slots(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT + 1)
