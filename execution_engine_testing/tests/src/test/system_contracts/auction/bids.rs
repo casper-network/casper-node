@@ -3540,6 +3540,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
             .with_current_protocol_version(previous_protocol_version)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(EraId::new(20u64))
+            .with_new_unbonding_delay(DEFAULT_UNBONDING_DELAY)
             .build()
     };
 
@@ -3567,8 +3568,24 @@ fn should_continue_auction_state_from_release_1_4_x() {
         .expect("should have account")
         .main_purse();
 
+    let delegator_2_undelegate_purse = builder
+        .get_account(*BID_ACCOUNT_2_ADDR)
+        .expect("should have account")
+        .main_purse();
+
+    let delegator_3_undelegate_purse = builder
+        .get_account(*DELEGATOR_1_ADDR)
+        .expect("should have account")
+        .main_purse();
+
     let delegator_1_purse_balance_pre_step =
         builder.get_purse_balance(delegator_1_undelegate_purse);
+
+    let delegator_2_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_2_undelegate_purse);
+
+    let delegator_3_purse_balance_pre_step =
+        builder.get_purse_balance(delegator_3_undelegate_purse);
 
     builder.advance_era(vec![
         RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
@@ -3584,20 +3601,6 @@ fn should_continue_auction_state_from_release_1_4_x() {
         delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
     );
 
-    let delegator_2_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_2_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_2_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_2_undelegate_purse);
-
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
-
     let delegator_2_purse_balance_post_step =
         builder.get_purse_balance(delegator_2_undelegate_purse);
 
@@ -3605,20 +3608,6 @@ fn should_continue_auction_state_from_release_1_4_x() {
         delegator_2_purse_balance_post_step,
         delegator_2_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
     );
-
-    let delegator_3_undelegate_purse = builder
-        .get_account(*DELEGATOR_1_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_3_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_3_undelegate_purse);
-
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
 
     let delegator_3_purse_balance_post_step =
         builder.get_purse_balance(delegator_3_undelegate_purse);
@@ -3683,7 +3672,11 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     let delegator_4_purse_balance_before = builder.get_purse_balance(delegator_4_purse);
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    let actual_unbonding_delay = builder.get_unbonding_delay();
+
+    assert_eq!(actual_unbonding_delay, DEFAULT_UNBONDING_DELAY);
+
+    for _ in 0..=actual_unbonding_delay {
         let delegator_4_redelegate_purse_balance = builder.get_purse_balance(delegator_4_purse);
         assert_eq!(
             delegator_4_redelegate_purse_balance,
@@ -3915,7 +3908,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
         RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
     ];
 
-    for _ in 0..(DEFAULT_UNBONDING_DELAY - DEFAULT_AUCTION_DELAY) {
+    for _ in 0..(builder.get_unbonding_delay() - builder.get_auction_delay()) {
         let delegator_4_redelegate_purse_balance = builder.get_purse_balance(delegator_4_purse);
         assert_eq!(
             delegator_4_redelegate_purse_balance,
