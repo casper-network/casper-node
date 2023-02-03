@@ -266,3 +266,26 @@ mod tests {
         assert_eq!(input, retrieved_bytes);
     }
 }
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::{LargestSpecimen, SizeEstimator};
+
+    use super::{TrieOrChunkId, ValueOrChunk};
+
+    impl LargestSpecimen for TrieOrChunkId {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            TrieOrChunkId(
+                LargestSpecimen::largest_specimen(estimator),
+                LargestSpecimen::largest_specimen(estimator),
+            )
+        }
+    }
+
+    impl<V> LargestSpecimen for ValueOrChunk<V> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            // By definition, the chunk is always the largest (8MiB):
+            ValueOrChunk::ChunkWithProof(LargestSpecimen::largest_specimen(estimator))
+        }
+    }
+}

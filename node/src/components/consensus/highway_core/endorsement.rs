@@ -49,6 +49,25 @@ impl<C: Context> Endorsement<C> {
     }
 }
 
+#[cfg(test)]
+mod specimen_support {
+    use crate::{
+        components::consensus::ClContext,
+        testing::specimen::{LargestSpecimen, SizeEstimator},
+    };
+
+    use super::Endorsement;
+
+    impl LargestSpecimen for Endorsement<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            Endorsement {
+                unit: LargestSpecimen::largest_specimen(estimator),
+                creator: LargestSpecimen::largest_specimen(estimator),
+            }
+        }
+    }
+}
+
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
 #[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]

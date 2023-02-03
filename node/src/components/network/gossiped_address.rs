@@ -55,3 +55,16 @@ impl From<GossipedAddress> for SocketAddr {
         gossiped_address.0
     }
 }
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::LargestSpecimen;
+
+    use super::GossipedAddress;
+
+    impl LargestSpecimen for GossipedAddress {
+        fn largest_specimen<E: crate::testing::specimen::SizeEstimator>(estimator: &E) -> Self {
+            GossipedAddress::new(LargestSpecimen::largest_specimen(estimator))
+        }
+    }
+}

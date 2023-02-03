@@ -51,6 +51,12 @@ impl Approval {
             signature: Signature::ed25519([0; Signature::ED25519_LENGTH]).unwrap(),
         }
     }
+
+    /// Constructs an `Approval` directly without any checks or additional calculations.
+    #[cfg(test)]
+    pub fn from_parts(signer: PublicKey, signature: Signature) -> Self {
+        Approval { signer, signature }
+    }
 }
 
 impl Display for Approval {

@@ -83,3 +83,16 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&legacy_deploy);
     }
 }
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::{LargestSpecimen, SizeEstimator};
+
+    use super::LegacyDeploy;
+
+    impl LargestSpecimen for LegacyDeploy {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            LegacyDeploy(LargestSpecimen::largest_specimen(estimator))
+        }
+    }
+}

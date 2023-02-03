@@ -63,6 +63,8 @@ pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
+#[cfg(test)]
+pub(crate) use protocols::highway::max_rounds_per_era;
 pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use validator_change::ValidatorChange;
 
@@ -373,8 +375,8 @@ mod specimen_support {
     use crate::testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
 
     use super::{
-        ClContext, ConsensusMessage, ConsensusMessageDiscriminants, EraMessage,
-        EraMessageDiscriminants,
+        ClContext, ConsensusMessage, ConsensusMessageDiscriminants, ConsensusRequestMessage,
+        EraMessage, EraMessageDiscriminants, EraRequest,
     };
 
     impl LargestSpecimen for ConsensusMessage {
@@ -396,12 +398,31 @@ mod specimen_support {
         }
     }
 
+    impl LargestSpecimen for ConsensusRequestMessage {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            ConsensusRequestMessage {
+                era_id: LargestSpecimen::largest_specimen(estimator),
+                payload: LargestSpecimen::largest_specimen(estimator),
+            }
+        }
+    }
+
+    impl LargestSpecimen for EraRequest<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            EraRequest::Zug(LargestSpecimen::largest_specimen(estimator))
+        }
+    }
+
     impl LargestSpecimen for EraMessage<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
             largest_variant::<Self, EraMessageDiscriminants, _, _>(estimator, |variant| {
                 match variant {
-                    EraMessageDiscriminants::Zug => EraMessage::Zug(todo!()),
-                    EraMessageDiscriminants::Highway => EraMessage::Highway(todo!()),
+                    EraMessageDiscriminants::Zug => {
+                        EraMessage::Zug(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    EraMessageDiscriminants::Highway => {
+                        EraMessage::Highway(LargestSpecimen::largest_specimen(estimator))
+                    }
                 }
             })
         }

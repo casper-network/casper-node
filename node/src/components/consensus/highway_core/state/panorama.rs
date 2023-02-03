@@ -21,6 +21,8 @@ use crate::components::consensus::{
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum Observation<C>
 where
     C: Context,
@@ -237,5 +239,27 @@ impl<C: Context> Panorama<C> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::{
+        components::consensus::ClContext,
+        testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+    };
+
+    use super::{Observation, ObservationDiscriminants};
+
+    impl LargestSpecimen for Observation<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            largest_variant(estimator, |variant| match variant {
+                ObservationDiscriminants::None => Observation::None,
+                ObservationDiscriminants::Correct => {
+                    Observation::Correct(LargestSpecimen::largest_specimen(estimator))
+                }
+                ObservationDiscriminants::Faulty => Observation::Faulty,
+            })
+        }
     }
 }

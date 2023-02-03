@@ -168,3 +168,77 @@ pub(crate) enum ApprovalsHashesValidationError {
         value_in_proof: Digest,
     },
 }
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::{
+        contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
+        testing::specimen::{
+            largest_variant, vec_of_largest_specimen, vec_prop_specimen, LargestSpecimen,
+            SizeEstimator,
+        },
+    };
+
+    use super::ApprovalsHashes;
+    use casper_execution_engine::storage::trie::{
+        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
+        Pointer,
+    };
+    use casper_hashing::Digest;
+    use casper_types::{bytesrepr::Bytes, CLValue, Key, StoredValue};
+    use once_cell::sync::OnceCell;
+    use std::collections::BTreeMap;
+
+    impl LargestSpecimen for ApprovalsHashes {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            let data = {
+                let mut map = BTreeMap::new();
+                map.insert(APPROVALS_CHECKSUM_NAME, Digest::largest_specimen(estimator));
+                map.insert(
+                    EXECUTION_RESULTS_CHECKSUM_NAME,
+                    Digest::largest_specimen(estimator),
+                );
+                map
+            };
+            let merkle_proof_approvals = TrieMerkleProof::new(
+                Key::ChecksumRegistry,
+                StoredValue::CLValue(CLValue::from_t(data).expect("a correct cl value")),
+                // 2^64/2^13 = 2^51, so 51 items:
+                vec_of_largest_specimen(estimator, 51).into(),
+            );
+            ApprovalsHashes {
+                block_hash: LargestSpecimen::largest_specimen(estimator),
+                approvals_hashes: vec_prop_specimen(estimator, "approvals_hashes"),
+                merkle_proof_approvals,
+                is_verified: OnceCell::with_value(Ok(())), // Not serialized, so we do not care
+            }
+        }
+    }
+
+    impl LargestSpecimen for TrieMerkleProofStep {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            #[derive(strum::EnumIter)]
+            enum TrieMerkleProofStepDiscriminants {
+                Node,
+                Extension,
+            }
+
+            largest_variant(estimator, |variant| match variant {
+                TrieMerkleProofStepDiscriminants::Node => TrieMerkleProofStep::Node {
+                    hole_index: u8::MAX,
+                    indexed_pointers_with_hole: vec![
+                        (
+                            u8::MAX,
+                            Pointer::LeafPointer(LargestSpecimen::largest_specimen(estimator))
+                        );
+                        estimator
+                            .require_parameter("max_pointer_per_node")
+                    ],
+                },
+                TrieMerkleProofStepDiscriminants::Extension => TrieMerkleProofStep::Extension {
+                    affix: Bytes::from(vec![u8::MAX; Key::max_serialized_length()]),
+                },
+            })
+        }
+    }
+}

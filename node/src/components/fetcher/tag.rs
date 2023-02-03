@@ -20,6 +20,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
     Debug,
     Display,
 )]
+#[cfg_attr(test, derive(strum::EnumIter))]
 #[repr(u8)]
 pub enum Tag {
     /// A deploy identified by its hash and its approvals hash.

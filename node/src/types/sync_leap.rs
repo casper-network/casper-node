@@ -289,3 +289,39 @@ impl FetchItem for SyncLeap {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::{
+        estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen, LargestSpecimen,
+        SizeEstimator,
+    };
+
+    use super::{SyncLeap, SyncLeapIdentifier};
+
+    impl LargestSpecimen for SyncLeap {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            SyncLeap {
+                trusted_ancestor_only: LargestSpecimen::largest_specimen(estimator),
+                trusted_block_header: LargestSpecimen::largest_specimen(estimator),
+                // Will at most contain as many blocks as a single era. And how many blocks can there
+                // be in an era is determined by the chainspec: it's the maximum of minimum_era_height
+                // and era_duration / minimum_block_time
+                trusted_ancestor_headers: vec_of_largest_specimen(
+                    estimator,
+                    estimator_max_rounds_per_era(estimator),
+                ),
+                signed_block_headers: vec_prop_specimen(estimator, "recent_era_count"),
+            }
+        }
+    }
+
+    impl LargestSpecimen for SyncLeapIdentifier {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            SyncLeapIdentifier {
+                block_hash: LargestSpecimen::largest_specimen(estimator),
+                trusted_ancestor_only: true,
+            }
+        }
+    }
+}

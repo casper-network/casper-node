@@ -107,6 +107,19 @@ impl FromBytes for DeployHash {
 }
 
 #[cfg(test)]
+mod specimen_support {
+    use crate::testing::specimen::{LargestSpecimen, SizeEstimator};
+
+    use super::DeployHash;
+
+    impl LargestSpecimen for DeployHash {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            DeployHash::new(LargestSpecimen::largest_specimen(estimator))
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

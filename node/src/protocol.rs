@@ -221,7 +221,9 @@ impl Debug for Message {
 
 #[cfg(test)]
 mod specimen_support {
-    use crate::testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+    use crate::testing::specimen::{
+        largest_get_request, largest_get_response, largest_variant, LargestSpecimen, SizeEstimator,
+    };
 
     use super::{Message, MessageDiscriminants};
 
@@ -230,15 +232,31 @@ mod specimen_support {
             largest_variant::<Self, MessageDiscriminants, _, _>(
                 estimator,
                 |variant| match variant {
-                    MessageDiscriminants::Consensus => todo!(),
-                    MessageDiscriminants::ConsensusRequest => todo!(),
-                    MessageDiscriminants::BlockGossiper => todo!(),
-                    MessageDiscriminants::DeployGossiper => todo!(),
-                    MessageDiscriminants::FinalitySignatureGossiper => todo!(),
-                    MessageDiscriminants::AddressGossiper => todo!(),
-                    MessageDiscriminants::GetRequest => todo!(),
-                    MessageDiscriminants::GetResponse => todo!(),
-                    MessageDiscriminants::FinalitySignature => todo!(),
+                    MessageDiscriminants::Consensus => {
+                        Message::Consensus(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    MessageDiscriminants::ConsensusRequest => {
+                        Message::ConsensusRequest(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    MessageDiscriminants::BlockGossiper => {
+                        Message::BlockGossiper(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    MessageDiscriminants::DeployGossiper => {
+                        Message::DeployGossiper(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    MessageDiscriminants::FinalitySignatureGossiper => {
+                        Message::FinalitySignatureGossiper(LargestSpecimen::largest_specimen(
+                            estimator,
+                        ))
+                    }
+                    MessageDiscriminants::AddressGossiper => {
+                        Message::AddressGossiper(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    MessageDiscriminants::GetRequest => largest_get_request(estimator),
+                    MessageDiscriminants::GetResponse => largest_get_response(estimator),
+                    MessageDiscriminants::FinalitySignature => {
+                        Message::FinalitySignature(LargestSpecimen::largest_specimen(estimator))
+                    }
                 },
             )
         }

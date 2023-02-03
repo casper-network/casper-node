@@ -420,6 +420,8 @@ pub struct EstimatorWeights {
 
 #[cfg(test)]
 mod specimen_support {
+    use std::iter;
+
     use serde::Serialize;
 
     use crate::testing::specimen::{
@@ -433,26 +435,21 @@ mod specimen_support {
         P: Serialize + LargestSpecimen,
     {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            let largest_network_name = estimator.require_parameter("network_name_limit") as usize;
+            let largest_network_name = estimator.require_parameter("network_name_limit");
 
             largest_variant::<Self, MessageDiscriminants, _, _>(
                 estimator,
                 |variant| match variant {
-                    MessageDiscriminants::Handshake => {
-                        let mut network_name = String::new();
-                        for _ in 0..largest_network_name {
-                            network_name.push(HIGHEST_UNICODE_CODEPOINT);
-                        }
-
-                        Message::Handshake {
-                            network_name: String::new(),
-                            public_addr: LargestSpecimen::largest_specimen(estimator),
-                            protocol_version: LargestSpecimen::largest_specimen(estimator),
-                            consensus_certificate: LargestSpecimen::largest_specimen(estimator),
-                            is_syncing: LargestSpecimen::largest_specimen(estimator),
-                            chainspec_hash: LargestSpecimen::largest_specimen(estimator),
-                        }
-                    }
+                    MessageDiscriminants::Handshake => Message::Handshake {
+                        network_name: iter::repeat(HIGHEST_UNICODE_CODEPOINT)
+                            .take(largest_network_name)
+                            .collect(),
+                        public_addr: LargestSpecimen::largest_specimen(estimator),
+                        protocol_version: LargestSpecimen::largest_specimen(estimator),
+                        consensus_certificate: LargestSpecimen::largest_specimen(estimator),
+                        is_syncing: LargestSpecimen::largest_specimen(estimator),
+                        chainspec_hash: LargestSpecimen::largest_specimen(estimator),
+                    },
                     MessageDiscriminants::Ping => Message::Ping {
                         nonce: LargestSpecimen::largest_specimen(estimator),
                     },
@@ -509,6 +506,21 @@ mod tests {
             match name {
                 // Limit to a network name of a thousand characters for now.
                 "network_name_limit" => Some(1000),
+                "contract_name_limit" => Some(1000),
+                "entry_point_limit" => Some(1000),
+                // chainspec: unbonding_delay - auction_delay:
+                "recent_era_count" => Some(7 - 1),
+                // chainspec: validator_slots:
+                "validator_count" => Some(100),
+                "minimum_era_height" => Some(20),
+                "era_duration_ms" => Some(120 * 60 * 1000),
+                // MAX (minimum_block_time, 1ms)
+                "minimum_round_length_ms" => Some(32768),
+                // chainspec: max_deploy_size (The maximum size contract bytes)
+                "module_bytes" => Some(1_048_576),
+                // chainspec: block_max_deploy_count and block_max_transfer_count:
+                "approvals_hashes" => Some(50 + 1250),
+                "max_pointer_per_node" => Some(255),
                 _ => None,
             }
         }

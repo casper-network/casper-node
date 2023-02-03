@@ -148,10 +148,12 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting faulty.;
-        let min_rounds_per_era = chainspec.core_config.minimum_era_height.max(
-            (TimeDiff::from_millis(1) + chainspec.core_config.era_duration) / minimum_round_length,
+        let max_rounds_per_era = max_rounds_per_era(
+            chainspec.core_config.minimum_era_height,
+            chainspec.core_config.era_duration,
+            minimum_round_length,
         );
-        let endorsement_evidence_limit = min_rounds_per_era
+        let endorsement_evidence_limit = max_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
@@ -652,6 +654,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum HighwayMessage<C>
 where
     C: Context,
@@ -665,6 +669,46 @@ where
         unit_seq_number: u64,
     },
     LatestStateRequest(IndexPanorama),
+}
+
+#[cfg(test)]
+mod specimen_support {
+    use crate::{
+        components::consensus::ClContext,
+        testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+    };
+
+    use super::{HighwayMessage, HighwayMessageDiscriminants};
+
+    impl LargestSpecimen for HighwayMessage<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    HighwayMessageDiscriminants::NewVertex => {
+                        HighwayMessage::NewVertex(LargestSpecimen::largest_specimen(estimator))
+                    }
+                    HighwayMessageDiscriminants::RequestDependency => {
+                        HighwayMessage::RequestDependency(
+                            LargestSpecimen::largest_specimen(estimator),
+                            LargestSpecimen::largest_specimen(estimator),
+                        )
+                    }
+                    HighwayMessageDiscriminants::RequestDependencyByHeight => {
+                        HighwayMessage::RequestDependencyByHeight {
+                            uuid: LargestSpecimen::largest_specimen(estimator),
+                            vid: LargestSpecimen::largest_specimen(estimator),
+                            unit_seq_number: LargestSpecimen::largest_specimen(estimator),
+                        }
+                    }
+                    HighwayMessageDiscriminants::LatestStateRequest => {
+                        HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
+                            estimator,
+                        ))
+                    }
+                }
+            })
+        }
+    }
 }
 
 impl<C: Context> HighwayMessage<C> {
@@ -1045,4 +1089,29 @@ where
     fn next_round_length(&self) -> Option<TimeDiff> {
         self.highway.next_round_length()
     }
+}
+
+/// Maximum possible rounds in one era.
+///
+/// It is the maximum of:
+/// - The era duration divided by the minimum round length,
+///   that is the maximum number of blocks that can fit within the duration of one era,
+/// - The minimum era height, which is the minimum number of blocks for an era to be considered complete.
+pub fn max_rounds_per_era(
+    minimum_era_height: u64,
+    era_duration: TimeDiff,
+    minimum_round_length: TimeDiff,
+) -> u64 {
+    minimum_era_height.max((TimeDiff::from_millis(1) + era_duration) / minimum_round_length)
+}
+
+#[test]
+fn max_rounds_per_era_returns_the_correct_value_for_prod_chainspec_value() {
+    let max_rounds_per_era = max_rounds_per_era(
+        20,
+        TimeDiff::from_seconds(120 * 60),
+        TimeDiff::from_millis(32768),
+    );
+
+    assert_eq!(219, max_rounds_per_era);
 }

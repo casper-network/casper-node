@@ -42,6 +42,8 @@ pub(crate) enum EvidenceError {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum Evidence<C>
 where
     C: Context,
@@ -158,5 +160,41 @@ impl<C: Context> Evidence<C> {
             return Err(EvidenceError::Signature);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod specimen_support {
+
+    use crate::{
+        components::consensus::ClContext,
+        testing::specimen::{
+            estimator_max_rounds_per_era, largest_variant, vec_of_largest_specimen,
+            LargestSpecimen, SizeEstimator,
+        },
+    };
+
+    use super::{Evidence, EvidenceDiscriminants};
+
+    impl LargestSpecimen for Evidence<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            largest_variant::<Self, EvidenceDiscriminants, _, _>(estimator, |variant| match variant
+            {
+                EvidenceDiscriminants::Equivocation => Evidence::Equivocation(
+                    LargestSpecimen::largest_specimen(estimator),
+                    LargestSpecimen::largest_specimen(estimator),
+                ),
+                EvidenceDiscriminants::Endorsements => Evidence::Endorsements {
+                    endorsement1: LargestSpecimen::largest_specimen(estimator),
+                    unit1: LargestSpecimen::largest_specimen(estimator),
+                    endorsement2: LargestSpecimen::largest_specimen(estimator),
+                    unit2: LargestSpecimen::largest_specimen(estimator),
+                    swimlane2: vec_of_largest_specimen(
+                        estimator,
+                        estimator_max_rounds_per_era(estimator),
+                    ),
+                },
+            })
+        }
     }
 }
