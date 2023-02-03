@@ -77,7 +77,7 @@ where
 
     async move {
         stream.write_all(&(data.len() as u32).to_ne_bytes()).await?;
-        stream.write_all(&data).await?;
+        stream.write_all(data).await?;
         stream.flush().await?;
         Ok(())
     }
