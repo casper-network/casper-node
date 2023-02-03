@@ -1,6 +1,4 @@
 //! The set of JSON-RPCs which the API server handles.
-//!
-//! See <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs> for info.
 
 pub mod account;
 pub mod chain;
