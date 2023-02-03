@@ -34,7 +34,8 @@ use casper_types::{
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
+            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
+            TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
@@ -1022,7 +1023,7 @@ pub(crate) struct TrieAccumulatorRequest {
     /// The peers to try to fetch from.
     pub(crate) peers: Vec<NodeId>,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<Result<Box<TrieRaw>, TrieAccumulatorError>>,
+    pub(crate) responder: Responder<Result<TrieAccumulatorResponse, TrieAccumulatorError>>,
 }
 
 impl Display for TrieAccumulatorRequest {
@@ -1037,7 +1038,8 @@ pub(crate) struct SyncGlobalStateRequest {
     pub(crate) state_root_hash: Digest,
     pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
-    pub(crate) responder: Responder<Result<Digest, GlobalStateSynchronizerError>>,
+    pub(crate) responder:
+        Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
 }
 
 impl Display for SyncGlobalStateRequest {

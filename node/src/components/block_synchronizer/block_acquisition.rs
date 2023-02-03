@@ -539,7 +539,7 @@ impl BlockAcquisitionState {
         // we will accept finality signatures we don't yet have while in every state other than
         // Initialized and Failed. However, it can only cause a state transition when we
         // are in a resting state that needs weak finality or strict finality.
-
+        let cloned_sig = signature.clone();
         let signer = signature.public_key.clone();
         let acceptance: Acceptance;
         let maybe_block_hash: Option<BlockHash>;
@@ -634,6 +634,16 @@ impl BlockAcquisitionState {
             }
         };
         let ret = currently_acquiring_sigs.then(|| acceptance);
+        info!(
+            signature=%cloned_sig,
+            ?ret,
+            "BlockAcquisition: registering finality signature for: {}",
+            if let Some(block_hash) = maybe_block_hash {
+                block_hash.to_string()
+            } else {
+                "unknown block".to_string()
+            }
+        );
         self.log_finality_signature_acceptance(&maybe_block_hash, &signer, ret);
         if let Some(new_state) = maybe_new_state {
             self.set_state(new_state);
@@ -1102,7 +1112,7 @@ impl BlockAcquisitionState {
                 None => {
                     debug!(
                         "BlockAcquisition: finality signature for {:?} from {} while not actively \
-                        trying to actively acquire finality signatures",
+                        trying to acquire finality signatures",
                         block_hash, signer
                     );
                 }
