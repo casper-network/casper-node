@@ -8,24 +8,19 @@
 use std::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
-    pin::Pin,
-    sync::{Arc, Weak},
 };
 
-use bytes::{Bytes, BytesMut};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use openssl::ssl::SslRef;
-use pin_project::pin_project;
 #[cfg(test)]
 use rand::RngCore;
 use static_assertions::const_assert;
-use tokio_serde::{Deserializer, Serializer};
-use tracing::{trace, warn};
+use tracing::warn;
 
 use casper_hashing::Digest;
 
-use super::{tls::KeyFingerprint, Message, Metrics, Payload};
+use super::tls::KeyFingerprint;
 use crate::{types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.

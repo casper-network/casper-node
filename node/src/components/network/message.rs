@@ -119,8 +119,8 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => Channel::Network,
             Message::Payload(payload) => payload.get_channel(),
-            Message::Ping { nonce } => Channel::Network,
-            Message::Pong { nonce } => Channel::Network,
+            Message::Ping { .. } => Channel::Network,
+            Message::Pong { .. } => Channel::Network,
         }
     }
 }

@@ -73,7 +73,6 @@ use rand::{
     seq::{IteratorRandom, SliceRandom},
     Rng,
 };
-use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use tokio::{
     net::TcpStream,
