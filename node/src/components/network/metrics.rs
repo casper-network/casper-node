@@ -457,6 +457,8 @@ impl Metrics {
     }
 
     /// Records an outgoing payload.
+    #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
+
     pub(crate) fn record_payload_out(this: &Weak<Self>, kind: MessageKind, size: u64) {
         if let Some(metrics) = this.upgrade() {
             match kind {
@@ -507,6 +509,7 @@ impl Metrics {
     }
 
     /// Records an incoming payload.
+    #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
     pub(crate) fn record_payload_in(this: &Weak<Self>, kind: MessageKind, size: u64) {
         if let Some(metrics) = this.upgrade() {
             match kind {
