@@ -303,22 +303,9 @@ function _step_08()
     done
 
     log "Waiting for all nodes to sync to genesis"
-    TIMEOUT=300
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
     do
-        log "Waiting for node $NODE_ID to sync to genesis (timeout=$TIMEOUT sec)"
-        RETRY_COUNT=1
-        LOWEST_AVAILABLE_BLOCK=$(get_node_lowest_available_block "$NODE_ID")
-        while [ -z "$LOWEST_AVAILABLE_BLOCK" ] || [ "$LOWEST_AVAILABLE_BLOCK" -ne 0 ]; do
-            if [ "$RETRY_COUNT" -gt $TIMEOUT ]; then
-                log "ERROR :: NODE-$NODE_ID RETRY :: Failed to sync to genesis within $TIMEOUT seconds; lowest available block $LOWEST_AVAILABLE_BLOCK"
-                exit 1
-            else
-                LOWEST_AVAILABLE_BLOCK=$(get_node_lowest_available_block "$NODE_ID")
-                sleep 1
-                ((RETRY_COUNT=RETRY_COUNT+1))
-            fi
-        done
+        await_node_historical_sync_to_genesis "$NODE_ID" "300"
     done
 }
 
