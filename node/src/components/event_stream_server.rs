@@ -16,9 +16,6 @@
 //! This component uses a ring buffer for outbound events providing some robustness against
 //! unintended subscriber disconnects, if a disconnected subscriber re-subscribes before the buffer
 //! has advanced past their last received event.
-//!
-//! For details about the SSE model and a list of supported SSEs, see:
-//! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
 mod deploy_getter;
