@@ -60,6 +60,7 @@ pub(crate) enum Message<P> {
 impl<P: Payload> Message<P> {
     /// Classifies a message based on its payload.
     #[inline]
+    #[allow(dead_code)] // TODO: Re-add, once decision is made whether to keep message classses.
     pub(super) fn classify(&self) -> MessageKind {
         match self {
             Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
@@ -306,6 +307,7 @@ impl<P: Display> Display for Message<P> {
 
 /// A classification system for networking messages.
 #[derive(Copy, Clone, Debug)]
+#[allow(dead_code)] // TODO: Re-add, once decision is made whether or not to keep message classses.
 pub(crate) enum MessageKind {
     /// Non-payload messages, like handshakes.
     Protocol,

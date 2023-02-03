@@ -217,6 +217,7 @@ pub enum RawFrameIoError {
 pub enum MessageReaderError {
     /// The semaphore that limits trie demands was closed unexpectedly.
     #[error("demand limiter semaphore closed unexpectedly")]
+    #[allow(dead_code)] // TODO: Re-add if necessary, if backpressure requires this still.
     UnexpectedSemaphoreClose,
     /// The message receival stack returned an error.
     // These errors can get fairly and complicated and are boxed here for that reason.

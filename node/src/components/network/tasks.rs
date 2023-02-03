@@ -45,8 +45,8 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     limiter::LimiterHandle,
     message::NodeKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingCarrier, Message, Metrics,
-    OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingCarrier, IncomingChannel,
+    Message, Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -537,7 +537,7 @@ where
         let demuxer =
             Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
                 .expect("mutex poisoned");
-        let incoming = Defragmentizer::new(
+        let incoming: IncomingChannel = Defragmentizer::new(
             context.chain_info.maximum_net_message_size as usize,
             demuxer,
         );
