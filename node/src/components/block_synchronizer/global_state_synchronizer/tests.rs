@@ -86,7 +86,7 @@ fn random_test_trie(rng: &mut TestRng) -> TrieRaw {
 fn random_sync_global_state_request(
     rng: &mut TestRng,
     num_random_peers: usize,
-    responder: Responder<Result<Digest, Error>>,
+    responder: Responder<Result<Response, Error>>,
 ) -> (SyncGlobalStateRequest, TrieRaw) {
     let block = Block::random(rng);
     let trie = random_test_trie(rng);
@@ -238,7 +238,11 @@ async fn trie_accumulator_error_cancels_request() {
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
 
     // Simulate a trie_accumulator error for the first trie
-    let trie_accumulator_result = Err(TrieAccumulatorError::Absent(trie_hash1, 0));
+    let trie_accumulator_result = Err(TrieAccumulatorError::Absent(
+        trie_hash1,
+        0,
+        peers1.iter().cloned().collect(),
+    ));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
         trie_hash1,
         trie_accumulator_result,
@@ -289,7 +293,7 @@ async fn successful_trie_fetch_puts_trie_to_store() {
         .await;
 
     // Simulate a successful trie fetch
-    let trie_accumulator_result = Ok(Box::new(trie.clone()));
+    let trie_accumulator_result = Ok(TrieAccumulatorResponse::new(trie.clone(), Vec::new()));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
         state_root_hash,
         trie_accumulator_result,
@@ -373,7 +377,10 @@ async fn missing_trie_node_children_triggers_fetch() {
         .await;
 
     // Simulate a successful trie fetch from the accumulator
-    let trie_accumulator_result = Ok(Box::new(request_trie.clone()));
+    let trie_accumulator_result = Ok(TrieAccumulatorResponse::new(
+        request_trie.clone(),
+        Vec::new(),
+    ));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
         state_root_hash,
         trie_accumulator_result,
@@ -437,7 +444,10 @@ async fn missing_trie_node_children_triggers_fetch() {
 
     // Now handle a successful fetch from the trie_accumulator for one of the missing children.
     let trie_hash = missing_trie_nodes_hashes[num_missing_trie_nodes - 1];
-    let trie_accumulator_result = Ok(Box::new(missing_tries[num_missing_trie_nodes - 1].clone()));
+    let trie_accumulator_result = Ok(TrieAccumulatorResponse::new(
+        missing_tries[num_missing_trie_nodes - 1].clone(),
+        Vec::new(),
+    ));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
         trie_hash,
         trie_accumulator_result,
@@ -524,7 +534,7 @@ async fn stored_trie_finalizes_request() {
 
     // Handle a successful fetch from the trie_accumulator for one of the missing children.
     let trie_hash = Digest::hash(trie.inner());
-    let trie_accumulator_result = Ok(Box::new(trie.clone()));
+    let trie_accumulator_result = Ok(TrieAccumulatorResponse::new(trie.clone(), Vec::new()));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
         trie_hash,
         trie_accumulator_result,

@@ -248,6 +248,10 @@ function _step_09()
         # add hash to upgrades config
         PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"
         _update_node_config_on_start "$PATH_TO_NODE_CONFIG_UPGRADE" "$HASH"
+
+        # remove stored state of the launcher - this will make the launcher start from the highest
+        # available version instead of from the previously executed one
+        rm "$(get_path_to_node_config $i)/casper-node-launcher-state.toml"
     done
 
     log "... restarting nodes 1 & 10"
@@ -346,7 +350,7 @@ function _step_13()
             equivocators='0' \
             doppels='0' \
             crashes=0 \
-            restarts=12 \
+            restarts=10 \
             ejections=0
 }
 
