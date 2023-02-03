@@ -129,6 +129,7 @@ impl ConnectionId {
     ///
     /// The `flag` should be created using the [`Role::in_flag`] or [`Role::out_flag`] method and
     /// must be created accordingly (`out_flag` when serializing, `in_flag` when deserializing).
+    #[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
     fn create_trace_id(&self, flag: u8, count: u64) -> TraceId {
         // Copy the basic network ID.
         let mut buffer = self.0;
@@ -174,6 +175,7 @@ impl ConnectionId {
 /// Message sending direction.
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
+#[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
 pub(super) enum Role {
     /// Dialer, i.e. initiator of the connection.
     Dialer,
@@ -181,6 +183,7 @@ pub(super) enum Role {
     Listener,
 }
 
+#[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
 impl Role {
     /// Returns a flag suitable for hashing incoming messages.
     #[inline]
