@@ -444,8 +444,7 @@ async fn check_varying_size_network_connects() {
     let mut rng = crate::new_rng();
 
     // Try with a few predefined sets of network sizes.
-    // for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
-    for &number_of_nodes in &[3u16] {
+    for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
         info!(
             number_of_nodes,
             "begin varying size network connection test"
