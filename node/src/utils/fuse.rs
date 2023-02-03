@@ -118,7 +118,10 @@ impl Fuse for ObservableFuse {
 }
 
 /// A wrapper for a fuse that will cause it to be set when dropped.
-#[derive(DataSize, Debug, Clone)]
+// Note: Do not implement/derive `Clone` for `DropSwitch`, as this is a massive footgun. Creating a
+//       new instance explicitly is safer, as it avoid unintentially trigger the entire switch from
+//       after having created it on the stack and passed on a clone instance.
+#[derive(DataSize, Debug)]
 pub(crate) struct DropSwitch<T>(T)
 where
     T: Fuse;

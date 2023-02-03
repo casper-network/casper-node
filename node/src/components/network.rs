@@ -365,14 +365,12 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
-        let shutdown_fuse = DropSwitch::new(ObservableFuse::new());
-
         let context = self.context.clone();
         self.server_join_handle = Some(tokio::spawn(
             tasks::server(
                 context,
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-                shutdown_fuse.inner().clone(),
+                self.shutdown_fuse.inner().clone(),
             )
             .in_current_span(),
         ));
