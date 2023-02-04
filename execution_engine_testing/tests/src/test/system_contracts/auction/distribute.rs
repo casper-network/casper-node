@@ -1527,10 +1527,10 @@ fn should_distribute_delegation_rate_full() {
     assert_eq!(validator_1_updated_stake, expected_validator_1_balance);
 
     let delegator_1_updated_stake = {
-        let validator_stake_before = U512::from(DELEGATOR_1_STAKE);
-        let validator_stake_after =
+        let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
+        let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-        validator_stake_after - validator_stake_before
+        delegator_stake_after - delegator_stake_before
     };
     let expected_delegator_1_balance = U512::zero();
     assert_eq!(delegator_1_updated_stake, expected_delegator_1_balance);

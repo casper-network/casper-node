@@ -552,10 +552,6 @@ pub trait Auction:
             .ok_or(Error::ValidatorNotFound)?;
 
         let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
-        /*if total_stake.is_zero() {
-            // TODO: error?
-            continue;
-        }*/
 
         let total_reward: Ratio<U512> = Ratio::from(base_round_reward);
 

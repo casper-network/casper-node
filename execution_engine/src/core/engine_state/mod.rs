@@ -1863,7 +1863,7 @@ where
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
         let deploy_hash = {
-            // seeds address generator w/ era_end_timestamp_millis
+            // seeds address generator with block timestamp
             let mut bytes = time.into_bytes()?;
             bytes.append(&mut next_block_height.into_bytes()?);
             DeployHash::new(Digest::hash(&bytes).value())
