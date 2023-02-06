@@ -1,21 +1,24 @@
+use async_trait::async_trait;
+
 use crate::{
-    components::gossiper::{Event, GossipItem, Gossiper, ItemProvider},
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
-    types::{Deploy, DeployId, NodeId},
+    components::gossiper::{GossipItem, Gossiper, ItemProvider},
+    effect::{requests::StorageRequest, EffectBuilder},
+    types::{Deploy, DeployId},
 };
 
+#[async_trait]
 impl ItemProvider<Deploy> for Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy> {
-    fn get_from_storage<REv: From<StorageRequest> + Send>(
+    async fn is_stored<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         item_id: DeployId,
-        requester: NodeId,
-    ) -> Effects<Event<Deploy>> {
-        effect_builder
-            .get_stored_deploy(item_id)
-            .event(move |result| Event::GetFromStorageResult {
-                item_id,
-                requester,
-                result: Box::new(result.ok_or_else(|| String::from("deploy not found"))),
-            })
+    ) -> bool {
+        effect_builder.is_deploy_stored(item_id).await
+    }
+
+    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+        effect_builder: EffectBuilder<REv>,
+        item_id: DeployId,
+    ) -> Option<Deploy> {
+        effect_builder.get_stored_deploy(item_id).await
     }
 }

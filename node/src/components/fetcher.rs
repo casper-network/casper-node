@@ -44,8 +44,6 @@ pub(crate) use tag::Tag;
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
 pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
 
-const COMPONENT_NAME: &str = "fetcher";
-
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
 #[derive(DataSize, Debug)]
 pub(crate) struct Fetcher<T>
@@ -55,18 +53,21 @@ where
     get_from_peer_timeout: Duration,
     item_handles: HashMap<T::Id, HashMap<NodeId, ItemHandle<T>>>,
     #[data_size(skip)]
+    name: &'static str,
+    #[data_size(skip)]
     metrics: Metrics,
 }
 
 impl<T: FetchItem> Fetcher<T> {
     pub(crate) fn new(
-        name: &str,
+        name: &'static str,
         config: &Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             item_handles: HashMap::new(),
+            name,
             metrics: Metrics::new(name, registry)?,
         })
     }
@@ -142,6 +143,6 @@ where
     }
 
     fn name(&self) -> &str {
-        COMPONENT_NAME
+        self.name
     }
 }
