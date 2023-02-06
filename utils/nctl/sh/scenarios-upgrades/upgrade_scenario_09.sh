@@ -8,9 +8,9 @@
 # Step 03: Stage nodes 1-5 and upgrade.
 # Step 04: Assert upgraded nodes 1-5.
 # Step 05: Assert nodes 1-5 didn't stall.
-# Step 06: Await 1 era.
-# Step 07: Stage node-6 with old trusted hash.
-# Step 08: Verify that node-6 successfully syncs.
+# Step 06: Await 1 era and stage node-6 with a recent trusted hash.
+# Step 07: Await 5 eras and stange node-7 with an old trusted hash.
+# Step 08: Verify that node-6 successfully syncs and node 7 did not sync as expected.
 # Step 09: Run Health Checks
 # Step 10: Terminate.
 
@@ -56,8 +56,14 @@ function _main()
     POST_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_05
-    _step_06
-    _step_07 "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_BLOCK_HASH" "$POST_UPGRADE_BLOCK_HASH"
+    # step 6 - start node 6 with trusted hash withing the allowed range
+    log_step_upgrades 6 "awaiting 1 eras to start node 6"
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='300' node_id='2'
+    _stage_node_with_trusted_hash "6" "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_BLOCK_HASH" 6
+    # step 7 - start node 7 with a trusted hash that is too old
+    log_step_upgrades 7 "awaiting 5 eras for pre-upgrade block hash to become too old"
+    nctl-await-n-eras offset='5' sleep_interval='5.0' timeout='300' node_id='2'
+    _stage_node_with_trusted_hash "7" "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_BLOCK_HASH" 7
     _step_08
     _step_09
     _step_10
@@ -163,20 +169,14 @@ function _step_05()
     done
 }
 
-# Step 06: Await 1 era.
-function _step_06()
+# Stage node with a trusted hash
+function _stage_node_with_trusted_hash()
 {
-    log_step_upgrades 6 "awaiting next era"
-    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='180' node_id='2'
-}
-
-# Step 07: Stage node 6 with post-upgrade trusted hash and node 7 with pre-upgrade trusted hash
-function _step_07()
-{
-    local STAGE_ID=${1}
-    local ACTIVATION_POINT=${2}
-    local PRE_UPGRADE_BLOCK_HASH=${3}
-    local POST_UPGRADE_BLOCK_HASH=${4}
+    local NODE_ID=${1}
+    local STAGE_ID=${2}
+    local ACTIVATION_POINT=${3}
+    local BLOCK_HASH=${4}
+    local STEP=${5}
     local PATH_TO_NODE_CONFIG_UPGRADE
     local N2_PROTO_VERSION
 
@@ -184,25 +184,18 @@ function _step_07()
     # sed is for switching from: ie. 1.0.0 -> 1_0_0
     N2_PROTO_VERSION="$(get_node_protocol_version 2 | sed 's/\./_/g')"
 
-    log_step_upgrades 7 "upgrading nodes 6 and 7 from stage ($STAGE_ID) - expecting node 7 to fail"
+    log_step_upgrades $STEP "upgrading node $NODE_ID ($STAGE_ID)"
 
     log "... setting upgrade assets"
 
     source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" \
         stage="$STAGE_ID" \
         verbose=false \
-        node="6" \
-        era="$ACTIVATION_POINT"
-    echo ""
-    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" \
-        stage="$STAGE_ID" \
-        verbose=false \
-        node="7" \
+        node="$NODE_ID" \
         era="$ACTIVATION_POINT"
     echo ""
 
-    source "$NCTL/sh/node/start.sh" node='6' hash="$POST_UPGRADE_BLOCK_HASH"
-    source "$NCTL/sh/node/start.sh" node='7' hash="$PRE_UPGRADE_BLOCK_HASH"
+    source "$NCTL/sh/node/start.sh" node="$NODE_ID" hash="$BLOCK_HASH"
 }
 
 # Step 08: Assert nodes 1-6 didn't stall
@@ -257,10 +250,10 @@ function _step_09()
 function _step_10()
 {
     # restarts=5 - Nodes that upgrade
-    # errors=2 - node 7: "failed to sync linear chain" and "fatal error via control announcement"
+    # errors=1 - node 7: "fatal error via control announcement"
     log_step_upgrades 10 "running health checks"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='2' \
+            errors='1' \
             equivocators='0' \
             doppels='0' \
             crashes=0 \
