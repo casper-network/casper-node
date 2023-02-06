@@ -52,7 +52,7 @@ function main() {
     # 13. Reset node 1 to sync from scratch.
     do_reset_node_1
     # 14. Wait until node 1 syncs back to genesis.
-    do_await_node_1_historical_sync
+    await_node_historical_sync_to_genesis '1' "$SYNC_TIMEOUT_SEC"
     # 15. Run Health Checks
     # ... restarts=16: due to nodes being stopped and started; node 1 3 times, nodes 2-5 2 times,
     # ................ node 6-10 1 time
@@ -195,24 +195,6 @@ function do_reset_node_1() {
     # use node 7 for the latest block hash
     TRUSTED_HASH=$(get_chain_latest_block_hash "7")
     do_node_start "1" "$TRUSTED_HASH"
-}
-
-function do_await_node_1_historical_sync() {
-    log_step "awaiting node 1 to do historical sync to genesis"
-    local WAIT_TIME_SEC=0
-    local LOWEST="$(get_node_lowest_available_block '1')"
-    local HIGHEST="$(get_node_highest_available_block '1')"
-    while [[ "$LOWEST" != "0" || "$HIGHEST" == "0" ]]; do
-        log "node 1 lowest available block: $LOWEST, highest available block: $HIGHEST"
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: node 1 failed to do historical sync in ${SYNC_TIMEOUT_SEC} seconds"
-            exit 1
-        fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        sleep 1.0
-        LOWEST="$(get_node_lowest_available_block '1')"
-        HIGHEST="$(get_node_highest_available_block '1')"
-    done
 }
 
 function dispatch_native() {
