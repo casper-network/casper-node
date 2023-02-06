@@ -304,9 +304,9 @@ mod specimen_support {
             SyncLeap {
                 trusted_ancestor_only: LargestSpecimen::largest_specimen(estimator),
                 trusted_block_header: LargestSpecimen::largest_specimen(estimator),
-                // Will at most contain as many blocks as a single era. And how many blocks can there
-                // be in an era is determined by the chainspec: it's the maximum of minimum_era_height
-                // and era_duration / minimum_block_time
+                // Will at most contain as many blocks as a single era. And how many blocks can
+                // there be in an era is determined by the chainspec: it's the
+                // maximum of minimum_era_height and era_duration / minimum_block_time
                 trusted_ancestor_headers: vec_of_largest_specimen(
                     estimator,
                     estimator_max_rounds_per_era(estimator),

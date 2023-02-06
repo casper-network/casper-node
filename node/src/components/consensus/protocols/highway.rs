@@ -1094,9 +1094,10 @@ where
 /// Maximum possible rounds in one era.
 ///
 /// It is the maximum of:
-/// - The era duration divided by the minimum round length,
-///   that is the maximum number of blocks that can fit within the duration of one era,
-/// - The minimum era height, which is the minimum number of blocks for an era to be considered complete.
+/// - The era duration divided by the minimum round length, that is the maximum number of blocks
+///   that can fit within the duration of one era,
+/// - The minimum era height, which is the minimum number of blocks for an era to be considered
+///   complete.
 pub fn max_rounds_per_era(
     minimum_era_height: u64,
     era_duration: TimeDiff,
