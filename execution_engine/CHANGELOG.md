@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## [Unreleased]
+
+### Changed
+
+* Implement more precise control over opcode costs that lowers the gas cost.
+
+
+
 ## 2.0.1
 
 ### Security
