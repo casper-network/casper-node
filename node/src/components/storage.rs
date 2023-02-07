@@ -1621,14 +1621,6 @@ impl Storage {
         if !(self.should_return_block(height, true)?) {
             return Ok(None);
         }
-        if !self
-            .completed_blocks
-            .sequences()
-            .iter()
-            .any(|sequence| sequence.low() <= height && height <= sequence.high())
-        {
-            return Ok(None);
-        }
         res
     }
 
