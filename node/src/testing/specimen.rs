@@ -18,7 +18,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::Bytes,
-    crypto::{PublicKey, PublicKeyDiscriminants, Signature},
+    crypto::{sign, PublicKey, PublicKeyDiscriminants, Signature},
     AsymmetricType, ContractHash, ContractPackageHash, EraId, ProtocolVersion, RuntimeArgs,
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
@@ -392,12 +392,13 @@ where
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+        let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
+
         largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| match variant {
             SignatureDiscriminants::System => Signature::system(),
-            SignatureDiscriminants::Ed25519 => Signature::ed25519([0xFFu8; 64])
-                .expect("fixed specimen should be valid Ed25519 signature"),
-            SignatureDiscriminants::Secp256k1 => Signature::secp256k1([0xFFu8; 64])
-                .expect("fixed specimen should be valid Secp256k1 signature"),
+            SignatureDiscriminants::Ed25519 => sign([0_u8], ed25519_sec, &ed25519_sec.into()),
+            SignatureDiscriminants::Secp256k1 => sign([0_u8], secp256k1_sec, &secp256k1_sec.into()),
         })
     }
 }
