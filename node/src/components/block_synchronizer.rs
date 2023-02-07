@@ -14,6 +14,9 @@ mod peer_list;
 mod signature_acquisition;
 mod trie_accumulator;
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 
 use datasize::DataSize;
@@ -66,11 +69,15 @@ pub(crate) use execution_results_acquisition::ExecutionResultsChecksum;
 use global_state_synchronizer::GlobalStateSynchronizer;
 pub(crate) use global_state_synchronizer::{
     Error as GlobalStateSynchronizerError, Event as GlobalStateSynchronizerEvent,
+    Response as GlobalStateSynchronizerResponse,
 };
 use metrics::Metrics;
 pub(crate) use need_next::NeedNext;
 use trie_accumulator::TrieAccumulator;
-pub(crate) use trie_accumulator::{Error as TrieAccumulatorError, Event as TrieAccumulatorEvent};
+pub(crate) use trie_accumulator::{
+    Error as TrieAccumulatorError, Event as TrieAccumulatorEvent,
+    Response as TrieAccumulatorResponse,
+};
 
 static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
     BlockSynchronizerStatus::new(
@@ -894,21 +901,43 @@ impl BlockSynchronizer {
     fn global_state_synced(
         &mut self,
         block_hash: BlockHash,
-        result: Result<Digest, GlobalStateSynchronizerError>,
+        result: Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>,
     ) {
-        let root_hash = match result {
-            Ok(hash) => hash,
+        let (maybe_root_hash, unreliable_peers) = match result {
+            Ok(response) => (Some(*response.hash()), response.unreliable_peers()),
             Err(error) => {
                 debug!(%error, "BlockSynchronizer: failed to sync global state");
-                return;
+                match error {
+                    GlobalStateSynchronizerError::TrieAccumulator(unreliable_peers)
+                    | GlobalStateSynchronizerError::PutTrie(_, unreliable_peers) => {
+                        (None, unreliable_peers)
+                    }
+                    GlobalStateSynchronizerError::NoPeersAvailable(_) => {
+                        // This should never happen. Before creating a sync request,
+                        // the block synchronizer will request another set of peers
+                        // (both random and from the accumulator).
+                        debug!(
+                            "BlockSynchronizer: global state sync request was issued with no peers"
+                        );
+                        (None, Vec::new())
+                    }
+                }
             }
         };
 
         if let Some(builder) = &mut self.historical {
             if builder.block_hash() != block_hash {
-                debug!(%block_hash, "BlockSynchronizer: not currently synchronising block");
-            } else if let Err(error) = builder.register_global_state(root_hash) {
-                error!(%block_hash, %error, "BlockSynchronizer: failed to apply global state");
+                debug!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+            } else {
+                if let Some(root_hash) = maybe_root_hash {
+                    if let Err(error) = builder.register_global_state(root_hash) {
+                        error!(%block_hash, %error, "BlockSynchronizer: failed to apply global state");
+                    }
+                }
+                // Demote all the peers where we didn't find the required global state tries
+                for peer in unreliable_peers.iter() {
+                    builder.demote_peer(Some(*peer));
+                }
             }
         }
     }
