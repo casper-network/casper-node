@@ -1621,12 +1621,11 @@ impl Storage {
         if !(self.should_return_block(height, true)?) {
             return Ok(None);
         }
-        if self
+        if !self
             .completed_blocks
             .sequences()
             .iter()
-            .find(|sequence| sequence.low() <= height && height <= sequence.high())
-            .is_none()
+            .any(|sequence| sequence.low() <= height && height <= sequence.high())
         {
             return Ok(None);
         }
