@@ -102,7 +102,7 @@ pub(crate) use reactor_state::ReactorState;
 ///
 ///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
 ///     linkStyle 0 fill:none,stroke:red,color:red
-///     
+///
 ///     A -->|"Execute block<br/>(genesis or upgrade)"| B
 ///
 ///     G -->|Peers| C
@@ -233,7 +233,6 @@ impl reactor::Reactor for MainReactor {
         let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
         let storage = Storage::new(
             &storage_config,
-            chainspec.core_config.finality_threshold_fraction,
             hard_reset_to_start_of_era,
             protocol_version,
             &chainspec.network_config.name,

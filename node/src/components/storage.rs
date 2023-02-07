@@ -60,7 +60,6 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
-use num_rational::Ratio;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -99,7 +98,7 @@ use crate::{
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
         FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
-    utils::{self, display_error, WithDir},
+    utils::{display_error, WithDir},
     NodeRng,
 };
 use disjoint_sequences::{DisjointSequences, Sequence};
@@ -210,8 +209,6 @@ pub struct Storage {
     /// The number of eras relative to the highest block's era which are considered as recent for
     /// the purpose of deciding how to respond to a `NetRequest::SyncLeap`.
     recent_era_count: u64,
-    #[data_size(skip)]
-    fault_tolerance_fraction: Ratio<u64>,
     #[data_size(skip)]
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
@@ -327,7 +324,6 @@ impl Storage {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
-        fault_tolerance_fraction: Ratio<u64>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
@@ -484,7 +480,6 @@ impl Storage {
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
-            fault_tolerance_fraction,
             max_ttl,
             metrics,
         };
@@ -1898,8 +1893,8 @@ impl Storage {
         Ok(Some(block_header))
     }
 
-    /// Returns block headers of the trusted block's ancestors, back to the most recent switch
-    /// block.
+    /// Returns headers of complete blocks of the trusted block's ancestors, back to the most
+    /// recent switch block.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1908,6 +1903,7 @@ impl Storage {
         if trusted_block_header.is_genesis() {
             return Ok(Some(vec![]));
         }
+        let available_block_range = self.get_available_block_range();
         let mut result = vec![];
         let mut current_trusted_block_header = trusted_block_header.clone();
         loop {
@@ -1916,10 +1912,15 @@ impl Storage {
                 match txn.get_value(self.block_header_db, &parent_hash)? {
                     Some(block_header) => block_header,
                     None => {
-                        warn!(?parent_hash, "block header not found");
+                        warn!(%parent_hash, "block header not found");
                         return Ok(None);
                     }
                 };
+
+            if !available_block_range.contains(parent_block_header.height()) {
+                debug!(%parent_hash, "block header not complete");
+                return Ok(None);
+            }
 
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() || parent_block_header.is_genesis() {
@@ -1937,7 +1938,6 @@ impl Storage {
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
         highest_signed_block_header: &BlockHeaderWithMetadata,
-        mut switch_block: BlockHeader,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
         if trusted_block_header.block_hash()
             == highest_signed_block_header.block_header.block_hash()
@@ -1956,44 +1956,12 @@ impl Storage {
                 None => return Ok(None),
             };
 
-            let block = match self.get_single_block_header_with_metadata(txn, hash)? {
-                Some(block) => block,
+            match self.get_single_block_header_with_metadata(txn, hash)? {
+                Some(block) => result.push(block),
                 None => return Ok(None),
-            };
-
-            let next_era_validator_weights = match switch_block.next_era_validator_weights() {
-                Some(next_era_validator_weights) => next_era_validator_weights,
-                None => return Ok(None),
-            };
-
-            if utils::check_sufficient_block_signatures(
-                next_era_validator_weights,
-                self.fault_tolerance_fraction,
-                Some(&block.block_signatures),
-            )
-            .is_ok()
-            {
-                switch_block = block.block_header.clone();
-                result.push(block);
-            } else {
-                return Ok(Some(result));
             }
         }
-
-        let next_era_validator_weights = match switch_block.next_era_validator_weights() {
-            Some(next_era_validator_weights) => next_era_validator_weights,
-            None => return Ok(None),
-        };
-
-        if utils::check_sufficient_block_signatures(
-            next_era_validator_weights,
-            self.fault_tolerance_fraction,
-            Some(&highest_signed_block_header.block_signatures),
-        )
-        .is_ok()
-        {
-            result.push(highest_signed_block_header.clone());
-        }
+        result.push(highest_signed_block_header.clone());
 
         Ok(Some(result))
     }
@@ -2313,18 +2281,20 @@ impl Storage {
         &self,
         sync_leap_identifier: SyncLeapIdentifier,
     ) -> Result<FetchResponse<SyncLeap, SyncLeapIdentifier>, FatalStorageError> {
-        let mut txn = self
-            .env
-            .begin_ro_txn()
-            .expect("could not create RO transaction");
-
         let block_hash = sync_leap_identifier.block_hash();
-        let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
+
+        let mut txn = self.env.begin_ro_txn()?;
+
+        let only_from_available_block_range = true;
+        let trusted_block_header = match self.get_single_block_header_restricted(
+            &mut txn,
+            &block_hash,
+            only_from_available_block_range,
+        )? {
             Some(trusted_block_header) => trusted_block_header,
             None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
         };
 
-        let trusted_ancestors_only = sync_leap_identifier.trusted_ancestor_only();
         let trusted_ancestor_headers =
             match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
@@ -2332,7 +2302,7 @@ impl Storage {
             };
 
         // highest block and signatures are not requested
-        if trusted_ancestors_only {
+        if sync_leap_identifier.trusted_ancestor_only() {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: true,
                 trusted_block_header,
@@ -2365,14 +2335,12 @@ impl Storage {
             }));
         }
 
+        // The `highest_complete_block_header` and `trusted_block_header` are both within the
+        // highest complete block range, thus so are all the switch blocks between them.
         if let Some(signed_block_headers) = self.get_signed_block_headers(
             &mut txn,
             &trusted_block_header,
             &highest_complete_block_header,
-            trusted_ancestor_headers
-                .last()
-                .cloned()
-                .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: false,

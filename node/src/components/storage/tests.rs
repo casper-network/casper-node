@@ -8,7 +8,6 @@ use std::{
     sync::Arc,
 };
 
-use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
@@ -92,7 +91,6 @@ fn create_sync_leap_test_chain(
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture_from_parts(
         &harness,
-        None,
         None,
         Some(chainspec.protocol_version()),
         None,
@@ -179,7 +177,6 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
@@ -200,7 +197,6 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture_from_parts(
     harness: &ComponentHarness<UnitTestEvent>,
-    fault_tolerance_fraction: Option<Ratio<u64>>,
     hard_reset_to_start_of_era: Option<EraId>,
     protocol_version: Option<ProtocolVersion>,
     network_name: Option<&str>,
@@ -210,7 +206,6 @@ fn storage_fixture_from_parts(
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        fault_tolerance_fraction.unwrap_or_else(|| Ratio::new(1, 3)),
         hard_reset_to_start_of_era,
         protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
         network_name.unwrap_or("test"),
@@ -232,7 +227,6 @@ fn storage_fixture_from_parts(
 fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
     Storage::new(
         cfg,
-        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
@@ -257,7 +251,6 @@ fn storage_fixture_with_hard_reset(
 ) -> Storage {
     storage_fixture_from_parts(
         harness,
-        None,
         Some(reset_era_id),
         Some(ProtocolVersion::from_parts(1, 1, 0)),
         None,
@@ -1233,7 +1226,6 @@ fn should_create_subdir_named_after_network() {
     let network_name = "test";
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
-        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
@@ -1402,25 +1394,18 @@ fn should_get_trusted_ancestor_headers() {
 fn should_get_signed_block_headers() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
-    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
             .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
-        let previous_switch_block_header = storage
-            .get_block_by_height(&mut txn, previous_switch_block as u64)
-            .unwrap()
-            .unwrap()
-            .header()
-            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1430,19 +1415,19 @@ fn should_get_signed_block_headers() {
     };
 
     assert!(
-        get_results(12, 10).is_empty(),
+        get_results(12).is_empty(),
         "should return empty set if asked for a most recent signed block"
     );
-    assert_eq!(get_results(5, 4), &[7, 10, 12]);
-    assert_eq!(get_results(2, 1), &[4, 7, 10, 12]);
-    assert_eq!(get_results(1, 0), &[4, 7, 10, 12]);
+    assert_eq!(get_results(5), &[7, 10, 12]);
+    assert_eq!(get_results(2), &[4, 7, 10, 12]);
+    assert_eq!(get_results(1), &[4, 7, 10, 12]);
     assert_eq!(
-        get_results(10, 7),
+        get_results(10),
         &[12],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(7, 4),
+        get_results(7),
         &[10, 12],
         "should not include switch block that was directly requested"
     );
@@ -1452,7 +1437,7 @@ fn should_get_signed_block_headers() {
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[12], false, None);
 
-    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
@@ -1460,18 +1445,11 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .unwrap()
             .unwrap();
 
-        let previous_switch_block_header = storage
-            .get_block_by_height(&mut txn, previous_switch_block as u64)
-            .unwrap()
-            .unwrap()
-            .header()
-            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1481,19 +1459,19 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
     };
 
     assert!(
-        get_results(11, 10).is_empty(),
+        get_results(11).is_empty(),
         "should return empty set if asked for a most recent signed block",
     );
-    assert_eq!(get_results(5, 4), &[7, 10, 11]);
-    assert_eq!(get_results(2, 1), &[4, 7, 10, 11]);
-    assert_eq!(get_results(1, 0), &[4, 7, 10, 11]);
+    assert_eq!(get_results(5), &[7, 10, 11]);
+    assert_eq!(get_results(2), &[4, 7, 10, 11]);
+    assert_eq!(get_results(1), &[4, 7, 10, 11]);
     assert_eq!(
-        get_results(10, 7),
+        get_results(10),
         &[11],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(7, 4),
+        get_results(7),
         &[10, 11],
         "should not include switch block that was directly requested"
     );
