@@ -194,11 +194,21 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         transform.insert(
             "WriteWithdraw".to_string(),
             ABITestCase::from_inputs(vec![Transform::WriteWithdraw(vec![
+                withdraw_purse_1.clone(),
+                withdraw_purse_2.clone(),
+            ])
+            .into()])?,
+        );
+
+        transform.insert(
+            "WriteUnbonding".to_string(),
+            ABITestCase::from_inputs(vec![Transform::WriteUnbonding(vec![
                 unbonding_purse_1.clone(),
                 unbonding_purse_2.clone(),
             ])
             .into()])?,
         );
+
         transform.insert(
             "AddInt32".to_string(),
             ABITestCase::from_inputs(vec![Transform::AddInt32(i32::MAX).into()])?,
