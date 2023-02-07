@@ -171,8 +171,9 @@ use requests::{
     UpgradeWatcherRequest,
 };
 
-use self::requests::{
-    ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest,
+use self::{
+    announcements::UnexecutedBlockAnnouncement,
+    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest},
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1797,6 +1798,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
+            .await
+    }
+
+    /// Announces that a finalized block has been created, but it was not
+    /// executed.
+    pub(crate) async fn announce_unexecuted_block(self, block_height: u64)
+    where
+        REv: From<UnexecutedBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                UnexecutedBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
             .await
     }
 

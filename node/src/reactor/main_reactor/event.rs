@@ -19,7 +19,8 @@ use crate::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FatalAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            PeerBehaviorAnnouncement, RpcServerAnnouncement, UnexecutedBlockAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -226,6 +227,8 @@ pub(crate) enum MainEvent {
     MainReactorRequest(ReactorStatusRequest),
     #[from]
     MetaBlockAnnouncement(MetaBlockAnnouncement),
+    #[from]
+    UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
 
     // Event related to figuring out validators for immediate switch blocks.
     GotImmediateSwitchBlockEraValidators(EraId, EraValidators, EraValidators),
@@ -336,6 +339,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::MainReactorRequest(_) => "MainReactorRequest",
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
             MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
+            MainEvent::UnexecutedBlockAnnouncement(_) => "UnexecutedBlockAnnouncement",
             MainEvent::GotImmediateSwitchBlockEraValidators(_, _, _) => {
                 "GotImmediateSwitchBlockEraValidators"
             }
@@ -513,6 +517,7 @@ impl Display for MainEvent {
             MainEvent::MainReactorRequest(inner) => Display::fmt(inner, f),
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
             MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
+            MainEvent::UnexecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::GotImmediateSwitchBlockEraValidators(era_id, _, _) => {
                 write!(
                     f,
