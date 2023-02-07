@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
+
 pub(crate) mod config;
 mod participation;
 mod round_success_meter;

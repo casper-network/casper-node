@@ -32,6 +32,7 @@ use crate::{
         fetcher::Tag,
     },
     protocol::Message,
+    testing::TestRng,
     types::{
         Approval, ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
         BlockHeader, BlockPayload, Deploy, DeployHashWithApprovals, DeployId, FinalitySignature,
@@ -106,17 +107,11 @@ where
     T: Serialize,
     D: IntoEnumIterator,
     E: SizeEstimator,
-    F: Fn(D) -> T,
+    F: FnMut(D) -> T,
 {
-    let mut candidates = vec![];
-    for variant in D::iter() {
-        candidates.push(generator(variant))
-    }
-    candidates.sort_by_key(|candidate| estimator.estimate(candidate));
-
-    candidates
-        .into_iter()
-        .next()
+    D::iter()
+        .map(generator)
+        .max_by_key(|candidate| estimator.estimate(candidate))
         .expect("should have at least one candidate")
 }
 
@@ -359,27 +354,17 @@ impl LargestSpecimen for SemVer {
 
 impl LargestSpecimen for PublicKey {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        public_key_from_key_bytes(estimator, [0xFFu8; 32])
+        largest_random_public_key(estimator, &mut TestRng::new())
     }
 }
 
-fn key_bytes_from_random_value(seed: u128) -> [u8; 32] {
-    let bytes = seed.to_ne_bytes();
-    [
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
-        bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15], bytes[0],
-        bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9],
-        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
-    ]
-}
-
-fn public_key_from_key_bytes<E: SizeEstimator>(estimator: &E, pub_key: [u8; 32]) -> PublicKey {
-    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, |variant| match variant {
-        PublicKeyDiscriminants::System => PublicKey::system(),
-        PublicKeyDiscriminants::Ed25519 => PublicKey::ed25519_from_bytes(&pub_key)
-            .expect("fixed specimen should be valid Ed25519 public key"),
-        PublicKeyDiscriminants::Secp256k1 => PublicKey::secp256k1_from_bytes(&pub_key)
-            .expect("fixed specimen should be valid Secp256k1 public key"),
+fn largest_random_public_key<E: SizeEstimator>(estimator: &E, rng: &mut TestRng) -> PublicKey {
+    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, move |variant| {
+        match variant {
+            PublicKeyDiscriminants::System => PublicKey::system(),
+            PublicKeyDiscriminants::Ed25519 => PublicKey::random_ed25519(rng),
+            PublicKeyDiscriminants::Secp256k1 => PublicKey::random_secp256k1(rng),
+        }
     })
 }
 
@@ -388,11 +373,10 @@ where
     E: SizeEstimator,
 {
     fn large_unique_sequence(estimator: &E, count: usize) -> BTreeSet<Self> {
-        (0..u128::MAX)
-            .rev()
-            .map(key_bytes_from_random_value)
-            .map(|bytes| public_key_from_key_bytes(estimator, bytes))
-            .take(count)
+        let mut rng = TestRng::new();
+
+        (0..count)
+            .map(move |_| largest_random_public_key(estimator, &mut rng))
             .collect()
     }
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
+
 use std::{collections::BTreeSet, fmt::Debug};
 
 use datasize::DataSize;

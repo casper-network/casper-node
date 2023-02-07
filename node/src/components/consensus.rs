@@ -1,6 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 #![warn(clippy::integer_arithmetic)]
+#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
 
 mod cl_context;
 mod config;
