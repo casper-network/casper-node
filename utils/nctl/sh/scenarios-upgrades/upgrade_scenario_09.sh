@@ -56,8 +56,8 @@ function _main()
     POST_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_05
-    # step 6 - start node 6 with trusted hash withing the allowed range
-    log_step_upgrades 6 "awaiting 1 eras to start node 6"
+    # step 6 - start node 6 with trusted hash within the allowed range
+    log_step_upgrades 6 "awaiting 1 era to start node 6"
     nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='300' node_id='2'
     _stage_node_with_trusted_hash "6" "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_BLOCK_HASH" 6
     # step 7 - start node 7 with a trusted hash that is too old
