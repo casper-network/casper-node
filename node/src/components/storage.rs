@@ -1603,8 +1603,8 @@ impl Storage {
             .transpose()
     }
 
-    /// Retrieves a single complete block header by height by looking it up in
-    /// the index and returning it.
+    /// Retrieves a single block header by height from the available block
+    /// range by looking it up in the index and returning it.
     pub fn read_complete_block_header_by_height(
         &self,
         height: u64,
