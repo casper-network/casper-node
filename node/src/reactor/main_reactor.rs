@@ -475,11 +475,10 @@ impl reactor::Reactor for MainReactor {
                     // era by enqueuing all finalized blocks starting from the
                     // first one in that era, blocks which should have already
                     // been executed and marked complete in storage.
-                    warn!(
-                        "Finalized block with height {} enqueued for execution, \
-                        but a complete block header with the same height is \
-                        not present in storage.",
-                        block_height
+                    error!(
+                        block_height,
+                        "Finalized block enqueued for execution, but a complete \
+                        block header with the same height is not present in storage."
                     );
                     Effects::new()
                 }
