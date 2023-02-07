@@ -132,7 +132,8 @@ use casper_types::{
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
+            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
+            TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
@@ -1127,6 +1128,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_block_stored(self, block_hash: BlockHash) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsBlockStored {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested `ApprovalsHashes` from storage.
     pub(crate) async fn get_approvals_hashes_from_storage(
         self,
@@ -1349,7 +1364,7 @@ impl<REv> EffectBuilder<REv> {
         block_hash: BlockHash,
         state_root_hash: Digest,
         peers: HashSet<NodeId>,
-    ) -> Result<Digest, GlobalStateSynchronizerError>
+    ) -> Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>
     where
         REv: From<SyncGlobalStateRequest>,
     {
@@ -1512,6 +1527,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_deploy_stored(self, deploy_id: DeployId) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsDeployStored {
+                deploy_id,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Stores the given execution results for the deploys in the given block in the linear block
     /// store.
     pub(crate) async fn put_execution_results_to_storage(
@@ -1588,6 +1617,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_finality_signature_stored(self, id: FinalitySignatureId) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsFinalitySignatureStored {
+                id: Box::new(id),
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested block by hash with its associated metadata.
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
@@ -1649,7 +1692,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         hash: Digest,
         peers: Vec<NodeId>,
-    ) -> Result<Box<TrieRaw>, TrieAccumulatorError>
+    ) -> Result<TrieAccumulatorResponse, TrieAccumulatorError>
     where
         REv: From<TrieAccumulatorRequest>,
     {

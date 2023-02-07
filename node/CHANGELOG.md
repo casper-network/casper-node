@@ -51,6 +51,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `strict_argument_checking` to the chainspec to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 * A diagnostics port can now be enabled via the `[diagnostics_port]` config section. See the `README.md` for details.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
+* Add `validate_and_store_timeout` config option under `[gossip]` section to control the time the gossiper waits for another component to validate and store an item received via gossip.
 * Add metrics:
   * `block_accumulator_block_acceptors`, `block_accumulator_known_child_blocks` to report status of the block accumulator component
   * `(forward|historical)_block_sync_duration_seconds` to report the progress of block synchronization

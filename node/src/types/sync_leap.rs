@@ -41,7 +41,9 @@ pub(crate) enum SyncLeapValidationError {
     TrustedAncestorsNotSorted,
     #[error("Last trusted ancestor is not a switch block.")]
     MissingAncestorSwitchBlock,
-    #[error("Only the last trusted ancestor is allowed to be a switch block.")]
+    #[error(
+        "Only the last trusted ancestor is allowed to be a switch block or the genesis block."
+    )]
     UnexpectedAncestorSwitchBlock,
     #[error("Signed block headers present despite trusted_ancestor_only flag.")]
     UnexpectedSignedBlockHeaders,
@@ -222,7 +224,7 @@ impl FetchItem for SyncLeap {
         }
         let mut trusted_ancestor_iter = self.trusted_ancestor_headers.iter().rev();
         if let Some(last_ancestor) = trusted_ancestor_iter.next() {
-            if !last_ancestor.is_switch_block() {
+            if !last_ancestor.is_switch_block() && !last_ancestor.is_genesis() {
                 return Err(SyncLeapValidationError::MissingAncestorSwitchBlock);
             }
         }

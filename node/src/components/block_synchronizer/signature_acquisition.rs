@@ -53,14 +53,19 @@ impl SignatureAcquisition {
         finality_signature: FinalitySignature,
         validator_weights: &EraValidatorWeights,
     ) -> Acceptance {
-        let acceptance = match self.inner.insert(
-            finality_signature.public_key.clone(),
-            SignatureState::Signature(Box::new(finality_signature)),
-        ) {
-            Some(_) => Acceptance::HadIt,
-            None => Acceptance::NeededIt,
+        let acceptance = match self.inner.entry(finality_signature.public_key.clone()) {
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(SignatureState::Signature(Box::new(finality_signature)));
+                Acceptance::NeededIt
+            }
+            Entry::Occupied(mut occupied_entry) => match *occupied_entry.get() {
+                SignatureState::Vacant | SignatureState::Pending => {
+                    occupied_entry.insert(SignatureState::Signature(Box::new(finality_signature)));
+                    Acceptance::NeededIt
+                }
+                SignatureState::Signature(_) => Acceptance::HadIt,
+            },
         };
-
         if self.signature_weight != SignatureWeight::Strict {
             self.signature_weight = validator_weights.signature_weight(self.have_signatures());
         }
