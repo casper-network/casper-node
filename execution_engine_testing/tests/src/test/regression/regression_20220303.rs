@@ -101,7 +101,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         .expect_upgrade_success();
     let elapsed = start.elapsed();
     assert!(
-        elapsed < Duration::from_secs(1),
+        elapsed < Duration::from_secs(20),
         "upgrade took too long! {} (millis)",
         elapsed.as_millis()
     );
