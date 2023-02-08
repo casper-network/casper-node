@@ -81,7 +81,6 @@ All notable changes to this project will be documented in this file.  The format
 * JSON-RPC responses which fail to provide requested data will now also include an indication of that node's available block range, i.e. the block heights for which it holds all global state.  See [#2789](https://github.com/casper-network/casper-node/pull/2789) for an example of the new error response.
 * Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
 * `Key::SystemContractRegistry` is now readable and can be queried via the `query_global_state` JSON-RPC.
-* OpenSSL has been bumped to version 1.1.1.q, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 * Unify log messages for blocked nodes and provide more detailed reasons for blocking peers.
 * Rename `current_era` metric to `consensus_current_era`.
 
@@ -108,7 +107,7 @@ All notable changes to this project will be documented in this file.  The format
 * JSON-RPC server is now mostly compliant with the standard. Specifically, correct error values are now returned in responses in many failure cases.
 
 ### Security
-* OpenSSL has been bumped to version 1.1.1.q, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
+* OpenSSL has been bumped to version 1.1.1.t, if compiling with vendored OpenSSL to address [RUSTSEC-2022-0014](https://rustsec.org/advisories/RUSTSEC-2022-0014), [RUSTSEC-2023-0006](https://rustsec.org/advisories/RUSTSEC-2023-0006), [RUSTSEC-2023-0007](https://rustsec.org/advisories/RUSTSEC-2023-0007), [RUSTSEC-2023-0009](https://rustsec.org/advisories/RUSTSEC-2023-0009) and [RUSTSEC-2023-0010](https://rustsec.org/advisories/RUSTSEC-2023-0010).
 
 
 
