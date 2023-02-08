@@ -130,6 +130,19 @@ impl Display for MetaBlockAnnouncement {
     }
 }
 
+#[derive(DataSize, Serialize, Debug)]
+pub(crate) struct UnexecutedBlockAnnouncement(pub(crate) u64);
+
+impl Display for UnexecutedBlockAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "announcement for unexecuted finalized block at height {}",
+            self.0,
+        )
+    }
+}
+
 /// Queue dump format with handler.
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {

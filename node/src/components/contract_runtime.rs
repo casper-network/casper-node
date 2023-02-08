@@ -42,7 +42,10 @@ use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
+        announcements::{
+            ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
+            UnexecutedBlockAnnouncement,
+        },
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -217,6 +220,7 @@ where
         + From<NetworkRequest<Message>>
         + From<StorageRequest>
         + From<MetaBlockAnnouncement>
+        + From<UnexecutedBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send,
 {
@@ -324,6 +328,7 @@ impl ContractRuntime {
             + From<ContractRuntimeAnnouncement>
             + From<StorageRequest>
             + From<MetaBlockAnnouncement>
+            + From<UnexecutedBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -452,13 +457,19 @@ impl ContractRuntime {
             } => {
                 let mut effects = Effects::new();
                 let exec_queue = Arc::clone(&self.exec_queue);
-                let next_block_height = self.execution_pre_state.lock().unwrap().next_block_height;
                 let finalized_block_height = finalized_block.height();
+                let current_pre_state = self.execution_pre_state.lock().unwrap();
+                let next_block_height = current_pre_state.next_block_height;
                 match finalized_block_height.cmp(&next_block_height) {
                     Ordering::Less => {
                         debug!(
                             "ContractRuntime: finalized block({}) precedes expected next block({})",
                             finalized_block_height, next_block_height
+                        );
+                        effects.extend(
+                            effect_builder
+                                .announce_unexecuted_block(finalized_block_height)
+                                .ignore(),
                         );
                     }
                     Ordering::Equal => {
@@ -470,13 +481,14 @@ impl ContractRuntime {
                         let protocol_version = self.protocol_version;
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
-                        let execution_pre_state = Arc::clone(&self.execution_pre_state);
+                        let shared_pre_state = Arc::clone(&self.execution_pre_state);
                         effects.extend(
                             Self::execute_finalized_block_or_requeue(
                                 engine_state,
                                 metrics,
                                 exec_queue,
-                                execution_pre_state,
+                                shared_pre_state,
+                                current_pre_state.clone(),
                                 effect_builder,
                                 protocol_version,
                                 finalized_block,
@@ -720,7 +732,8 @@ impl ContractRuntime {
         engine_state: Arc<EngineState<LmdbGlobalState>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
-        execution_pre_state: Arc<Mutex<ExecutionPreState>>,
+        shared_pre_state: Arc<Mutex<ExecutionPreState>>,
+        current_pre_state: ExecutionPreState,
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
@@ -735,7 +748,6 @@ impl ContractRuntime {
             + Send,
     {
         debug!("ContractRuntime: execute_finalized_block_or_requeue");
-        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
         let contract_runtime_metrics = metrics.clone();
         let BlockAndExecutionResults {
             block,
@@ -748,7 +760,7 @@ impl ContractRuntime {
                 engine_state.as_ref(),
                 Some(contract_runtime_metrics),
                 protocol_version,
-                current_execution_pre_state,
+                current_pre_state,
                 finalized_block,
                 deploys,
             )
@@ -764,7 +776,7 @@ impl ContractRuntime {
             next_block_height = new_execution_pre_state.next_block_height,
             "ContractRuntime: updating new_execution_pre_state",
         );
-        *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
+        *shared_pre_state.lock().unwrap() = new_execution_pre_state.clone();
         debug!("ContractRuntime: updated new_execution_pre_state");
 
         let current_era_id = block.header().era_id();

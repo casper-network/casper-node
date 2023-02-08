@@ -176,7 +176,7 @@ where
     }
 
     /// Crank the specified runner once.
-    async fn crank(&mut self, node_id: &NodeId, rng: &mut TestRng) -> TryCrankOutcome {
+    pub(crate) async fn crank(&mut self, node_id: &NodeId, rng: &mut TestRng) -> TryCrankOutcome {
         let runner = self.nodes.get_mut(node_id).expect("should find node");
         let node_id = runner.reactor().node_id();
         let span = self.spans.get(&node_id).expect("should find span");
@@ -257,6 +257,69 @@ where
         }
 
         event_count
+    }
+
+    /// Crank all runners until `condition` is true on the specified runner or until `within` has
+    /// elapsed.
+    ///
+    /// Returns `true` if `condition` has been met within the specified timeout.
+    ///
+    /// Panics if cranking causes the node to return an exit code.
+    pub(crate) async fn crank_all_until<F>(
+        &mut self,
+        node_id: &NodeId,
+        rng: &mut TestRng,
+        condition: F,
+        within: Duration,
+    ) where
+        F: Fn(&R::Event) -> bool + Send + 'static,
+    {
+        self.nodes
+            .get_mut(node_id)
+            .unwrap()
+            .reactor_mut()
+            .set_condition_checker(Box::new(condition));
+
+        time::timeout(within, self.crank_and_check_all_indefinitely(node_id, rng))
+            .await
+            .unwrap()
+    }
+
+    async fn crank_and_check_all_indefinitely(
+        &mut self,
+        node_to_check: &NodeId,
+        rng: &mut TestRng,
+    ) {
+        loop {
+            let mut no_events = true;
+            for node in self.nodes.values_mut() {
+                let node_id = node.reactor().node_id();
+                match node
+                    .try_crank(rng)
+                    .instrument(error_span!("crank", node_id = %node_id))
+                    .await
+                {
+                    TryCrankOutcome::NoEventsToProcess => (),
+                    TryCrankOutcome::ProcessedAnEvent => {
+                        no_events = false;
+                    }
+                    TryCrankOutcome::ShouldExit(exit_code) => {
+                        panic!("should not exit: {:?}", exit_code)
+                    }
+                    TryCrankOutcome::Exited => unreachable!(),
+                }
+                if node_id == *node_to_check && node.reactor().condition_result() {
+                    debug!("{} met condition", node_to_check);
+                    return;
+                }
+            }
+
+            if no_events {
+                Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
+                time::sleep(POLL_INTERVAL).await;
+                continue;
+            }
+        }
     }
 
     /// Process events on all nodes until all event queues are empty for at least `quiet_for`.
@@ -394,6 +457,11 @@ where
     /// Returns the internal map of nodes.
     pub(crate) fn nodes(&self) -> &HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>> {
         &self.nodes
+    }
+
+    /// Returns the internal map of nodes, mutable.
+    pub(crate) fn nodes_mut(&mut self) -> &mut HashMap<NodeId, Runner<ConditionCheckReactor<R>>> {
+        &mut self.nodes
     }
 
     /// Returns an iterator over all runners, mutable.

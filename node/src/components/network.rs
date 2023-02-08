@@ -449,13 +449,13 @@ where
         // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
 
         if peer_ids.len() != count {
-            let connected = self.outgoing_manager.connected_peers().count();
             let not_excluded = self
                 .outgoing_manager
                 .connected_peers()
                 .filter(|peer_id| !exclude.contains(peer_id))
                 .count();
             if not_excluded > 0 {
+                let connected = self.outgoing_manager.connected_peers().count();
                 debug!(
                     our_id=%self.context.our_id(),
                     %gossip_target,
@@ -1598,6 +1598,20 @@ mod gossip_target_tests {
             fixture.num_non_validators(chosen.iter()),
             VALIDATOR_COUNT - 1
         );
+        assert!(exclude.is_disjoint(&chosen));
+
+        // Choose 3 from all peers, exclude all non-validators, should return 3 validators.
+        let exclude: HashSet<_> = fixture.non_validators.iter().copied().collect();
+        let chosen = choose_gossip_peers(
+            &mut rng,
+            TARGET,
+            3,
+            exclude.clone(),
+            fixture.all_peers.iter().copied(),
+            fixture.is_validator_in_era(),
+        );
+        assert_eq!(chosen.len(), 3);
+        assert_eq!(fixture.num_validators(chosen.iter()), 3);
         assert!(exclude.is_disjoint(&chosen));
     }
 

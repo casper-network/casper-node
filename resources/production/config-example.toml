@@ -424,7 +424,7 @@ saturation_limit_percent = 80
 #
 # The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
 # the longer they are retained, the larger the list of finished entries can grow.
-finished_entry_duration = '60sec'
+finished_entry_duration = '1min'
 
 # The timeout duration for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
@@ -434,6 +434,10 @@ gossip_request_timeout = '30sec'
 # The timeout duration for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
 get_remainder_timeout = '5sec'
+
+# The timeout duration for a newly-received, gossiped item to be validated and stored by another
+# component before the gossiper abandons waiting to gossip the item onwards.
+validate_and_store_timeout = '1min'
 
 
 # ===============================================
@@ -445,7 +449,7 @@ get_remainder_timeout = '5sec'
 attempt_execution_threshold = 3
 
 # Accepted time interval for inactivity in block accumulator.
-dead_air_interval = '180sec'
+dead_air_interval = '3min'
 
 # Time after which the block acceptors are considered old and can be purged.
 purge_interval = '1min'
