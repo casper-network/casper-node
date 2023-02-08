@@ -23,6 +23,7 @@ use casper_types::{
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
+use once_cell::sync::OnceCell;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
@@ -399,14 +400,26 @@ where
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
-        let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
+        // TODO: This is not correct, as `E` is not guaranteed to be the same each time, but since we have only one estimator implementation at the moment, this is fine.
+        static LARGEST_SIG: OnceCell<Signature> = OnceCell::new();
+        LARGEST_SIG
+            .get_or_init(|| {
+                let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+                let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
 
-        largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| match variant {
-            SignatureDiscriminants::System => Signature::system(),
-            SignatureDiscriminants::Ed25519 => sign([0_u8], ed25519_sec, &ed25519_sec.into()),
-            SignatureDiscriminants::Secp256k1 => sign([0_u8], secp256k1_sec, &secp256k1_sec.into()),
-        })
+                largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| {
+                    match variant {
+                        SignatureDiscriminants::System => Signature::system(),
+                        SignatureDiscriminants::Ed25519 => {
+                            sign([0_u8], ed25519_sec, &ed25519_sec.into())
+                        }
+                        SignatureDiscriminants::Secp256k1 => {
+                            sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
+                        }
+                    }
+                })
+            })
+            .clone()
     }
 }
 
