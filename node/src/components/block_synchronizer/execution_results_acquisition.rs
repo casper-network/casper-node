@@ -1,7 +1,6 @@
-use core::fmt;
 use std::{
     collections::HashMap,
-    fmt::{Debug, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
 };
 
 use datasize::DataSize;
