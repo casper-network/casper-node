@@ -5,11 +5,11 @@
 
 use core::convert::TryInto;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use casper_execution_engine::core::engine_state::{
@@ -23,7 +23,7 @@ use casper_types::{
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
-use once_cell::sync::OnceCell;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
@@ -77,6 +77,9 @@ pub(crate) trait SizeEstimator {
             )
         })
     }
+
+    /// An identifier for this specific estimator, used for memoization.
+    fn key() -> &'static str;
 }
 
 /// Supports returning a maximum size specimen.
@@ -400,10 +403,14 @@ where
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        // TODO: This is not correct, as `E` is not guaranteed to be the same each time, but since we have only one estimator implementation at the moment, this is fine.
-        static LARGEST_SIG: OnceCell<Signature> = OnceCell::new();
-        LARGEST_SIG
-            .get_or_init(|| {
+        static MEMOIZED: Lazy<Mutex<HashMap<&'static str, Signature>>> =
+            Lazy::new(|| Mutex::new(HashMap::new()));
+
+        MEMOIZED
+            .lock()
+            .expect("memoized signature specimen cache disappeared")
+            .entry(E::key())
+            .or_insert_with(|| {
                 let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
                 let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
 
