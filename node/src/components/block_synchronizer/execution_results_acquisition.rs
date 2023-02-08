@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display, Formatter},
@@ -199,6 +200,36 @@ pub(super) enum ExecutionResultsAcquisition {
     },
 }
 
+impl Display for ExecutionResultsAcquisition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ExecutionResultsAcquisition::Needed { block_hash } => {
+                write!(f, "Needed: {}", block_hash)
+            }
+            ExecutionResultsAcquisition::Pending {
+                block_hash,
+                checksum: _,
+            } => write!(f, "Pending: {}", block_hash),
+            ExecutionResultsAcquisition::Acquiring {
+                block_hash,
+                checksum: _,
+                chunks: _,
+                chunk_count,
+                next,
+            } => write!(
+                f,
+                "Acquiring: {}, chunk_count={}, next={}",
+                block_hash, chunk_count, next
+            ),
+            ExecutionResultsAcquisition::Complete {
+                block_hash,
+                checksum: _,
+                results: _,
+            } => write!(f, "Complete: {}", block_hash),
+        }
+    }
+}
+
 impl ExecutionResultsAcquisition {
     pub(super) fn needs_value_or_chunk(
         &self,
@@ -248,7 +279,7 @@ impl ExecutionResultsAcquisition {
         let block_hash = *block_execution_results_or_chunk.block_hash();
         let value = block_execution_results_or_chunk.into_value();
 
-        debug!(%block_hash, state=?self, "apply_block_execution_results_or_chunk");
+        debug!(%block_hash, state=%self, "apply_block_execution_results_or_chunk");
 
         let expected_block_hash = self.block_hash();
         if expected_block_hash != block_hash {
