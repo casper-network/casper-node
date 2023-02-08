@@ -11,6 +11,15 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## [Unreleased]
+
+### Changed
+
+* Implement more precise control over opcode costs that lowers the gas cost.
+* Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5CSPR.
+
+
+
 ## 2.0.1
 
 ### Security
