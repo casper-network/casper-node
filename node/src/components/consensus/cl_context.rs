@@ -78,3 +78,22 @@ impl Context for ClContext {
         true
     }
 }
+
+#[cfg(test)]
+mod specimen_support {
+    use super::Keypair;
+    use crate::testing::specimen::{LargestSpecimen, SizeEstimator};
+    use casper_types::{PublicKey, SecretKey};
+    use std::sync::Arc;
+
+    impl LargestSpecimen for Keypair {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+            let secret_key = SecretKey::largest_specimen(estimator);
+            let public_key = PublicKey::from(&secret_key);
+            Keypair {
+                secret_key: Arc::new(secret_key),
+                public_key,
+            }
+        }
+    }
+}

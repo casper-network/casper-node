@@ -2361,10 +2361,7 @@ mod specimen_support {
                 LargestSpecimen::largest_specimen(estimator),
                 LargestSpecimen::largest_specimen(estimator),
                 LargestSpecimen::largest_specimen(estimator),
-                &Keypair::new(
-                    Arc::new(LargestSpecimen::largest_specimen(estimator)),
-                    LargestSpecimen::largest_specimen(estimator),
-                ),
+                &LargestSpecimen::largest_specimen(estimator),
             )
         }
     }

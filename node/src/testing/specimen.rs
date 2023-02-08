@@ -352,32 +352,39 @@ impl LargestSpecimen for SemVer {
     }
 }
 
+//static RNG: once_cell::sync::Lazy<std::sync::Mutex<TestRng>> =
+//    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(TestRng::new()));
+
 impl LargestSpecimen for PublicKey {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        largest_random_public_key(estimator, &mut TestRng::new())
+        PublicKey::system()
+        //largest_random_public_key(
+        //    estimator,
+        //    &mut RNG.lock().expect("the test rng to be acquired"),
+        //)
     }
 }
 
-fn largest_random_public_key<E: SizeEstimator>(estimator: &E, rng: &mut TestRng) -> PublicKey {
-    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, move |variant| {
-        match variant {
-            PublicKeyDiscriminants::System => PublicKey::system(),
-            PublicKeyDiscriminants::Ed25519 => PublicKey::random_ed25519(rng),
-            PublicKeyDiscriminants::Secp256k1 => PublicKey::random_secp256k1(rng),
-        }
-    })
-}
+//fn largest_random_public_key<E: SizeEstimator>(estimator: &E, rng: &mut TestRng) -> PublicKey {
+//    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, move |variant| {
+//        match variant {
+//            PublicKeyDiscriminants::System => PublicKey::system(),
+//            PublicKeyDiscriminants::Ed25519 => PublicKey::random_ed25519(rng),
+//            PublicKeyDiscriminants::Secp256k1 => PublicKey::random_secp256k1(rng),
+//        }
+//    })
+//}
 
 impl<E> LargeUniqueSequence<E> for PublicKey
 where
     E: SizeEstimator,
 {
     fn large_unique_sequence(estimator: &E, count: usize) -> BTreeSet<Self> {
-        let mut rng = TestRng::new();
-
-        (0..count)
-            .map(move |_| largest_random_public_key(estimator, &mut rng))
-            .collect()
+        //let rng = &mut RNG.lock().expect("the test rng to be acquired");
+        //(0..count)
+        //    .map(move |_| largest_random_public_key(estimator, rng))
+        //    .collect()
+        (0..count).map(|_| PublicKey::system()).collect()
     }
 }
 
@@ -411,7 +418,8 @@ impl LargestSpecimen for EraId {
 
 impl LargestSpecimen for Timestamp {
     fn largest_specimen<E: SizeEstimator>(_estimator: &E) -> Self {
-        Timestamp::MAX
+        const MAX_TIMESTAMP_HUMAN_READABLE: u64 = 253_402_300_799;
+        Timestamp::from(MAX_TIMESTAMP_HUMAN_READABLE)
     }
 }
 

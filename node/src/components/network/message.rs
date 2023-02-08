@@ -520,6 +520,11 @@ mod tests {
                 "module_bytes" => Some(1_048_576),
                 // chainspec: block_max_deploy_count and block_max_transfer_count:
                 "approvals_hashes" => Some(50 + 1250),
+                // chainspec: block_max_deploy_count
+                "max_deploys_per_block" => Some(50),
+                // chainspec: block_max_transfer_count
+                "max_transfers_per_block" => Some(1250),
+                "max_accusations_per_block" => Some(1),
                 "max_pointer_per_node" => Some(255),
                 _ => None,
             }
