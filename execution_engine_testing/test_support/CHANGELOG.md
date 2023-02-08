@@ -11,11 +11,17 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 2.3.0
+
+### Added
+* Add `ChainspecConfig` to support parsing a chainspec.
+
+
+
 ## 2.2.0
 
 ### Added
 * Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
-
 
 ### Deprecated
 * Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
