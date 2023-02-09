@@ -56,14 +56,8 @@ function _main()
     POST_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_05
-    # step 6 - start node 6 with trusted hash within the allowed range
-    log_step_upgrades 6 "awaiting 1 era to start node 6"
-    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='300' node_id='2'
-    _stage_node_with_trusted_hash "6" "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_BLOCK_HASH" 6
-    # step 7 - start node 7 with a trusted hash that is too old
-    log_step_upgrades 7 "awaiting 5 eras for pre-upgrade block hash to become too old"
-    nctl-await-n-eras offset='5' sleep_interval='5.0' timeout='300' node_id='2'
-    _stage_node_with_trusted_hash "7" "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_BLOCK_HASH" 7
+    _step_06 "$POST_UPGRADE_BLOCK_HASH"
+    _step_07 "$PRE_UPGRADE_BLOCK_HASH"
     _step_08
     _step_09
     _step_10
@@ -167,6 +161,24 @@ function _step_05()
             log " ... no stall detected on node-$NODE_ID: $HEIGHT_2 > $HEIGHT_1 [expected]"
         fi
     done
+}
+
+# Step 06: Await 1 era and then start node 6 with trusted hash within the allowed range
+function _step_06()
+{
+    POST_UPGRADE_BLOCK_HASH=${1}
+    log_step_upgrades 6 "awaiting 1 era to start node 6"
+    nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='300' node_id='2'
+    _stage_node_with_trusted_hash "6" "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_BLOCK_HASH" 6
+}
+
+# Step 07: Await 5 eras and then start node 7 with a trusted hash that is too old
+function _step_07()
+{
+    PRE_UPGRADE_BLOCK_HASH=${1}
+    log_step_upgrades 7 "awaiting 5 eras for pre-upgrade block hash to become too old"
+    nctl-await-n-eras offset='5' sleep_interval='5.0' timeout='300' node_id='2'
+    _stage_node_with_trusted_hash "7" "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_BLOCK_HASH" 7
 }
 
 # Stage node with a trusted hash
