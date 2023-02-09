@@ -11,10 +11,9 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 3.0.0
 
 ### Changed
-
 * Implement more precise control over opcode costs that lowers the gas cost.
 * Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5CSPR.
 
@@ -25,6 +24,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Security
 * Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
 * Implement checks before preprocessing Wasm to avoid references to undeclared functions or globals.
+
 
 
 ## 2.0.0
