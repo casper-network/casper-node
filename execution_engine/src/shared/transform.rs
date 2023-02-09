@@ -368,12 +368,12 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::Bid(bid)) => {
                 casper_types::Transform::WriteBid(bid.clone())
             }
-            Transform::Write(StoredValue::Unbonding(unbonding_purses)) => {
-                casper_types::Transform::WriteWithdraw(unbonding_purses.clone())
+            Transform::Write(StoredValue::Withdraw(withdraw_purses)) => {
+                casper_types::Transform::WriteWithdraw(withdraw_purses.clone())
             }
-            Transform::Write(StoredValue::Withdraw(_)) => casper_types::Transform::Failure(
-                "withdraw purses should not be be written to global state".to_string(),
-            ),
+            Transform::Write(StoredValue::Unbonding(unbonding_purses)) => {
+                casper_types::Transform::WriteUnbonding(unbonding_purses.clone())
+            }
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
             Transform::AddUInt128(value) => casper_types::Transform::AddUInt128(*value),

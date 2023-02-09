@@ -41,7 +41,7 @@ use crate::{
         Responder,
     },
     protocol::Message as NodeMessage,
-    reactor::{self, EventQueueHandle, Runner},
+    reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::{
         self,
         network::{NetworkedReactor, TestingNetwork},
@@ -196,6 +196,7 @@ impl reactor::Reactor for Reactor {
         rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
+        trace!(?event);
         match event {
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -531,4 +532,224 @@ async fn should_timeout_gossip_response() {
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
     NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_timeout_new_item_from_peer() {
+    const NETWORK_SIZE: usize = 2;
+    const VALIDATE_AND_STORE_TIMEOUT: Duration = Duration::from_secs(1);
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = TestingNetwork::<Reactor>::new();
+    let mut test_rng = crate::new_rng();
+    let rng = &mut test_rng;
+
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
+    let node_0 = node_ids[0];
+    let node_1 = node_ids[1];
+    // Set the timeout on node 0 low for testing.
+    let reactor_0 = network
+        .nodes_mut()
+        .get_mut(&node_0)
+        .unwrap()
+        .reactor_mut()
+        .inner_mut();
+    reactor_0.deploy_gossiper.validate_and_store_timeout = VALIDATE_AND_STORE_TIMEOUT;
+    // Switch off the fake deploy acceptor on node 0 so that once the new deploy is received, no
+    // component triggers the `ItemReceived` event.
+    reactor_0.fake_deploy_acceptor.set_active(false);
+
+    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+
+    // Give the deploy to node 1 to gossip to node 0.
+    network
+        .process_injected_effect_on(&node_1, announce_deploy_received(deploy.clone(), None))
+        .await;
+
+    // Run the network until node 1 has sent the gossip request and node 0 has handled it to the
+    // point where the `NewItemBody` announcement has been received).
+    let got_new_item_body_announcement = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody { .. })
+        )
+    };
+    network
+        .crank_all_until(&node_0, rng, got_new_item_body_announcement, TIMEOUT)
+        .await;
+
+    // Run node 0 until it receives its own `CheckItemReceivedTimeout` event.
+    let received_timeout_event = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiper(super::Event::CheckItemReceivedTimeout { .. })
+        )
+    };
+    network
+        .crank_until(&node_0, rng, received_timeout_event, TIMEOUT)
+        .await;
+
+    // Ensure node 0 makes a `FinishedGossiping` announcement.
+    let made_finished_gossiping_announcement = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_))
+        )
+    };
+    network
+        .crank_until(&node_0, rng, made_finished_gossiping_announcement, TIMEOUT)
+        .await;
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_not_gossip_old_stored_item_again() {
+    const NETWORK_SIZE: usize = 2;
+    const TIMEOUT: Duration = Duration::from_secs(2);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = TestingNetwork::<Reactor>::new();
+    let mut test_rng = crate::new_rng();
+    let rng = &mut test_rng;
+
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
+    let node_0 = node_ids[0];
+
+    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+
+    // Store the deploy on node 0.
+    let store_deploy = |effect_builder: EffectBuilder<Event>| {
+        effect_builder
+            .put_deploy_to_storage(deploy.clone())
+            .ignore()
+    };
+    network
+        .process_injected_effect_on(&node_0, store_deploy)
+        .await;
+
+    // Node 1 sends a gossip message to node 0.
+    network
+        .process_injected_effect_on(&node_0, |effect_builder| {
+            let event = Event::DeployGossiperIncoming(GossiperIncoming {
+                sender: node_ids[1],
+                message: Message::Gossip(deploy.gossip_id()),
+            });
+            effect_builder
+                .into_inner()
+                .schedule(event, QueueKind::Gossip)
+                .ignore()
+        })
+        .await;
+
+    // Run node 0 until it has handled the gossip message and checked if the deploy is already
+    // stored.
+    let checked_if_stored = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiper(super::Event::IsStoredResult { .. })
+        )
+    };
+    network
+        .crank_until(&node_0, rng, checked_if_stored, TIMEOUT)
+        .await;
+    // Assert the message did not cause a new entry in the gossip table and spawned no new events.
+    assert!(network
+        .nodes()
+        .get(&node_0)
+        .unwrap()
+        .reactor()
+        .inner()
+        .deploy_gossiper
+        .table
+        .is_empty());
+    assert!(matches!(
+        network.crank(&node_0, rng).await,
+        TryCrankOutcome::NoEventsToProcess
+    ));
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+enum Unexpected {
+    Response,
+    GetItem,
+    Item,
+}
+
+async fn should_ignore_unexpected_message(message_type: Unexpected) {
+    const NETWORK_SIZE: usize = 2;
+    const TIMEOUT: Duration = Duration::from_secs(2);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = TestingNetwork::<Reactor>::new();
+    let mut test_rng = crate::new_rng();
+    let rng = &mut test_rng;
+
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
+    let node_0 = node_ids[0];
+
+    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+
+    let message = match message_type {
+        Unexpected::Response => Message::GossipResponse {
+            item_id: deploy.gossip_id(),
+            is_already_held: false,
+        },
+        Unexpected::GetItem => Message::GetItem(deploy.gossip_id()),
+        Unexpected::Item => Message::Item(deploy),
+    };
+
+    // Node 1 sends an unexpected message to node 0.
+    network
+        .process_injected_effect_on(&node_0, |effect_builder| {
+            let event = Event::DeployGossiperIncoming(GossiperIncoming {
+                sender: node_ids[1],
+                message,
+            });
+            effect_builder
+                .into_inner()
+                .schedule(event, QueueKind::Gossip)
+                .ignore()
+        })
+        .await;
+
+    // Run node 0 until it has handled the gossip message.
+    let received_gossip_message =
+        |event: &Event| -> bool { matches!(event, Event::DeployGossiperIncoming(..)) };
+    network
+        .crank_until(&node_0, rng, received_gossip_message, TIMEOUT)
+        .await;
+    // Assert the message did not cause a new entry in the gossip table and spawned no new events.
+    assert!(network
+        .nodes()
+        .get(&node_0)
+        .unwrap()
+        .reactor()
+        .inner()
+        .deploy_gossiper
+        .table
+        .is_empty());
+    assert!(matches!(
+        network.crank(&node_0, rng).await,
+        TryCrankOutcome::NoEventsToProcess
+    ));
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_ignore_unexpected_response_message() {
+    should_ignore_unexpected_message(Unexpected::Response).await
+}
+
+#[tokio::test]
+async fn should_ignore_unexpected_get_item_message() {
+    should_ignore_unexpected_message(Unexpected::GetItem).await
+}
+
+#[tokio::test]
+async fn should_ignore_unexpected_item_message() {
+    should_ignore_unexpected_message(Unexpected::Item).await
 }

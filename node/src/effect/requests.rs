@@ -296,6 +296,10 @@ pub(crate) enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
+    IsBlockStored {
+        block_hash: BlockHash,
+        responder: Responder<bool>,
+    },
     /// Retrieve the approvals hashes.
     GetApprovalsHashes {
         /// Hash of the block for which to retrieve approvals hashes.
@@ -375,6 +379,10 @@ pub(crate) enum StorageRequest {
         deploy_id: DeployId,
         responder: Responder<Option<Deploy>>,
     },
+    IsDeployStored {
+        deploy_id: DeployId,
+        responder: Responder<bool>,
+    },
     /// Store execution results for a set of deploys of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
@@ -422,6 +430,10 @@ pub(crate) enum StorageRequest {
     GetFinalitySignature {
         id: Box<FinalitySignatureId>,
         responder: Responder<Option<FinalitySignature>>,
+    },
+    IsFinalitySignatureStored {
+        id: Box<FinalitySignatureId>,
+        responder: Responder<bool>,
     },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
@@ -497,6 +509,9 @@ impl Display for StorageRequest {
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
             }
+            StorageRequest::IsBlockStored { block_hash, .. } => {
+                write!(formatter, "is block {} stored", block_hash)
+            }
             StorageRequest::GetApprovalsHashes { block_hash, .. } => {
                 write!(formatter, "get approvals hashes {}", block_hash)
             }
@@ -528,6 +543,9 @@ impl Display for StorageRequest {
             StorageRequest::GetDeploy { deploy_id, .. } => {
                 write!(formatter, "get deploy {}", deploy_id)
             }
+            StorageRequest::IsDeployStored { deploy_id, .. } => {
+                write!(formatter, "is deploy {} stored", deploy_id)
+            }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
@@ -543,6 +561,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
+            }
+            StorageRequest::IsFinalitySignatureStored { id, .. } => {
+                write!(formatter, "is finality signature {} stored", id)
             }
             StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
                 write!(

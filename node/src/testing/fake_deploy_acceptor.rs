@@ -34,11 +34,17 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(Debug)]
-pub struct FakeDeployAcceptor;
+pub struct FakeDeployAcceptor {
+    is_active: bool,
+}
 
 impl FakeDeployAcceptor {
     pub(crate) fn new() -> Self {
-        FakeDeployAcceptor
+        FakeDeployAcceptor { is_active: true }
+    }
+
+    pub(crate) fn set_active(&mut self, new_setting: bool) {
+        self.is_active = new_setting;
     }
 
     fn accept<REv: ReactorEventT>(
@@ -95,6 +101,10 @@ impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        if !self.is_active {
+            debug!(?event, "FakeDeployAcceptor: not active - ignoring event");
+            return Effects::new();
+        }
         debug!(?event, "FakeDeployAcceptor: handling event");
         match event {
             Event::Accept {

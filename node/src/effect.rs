@@ -171,8 +171,9 @@ use requests::{
     UpgradeWatcherRequest,
 };
 
-use self::requests::{
-    ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest,
+use self::{
+    announcements::UnexecutedBlockAnnouncement,
+    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest},
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1128,6 +1129,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_block_stored(self, block_hash: BlockHash) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsBlockStored {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested `ApprovalsHashes` from storage.
     pub(crate) async fn get_approvals_hashes_from_storage(
         self,
@@ -1513,6 +1528,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_deploy_stored(self, deploy_id: DeployId) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsDeployStored {
+                deploy_id,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Stores the given execution results for the deploys in the given block in the linear block
     /// store.
     pub(crate) async fn put_execution_results_to_storage(
@@ -1581,6 +1610,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetFinalitySignature {
+                id: Box::new(id),
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn is_finality_signature_stored(self, id: FinalitySignatureId) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsFinalitySignatureStored {
                 id: Box::new(id),
                 responder,
             },
@@ -1755,6 +1798,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
+            .await
+    }
+
+    /// Announces that a finalized block has been created, but it was not
+    /// executed.
+    pub(crate) async fn announce_unexecuted_block(self, block_height: u64)
+    where
+        REv: From<UnexecutedBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                UnexecutedBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
             .await
     }
 

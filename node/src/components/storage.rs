@@ -777,6 +777,10 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
+            StorageRequest::IsBlockStored {
+                block_hash,
+                responder,
+            } => responder.respond(self.block_exists(&block_hash)?).ignore(),
             StorageRequest::GetApprovalsHashes {
                 block_hash,
                 responder,
@@ -868,6 +872,14 @@ impl Storage {
                     }
                 };
                 responder.respond(maybe_deploy).ignore()
+            }
+            StorageRequest::IsDeployStored {
+                deploy_id,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let has_deploy = txn.value_exists(self.deploy_db, deploy_id.deploy_hash())?;
+                responder.respond(has_deploy).ignore()
             }
             StorageRequest::GetExecutionResults {
                 block_hash,
@@ -971,6 +983,14 @@ impl Storage {
                     .and_then(|sigs| sigs.get_finality_signature(&id.public_key))
                     .filter(|sig| sig.era_id == id.era_id);
                 responder.respond(maybe_sig).ignore()
+            }
+            StorageRequest::IsFinalitySignatureStored { id, responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let has_signature = self
+                    .get_block_signatures(&mut txn, &id.block_hash)?
+                    .map(|sigs| sigs.has_finality_signature(&id.public_key))
+                    .unwrap_or(false);
+                responder.respond(has_signature).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
@@ -1219,6 +1239,18 @@ impl Storage {
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
+    }
+
+    /// Returns `true` if the given block's header and body are stored.
+    fn block_exists(&self, block_hash: &BlockHash) -> Result<bool, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let block_header = match self.get_single_block_header(&mut txn, block_hash)? {
+            Some(block_header) => block_header,
+            None => {
+                return Ok(false);
+            }
+        };
+        Ok(txn.value_exists(self.block_body_db, block_header.body_hash())?)
     }
 
     /// Retrieves a approvals hashes by block hash.
@@ -1571,6 +1603,27 @@ impl Storage {
             .transpose()
     }
 
+    /// Retrieves a single block header by height from the available block
+    /// range by looking it up in the index and returning it.
+    pub fn read_complete_block_header_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let res = self
+            .block_height_index
+            .get(&height)
+            .and_then(|block_hash| {
+                self.get_single_block_header(&mut txn, block_hash)
+                    .transpose()
+            })
+            .transpose();
+        if !(self.should_return_block(height, true)?) {
+            return Ok(None);
+        }
+        res
+    }
+
     /// Retrieves a single block header by hash.
     pub fn read_block_header(
         &self,
@@ -1869,7 +1922,7 @@ impl Storage {
                 };
 
             result.push(parent_block_header.clone());
-            if parent_block_header.is_switch_block() {
+            if parent_block_header.is_switch_block() || parent_block_header.is_genesis() {
                 break;
             }
             current_trusted_block_header = parent_block_header;
