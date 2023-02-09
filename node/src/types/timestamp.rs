@@ -38,6 +38,9 @@ static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
 pub struct Timestamp(u64);
 
 impl Timestamp {
+    /// The maximum value a timestamp can have.
+    pub const MAX: Timestamp = Timestamp(u64::MAX);
+
     /// Returns the timestamp of the current moment.
     pub fn now() -> Self {
         let millis = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
