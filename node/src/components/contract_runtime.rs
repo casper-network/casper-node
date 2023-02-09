@@ -674,15 +674,18 @@ impl ContractRuntime {
     ) -> Result<UpgradeSuccess, engine_state::Error> {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();
-        let result = self
+        let scratch_state = self.engine_state.get_scratch_engine_state();
+        let pre_state_hash = upgrade_config.pre_state_hash();
+        let mut result = scratch_state.commit_upgrade(CorrelationId::new(), upgrade_config)?;
+        result.post_state_hash = self
             .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config);
+            .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())?;
         self.engine_state.flush_environment()?;
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
         debug!(?result, "upgrade result");
-        result
+        Ok(result)
     }
 
     pub(crate) fn set_initial_state(
