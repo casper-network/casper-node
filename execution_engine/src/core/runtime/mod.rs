@@ -214,30 +214,10 @@ where
         &mut self,
         entry_points: &EntryPoints,
     ) -> Result<Vec<u8>, Error> {
-        let export_section = self
-            .try_get_module()?
-            .export_section()
-            .ok_or_else(|| Error::FunctionNotFound(String::from("Missing Export Section")))?;
-
+        let module = self.try_get_module()?.clone();
         let entry_point_names: Vec<&str> = entry_points.keys().map(|s| s.as_str()).collect();
-
-        let maybe_missing_name: Option<String> = entry_point_names
-            .iter()
-            .find(|name| {
-                !export_section
-                    .entries()
-                    .iter()
-                    .any(|export_entry| export_entry.field() == **name)
-            })
-            .map(|s| String::from(*s));
-
-        if let Some(missing_name) = maybe_missing_name {
-            Err(Error::FunctionNotFound(missing_name))
-        } else {
-            let mut module = self.try_get_module()?.clone();
-            pwasm_utils::optimize(&mut module, entry_point_names)?;
-            parity_wasm::serialize(module).map_err(Error::ParityWasm)
-        }
+        let module_bytes = wasm_prep::get_module_from_entry_points(entry_point_names, module)?;
+        Ok(module_bytes)
     }
 
     #[allow(clippy::wrong_self_convention)]
