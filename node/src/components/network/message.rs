@@ -486,12 +486,24 @@ mod tests {
     use tokio_serde::{Deserializer, Serializer};
 
     use crate::{
-        components::network::message_pack_format::MessagePackFormat,
+        components::network::{message_pack_format::MessagePackFormat, BincodeFormat},
         protocol,
         testing::specimen::{LargestSpecimen, SizeEstimator},
     };
 
     use super::*;
+
+    /// Encoding helper function.
+    ///
+    /// Encodes a message in the same manner the network component would before sending it.
+    fn serialize_net_message<T>(data: &T) -> Vec<u8>
+    where
+        T: Serialize,
+    {
+        BincodeFormat::default()
+            .serialize_arbitrary(data)
+            .expect("did not expect serialization to fail")
+    }
 
     /// An estimator that uses the serialized network representation as a measure of size.
     #[derive(Copy, Clone, Debug)]
@@ -499,7 +511,7 @@ mod tests {
 
     impl SizeEstimator for NetworkMessageEstimator {
         fn estimate<T: Serialize>(&self, val: &T) -> usize {
-            serialize_message(&val).len()
+            serialize_net_message(&val).len()
         }
 
         fn get_parameter(&self, name: &'static str) -> Option<i64> {
@@ -524,7 +536,8 @@ mod tests {
                 "max_deploys_per_block" => Some(50),
                 // chainspec: block_max_transfer_count
                 "max_transfers_per_block" => Some(1250),
-                "max_accusations_per_block" => Some(1),
+                // chainspec: validator_slots:
+                "max_accusations_per_block" => Some(100),
                 "max_pointer_per_node" => Some(255),
                 _ => None,
             }
@@ -542,7 +555,7 @@ mod tests {
         // Note: In theory, this check could be moved into chainspec validation.
         let specimen = Message::<protocol::Message>::largest_specimen(&estimator);
 
-        let serialized = serialize_message(&specimen);
+        let serialized = serialize_net_message(&specimen);
 
         assert_eq!(serialized.len(), 0);
     }
