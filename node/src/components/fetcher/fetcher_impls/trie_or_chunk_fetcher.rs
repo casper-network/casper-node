@@ -27,7 +27,7 @@ impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: From<ContractRuntimeRequest> + Send>(
+    async fn get_locally<REv: From<ContractRuntimeRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: TrieOrChunkId,
     ) -> Option<TrieOrChunk> {

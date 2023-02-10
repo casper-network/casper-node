@@ -104,6 +104,8 @@ enum Event {
     #[from]
     FetcherRequestDeploy(FetcherRequest<Deploy>),
     #[from]
+    BlockAccumulatorRequest(BlockAccumulatorRequest),
+    #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement),
     #[from]
     RpcServerAnnouncement(RpcServerAnnouncement),
@@ -238,6 +240,7 @@ impl ReactorTrait for Reactor {
             ),
             Event::TrieDemand(_)
             | Event::ContractRuntimeRequest(_)
+            | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)
             | Event::GossiperIncomingBlock(_)

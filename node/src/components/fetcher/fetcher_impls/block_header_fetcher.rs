@@ -27,7 +27,7 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+    async fn get_locally<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<BlockHeader> {

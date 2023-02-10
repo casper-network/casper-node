@@ -5,7 +5,10 @@ use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
-    effect::{requests::StorageRequest, EffectBuilder},
+    effect::{
+        requests::{BlockAccumulatorRequest, StorageRequest},
+        EffectBuilder,
+    },
     types::{Block, BlockHash, NodeId},
 };
 
@@ -25,11 +28,17 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+    async fn get_locally<REv: From<StorageRequest> + From<BlockAccumulatorRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<Block> {
-        effect_builder.get_block_from_storage(id).await
+        if let Some(block) = effect_builder.get_block_from_storage(id).await {
+            return Some(block);
+        }
+        effect_builder
+            .get_block_from_block_accumulator(id)
+            .await
+            .map(|block| (*block).clone())
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(

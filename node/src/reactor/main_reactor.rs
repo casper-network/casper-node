@@ -102,7 +102,7 @@ pub(crate) use reactor_state::ReactorState;
 ///
 ///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
 ///     linkStyle 0 fill:none,stroke:red,color:red
-///     
+///
 ///     A -->|"Execute block<br/>(genesis or upgrade)"| B
 ///
 ///     G -->|Peers| C
@@ -1250,6 +1250,13 @@ impl MainReactor {
                             finality_signature: Box::new(finality_signature.clone()),
                         },
                     ),
+                ));
+
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::Storage,
+                    effect_builder
+                        .put_finality_signature_to_storage(finality_signature.clone())
+                        .ignore(),
                 ));
 
                 let era_id = finality_signature.era_id;
