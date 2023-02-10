@@ -1,8 +1,6 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use core::mem::MaybeUninit;
-
 use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
@@ -55,6 +53,10 @@ impl VestingSchedule {
     /// Initializes vesting schedule with a configured amount of weekly releases.
     ///
     /// Returns `false` if already initialized.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vesting_schedule_period_millis` represents more than 13 weeks.
     pub fn initialize_with_schedule(
         &mut self,
         staked_amount: U512,
@@ -67,14 +69,11 @@ impl VestingSchedule {
         let locked_amounts_length =
             vesting_schedule_period_to_weeks(vesting_schedule_period_millis);
 
-        if locked_amounts_length as usize >= LOCKED_AMOUNTS_MAX_LENGTH {
-            // We will not initialize a vesting schedule if the genesis configuration is incorrect.
-            // There are restrictions put in place in the chainspec config to make sure we will not
-            // hit this case.
-            //
-            // This is done to avoid breaking changes in the serialization format.
-            return false;
-        }
+        assert!(
+            (locked_amounts_length as usize) < LOCKED_AMOUNTS_MAX_LENGTH,
+            "vesting schedule period must be less than {} weeks",
+            LOCKED_AMOUNTS_MAX_LENGTH,
+        );
 
         if locked_amounts_length == 0 || vesting_schedule_period_millis == 0 {
             // Zero weeks means instant unlock of staked amount.
@@ -156,35 +155,32 @@ impl VestingSchedule {
 impl ToBytes for [U512; LOCKED_AMOUNTS_MAX_LENGTH] {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        for item in self.iter() {
-            result.append(&mut item.to_bytes()?);
-        }
+        self.write_bytes(&mut result)?;
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
         self.iter().map(ToBytes::serialized_length).sum::<usize>()
     }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        for amount in self {
+            amount.write_bytes(writer)?;
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for [U512; LOCKED_AMOUNTS_MAX_LENGTH] {
     fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let mut result: MaybeUninit<[U512; LOCKED_AMOUNTS_MAX_LENGTH]> = MaybeUninit::uninit();
-        let result_ptr = result.as_mut_ptr() as *mut U512;
-        for i in 0..LOCKED_AMOUNTS_MAX_LENGTH {
-            let (t, remainder) = match FromBytes::from_bytes(bytes) {
-                Ok(success) => success,
-                Err(error) => {
-                    for j in 0..i {
-                        unsafe { result_ptr.add(j).drop_in_place() }
-                    }
-                    return Err(error);
-                }
-            };
-            unsafe { result_ptr.add(i).write(t) };
-            bytes = remainder;
+        let mut result = [U512::zero(); LOCKED_AMOUNTS_MAX_LENGTH];
+        for value in &mut result {
+            let (amount, rem) = FromBytes::from_bytes(bytes)?;
+            *value = amount;
+            bytes = rem;
         }
-        Ok((unsafe { result.assume_init() }, bytes))
+        Ok((result, bytes))
     }
 }
 
@@ -263,8 +259,9 @@ mod tests {
         (DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS as usize / WEEK_MILLIS) + 1;
 
     #[test]
+    #[should_panic = "vesting schedule period must be less than"]
     fn test_vesting_schedule_exceeding_the_maximum_should_not_panic() {
-        let future_date = 91 * DAY_MILLIS as u64;
+        let future_date = 98 * DAY_MILLIS as u64;
         let mut vesting_schedule = VestingSchedule::new(RELEASE_TIMESTAMP);
         vesting_schedule.initialize_with_schedule(U512::from(STAKE), future_date);
 

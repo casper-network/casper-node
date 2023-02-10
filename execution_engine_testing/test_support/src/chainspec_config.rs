@@ -4,9 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use log::error;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig, GenesisAccount},
@@ -39,20 +40,7 @@ pub enum Error {
         error: io::Error,
     },
     FailedToParseChainspec(toml::de::Error),
-}
-
-fn vesting_schedule_period<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<TimeDiff, D::Error> {
-    let timediff = TimeDiff::deserialize(deserializer)?;
-    if timediff > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
-        Err(de::Error::custom(format!(
-            "vesting schedule period can't exceed {} milliseconds",
-            VESTING_SCHEDULE_LENGTH_MILLIS
-        )))
-    } else {
-        Ok(timediff)
-    }
+    Validation,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -66,7 +54,6 @@ pub struct CoreConfig {
     /// The period after genesis during which a genesis validator's bid is locked.
     pub(crate) locked_funds_period: TimeDiff,
     /// The period in which genesis validator's bid is released over time
-    #[serde(deserialize_with = "vesting_schedule_period")]
     pub(crate) vesting_schedule_period: TimeDiff,
     /// The delay in number of eras for paying out the the unbonding amount.
     pub(crate) unbonding_delay: u64,
@@ -96,15 +83,43 @@ pub struct ChainspecConfig {
 }
 
 impl ChainspecConfig {
-    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
-        let path = filename.as_ref();
-        let bytes = fs::read(path).map_err(|error| Error::FailedToLoadChainspec {
-            path: path.into(),
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let chainspec_config: ChainspecConfig =
+            toml::from_slice(bytes).map_err(Error::FailedToParseChainspec)?;
+
+        if !chainspec_config.is_valid() {
+            return Err(Error::Validation);
+        }
+
+        Ok(chainspec_config)
+    }
+
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let bytes = fs::read(&path).map_err(|error| Error::FailedToLoadChainspec {
+            path: path.to_path_buf(),
             error,
         })?;
-        let chainspec_config: ChainspecConfig =
-            toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
-        Ok(chainspec_config)
+        ChainspecConfig::from_bytes(&bytes)
+    }
+
+    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
+        Self::from_path(filename)
+    }
+
+    fn is_valid(&self) -> bool {
+        if self.core_config.vesting_schedule_period
+            > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS)
+        {
+            error!(
+                "vesting schedule period too long (actual {}; maximum {})",
+                self.core_config.vesting_schedule_period.millis(),
+                VESTING_SCHEDULE_LENGTH_MILLIS,
+            );
+            return false;
+        }
+
+        true
     }
 
     pub(crate) fn create_genesis_request_from_chainspec<P: AsRef<Path>>(
@@ -112,13 +127,7 @@ impl ChainspecConfig {
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
     ) -> Result<RunGenesisRequest, Error> {
-        let path = filename.as_ref();
-        let bytes = fs::read(path).map_err(|error| Error::FailedToLoadChainspec {
-            path: path.into(),
-            error,
-        })?;
-        let chainspec_config: ChainspecConfig =
-            toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
+        let chainspec_config = ChainspecConfig::from_path(filename)?;
 
         let exec_config = ExecConfig::new(
             genesis_accounts,
