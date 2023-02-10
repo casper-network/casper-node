@@ -35,10 +35,10 @@ pub struct VestingSchedule {
     locked_amounts: Option<[U512; LOCKED_AMOUNTS_MAX_LENGTH]>,
 }
 
-fn vesting_schedule_period_to_weeks(vesting_schedule_period_millis: u64) -> u64 {
+fn vesting_schedule_period_to_weeks(vesting_schedule_period_millis: u64) -> usize {
     debug_assert_ne!(DAY_MILLIS, 0);
     debug_assert_ne!(DAYS_IN_WEEK, 0);
-    vesting_schedule_period_millis as u64 / (DAY_MILLIS as u64) / (DAYS_IN_WEEK as u64)
+    vesting_schedule_period_millis as usize / DAY_MILLIS / DAYS_IN_WEEK
 }
 
 impl VestingSchedule {
@@ -70,7 +70,7 @@ impl VestingSchedule {
             vesting_schedule_period_to_weeks(vesting_schedule_period_millis);
 
         assert!(
-            (locked_amounts_length as usize) < LOCKED_AMOUNTS_MAX_LENGTH,
+            locked_amounts_length < LOCKED_AMOUNTS_MAX_LENGTH,
             "vesting schedule period must be less than {} weeks",
             LOCKED_AMOUNTS_MAX_LENGTH,
         );
@@ -87,10 +87,16 @@ impl VestingSchedule {
         let mut locked_amounts = [U512::zero(); LOCKED_AMOUNTS_MAX_LENGTH];
         let mut remaining_locked = staked_amount;
 
-        for i in 0..locked_amounts_length {
+        for locked_amount in locked_amounts.iter_mut().take(locked_amounts_length) {
             remaining_locked -= weekly_release;
-            locked_amounts[i as usize] = remaining_locked;
+            *locked_amount = remaining_locked;
         }
+
+        assert_eq!(
+            locked_amounts.get(locked_amounts_length),
+            Some(&U512::zero()),
+            "first element after the schedule should be zero"
+        );
 
         self.locked_amounts = Some(locked_amounts);
         true
@@ -113,7 +119,7 @@ impl VestingSchedule {
     }
 
     pub fn locked_amount(&self, timestamp_millis: u64) -> Option<U512> {
-        let locked_amounts = self.locked_amounts.as_ref()?;
+        let locked_amounts = self.locked_amounts()?;
 
         let index = {
             let index_timestamp =
@@ -132,12 +138,16 @@ impl VestingSchedule {
         timestamp_millis: u64,
         vesting_schedule_period_millis: u64,
     ) -> bool {
-        let vested_period = match self.locked_amounts.as_ref() {
+        let vested_period = match self.locked_amounts() {
             Some(locked_amounts) => {
-                // Derive already initialized vested amounts from the length of weekly amounts
-                let vesting_weeks = locked_amounts.len().saturating_sub(1);
+                let vesting_weeks = locked_amounts
+                    .iter()
+                    .position(|amount| amount.is_zero())
+                    .expect("vesting schedule should always have zero at the end"); // SAFETY: at least one zero is guaranteed by `initialize_with_schedule` method
+
                 let vesting_weeks_millis =
                     (vesting_weeks as u64).saturating_mul(WEEK_MILLIS as u64);
+
                 self.initial_release_timestamp_millis()
                     .saturating_add(vesting_weeks_millis)
             }
@@ -491,7 +501,7 @@ mod tests {
         assert_eq!(vesting_schedule_period_to_weeks(0), 0);
         assert_eq!(
             vesting_schedule_period_to_weeks(u64::MAX),
-            30_500_568_904u64
+            30_500_568_904usize
         );
     }
 
