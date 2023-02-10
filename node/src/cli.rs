@@ -37,6 +37,7 @@ static ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
 #[structopt(version = crate::VERSION_STRING_COLOR.as_str())]
+#[allow(rustdoc::invalid_html_tags)]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the node in standard mode.

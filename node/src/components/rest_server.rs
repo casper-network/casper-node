@@ -14,9 +14,9 @@
 //!
 //! Currently this component supports two endpoints, each of which takes no arguments:
 //! /status : a human readable JSON equivalent of the info-get-status rpc method.
-//!     example: curl -X GET 'http://<ip>:8888/status'
+//!     example: curl -X GET 'http://IP:8888/status'
 //! /metrics : time series data collected from the internals of the node being queried.
-//!     example: curl -X GET 'http://<ip>:8888/metrics'
+//!     example: curl -X GET 'http://IP:8888/metrics'
 
 mod config;
 mod event;
