@@ -105,7 +105,7 @@ impl Digest {
         let mut hasher = PAIR_PREFIX_HASHER
             .get_or_init(|| {
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
+                hasher.update([0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
                 hasher
             })
             .clone();
@@ -180,8 +180,8 @@ impl Digest {
         let mut kv_hashes: Vec<Digest> = Vec::with_capacity(btree_map.len());
         for (key, value) in btree_map.iter() {
             kv_hashes.push(Digest::hash_pair(
-                &Digest::hash(key.to_bytes()?),
-                &Digest::hash(value.to_bytes()?),
+                Digest::hash(key.to_bytes()?),
+                Digest::hash(value.to_bytes()?),
             ))
         }
         Ok(Self::hash_merkle_tree(kv_hashes))
@@ -212,7 +212,7 @@ impl Digest {
     pub fn hash_slice_with_proof(slice: &[Digest], proof: Digest) -> Digest {
         slice
             .iter()
-            .rfold(proof, |prev, next| Digest::hash_pair(next, &prev))
+            .rfold(proof, |prev, next| Digest::hash_pair(next, prev))
     }
 
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.
@@ -343,7 +343,7 @@ impl Serialize for Digest {
         } else {
             // This is to keep backwards compatibility with how HexForm encodes
             // byte arrays. HexForm treats this like a slice.
-            (&self.0[..]).serialize(serializer)
+            self.0[..].serialize(serializer)
         }
     }
 }
@@ -503,7 +503,7 @@ mod tests {
         let hash1 = Digest([1u8; 32]);
         let hash2 = Digest([2u8; 32]);
 
-        let hash = Digest::hash_pair(&hash1, &hash2);
+        let hash = Digest::hash_pair(hash1, hash2);
         let hash_lower_hex = format!("{:x}", hash);
 
         assert_eq!(
@@ -675,7 +675,7 @@ mod tests {
             190, 67, 244, 169, 31, 95,
         ];
         assert_eq!(
-            Digest::blake2b_hash(&expected_final_hash_input),
+            Digest::blake2b_hash(expected_final_hash_input),
             long_data_hash
         );
 

@@ -109,10 +109,7 @@ impl Era {
             .drain()
             .partition(|(_, validation_state)| validation_state.is_complete());
         self.validation_states = incomplete;
-        complete
-            .into_iter()
-            .map(|(proposed_block, _)| proposed_block)
-            .collect()
+        complete.into_keys().collect()
     }
 
     /// Marks the block payload as valid or invalid. Returns `false` if the block was not present

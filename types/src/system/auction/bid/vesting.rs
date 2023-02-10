@@ -47,7 +47,7 @@ pub struct VestingSchedule {
 fn vesting_schedule_period_to_weeks(vesting_schedule_period_millis: u64) -> u64 {
     debug_assert_ne!(DAY_MILLIS, 0);
     debug_assert_ne!(DAYS_IN_WEEK, 0);
-    vesting_schedule_period_millis as u64 / (DAY_MILLIS as u64) / (DAYS_IN_WEEK as u64)
+    vesting_schedule_period_millis / (DAY_MILLIS as u64) / (DAYS_IN_WEEK as u64)
 }
 
 impl VestingSchedule {
@@ -507,7 +507,7 @@ mod tests {
             prop_assert!(vested_amounts_match_initial_stake(
                 stake,
                 DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-                DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS as u64,
+                DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
             ))
         }
 

@@ -633,7 +633,7 @@ impl BlockAcquisitionState {
                 return Ok(None)
             }
         };
-        let ret = currently_acquiring_sigs.then(|| acceptance);
+        let ret = currently_acquiring_sigs.then_some(acceptance);
         info!(
             signature=%cloned_sig,
             ?ret,

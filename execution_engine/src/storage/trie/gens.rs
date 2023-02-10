@@ -9,7 +9,7 @@ use casper_types::{
 use super::{Pointer, PointerBlock, Trie};
 
 pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
-    vec(any::<u8>(), 0..1000).prop_map(|b| Digest::hash(&b))
+    vec(any::<u8>(), 0..1000).prop_map(Digest::hash)
 }
 
 pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {

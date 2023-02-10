@@ -94,6 +94,6 @@ impl From<&ExecutionEngineAccount> for Account {
 
 impl DocExample for Account {
     fn doc_example() -> &'static Self {
-        &*ACCOUNT
+        &ACCOUNT
     }
 }

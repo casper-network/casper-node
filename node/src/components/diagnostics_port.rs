@@ -224,7 +224,7 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     // check-then-delete :).
     if socket_path.exists() {
         debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
-        match fs::remove_file(&socket_path) {
+        match fs::remove_file(socket_path) {
             Ok(_) => {
                 debug!("stale socket file removed");
             }

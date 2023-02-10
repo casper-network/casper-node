@@ -384,7 +384,7 @@ impl MainReactor {
         ));
 
         self.block_synchronizer
-            .register_sync_leap(&*best_available, from_peers, true);
+            .register_sync_leap(&best_available, from_peers, true);
 
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }

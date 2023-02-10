@@ -190,7 +190,7 @@ impl BlockSynchronizerStatus {
 
 impl DocExample for BlockSynchronizerStatus {
     fn doc_example() -> &'static Self {
-        &*BLOCK_SYNCHRONIZER_STATUS
+        &BLOCK_SYNCHRONIZER_STATUS
     }
 }
 

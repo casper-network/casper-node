@@ -250,7 +250,7 @@ impl Cli {
             .unwrap_or_else(|| "/".into());
 
         // The app supports running without a config file, using default values.
-        let encoded_config = fs::read_to_string(&config)
+        let encoded_config = fs::read_to_string(config)
             .context("could not read configuration file")
             .with_context(|| config.display().to_string())?;
 
