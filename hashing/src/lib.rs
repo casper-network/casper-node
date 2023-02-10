@@ -105,7 +105,8 @@ impl Digest {
         let mut hasher = PAIR_PREFIX_HASHER
             .get_or_init(|| {
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                hasher.update([0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
+                #[allow(clippy::needless_borrow)]
+                hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
                 hasher
             })
             .clone();
