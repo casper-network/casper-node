@@ -2,6 +2,8 @@ use casper_types::EraId;
 
 use crate::types::BlockHash;
 
+use super::LocalTipIdentifier;
+
 #[derive(Clone, Debug)]
 pub(crate) enum SyncIdentifier {
     // all we know about the block is its hash;
@@ -53,14 +55,16 @@ impl SyncIdentifier {
         }
     }
 
-    pub(crate) fn maybe_local_tip_identifier(&self) -> Option<(u64, EraId)> {
+    pub(crate) fn maybe_local_tip_identifier(&self) -> Option<LocalTipIdentifier> {
         match self {
             SyncIdentifier::BlockHash(_)
             | SyncIdentifier::BlockIdentifier(_, _)
             | SyncIdentifier::ExecutingBlockIdentifier(_, _, _) => None,
 
-            SyncIdentifier::SyncedBlockIdentifier(_, block_height, era_id)
-            | SyncIdentifier::LocalTip(_, block_height, era_id) => Some((*block_height, *era_id)),
+            SyncIdentifier::SyncedBlockIdentifier(block_hash, block_height, era_id)
+            | SyncIdentifier::LocalTip(block_hash, block_height, era_id) => {
+                Some(LocalTipIdentifier::new(*block_hash, *block_height, *era_id))
+            }
         }
     }
 }

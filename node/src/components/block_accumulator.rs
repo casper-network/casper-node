@@ -58,14 +58,19 @@ const COMPONENT_NAME: &str = "block_accumulator";
 const PEER_RATE_LIMIT_MULTIPLIER: usize = 2;
 
 #[derive(Clone, Copy, DataSize, Debug, Eq, PartialEq)]
-struct LocalTipIdentifier {
+pub(crate) struct LocalTipIdentifier {
+    block_hash: BlockHash,
     height: u64,
     era_id: EraId,
 }
 
 impl LocalTipIdentifier {
-    fn new(height: u64, era_id: EraId) -> Self {
-        Self { height, era_id }
+    fn new(block_hash: BlockHash, height: u64, era_id: EraId) -> Self {
+        Self {
+            block_hash,
+            height,
+            era_id,
+        }
     }
 }
 
@@ -225,14 +230,14 @@ impl BlockAccumulator {
 
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
+    pub(crate) fn register_local_tip(&mut self, block_hash: BlockHash, height: u64, era_id: EraId) {
         let new_local_tip = match self.local_tip {
             Some(current) => current.height < height && current.era_id <= era_id,
             None => true,
         };
         if new_local_tip {
             self.purge();
-            self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
+            self.local_tip = Some(LocalTipIdentifier::new(block_hash, height, era_id));
             info!(local_tip=?self.local_tip, "new local tip detected");
         }
     }
@@ -581,17 +586,19 @@ impl BlockAccumulator {
 
     fn maybe_new_local_tip(&self, sync_identifier: &SyncIdentifier) -> Option<LocalTipIdentifier> {
         match (sync_identifier.maybe_local_tip_identifier(), self.local_tip) {
-            (Some((block_height, era_id)), Some(local_tip)) => {
-                if local_tip.height < block_height && local_tip.era_id <= era_id {
+            (Some(new_local_tip_identifier), Some(local_tip)) => {
+                if local_tip.height < new_local_tip_identifier.height
+                    && local_tip.era_id <= new_local_tip_identifier.era_id
+                {
                     debug!(
                         "new block({}) higher than local tip({})",
-                        block_height, local_tip.height
+                        new_local_tip_identifier.height, local_tip.height
                     );
-                    return Some(LocalTipIdentifier::new(block_height, era_id));
+                    return Some(new_local_tip_identifier);
                 }
             }
-            (Some((block_height, era_id)), None) => {
-                return Some(LocalTipIdentifier::new(block_height, era_id));
+            (Some(new_local_tip_identifier), None) => {
+                return Some(new_local_tip_identifier);
             }
             (None, _) => (),
         }
@@ -612,7 +619,11 @@ impl BlockAccumulator {
         let now = Timestamp::now();
         let mut purged = vec![];
         let purge_interval = self.purge_interval;
+        let maybe_local_tip_block_hash = self.local_tip.map(|local_tip| local_tip.block_hash);
         self.block_acceptors.retain(|k, v| {
+            if Some(*k) == maybe_local_tip_block_hash {
+                return true;
+            }
             let expired = now.saturating_diff(v.last_progress()) > purge_interval;
             if expired {
                 purged.push(*k)
@@ -802,9 +813,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 self.register_finality_signature(effect_builder, *finality_signature, Some(sender))
             }
             Event::ExecutedBlock { meta_block } => {
+                let block_hash = meta_block.block.header().block_hash();
                 let height = meta_block.block.header().height();
                 let era_id = meta_block.block.header().era_id();
-                self.register_local_tip(height, era_id);
+                self.register_local_tip(block_hash, height, era_id);
                 self.register_block(effect_builder, meta_block, None)
             }
             Event::Stored {

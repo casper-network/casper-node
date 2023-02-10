@@ -282,7 +282,7 @@ fn upsert_acceptor() {
     )
     .unwrap();
 
-    accumulator.register_local_tip(0, EraId::new(0));
+    accumulator.register_local_tip(BlockHash::random(&mut rng), 0, EraId::new(0));
 
     let max_block_count =
         PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval() / block_time) as usize);
@@ -955,7 +955,7 @@ fn accumulator_purge() {
         &Registry::default(),
     )
     .unwrap();
-    block_accumulator.register_local_tip(0, 0.into());
+    block_accumulator.register_local_tip(BlockHash::random(&mut rng), 0, 0.into());
 
     // Create 3 parent-child blocks.
     let block_1 = Arc::new(generate_non_genesis_block(&mut rng));
@@ -1108,6 +1108,51 @@ fn accumulator_purge() {
     assert!(!block_accumulator
         .peer_block_timestamps
         .contains_key(&peer_2));
+
+    // Make sure the local tip never gets purged.
+    {
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+        // Make block 3 the local tip.
+        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
+            block_3.header().block_hash(),
+            block_3.header().height(),
+            block_3.header().era_id(),
+        ));
+        // Change the timestamps to old ones so that it would normally get
+        // purged.
+        let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_3.hash())
+            .unwrap()
+            .set_last_progress(last_progress);
+        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+            for (block_hash, timestamp) in timestamps.iter_mut() {
+                if block_hash == block_3.hash() {
+                    *timestamp = last_progress;
+                }
+            }
+        }
+        // Do the purge.
+        block_accumulator.purge();
+        // As block 3 is the local tip, it should not have been purged.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+
+        // Now replace the local tip with something else (in this case we'll
+        // have no local tip) so that block 3 no longer has purge immunity.
+        block_accumulator.local_tip.take();
+        // Do the purge.
+        block_accumulator.purge();
+        // Block 3 is no longer the local tip, and given that it's old, it
+        // should have been purged.
+        assert!(!block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+    }
 }
 
 fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {
@@ -1206,13 +1251,19 @@ async fn block_accumulator_reactor_flow() {
         register_evw_for_era(&mut validator_matrix, block_2.header().era_id());
     }
 
+    let initial_local_tip_identifier =
+        LocalTipIdentifier::new(BlockHash::random(&mut rng), 0, 0.into());
     // Register a signature for block 1.
     {
         let effect_builder = runner.effect_builder();
         let reactor = runner.reactor_mut();
 
         let block_accumulator = &mut reactor.block_accumulator;
-        block_accumulator.register_local_tip(0, 0.into());
+        block_accumulator.register_local_tip(
+            initial_local_tip_identifier.block_hash,
+            initial_local_tip_identifier.height,
+            initial_local_tip_identifier.era_id,
+        );
 
         let event = super::Event::ReceivedFinalitySignature {
             finality_signature: Box::new(fin_sig_1.clone()),
@@ -1319,7 +1370,7 @@ async fn block_accumulator_reactor_flow() {
         // Local tip should not have changed since no blocks were executed.
         assert_eq!(
             block_accumulator.local_tip,
-            Some(LocalTipIdentifier::new(0, 0.into()))
+            Some(initial_local_tip_identifier)
         );
 
         assert!(!block_accumulator
@@ -1408,8 +1459,11 @@ async fn block_accumulator_reactor_flow() {
         let reactor = runner.reactor_mut();
         let block_accumulator = &mut reactor.block_accumulator;
         // Local tip should now be block 1.
-        let expected_local_tip =
-            LocalTipIdentifier::new(block_1.header().height(), block_1.header().era_id());
+        let expected_local_tip = LocalTipIdentifier::new(
+            block_1.header().block_hash(),
+            block_1.header().height(),
+            block_1.header().era_id(),
+        );
         assert_eq!(block_accumulator.local_tip, Some(expected_local_tip));
 
         assert!(block_accumulator
