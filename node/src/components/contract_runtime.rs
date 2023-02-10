@@ -23,12 +23,13 @@ use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState,
+        Error as EngineStateError, GenesisSuccess, SystemContractRegistry, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -375,6 +376,14 @@ impl ContractRuntime {
                 trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+
+                // Try to cache system contract registry if possible.
+                if self.system_contract_registry.is_none() {
+                    self.system_contract_registry = engine_state
+                        .get_system_contract_registry(CorrelationId::new(), request.state_hash())
+                        .ok();
+                };
+
                 let system_contract_registry = self.system_contract_registry.clone();
                 // Increment the counter to track the amount of times GetEraValidators was
                 // requested.
@@ -708,10 +717,6 @@ impl ContractRuntime {
         }
 
         // Initialize the system contract registry.
-        //
-        // This is assumed to always work. In case following query fails we assume that the node is
-        // incompatible with the network which could happen if (for example) a node operator skipped
-        // important update and did not migrate old protocol data db into the global state.
         let state_root_hash = execution_pre_state.pre_state_root_hash;
 
         match self
@@ -720,6 +725,13 @@ impl ContractRuntime {
         {
             Ok(system_contract_registry) => {
                 self.system_contract_registry = Some(system_contract_registry);
+            }
+            Err(EngineStateError::MissingSystemContractRegistry) => {
+                // The system contract registry might be missing because the node did not have it
+                // before and may create it through an upgrade. Since this is a
+                // cache, allow it to be populated later.
+                self.system_contract_registry = None;
+                warn!("ContractRuntime: system contract registry cache was not initialized.");
             }
             Err(error) => {
                 error!(%state_root_hash, %error, "unable to initialize contract runtime with a system contract registry");

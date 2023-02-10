@@ -30,7 +30,7 @@ use std::{
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -366,6 +366,7 @@ where
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
+            debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
             let auction_contract = tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, *auction_hash)?;
@@ -2086,7 +2087,7 @@ where
             .borrow_mut()
             .get_system_contracts(correlation_id)
             .map_err(|error| {
-                error!(%error, "Failed to retrieve system contract registry");
+                warn!(%error, "Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
             });
         result
