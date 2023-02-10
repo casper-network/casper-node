@@ -232,6 +232,50 @@ impl InMemoryWasmTestBuilder {
 }
 
 impl LmdbWasmTestBuilder {
+    /// Upgrades the execution engine using the scratch trie.
+    pub fn upgrade_with_upgrade_request_using_scratch(
+        &mut self,
+        engine_config: EngineConfig,
+        upgrade_config: &mut UpgradeConfig,
+    ) -> &mut Self {
+        let pre_state_hash = self.post_state_hash.expect("should have state hash");
+        upgrade_config.with_pre_state_hash(pre_state_hash);
+
+        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
+        engine_state.update_config(engine_config);
+
+        let scratch_state = self.engine_state.get_scratch_engine_state();
+        let pre_state_hash = upgrade_config.pre_state_hash();
+        let mut result = scratch_state
+            .commit_upgrade(CorrelationId::new(), upgrade_config.clone())
+            .unwrap();
+        result.post_state_hash = self
+            .engine_state
+            .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())
+            .unwrap();
+        self.engine_state.flush_environment().unwrap();
+
+        let result = Ok(result);
+
+        if let Ok(UpgradeSuccess {
+            post_state_hash,
+            execution_effect: _,
+        }) = result
+        {
+            self.post_state_hash = Some(post_state_hash);
+
+            if let Ok(StoredValue::CLValue(cl_registry)) =
+                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
+            {
+                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                self.system_contract_registry = Some(registry);
+            }
+        }
+
+        self.upgrade_results.push(result);
+        self
+    }
+
     /// Returns an [`LmdbWasmTestBuilder`] with configuration.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
@@ -706,6 +750,8 @@ where
     }
 
     /// Upgrades the execution engine.
+    /// Deprecated - this path does not use the scratch trie and generates many interstitial commits
+    /// on upgrade.
     pub fn upgrade_with_upgrade_request(
         &mut self,
         engine_config: EngineConfig,
