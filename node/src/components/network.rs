@@ -75,6 +75,7 @@ use rand::{
 };
 use strum::EnumCount;
 use tokio::{
+    io::ReadHalf,
     net::TcpStream,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
@@ -611,18 +612,17 @@ where
                 // TODO: Removal of `CountingTransport` here means some functionality has to be
                 // restored.
 
+                let (read_half, write_half) = tokio::io::split(transport);
+
                 // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
                 // tokio built-in version instead). The compat layer fixes that.
-                let compat_transport =
-                    tokio_util::compat::TokioAsyncReadCompatExt::compat(transport);
+                let read_compat: Compat<ReadHalf<SslStream<TcpStream>>> =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
 
-                // TODO: We need to split the stream here eventually. Right now, this is safe since
-                //       the reader only uses one direction.
-                let carrier = Arc::new(Mutex::new(Demultiplexer::new(FrameReader::new(
-                    LengthDelimited,
-                    compat_transport,
-                    MESSAGE_FRAGMENT_SIZE,
-                ))));
+                let frame_reader: IncomingFrameReader =
+                    FrameReader::new(LengthDelimited, read_compat, MESSAGE_FRAGMENT_SIZE);
+
+                let carrier = Arc::new(Mutex::new(Demultiplexer::new(frame_reader)));
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
@@ -1361,7 +1361,7 @@ type OutgoingCarrierError = MultiplexerError<std::io::Error>;
 type OutgoingChannel = Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>;
 
 /// The reader for incoming length-prefixed frames.
-type IncomingFrameReader = FrameReader<LengthDelimited, Compat<Transport>>;
+type IncomingFrameReader = FrameReader<LengthDelimited, Compat<ReadHalf<Transport>>>;
 
 /// The demultiplexer that seperates channels sent through the underlying frame reader.
 type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
