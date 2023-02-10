@@ -1799,7 +1799,9 @@
           ],
           "items": {
             "$ref": "#/definitions/U512"
-          }
+          },
+          "maxItems": 14,
+          "minItems": 14
         }
       },
       "additionalProperties": false

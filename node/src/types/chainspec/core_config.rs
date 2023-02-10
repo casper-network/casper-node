@@ -14,9 +14,24 @@ use serde::{
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS,
     TimeDiff,
 };
 use tracing::{error, warn};
+
+fn vesting_schedule_period<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TimeDiff, D::Error> {
+    let timediff = TimeDiff::deserialize(deserializer)?;
+    if timediff > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
+        Err(D::Error::custom(format!(
+            "vesting schedule period can't exceed {} milliseconds",
+            VESTING_SCHEDULE_LENGTH_MILLIS
+        )))
+    } else {
+        Ok(timediff)
+    }
+}
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -35,6 +50,7 @@ pub struct CoreConfig {
     /// The period after genesis during which a genesis validator's bid is locked.
     pub(crate) locked_funds_period: TimeDiff,
     /// The period in which genesis validator's bid is released over time after it's unlocked.
+    #[serde(deserialize_with = "vesting_schedule_period")]
     pub(crate) vesting_schedule_period: TimeDiff,
     /// The delay in number of eras for paying out the the unbonding amount.
     pub(crate) unbonding_delay: u64,
