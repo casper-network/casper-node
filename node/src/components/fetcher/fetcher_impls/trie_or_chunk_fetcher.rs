@@ -44,4 +44,11 @@ impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
         // Stored by the GlobalStateSynchronizer once all chunks are fetched.
         StoringState::WontStore(item)
     }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: TrieOrChunk,
+        _peer: NodeId,
+    ) {
+    }
 }

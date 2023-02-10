@@ -45,4 +45,11 @@ impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {
                 .boxed(),
         )
     }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: ApprovalsHashes,
+        _peer: NodeId,
+    ) {
+    }
 }

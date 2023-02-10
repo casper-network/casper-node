@@ -159,8 +159,9 @@ use crate::{
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-    GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
-    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+    FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
+    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -2093,6 +2094,40 @@ impl<REv> EffectBuilder<REv> {
             .schedule(
                 ControlAnnouncement::ShutdownDueToUserRequest,
                 QueueKind::Control,
+            )
+            .await;
+    }
+
+    /// Announce that a block which wasn't previously stored on this node has been fetched and
+    /// stored.
+    pub(crate) async fn announce_fetched_new_block(self, block: Arc<Block>, peer: NodeId)
+    where
+        REv: From<FetchedNewBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                FetchedNewBlockAnnouncement { block, peer },
+                QueueKind::Fetch,
+            )
+            .await;
+    }
+
+    /// Announce that a finality signature which wasn't previously stored on this node has been
+    /// fetched and stored.
+    pub(crate) async fn announce_fetched_new_finality_signature(
+        self,
+        finality_signature: Box<FinalitySignature>,
+        peer: NodeId,
+    ) where
+        REv: From<FetchedNewFinalitySignatureAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                FetchedNewFinalitySignatureAnnouncement {
+                    finality_signature,
+                    peer,
+                },
+                QueueKind::Fetch,
             )
             .await;
     }

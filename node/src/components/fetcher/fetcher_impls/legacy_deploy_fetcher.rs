@@ -45,4 +45,11 @@ impl ItemFetcher<LegacyDeploy> for Fetcher<LegacyDeploy> {
                 .boxed(),
         )
     }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: LegacyDeploy,
+        _peer: NodeId,
+    ) {
+    }
 }

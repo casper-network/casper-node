@@ -110,6 +110,10 @@ enum Event {
     #[from]
     RpcServerAnnouncement(RpcServerAnnouncement),
     #[from]
+    FetchedNewFinalitySignatureAnnouncement(FetchedNewFinalitySignatureAnnouncement),
+    #[from]
+    FetchedNewBlockAnnouncement(FetchedNewBlockAnnouncement),
+    #[from]
     NetRequestIncoming(NetRequestIncoming),
     #[from]
     NetResponseIncoming(NetResponseIncoming),
@@ -251,6 +255,8 @@ impl ReactorTrait for Reactor {
             | Event::ConsensusMessageIncoming(_)
             | Event::ConsensusDemandIncoming(_)
             | Event::FinalitySignatureIncoming(_)
+            | Event::FetchedNewBlockAnnouncement(_)
+            | Event::FetchedNewFinalitySignatureAnnouncement(_)
             | Event::ControlAnnouncement(_)
             | Event::FatalAnnouncement(_) => panic!("unexpected: {}", event),
         }

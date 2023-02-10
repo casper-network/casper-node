@@ -56,4 +56,11 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
             .boxed(),
         )
     }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: Deploy,
+        _peer: NodeId,
+    ) {
+    }
 }

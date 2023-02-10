@@ -63,4 +63,11 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
             .boxed(),
         )
     }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: SyncLeap,
+        _peer: NodeId,
+    ) {
+    }
 }

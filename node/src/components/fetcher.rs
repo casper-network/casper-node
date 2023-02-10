@@ -20,8 +20,14 @@ use tracing::trace;
 use crate::{
     components::Component,
     effect::{
-        announcements::PeerBehaviorAnnouncement,
-        requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
+        announcements::{
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
+            PeerBehaviorAnnouncement,
+        },
+        requests::{
+            BlockAccumulatorRequest, ContractRuntimeRequest, FetcherRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
@@ -30,7 +36,6 @@ use crate::{
     NodeRng,
 };
 
-use crate::effect::requests::BlockAccumulatorRequest;
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
@@ -84,6 +89,8 @@ where
         + From<ContractRuntimeRequest>
         + From<NetworkRequest<Message>>
         + From<PeerBehaviorAnnouncement>
+        + From<FetchedNewBlockAnnouncement>
+        + From<FetchedNewFinalitySignatureAnnouncement>
         + Send,
 {
     type Event = Event<T>;
@@ -141,7 +148,12 @@ where
             Event::TimeoutPeer { id, peer } => {
                 self.signal(id.clone(), Err(Error::TimedOut { id, peer }), peer)
             }
-            Event::PutToStorage { item, peer } => self.signal(item.fetch_id(), Ok(*item), peer),
+            Event::PutToStorage { item, peer } => {
+                let mut effects =
+                    Self::announce_fetched_new_item(effect_builder, (*item).clone(), peer).ignore();
+                effects.extend(self.signal(item.fetch_id(), Ok(*item), peer));
+                effects
+            }
         }
     }
 

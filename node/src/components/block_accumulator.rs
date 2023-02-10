@@ -816,7 +816,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                let meta_block = MetaBlock::new(Arc::new(*block), vec![], MetaBlockState::new());
+                let meta_block = MetaBlock::new(block, vec![], MetaBlockState::new());
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {

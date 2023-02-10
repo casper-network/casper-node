@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use derive_more::From;
 
@@ -19,7 +22,7 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ReceivedBlock {
-        block: Box<Block>,
+        block: Arc<Block>,
         sender: NodeId,
     },
     CreatedFinalitySignature {

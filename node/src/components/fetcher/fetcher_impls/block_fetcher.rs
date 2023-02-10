@@ -6,6 +6,7 @@ use futures::FutureExt;
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{
+        announcements::FetchedNewBlockAnnouncement,
         requests::{BlockAccumulatorRequest, StorageRequest},
         EffectBuilder,
     },
@@ -51,5 +52,15 @@ impl ItemFetcher<Block> for Fetcher<Block> {
                 .map(|_| ())
                 .boxed(),
         )
+    }
+
+    async fn announce_fetched_new_item<REv: From<FetchedNewBlockAnnouncement> + Send>(
+        effect_builder: EffectBuilder<REv>,
+        item: Block,
+        peer: NodeId,
+    ) {
+        effect_builder
+            .announce_fetched_new_block(Arc::new(item), peer)
+            .await
     }
 }

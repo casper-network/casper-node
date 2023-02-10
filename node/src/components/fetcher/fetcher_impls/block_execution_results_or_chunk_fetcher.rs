@@ -45,4 +45,11 @@ impl ItemFetcher<BlockExecutionResultsOrChunk> for Fetcher<BlockExecutionResults
         // Stored by the BlockSynchronizer once all chunks are fetched.
         StoringState::WontStore(item)
     }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: BlockExecutionResultsOrChunk,
+        _peer: NodeId,
+    ) {
+    }
 }

@@ -6,6 +6,7 @@ use futures::FutureExt;
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{
+        announcements::FetchedNewFinalitySignatureAnnouncement,
         requests::{BlockAccumulatorRequest, StorageRequest},
         EffectBuilder,
     },
@@ -55,5 +56,17 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
                 .map(|_| ())
                 .boxed(),
         )
+    }
+
+    async fn announce_fetched_new_item<REv>(
+        effect_builder: EffectBuilder<REv>,
+        item: FinalitySignature,
+        peer: NodeId,
+    ) where
+        REv: From<FetchedNewFinalitySignatureAnnouncement> + Send,
+    {
+        effect_builder
+            .announce_fetched_new_finality_signature(Box::new(item.clone()), peer)
+            .await
     }
 }

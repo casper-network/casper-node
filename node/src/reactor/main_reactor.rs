@@ -52,6 +52,7 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
             RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
@@ -764,7 +765,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     block_accumulator::Event::ReceivedBlock {
-                        block: item,
+                        block: Arc::new(*item),
                         sender,
                     },
                 ),
@@ -772,6 +773,19 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_id,
             )) => Effects::new(),
+            MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
+                reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::ReceivedBlock {
+                            block,
+                            sender: peer,
+                        },
+                    ),
+                )
+            }
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
                 // Finality signature received via broadcast.
@@ -850,6 +864,22 @@ impl reactor::Reactor for MainReactor {
                     .register_signature(gossiped_finality_signature_id);
                 Effects::new()
             }
+            MainEvent::FinalitySignatureFetcherAnnouncement(
+                FetchedNewFinalitySignatureAnnouncement {
+                    finality_signature,
+                    peer,
+                },
+            ) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::ReceivedFinalitySignature {
+                        finality_signature,
+                        sender: peer,
+                    },
+                ),
+            ),
 
             // DEPLOYS
             MainEvent::DeployAcceptor(event) => reactor::wrap_effects(

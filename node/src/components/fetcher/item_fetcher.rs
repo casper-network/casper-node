@@ -11,7 +11,10 @@ use super::{Error, Event, FetchResponder, FetchedData, ItemHandle, Metrics};
 use crate::{
     components::{fetcher::FetchItem, network::blocklist::BlocklistJustification},
     effect::{
-        announcements::PeerBehaviorAnnouncement,
+        announcements::{
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
+            PeerBehaviorAnnouncement,
+        },
         requests::{
             BlockAccumulatorRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
@@ -53,16 +56,17 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where
-        REv: From<StorageRequest> + From<BlockAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
+        REv: From<StorageRequest>
+            + From<BlockAccumulatorRequest>
+            + From<ContractRuntimeRequest>
+            + Send,
     {
-        Self::get_locally(effect_builder, id.clone()).event(move |result| {
-            Event::GetLocallyResult {
-                id,
-                peer,
-                validation_metadata,
-                maybe_item: Box::new(result),
-                responder,
-            }
+        Self::get_locally(effect_builder, id.clone()).event(move |result| Event::GetLocallyResult {
+            id,
+            peer,
+            validation_metadata,
+            maybe_item: Box::new(result),
+            responder,
         })
     }
 
@@ -261,6 +265,15 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
     ) -> StoringState<'a, T>
     where
         REv: From<StorageRequest> + Send;
+
+    async fn announce_fetched_new_item<REv>(
+        _effect_builder: EffectBuilder<REv>,
+        item: T,
+        peer: NodeId,
+    ) where
+        REv: From<FetchedNewBlockAnnouncement>
+            + From<FetchedNewFinalitySignatureAnnouncement>
+            + Send;
 
     /// Handles signalling responders with the item or an error.
     fn signal(
