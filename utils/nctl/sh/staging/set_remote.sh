@@ -13,7 +13,7 @@ source "$NCTL/sh/utils/main.sh"
 # ----------------------------------------------------------------
 
 # Base URL: nctl.
-_BASE_URL="http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com"
+_BASE_URL=${NCTL_REMOTE_BASE_URL:-"http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com"}
 
 # Set of remote files.
 _REMOTE_FILES=(
