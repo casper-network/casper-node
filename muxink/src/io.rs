@@ -46,7 +46,6 @@ pub struct FrameReader<D, R> {
 pub struct FrameWriter<F, E, W>
 where
     E: FrameEncoder<F>,
-    F: Buf,
 {
     /// The encoder used to encode outgoing frames.
     encoder: E,
@@ -122,7 +121,6 @@ impl<F, E, W> FrameWriter<F, E, W>
 where
     E: FrameEncoder<F>,
     <E as FrameEncoder<F>>::Output: Buf,
-    F: Buf,
 {
     /// Creates a new frame writer with the given encoder.
     pub fn new(encoder: E, stream: W) -> Self {
@@ -177,7 +175,6 @@ where
     Self: Unpin,
     E: FrameEncoder<F>,
     <E as FrameEncoder<F>>::Output: Buf,
-    F: Buf,
     W: AsyncWrite + Unpin,
 {
     type Error = io::Error;
