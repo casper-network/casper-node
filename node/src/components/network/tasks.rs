@@ -18,8 +18,10 @@ use futures::{
 };
 
 use muxink::{
+    backpressured::BackpressuredStream,
     demux::Demultiplexer,
     fragmented::{Defragmentizer, Fragmentizer},
+    little_endian::LittleEndian,
 };
 use openssl::{
     pkey::{PKey, Private},
@@ -46,7 +48,8 @@ use super::{
     limiter::LimiterHandle,
     message::NodeKeyPair,
     Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingCarrier, IncomingChannel,
-    Message, Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    Message, Metrics, OutgoingAckCarrier, OutgoingAckChannel, OutgoingCarrier,
+    OutgoingCarrierError, OutgoingChannel, Payload, Transport, BACKPRESSURE_WINDOW_SIZE,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -518,6 +521,7 @@ pub(super) async fn server<P, REv>(
 pub(super) async fn multi_channel_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     carrier: Arc<Mutex<IncomingCarrier>>,
+    ack_carrier: OutgoingAckCarrier,
     limiter: LimiterHandle,
     shutdown: ObservableFuse,
     peer_id: NodeId,
@@ -537,10 +541,19 @@ where
         let demuxer =
             Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
                 .expect("mutex poisoned");
-        let incoming: IncomingChannel = Defragmentizer::new(
-            context.chain_info.maximum_net_message_size as usize,
-            demuxer,
+
+        let ack_sink: OutgoingAckChannel =
+            LittleEndian::new(ack_carrier.create_channel_handle(channel as u8));
+
+        let incoming: IncomingChannel = BackpressuredStream::new(
+            Defragmentizer::new(
+                context.chain_info.maximum_net_message_size as usize,
+                demuxer,
+            ),
+            ack_sink,
+            BACKPRESSURE_WINDOW_SIZE,
         );
+
         select.push(incoming.map(move |frame| (channel, frame)));
     }
 
@@ -551,7 +564,7 @@ where
         pin_mut!(next_item);
         pin_mut!(wait_for_close_incoming);
 
-        let (channel, frame) = match future::select(next_item, wait_for_close_incoming)
+        let (channel, (frame, ticket)) = match future::select(next_item, wait_for_close_incoming)
             .await
             .peel()
         {
@@ -572,9 +585,12 @@ where
 
         let msg: Message<P> = deserialize_network_message(&frame)
             .map_err(MessageReaderError::DeserializationError)?;
+
         trace!(%msg, %channel, "message received");
 
-        // TODO: Re-add support for demands when backpressure is added.
+        // TODO: Re-add support for demands when backpressure is added. Right now, the ticket is
+        //       simply dropped, causing an `ACK` to be sent.
+        drop(ticket);
 
         // The limiter stops _all_ channels, as they share a resource pool anyway.
         limiter

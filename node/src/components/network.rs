@@ -61,11 +61,14 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use muxink::{
+    backpressured::BackpressuredStream,
     demux::{Demultiplexer, DemultiplexerHandle},
     fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
-    framing::length_delimited::LengthDelimited,
+    framing::{fixed_size::FixedSize, length_delimited::LengthDelimited},
     io::{FrameReader, FrameWriter},
+    little_endian::LittleEndian,
     mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
+    ImmediateFrameU64,
 };
 
 use prometheus::Registry;
@@ -76,6 +79,7 @@ use rand::{
 use strum::EnumCount;
 use tokio::{
     io::ReadHalf,
+    io::WriteHalf,
     net::TcpStream,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
@@ -158,6 +162,10 @@ const PING_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// How many pings to send before giving up and dropping the connection.
 const PING_RETRIES: u16 = 5;
+
+/// How many items to buffer before backpressuring.
+// TODO: This should probably be configurable on a per-channel basis.
+const BACKPRESSURE_WINDOW_SIZE: u64 = 20;
 
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle {
@@ -614,6 +622,14 @@ where
 
                 let (read_half, write_half) = tokio::io::split(transport);
 
+                // Setup a multiplexed delivery for ACKs (we use the send direction of the incoming
+                // connection for sending ACKs only).
+                let write_compat: Compat<WriteHalf<SslStream<TcpStream>>> =
+                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
+
+                let ack_writer: AckWriter = FrameWriter::new(FixedSize::new(8), write_compat);
+                let ack_carrier = Multiplexer::new(ack_writer);
+
                 // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
                 // tokio built-in version instead). The compat layer fixes that.
                 let read_compat: Compat<ReadHalf<SslStream<TcpStream>>> =
@@ -630,6 +646,7 @@ where
                     tasks::multi_channel_message_receiver(
                         self.context.clone(),
                         carrier,
+                        ack_carrier,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_fuse.inner().clone(),
@@ -1367,7 +1384,21 @@ type IncomingFrameReader = FrameReader<LengthDelimited, Compat<ReadHalf<Transpor
 type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
 
 /// An instance of a channel on an incoming carrier.
-type IncomingChannel = Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>;
+type IncomingChannel = BackpressuredStream<
+    Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>,
+    OutgoingAckChannel,
+    Bytes,
+>;
+
+/// Writer for ACKs, sent back over the incoming connection.
+type AckWriter =
+    FrameWriter<ChannelPrefixedFrame<ImmediateFrameU64>, FixedSize, Compat<WriteHalf<Transport>>>;
+
+/// Multiplexer sending ACKs for various channels over an `AckWriter`.
+type OutgoingAckCarrier = Multiplexer<AckWriter>;
+
+/// Outgoing ACK stream.
+type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckWriter>>;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
