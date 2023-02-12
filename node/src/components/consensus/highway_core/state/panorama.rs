@@ -250,17 +250,31 @@ mod specimen_support {
         components::consensus::ClContext,
         testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
     };
+    use std::{any::TypeId, cell::RefCell, collections::HashMap};
 
     use super::{Observation, ObservationDiscriminants};
 
     impl LargestSpecimen for Observation<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            largest_variant(estimator, |variant| match variant {
-                ObservationDiscriminants::None => Observation::None,
-                ObservationDiscriminants::Correct => {
-                    Observation::Correct(LargestSpecimen::largest_specimen(estimator))
-                }
-                ObservationDiscriminants::Faulty => Observation::Faulty,
+            thread_local! {
+                static MEMOIZED: RefCell<HashMap<TypeId, Observation<ClContext>>> = Default::default();
+            }
+
+            MEMOIZED.with(|cache| {
+                cache
+                    .try_borrow_mut()
+                    .expect("cannot borrow the memoization cache")
+                    .entry(TypeId::of::<E>())
+                    .or_insert_with(|| {
+                        largest_variant(estimator, |variant| match variant {
+                            ObservationDiscriminants::None => Observation::None,
+                            ObservationDiscriminants::Correct => {
+                                Observation::Correct(LargestSpecimen::largest_specimen(estimator))
+                            }
+                            ObservationDiscriminants::Faulty => Observation::Faulty,
+                        })
+                    })
+                    .clone()
             })
         }
     }

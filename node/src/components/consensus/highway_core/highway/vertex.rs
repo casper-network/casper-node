@@ -140,6 +140,10 @@ impl<C: Context> Vertex<C> {
 
 #[cfg(test)]
 mod specimen_support {
+    use super::{
+        Dependency, DependencyDiscriminants, Endorsements, HashedWireUnit, Ping, SignedEndorsement,
+        SignedWireUnit, Vertex, VertexDiscriminants, WireUnit,
+    };
     use crate::{
         components::consensus::ClContext,
         testing::specimen::{
@@ -147,11 +151,7 @@ mod specimen_support {
             SizeEstimator,
         },
     };
-
-    use super::{
-        Dependency, DependencyDiscriminants, Endorsements, HashedWireUnit, Ping, SignedEndorsement,
-        SignedWireUnit, Vertex, VertexDiscriminants, WireUnit,
-    };
+    use std::{any::TypeId, cell::RefCell, collections::HashMap};
 
     impl LargestSpecimen for Vertex<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
@@ -234,10 +234,21 @@ mod specimen_support {
 
     impl LargestSpecimen for HashedWireUnit<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            HashedWireUnit {
-                hash: LargestSpecimen::largest_specimen(estimator),
-                wire_unit: LargestSpecimen::largest_specimen(estimator),
+            thread_local! {
+                static MEMOIZED: RefCell<HashMap<TypeId, HashedWireUnit<ClContext>>> = Default::default();
             }
+
+            MEMOIZED.with(|cache| {
+                cache
+                    .try_borrow_mut()
+                    .expect("cannot borrow the memoization cache")
+                    .entry(TypeId::of::<E>())
+                    .or_insert_with(|| HashedWireUnit {
+                        hash: LargestSpecimen::largest_specimen(estimator),
+                        wire_unit: LargestSpecimen::largest_specimen(estimator),
+                    })
+                    .clone()
+            })
         }
     }
 

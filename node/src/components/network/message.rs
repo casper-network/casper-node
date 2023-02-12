@@ -542,10 +542,6 @@ mod tests {
                 _ => None,
             }
         }
-
-        fn key() -> &'static str {
-            "NetworkMessageEstimator"
-        }
     }
 
     #[test]

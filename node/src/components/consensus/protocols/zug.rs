@@ -2249,10 +2249,10 @@ where
 
 #[cfg(test)]
 mod specimen_support {
-    use std::{collections::BTreeSet, sync::Arc};
+    use std::{any::TypeId, cell::RefCell, collections::BTreeSet, collections::HashMap};
 
     use crate::{
-        components::consensus::{cl_context::Keypair, utils::ValidatorIndex, ClContext},
+        components::consensus::{utils::ValidatorIndex, ClContext},
         testing::specimen::{
             btree_map_distinct_from_prop, btree_set_distinct_from_prop, largest_variant,
             vec_prop_specimen, LargeUniqueSequence, LargestSpecimen, SizeEstimator,
@@ -2368,17 +2368,29 @@ mod specimen_support {
 
     impl LargestSpecimen for Content<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            largest_variant::<Self, ContentDiscriminants, _, _>(
-                estimator,
-                |variant| match variant {
-                    ContentDiscriminants::Echo => {
-                        Content::Echo(LargestSpecimen::largest_specimen(estimator))
-                    }
-                    ContentDiscriminants::Vote => {
-                        Content::Vote(LargestSpecimen::largest_specimen(estimator))
-                    }
-                },
-            )
+            thread_local! {
+                static MEMOIZED: RefCell<HashMap<TypeId, Content<ClContext>>> = Default::default();
+            }
+
+            MEMOIZED.with(|cache| {
+                cache
+                    .try_borrow_mut()
+                    .expect("cannot borrow the memoization cache")
+                    .entry(TypeId::of::<E>())
+                    .or_insert_with(|| {
+                        largest_variant::<Self, ContentDiscriminants, _, _>(estimator, |variant| {
+                            match variant {
+                                ContentDiscriminants::Echo => {
+                                    Content::Echo(LargestSpecimen::largest_specimen(estimator))
+                                }
+                                ContentDiscriminants::Vote => {
+                                    Content::Vote(LargestSpecimen::largest_specimen(estimator))
+                                }
+                            }
+                        })
+                    })
+                    .clone()
+            })
         }
     }
 }

@@ -5,11 +5,13 @@
 
 use core::convert::TryInto;
 use std::{
+    any::TypeId,
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use casper_execution_engine::core::engine_state::{
@@ -23,7 +25,6 @@ use casper_types::{
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
-use once_cell::sync::Lazy;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
@@ -45,7 +46,7 @@ use crate::{
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
 
 /// Given a specific type instance, estimates its serialized size.
-pub(crate) trait SizeEstimator {
+pub(crate) trait SizeEstimator: 'static {
     /// Estimate the serialized size of a value.
     fn estimate<T: Serialize>(&self, val: &T) -> usize;
 
@@ -77,16 +78,13 @@ pub(crate) trait SizeEstimator {
             )
         })
     }
-
-    /// An identifier for this specific estimator, used for memoization.
-    fn key() -> &'static str;
 }
 
 /// Supports returning a maximum size specimen.
 ///
 /// "Maximum size" refers to the instance that uses the highest amount of memory and is also most
 /// likely to have the largest representation when serialized.
-pub(crate) trait LargestSpecimen {
+pub(crate) trait LargestSpecimen: Sized {
     /// Returns the largest possible specimen for this type.
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self;
 }
@@ -356,39 +354,74 @@ impl LargestSpecimen for SemVer {
     }
 }
 
-//static RNG: once_cell::sync::Lazy<std::sync::Mutex<TestRng>> =
-//    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(TestRng::new()));
+thread_local! {
+    static RNG: once_cell::sync::Lazy<RefCell<TestRng>> =
+        once_cell::sync::Lazy::new(|| RefCell::new(TestRng::new()));
+}
 
 impl LargestSpecimen for PublicKey {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        PublicKey::system()
-        //largest_random_public_key(
-        //    estimator,
-        //    &mut RNG.lock().expect("the test rng to be acquired"),
-        //)
+        thread_local! {
+            static MEMOIZED: RefCell<HashMap<TypeId, PublicKey>> = Default::default();
+        }
+
+        MEMOIZED.with(|cache| {
+            cache
+                .try_borrow_mut()
+                .expect("cannot borrow the memoization cache")
+                .entry(TypeId::of::<E>())
+                .or_insert_with(|| {
+                    RNG.with(|rng| {
+                        largest_random_public_key(
+                            estimator,
+                            &mut rng.try_borrow_mut().expect("the test rng to be acquired"),
+                        )
+                    })
+                })
+                .clone()
+        })
     }
 }
 
-//fn largest_random_public_key<E: SizeEstimator>(estimator: &E, rng: &mut TestRng) -> PublicKey {
-//    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, move |variant| {
-//        match variant {
-//            PublicKeyDiscriminants::System => PublicKey::system(),
-//            PublicKeyDiscriminants::Ed25519 => PublicKey::random_ed25519(rng),
-//            PublicKeyDiscriminants::Secp256k1 => PublicKey::random_secp256k1(rng),
-//        }
-//    })
-//}
+fn largest_random_public_key<E: SizeEstimator>(estimator: &E, rng: &mut TestRng) -> PublicKey {
+    println!("largest_random_public_key");
+    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, move |variant| {
+        match variant {
+            PublicKeyDiscriminants::System => PublicKey::system(),
+            PublicKeyDiscriminants::Ed25519 => PublicKey::random_ed25519(rng),
+            PublicKeyDiscriminants::Secp256k1 => PublicKey::random_secp256k1(rng),
+        }
+    })
+}
 
 impl<E> LargeUniqueSequence<E> for PublicKey
 where
     E: SizeEstimator,
 {
     fn large_unique_sequence(estimator: &E, count: usize) -> BTreeSet<Self> {
-        //let rng = &mut RNG.lock().expect("the test rng to be acquired");
-        //(0..count)
-        //    .map(move |_| largest_random_public_key(estimator, rng))
-        //    .collect()
-        (0..count).map(|_| PublicKey::system()).collect()
+        thread_local! {
+            static MEMOIZED: RefCell<HashMap<(TypeId, usize), BTreeSet<PublicKey>>> = Default::default();
+        }
+
+        MEMOIZED.with(|cache| {
+            cache
+                .try_borrow_mut()
+                .expect("cannot borrow the memoization cache")
+                .entry((TypeId::of::<E>(), count))
+                .or_insert_with(|| {
+                    RNG.with(|rng| {
+                        (0..count)
+                            .map(move |_| {
+                                largest_random_public_key(
+                                    estimator,
+                                    &mut rng.try_borrow_mut().expect("the test rng to be acquired"),
+                                )
+                            })
+                            .collect()
+                    })
+                })
+                .clone()
+        })
     }
 }
 
@@ -403,30 +436,33 @@ where
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        static MEMOIZED: Lazy<Mutex<HashMap<&'static str, Signature>>> =
-            Lazy::new(|| Mutex::new(HashMap::new()));
+        thread_local! {
+            static MEMOIZED: RefCell<HashMap<TypeId, Signature>> = Default::default();
+        }
 
-        MEMOIZED
-            .lock()
-            .expect("memoized signature specimen cache disappeared")
-            .entry(E::key())
-            .or_insert_with(|| {
-                let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
-                let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
+        MEMOIZED.with(|cache| {
+            cache
+                .try_borrow_mut()
+                .expect("cannot borrow the memoization cache")
+                .entry(TypeId::of::<E>())
+                .or_insert_with(|| {
+                    let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+                    let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
 
-                largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| {
-                    match variant {
-                        SignatureDiscriminants::System => Signature::system(),
-                        SignatureDiscriminants::Ed25519 => {
-                            sign([0_u8], ed25519_sec, &ed25519_sec.into())
+                    largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| {
+                        match variant {
+                            SignatureDiscriminants::System => Signature::system(),
+                            SignatureDiscriminants::Ed25519 => {
+                                sign([0_u8], ed25519_sec, &ed25519_sec.into())
+                            }
+                            SignatureDiscriminants::Secp256k1 => {
+                                sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
+                            }
                         }
-                        SignatureDiscriminants::Secp256k1 => {
-                            sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
-                        }
-                    }
+                    })
                 })
-            })
-            .clone()
+                .clone()
+        })
     }
 }
 

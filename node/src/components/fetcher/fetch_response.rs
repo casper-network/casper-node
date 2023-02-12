@@ -53,13 +53,13 @@ mod specimen_support {
             largest_variant::<Self, FetchResponseDiscriminants, _, _>(estimator, |variant| {
                 match variant {
                     FetchResponseDiscriminants::Fetched => {
-                        LargestSpecimen::largest_specimen(estimator)
+                        FetchResponse::Fetched(LargestSpecimen::largest_specimen(estimator))
                     }
                     FetchResponseDiscriminants::NotFound => {
-                        LargestSpecimen::largest_specimen(estimator)
+                        FetchResponse::NotFound(LargestSpecimen::largest_specimen(estimator))
                     }
                     FetchResponseDiscriminants::NotProvided => {
-                        LargestSpecimen::largest_specimen(estimator)
+                        FetchResponse::NotProvided(LargestSpecimen::largest_specimen(estimator))
                     }
                 }
             })
