@@ -166,7 +166,7 @@ function _step_05()
 # Step 06: Await 1 era and then start node 6 with trusted hash within the allowed range
 function _step_06()
 {
-    POST_UPGRADE_BLOCK_HASH=${1}
+    local POST_UPGRADE_BLOCK_HASH=${1}
     log_step_upgrades 6 "awaiting 1 era to start node 6"
     nctl-await-n-eras offset='1' sleep_interval='5.0' timeout='300' node_id='2'
     _stage_node_with_trusted_hash "6" "$STAGE_ID" "$ACTIVATION_POINT" "$POST_UPGRADE_BLOCK_HASH" 6
@@ -175,7 +175,7 @@ function _step_06()
 # Step 07: Await 5 eras and then start node 7 with a trusted hash that is too old
 function _step_07()
 {
-    PRE_UPGRADE_BLOCK_HASH=${1}
+    local PRE_UPGRADE_BLOCK_HASH=${1}
     log_step_upgrades 7 "awaiting 5 eras for pre-upgrade block hash to become too old"
     nctl-await-n-eras offset='5' sleep_interval='5.0' timeout='300' node_id='2'
     _stage_node_with_trusted_hash "7" "$STAGE_ID" "$ACTIVATION_POINT" "$PRE_UPGRADE_BLOCK_HASH" 7
