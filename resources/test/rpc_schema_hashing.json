@@ -2965,13 +2965,15 @@
                 "minimum": 0.0
               },
               "locked_amounts": {
+                "items": {
+                  "$ref": "#/components/schemas/U512"
+                },
+                "maxItems": 14,
+                "minItems": 14,
                 "type": [
                   "array",
                   "null"
-                ],
-                "items": {
-                  "$ref": "#/components/schemas/U512"
-                }
+                ]
               }
             },
             "additionalProperties": false

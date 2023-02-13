@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use log::error;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,7 @@ use casper_execution_engine::{
     core::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig, GenesisAccount},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::ProtocolVersion;
+use casper_types::{system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ProtocolVersion, TimeDiff};
 
 use crate::{
     DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
@@ -39,9 +40,7 @@ pub enum Error {
         error: io::Error,
     },
     FailedToParseChainspec(toml::de::Error),
-    FailedToCreateExecConfig,
-    FailedToParseLockedFundsPeriod,
-    FailedToCreateGenesisRequest,
+    Validation,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -53,9 +52,9 @@ pub struct CoreConfig {
     /// auction_delay + 1
     pub(crate) auction_delay: u64,
     /// The period after genesis during which a genesis validator's bid is locked.
-    pub(crate) locked_funds_period: String,
+    pub(crate) locked_funds_period: TimeDiff,
     /// The period in which genesis validator's bid is released over time
-    pub(crate) vesting_schedule_period: String,
+    pub(crate) vesting_schedule_period: TimeDiff,
     /// The delay in number of eras for paying out the the unbonding amount.
     pub(crate) unbonding_delay: u64,
     /// Round seigniorage rate represented as a fractional number.
@@ -84,15 +83,43 @@ pub struct ChainspecConfig {
 }
 
 impl ChainspecConfig {
-    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
-        let path = filename.as_ref();
-        let bytes = fs::read(path).map_err(|error| Error::FailedToLoadChainspec {
-            path: path.into(),
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let chainspec_config: ChainspecConfig =
+            toml::from_slice(bytes).map_err(Error::FailedToParseChainspec)?;
+
+        if !chainspec_config.is_valid() {
+            return Err(Error::Validation);
+        }
+
+        Ok(chainspec_config)
+    }
+
+    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let bytes = fs::read(&path).map_err(|error| Error::FailedToLoadChainspec {
+            path: path.to_path_buf(),
             error,
         })?;
-        let chainspec_config: ChainspecConfig =
-            toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
-        Ok(chainspec_config)
+        ChainspecConfig::from_bytes(&bytes)
+    }
+
+    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
+        Self::from_path(filename)
+    }
+
+    fn is_valid(&self) -> bool {
+        if self.core_config.vesting_schedule_period
+            > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS)
+        {
+            error!(
+                "vesting schedule period too long (actual {}; maximum {})",
+                self.core_config.vesting_schedule_period.millis(),
+                VESTING_SCHEDULE_LENGTH_MILLIS,
+            );
+            return false;
+        }
+
+        true
     }
 
     pub(crate) fn create_genesis_request_from_chainspec<P: AsRef<Path>>(
@@ -100,24 +127,15 @@ impl ChainspecConfig {
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
     ) -> Result<RunGenesisRequest, Error> {
-        let path = filename.as_ref();
-        let bytes = fs::read(path).map_err(|error| Error::FailedToLoadChainspec {
-            path: path.into(),
-            error,
-        })?;
-        let chainspec_config: ChainspecConfig =
-            toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
-        let locked_funds_period_millis =
-            humantime::parse_duration(&chainspec_config.core_config.locked_funds_period)
-                .map_err(|_| Error::FailedToCreateGenesisRequest)?
-                .as_millis() as u64;
+        let chainspec_config = ChainspecConfig::from_path(filename)?;
+
         let exec_config = ExecConfig::new(
             genesis_accounts,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
             chainspec_config.core_config.validator_slots,
             chainspec_config.core_config.auction_delay,
-            locked_funds_period_millis,
+            chainspec_config.core_config.locked_funds_period.millis(),
             chainspec_config.core_config.round_seigniorage_rate,
             chainspec_config.core_config.unbonding_delay,
             DEFAULT_GENESIS_TIMESTAMP_MILLIS,
@@ -147,17 +165,13 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
     type Error = Error;
 
     fn try_from(chainspec_config: ChainspecConfig) -> Result<Self, Self::Error> {
-        let locked_funds_period_millis =
-            humantime::parse_duration(&chainspec_config.core_config.locked_funds_period)
-                .map_err(|_| Error::FailedToCreateExecConfig)?
-                .as_millis() as u64;
         Ok(ExecConfig::new(
             DEFAULT_ACCOUNTS.clone(),
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
             chainspec_config.core_config.validator_slots,
             chainspec_config.core_config.auction_delay,
-            locked_funds_period_millis,
+            chainspec_config.core_config.locked_funds_period.millis(),
             chainspec_config.core_config.round_seigniorage_rate,
             chainspec_config.core_config.unbonding_delay,
             DEFAULT_GENESIS_TIMESTAMP_MILLIS,

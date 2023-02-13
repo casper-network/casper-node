@@ -209,18 +209,16 @@ impl InMemoryWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let vesting_schedule_period_millis =
-            humantime::parse_duration(&chainspec_config.core_config.vesting_schedule_period)
-                .expect("should parse a vesting schedule period")
-                .as_millis() as u64;
-
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
             chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.core_config.minimum_delegation_amount,
             chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
+            chainspec_config
+                .core_config
+                .vesting_schedule_period
+                .millis(),
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -325,10 +323,6 @@ impl LmdbWasmTestBuilder {
     ) -> Self {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
-        let vesting_schedule_period_millis =
-            humantime::parse_duration(&chainspec_config.core_config.vesting_schedule_period)
-                .expect("should parse a vesting schedule period")
-                .as_millis() as u64;
 
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
@@ -336,7 +330,10 @@ impl LmdbWasmTestBuilder {
             chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.core_config.minimum_delegation_amount,
             chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
+            chainspec_config
+                .core_config
+                .vesting_schedule_period
+                .millis(),
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
