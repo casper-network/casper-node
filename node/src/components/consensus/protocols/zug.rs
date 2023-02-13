@@ -2249,7 +2249,11 @@ where
 
 #[cfg(test)]
 mod specimen_support {
-    use std::{any::TypeId, cell::RefCell, collections::BTreeSet, collections::HashMap};
+    use std::{
+        any::TypeId,
+        cell::RefCell,
+        collections::{BTreeSet, HashMap},
+    };
 
     use crate::{
         components::consensus::{utils::ValidatorIndex, ClContext},

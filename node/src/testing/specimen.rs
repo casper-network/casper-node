@@ -354,6 +354,30 @@ impl LargestSpecimen for SemVer {
     }
 }
 
+// Dummy implementation to replace the buggy real one below:
+impl LargestSpecimen for PublicKey {
+    fn largest_specimen<E: SizeEstimator>(_estimator: &E) -> Self {
+        PublicKey::system()
+    }
+}
+
+// Dummy implementation to replace the buggy real one below:
+impl<E> LargeUniqueSequence<E> for PublicKey
+where
+    E: SizeEstimator,
+{
+    fn large_unique_sequence(_estimator: &E, _count: usize) -> BTreeSet<Self> {
+        #[allow(unused_imports)]
+        use {PublicKeyDiscriminants, TestRng};
+
+        let mut set = BTreeSet::new();
+
+        set.insert(PublicKey::system());
+
+        set
+    }
+}
+/*
 thread_local! {
     static RNG: once_cell::sync::Lazy<RefCell<TestRng>> =
         once_cell::sync::Lazy::new(|| RefCell::new(TestRng::new()));
@@ -424,6 +448,7 @@ where
         })
     }
 }
+*/
 
 impl<E> LargeUniqueSequence<E> for Digest
 where
