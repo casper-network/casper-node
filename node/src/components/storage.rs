@@ -1113,13 +1113,9 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                let result = self.get_block_header_by_height_restricted(
-                    &mut txn,
-                    block_height,
-                    only_from_available_block_range,
-                )?;
-                responder.respond(result).ignore()
+                let maybe_header = self
+                    .read_block_header_by_height(block_height, only_from_available_block_range)?;
+                responder.respond(maybe_header).ignore()
             }
             StorageRequest::PutBlockHeader {
                 block_header,
@@ -1587,22 +1583,7 @@ impl Storage {
     pub fn read_block_header_by_height(
         &self,
         height: u64,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        self.block_height_index
-            .get(&height)
-            .and_then(|block_hash| {
-                self.get_single_block_header(&mut txn, block_hash)
-                    .transpose()
-            })
-            .transpose()
-    }
-
-    /// Retrieves a single block header by height from the available block
-    /// range by looking it up in the index and returning it.
-    pub fn read_complete_block_header_by_height(
-        &self,
-        height: u64,
+        only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         let res = self
@@ -1613,7 +1594,7 @@ impl Storage {
                     .transpose()
             })
             .transpose();
-        if !(self.should_return_block(height, true)?) {
+        if !(self.should_return_block(height, only_from_available_block_range)?) {
             return Ok(None);
         }
         res
@@ -1964,20 +1945,6 @@ impl Storage {
         result.push(highest_signed_block_header.clone());
 
         Ok(Some(result))
-    }
-
-    fn get_block_header_by_height_restricted<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_height: u64,
-        only_from_available_block_range: bool,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let block_hash = match self.block_height_index.get(&block_height) {
-            None => return Ok(None),
-            Some(block_hash) => block_hash,
-        };
-
-        self.get_single_block_header_restricted(txn, block_hash, only_from_available_block_range)
     }
 
     /// Retrieves a single block header in a given transaction from storage.
