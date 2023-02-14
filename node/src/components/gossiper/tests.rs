@@ -8,7 +8,6 @@ use std::{
 };
 
 use derive_more::{Display, From};
-use num_rational::Ratio;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -161,7 +160,6 @@ impl reactor::Reactor for Reactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
-            Ratio::new(1, 3),
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
