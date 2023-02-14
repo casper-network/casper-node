@@ -1144,16 +1144,44 @@ impl Display for ReactorStatusRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum BlockAccumulatorRequest {
     GetPeersForBlock {
         block_hash: BlockHash,
         responder: Responder<Option<Vec<NodeId>>>,
     },
+    GetBlock {
+        block_hash: BlockHash,
+        responder: Responder<Option<Arc<Block>>>,
+    },
+    GetFinalitySignature {
+        block_hash: BlockHash,
+        public_key: PublicKey,
+        responder: Responder<Option<FinalitySignature>>,
+    },
 }
 
 impl Display for BlockAccumulatorRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block accumulator request")
+        match self {
+            BlockAccumulatorRequest::GetPeersForBlock { block_hash, .. } => {
+                write!(f, "get peers for {}", block_hash)
+            }
+            BlockAccumulatorRequest::GetBlock { block_hash, .. } => {
+                write!(f, "get block for {}", block_hash)
+            }
+            BlockAccumulatorRequest::GetFinalitySignature {
+                block_hash,
+                public_key,
+                ..
+            } => {
+                write!(
+                    f,
+                    "get finality signature of {} for {}",
+                    public_key, block_hash
+                )
+            }
+        }
     }
 }
 

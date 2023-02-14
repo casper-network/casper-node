@@ -159,8 +159,9 @@ use crate::{
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-    GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
-    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+    FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
+    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -2097,6 +2098,40 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announce that a block which wasn't previously stored on this node has been fetched and
+    /// stored.
+    pub(crate) async fn announce_fetched_new_block(self, block: Arc<Block>, peer: NodeId)
+    where
+        REv: From<FetchedNewBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                FetchedNewBlockAnnouncement { block, peer },
+                QueueKind::Fetch,
+            )
+            .await;
+    }
+
+    /// Announce that a finality signature which wasn't previously stored on this node has been
+    /// fetched and stored.
+    pub(crate) async fn announce_fetched_new_finality_signature(
+        self,
+        finality_signature: Box<FinalitySignature>,
+        peer: NodeId,
+    ) where
+        REv: From<FetchedNewFinalitySignatureAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                FetchedNewFinalitySignatureAnnouncement {
+                    finality_signature,
+                    peer,
+                },
+                QueueKind::Fetch,
+            )
+            .await;
+    }
+
     /// Get the bytes for the chainspec file and genesis_accounts
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
@@ -2182,6 +2217,42 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_from_block_accumulator(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<Arc<Block>>
+    where
+        REv: From<BlockAccumulatorRequest>,
+    {
+        self.make_request(
+            |responder| BlockAccumulatorRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_signature_from_block_accumulator(
+        self,
+        block_hash: BlockHash,
+        public_key: PublicKey,
+    ) -> Option<FinalitySignature>
+    where
+        REv: From<BlockAccumulatorRequest>,
+    {
+        self.make_request(
+            |responder| BlockAccumulatorRequest::GetFinalitySignature {
+                block_hash,
+                public_key,
+                responder,
+            },
+            QueueKind::Regular,
         )
         .await
     }

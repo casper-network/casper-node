@@ -1227,7 +1227,7 @@ async fn block_accumulator_reactor_flow() {
         runner
             .process_injected_effects(|effect_builder| {
                 let event = super::Event::ReceivedBlock {
-                    block: Box::new(block_1.clone()),
+                    block: Arc::new(block_1.clone()),
                     sender: peer_2,
                 };
                 effect_builder
@@ -1267,7 +1267,7 @@ async fn block_accumulator_reactor_flow() {
 
         let block_accumulator = &mut reactor.block_accumulator;
         let event = super::Event::ReceivedBlock {
-            block: Box::new(block_2.clone()),
+            block: Arc::new(block_2.clone()),
             sender: peer_2,
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
@@ -1469,7 +1469,7 @@ async fn block_accumulator_reactor_flow() {
 
         let block_accumulator = &mut reactor.block_accumulator;
         let event = super::Event::ReceivedBlock {
-            block: Box::new(older_block.clone()),
+            block: Arc::new(older_block.clone()),
             sender: peer_1,
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);

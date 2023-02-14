@@ -5,7 +5,11 @@ use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
-    effect::{requests::StorageRequest, EffectBuilder},
+    effect::{
+        announcements::FetchedNewFinalitySignatureAnnouncement,
+        requests::{BlockAccumulatorRequest, StorageRequest},
+        EffectBuilder,
+    },
     types::{FinalitySignature, FinalitySignatureId, NodeId},
 };
 
@@ -27,12 +31,18 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+    async fn get_locally<REv: From<StorageRequest> + From<BlockAccumulatorRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: FinalitySignatureId,
     ) -> Option<FinalitySignature> {
-        effect_builder
+        if let Some(finality_signature) = effect_builder
             .get_signature_from_storage(id.block_hash, id.public_key.clone())
+            .await
+        {
+            return Some(finality_signature);
+        }
+        effect_builder
+            .get_signature_from_block_accumulator(id.block_hash, id.public_key.clone())
             .await
     }
 
@@ -46,5 +56,17 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
                 .map(|_| ())
                 .boxed(),
         )
+    }
+
+    async fn announce_fetched_new_item<REv>(
+        effect_builder: EffectBuilder<REv>,
+        item: FinalitySignature,
+        peer: NodeId,
+    ) where
+        REv: From<FetchedNewFinalitySignatureAnnouncement> + Send,
+    {
+        effect_builder
+            .announce_fetched_new_finality_signature(Box::new(item.clone()), peer)
+            .await
     }
 }
