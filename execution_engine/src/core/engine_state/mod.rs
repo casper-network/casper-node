@@ -495,9 +495,16 @@ where
                     }
 
                     for (unbond_purse_uref, unbond_amount) in balances {
+                        let key = match tracking_copy
+                            .borrow_mut()
+                            .get_purse_balance_key(correlation_id, unbond_purse_uref.into())
+                        {
+                            Ok(key) => key,
+                            Err(_) => return Err(Error::Mint("purse balance not found".into())),
+                        };
                         let current_balance = tracking_copy
                             .borrow_mut()
-                            .get_purse_balance(CorrelationId::new(), Key::URef(unbond_purse_uref))?
+                            .get_purse_balance(CorrelationId::new(), key)?
                             .value();
 
                         if unbond_amount > current_balance {
