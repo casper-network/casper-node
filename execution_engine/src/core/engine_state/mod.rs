@@ -478,8 +478,6 @@ where
                 {
                     let balances = BTreeMap::new();
                     for purse in withdraw_purses {
-                        // check for duplicate purses, sum the total so we don't run out of funds
-
                         match balances.entry(*purse.bonding_purse()) {
                             Entry::Vacant(entry) => {
                                 entry.insert(*purse.amount());
