@@ -463,32 +463,32 @@ where
             for key in withdraw_keys {
                 // Transform only those withdraw purses that are still to be
                 // processed in the unbonding queue.
-                let withdraw_purses =
-                    tracking_copy
-                        .borrow_mut()
-                        .read(correlation_id, &key)
-                        .map_err(|_| Error::FailedToGetWithdrawKeys)?
-                        .ok_or(Error::FailedToGetStoredWithdraws)?
-                        .as_withdraw()
-                        .ok_or(Error::FailedToGetWithdrawPurses)?
-                        .to_owned();
+                let withdraw_purses = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &key)
+                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                    .ok_or(Error::FailedToGetStoredWithdraws)?
+                    .as_withdraw()
+                    .ok_or(Error::FailedToGetWithdrawPurses)?
+                    .to_owned();
 
                 // Ensure that sufficient balance exists for all unbond purses that are to be
                 // migrated.
                 {
-                    let balances = BTreeMap::new();
-                    for purse in withdraw_purses {
+                    let mut balances = BTreeMap::new();
+                    for purse in withdraw_purses.iter() {
                         match balances.entry(*purse.bonding_purse()) {
                             Entry::Vacant(entry) => {
                                 entry.insert(*purse.amount());
                             }
-                            Entry::Occupied(entry) => {
+                            Entry::Occupied(mut entry) => {
                                 let value = entry.get_mut();
-                                let new_val = value.checked_add(*purse.amount()).ok_or(|_| {
-                                    Err(Error::Mint(
-                                        "overflowed a u512 during unbond migration".into(),
-                                    ))
-                                })?;
+                                let new_val =
+                                    value.checked_add(*purse.amount()).ok_or_else(|| {
+                                        Error::Mint(
+                                            "overflowed a u512 during unbond migration".into(),
+                                        )
+                                    })?;
                                 *value = new_val;
                             }
                         }
