@@ -1108,6 +1108,126 @@ fn accumulator_purge() {
     assert!(!block_accumulator
         .peer_block_timestamps
         .contains_key(&peer_2));
+
+    // Create a block just in range of block 3 to not qualify for a purge.
+    let in_range_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() - block_accumulator.attempt_execution_threshold,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let in_range_block_sig = FinalitySignature::create(
+        *in_range_block.hash(),
+        in_range_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the in range block with sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *in_range_block.hash(),
+            Some(in_range_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(in_range_block.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(in_range_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(in_range_block_sig, Some(peer_1))
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Create a block just out of range of block 3 to qualify for a purge.
+    let out_of_range_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() - block_accumulator.attempt_execution_threshold - 1,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let out_of_range_block_sig = FinalitySignature::create(
+        *out_of_range_block.hash(),
+        out_of_range_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the out of range block with sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *out_of_range_block.hash(),
+            Some(out_of_range_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(out_of_range_block.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(out_of_range_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(out_of_range_block_sig, Some(peer_1))
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Make sure the local tip along with its recent parents never get purged.
+    {
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+        // Make block 3 the local tip.
+        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
+            block_3.header().height(),
+            block_3.header().era_id(),
+        ));
+        // Change the timestamps to old ones so that all blocks would normally
+        // get purged.
+        let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
+        for (_, acceptor) in block_accumulator.block_acceptors.iter_mut() {
+            acceptor.set_last_progress(last_progress);
+        }
+        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+            for (_, timestamp) in timestamps.iter_mut() {
+                *timestamp = last_progress;
+            }
+        }
+        // Do the purge.
+        block_accumulator.purge();
+        // As block 3 is the local tip, it should not have been purged.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+        // Neither should the block in `attempt_execution_threshold` range.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(in_range_block.hash()));
+        // But the block out of `attempt_execution_threshold` range should
+        // have been purged.
+        assert!(!block_accumulator
+            .block_acceptors
+            .contains_key(out_of_range_block.hash()));
+
+        // Now replace the local tip with something else (in this case we'll
+        // have no local tip) so that previously created blocks no longer have
+        // purge immunity.
+        block_accumulator.local_tip.take();
+        // Do the purge.
+        block_accumulator.purge();
+        // Block 3 is no longer the local tip, and given that it's old, the
+        // blocks should have been purged.
+        assert!(block_accumulator.block_acceptors.is_empty());
+    }
 }
 
 fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {

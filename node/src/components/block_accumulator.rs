@@ -628,7 +628,18 @@ impl BlockAccumulator {
         let now = Timestamp::now();
         let mut purged = vec![];
         let purge_interval = self.purge_interval;
+        let maybe_local_tip_height = self.local_tip.map(|local_tip| local_tip.height);
+        let attempt_execution_threshold = self.attempt_execution_threshold;
         self.block_acceptors.retain(|k, v| {
+            if let (Some(acceptor_height), Some(local_tip_height)) =
+                (v.block_height(), maybe_local_tip_height)
+            {
+                if acceptor_height >= local_tip_height.saturating_sub(attempt_execution_threshold)
+                    && acceptor_height <= local_tip_height
+                {
+                    return true;
+                }
+            }
             let expired = now.saturating_diff(v.last_progress()) > purge_interval;
             if expired {
                 purged.push(*k)
