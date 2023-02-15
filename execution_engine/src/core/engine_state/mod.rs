@@ -22,7 +22,7 @@ pub mod upgrade;
 
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     convert::TryFrom,
     rc::Rc,
 };
@@ -463,14 +463,56 @@ where
             for key in withdraw_keys {
                 // Transform only those withdraw purses that are still to be
                 // processed in the unbonding queue.
-                let withdraw_purses = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &key)
-                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
-                    .ok_or(Error::FailedToGetStoredWithdraws)?
-                    .as_withdraw()
-                    .ok_or(Error::FailedToGetWithdrawPurses)?
-                    .to_owned();
+                let withdraw_purses: Vec<casper_types::system::auction::WithdrawPurse> =
+                    tracking_copy
+                        .borrow_mut()
+                        .read(correlation_id, &key)
+                        .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                        .ok_or(Error::FailedToGetStoredWithdraws)?
+                        .as_withdraw()
+                        .ok_or(Error::FailedToGetWithdrawPurses)?
+                        .to_owned();
+
+                // Ensure that sufficient balance exists for all unbond purses that are to be
+                // migrated.
+                {
+                    let balances = BTreeMap::new();
+                    for purse in withdraw_purses {
+                        // check for duplicate purses, sum the total so we don't run out of funds
+
+                        match balances.entry(*purse.bonding_purse()) {
+                            Entry::Vacant(entry) => {
+                                entry.insert(*purse.amount());
+                            }
+                            Entry::Occupied(entry) => {
+                                let value = entry.get_mut();
+                                let new_val = value.checked_add(*purse.amount()).ok_or(|_| {
+                                    Err(Error::Mint(
+                                        "overflowed a u512 during unbond migration".into(),
+                                    ))
+                                })?;
+                                *value = new_val;
+                            }
+                        }
+                    }
+
+                    for (unbond_purse_uref, unbond_amount) in balances {
+                        let current_balance = tracking_copy
+                            .borrow_mut()
+                            .get_purse_balance(CorrelationId::new(), Key::URef(unbond_purse_uref))?
+                            .value();
+
+                        if unbond_amount > current_balance {
+                            // If we don't have enough balance to migrate, the only thing we can do
+                            // is to fail the upgrade.
+                            error!("commit_upgrade failed during migration - insufficient funds({current_balance}) in purse({unbond_purse_uref}) to unbond({unbond_amount}) ");
+                            return Err(Error::Mint(
+                                "insufficient balance detected while migrating unbond purses"
+                                    .into(),
+                            ));
+                        }
+                    }
+                }
 
                 let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
                     .into_iter()
