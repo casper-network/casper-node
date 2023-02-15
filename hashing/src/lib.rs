@@ -47,6 +47,8 @@ pub use indexed_merkle_proof::IndexedMerkleProof;
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
 
+const CHUNK_DATA_ZEROED: &[u8] = &[0u8; ChunkWithProof::CHUNK_SIZE_BYTES];
+
 impl Digest {
     /// The number of bytes in a `Digest`.
     pub const LENGTH: usize = 32;
@@ -105,8 +107,7 @@ impl Digest {
         let mut hasher = PAIR_PREFIX_HASHER
             .get_or_init(|| {
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                #[allow(clippy::needless_borrow)]
-                hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
+                hasher.update(CHUNK_DATA_ZEROED);
                 hasher
             })
             .clone();
