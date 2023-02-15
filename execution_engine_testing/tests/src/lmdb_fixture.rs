@@ -72,7 +72,7 @@ pub fn builder_from_global_state_fixture(
 
     let path_to_state = to.path().join(fixture_name).join(STATE_JSON_FILE);
     let lmdb_fixture_state: LmdbFixtureState =
-        serde_json::from_reader(File::open(&path_to_state).unwrap()).unwrap();
+        serde_json::from_reader(File::open(path_to_state).unwrap()).unwrap();
     let path_to_gs = to.path().join(fixture_name);
 
     (
@@ -123,7 +123,7 @@ pub fn generate_fixture(
 
     let path_to_state_file = fixture_root.join(STATE_JSON_FILE);
 
-    let mut f = File::create(&path_to_state_file)?;
+    let mut f = File::create(path_to_state_file)?;
     f.write_all(serialized_state.as_bytes())?;
     Ok(())
 }

@@ -99,7 +99,7 @@ struct HashedTrie<K, V> {
 impl<K: ToBytes, V: ToBytes> HashedTrie<K, V> {
     pub fn new(trie: Trie<K, V>) -> Result<Self, bytesrepr::Error> {
         let trie_bytes = trie.to_bytes()?;
-        let hash = Digest::hash(&trie_bytes);
+        let hash = Digest::hash(trie_bytes);
         Ok(HashedTrie { hash, trie })
     }
 }
@@ -523,7 +523,7 @@ impl LmdbTestContext {
     {
         let _temp_dir = tempdir()?;
         let environment = LmdbEnvironment::new(
-            &_temp_dir.path(),
+            _temp_dir.path(),
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,

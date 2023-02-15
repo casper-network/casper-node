@@ -126,7 +126,7 @@ impl Chainspec {
             error!(%error, "failed to serialize chainspec");
             vec![]
         });
-        Digest::hash(&serialized_chainspec)
+        Digest::hash(serialized_chainspec)
     }
 
     /// Returns the protocol version of the chainspec.

@@ -511,7 +511,7 @@ mod tests {
             prop_assert!(vested_amounts_match_initial_stake(
                 stake,
                 DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-                DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS as u64,
+                DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
             ))
         }
 

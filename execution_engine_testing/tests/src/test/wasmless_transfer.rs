@@ -43,12 +43,12 @@ const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_UREF_NAME: &str = "uref_name";
 
 static ACCOUNT_1_SK: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([234u8; 32]).unwrap());
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SK));
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.to_account_hash());
 
 static ACCOUNT_2_SK: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[210u8; 32]).unwrap());
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([210u8; 32]).unwrap());
 static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SK));
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PK.to_account_hash());
 
@@ -1015,7 +1015,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

@@ -883,7 +883,7 @@ where
                     [in_ptr, in_size, out_ptr, out_size],
                 )?;
                 let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
-                let digest = crypto::blake2b(&input);
+                let digest = crypto::blake2b(input);
 
                 let result = if digest.len() != out_size as usize {
                     Err(ApiError::BufferTooSmall)

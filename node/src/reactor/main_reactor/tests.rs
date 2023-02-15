@@ -702,15 +702,15 @@ async fn should_store_finalized_approvals() {
     let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
     let mut deploy_bob_alice = deploy_alice_bob.clone();
 
-    deploy_alice_bob.sign(&*alice_secret_key);
-    deploy_alice_bob.sign(&*bob_secret_key);
+    deploy_alice_bob.sign(&alice_secret_key);
+    deploy_alice_bob.sign(&bob_secret_key);
 
-    deploy_alice_bob_charlie.sign(&*alice_secret_key);
-    deploy_alice_bob_charlie.sign(&*bob_secret_key);
-    deploy_alice_bob_charlie.sign(&*charlie_secret_key);
+    deploy_alice_bob_charlie.sign(&alice_secret_key);
+    deploy_alice_bob_charlie.sign(&bob_secret_key);
+    deploy_alice_bob_charlie.sign(&charlie_secret_key);
 
-    deploy_bob_alice.sign(&*bob_secret_key);
-    deploy_bob_alice.sign(&*alice_secret_key);
+    deploy_bob_alice.sign(&bob_secret_key);
+    deploy_bob_alice.sign(&alice_secret_key);
 
     // We will be testing the correct sequence of approvals against the deploy signed by Bob and
     // Alice.

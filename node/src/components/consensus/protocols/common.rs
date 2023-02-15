@@ -17,7 +17,7 @@ pub(crate) fn validators<C: Context>(
     inactive: &HashSet<C::ValidatorId>,
     validator_stakes: BTreeMap<C::ValidatorId, U512>,
 ) -> Validators<C::ValidatorId> {
-    let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
+    let sum_stakes: U512 = validator_stakes.values().copied().sum();
     // We use u64 weights. Scale down by sum / u64::MAX, rounded up.
     // If we round up the divisor, the resulting sum is guaranteed to be less than
     // u64::MAX.

@@ -126,7 +126,7 @@ fn should_hash() {
         builder.exec(exec_request).commit().expect_success();
 
         let digest = get_value::<BLAKE2B_DIGEST_LENGTH>(&builder, HASH_RESULT);
-        let expected_digest = crypto::blake2b(&input);
+        let expected_digest = crypto::blake2b(input);
         assert_eq!(digest, expected_digest);
     }
 }

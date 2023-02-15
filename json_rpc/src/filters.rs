@@ -80,7 +80,7 @@ async fn handle_body(
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
 ) -> Result<Response, Rejection> {
-    let response = match serde_json::from_slice::<Map<String, Value>>(&*body) {
+    let response = match serde_json::from_slice::<Map<String, Value>>(&body) {
         Ok(unvalidated_request) => match Request::new(unvalidated_request, allow_unknown_fields) {
             Ok(request) => handlers.handle_request(request).await,
             Err(ErrorOrRejection::Error { id, error }) => {

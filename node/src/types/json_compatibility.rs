@@ -12,7 +12,7 @@ pub use auction_state::AuctionState;
 pub use contracts::{Contract, ContractPackage};
 pub use stored_value::StoredValue;
 
-/// A helper function to change NamedKeys into a Vec<NamedKey>
+/// A helper function to change NamedKeys into a `Vec<NamedKey>`
 pub fn vectorize(keys: &NamedKeys) -> Vec<NamedKey> {
     let named_keys = keys
         .iter()

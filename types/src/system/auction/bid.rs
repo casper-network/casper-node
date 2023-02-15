@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn should_initialize_delegators_different_timestamps() {
-        const TIMESTAMP_MILLIS: u64 = WEEK_MILLIS as u64;
+        const TIMESTAMP_MILLIS: u64 = WEEK_MILLIS;
 
         let validator_pk: PublicKey = (&SecretKey::ed25519_from_bytes([42; 32]).unwrap()).into();
 

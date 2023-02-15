@@ -758,7 +758,7 @@ where
                                 .schedule(
                                     Event::IncomingMessage {
                                         peer_id: Box::new(peer_id),
-                                        msg: Box::new(msg),
+                                        msg,
                                         span: span.clone(),
                                     },
                                     queue_kind,

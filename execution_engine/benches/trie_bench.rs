@@ -27,14 +27,14 @@ fn deserialize_trie_leaf(b: &mut Bencher) {
 
 fn serialize_trie_node(b: &mut Bencher) {
     let node = Trie::<Key, StoredValue>::Node {
-        pointer_block: Box::new(PointerBlock::default()),
+        pointer_block: Box::<PointerBlock>::default(),
     };
     b.iter(|| ToBytes::to_bytes(black_box(&node)));
 }
 
 fn deserialize_trie_node(b: &mut Bencher) {
     let node = Trie::<Key, StoredValue>::Node {
-        pointer_block: Box::new(PointerBlock::default()),
+        pointer_block: Box::<PointerBlock>::default(),
     };
     let node_bytes = node.to_bytes().unwrap();
 
@@ -44,7 +44,7 @@ fn deserialize_trie_node(b: &mut Bencher) {
 fn serialize_trie_node_pointer(b: &mut Bencher) {
     let node = Trie::<Key, StoredValue>::Extension {
         affix: (0..255).collect(),
-        pointer: Pointer::NodePointer(Digest::hash(&[0; 32])),
+        pointer: Pointer::NodePointer(Digest::hash([0; 32])),
     };
 
     b.iter(|| ToBytes::to_bytes(black_box(&node)));
@@ -53,7 +53,7 @@ fn serialize_trie_node_pointer(b: &mut Bencher) {
 fn deserialize_trie_node_pointer(b: &mut Bencher) {
     let node = Trie::<Key, StoredValue>::Extension {
         affix: (0..255).collect(),
-        pointer: Pointer::NodePointer(Digest::hash(&[0; 32])),
+        pointer: Pointer::NodePointer(Digest::hash([0; 32])),
     };
     let node_bytes = node.to_bytes().unwrap();
 

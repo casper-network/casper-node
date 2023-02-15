@@ -96,7 +96,7 @@ impl ChainspecConfig {
 
     fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path = path.as_ref();
-        let bytes = fs::read(&path).map_err(|error| Error::FailedToLoadChainspec {
+        let bytes = fs::read(path).map_err(|error| Error::FailedToLoadChainspec {
             path: path.to_path_buf(),
             error,
         })?;

@@ -694,7 +694,7 @@ impl Storage {
                 if let Some(item) = opt_item.as_ref() {
                     if item.block_hash != id.block_hash || item.era_id != id.era_id {
                         return Err(GetRequestError::FinalitySignatureIdMismatch {
-                            requested_id: id,
+                            requested_id: Box::new(id),
                             finality_signature: Box::new(item.clone()),
                         });
                     }
@@ -756,7 +756,7 @@ impl Storage {
         // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
-                responder.respond(self.write_block(&*block)?).ignore()
+                responder.respond(self.write_block(&block)?).ignore()
             }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
@@ -764,7 +764,7 @@ impl Storage {
             } => {
                 let env = Rc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
-                let result = self.write_approvals_hashes(&mut txn, &*approvals_hashes)?;
+                let result = self.write_approvals_hashes(&mut txn, &approvals_hashes)?;
                 txn.commit()?;
                 responder.respond(result).ignore()
             }
@@ -824,7 +824,7 @@ impl Storage {
                     .ignore()
             }
             StorageRequest::PutDeploy { deploy, responder } => {
-                responder.respond(self.put_deploy(&*deploy)?).ignore()
+                responder.respond(self.put_deploy(&deploy)?).ignore()
             }
             StorageRequest::GetDeploys {
                 deploy_hashes,
@@ -863,7 +863,7 @@ impl Storage {
                     None => None,
                     Some(deploy_with_finalized_approvals) => {
                         let deploy = deploy_with_finalized_approvals.into_naive();
-                        (deploy.fetch_id() == deploy_id).then(|| deploy)
+                        (deploy.fetch_id() == deploy_id).then_some(deploy)
                     }
                 };
                 responder.respond(maybe_deploy).ignore()
@@ -892,7 +892,7 @@ impl Storage {
             } => {
                 let env = Rc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
-                self.write_execution_results(&mut txn, &*block_hash, execution_results)?;
+                self.write_execution_results(&mut txn, &block_hash, execution_results)?;
                 txn.commit()?;
                 responder.respond(()).ignore()
             }

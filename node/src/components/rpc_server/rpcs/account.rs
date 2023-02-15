@@ -42,7 +42,7 @@ pub struct PutDeployParams {
 
 impl DocExample for PutDeployParams {
     fn doc_example() -> &'static Self {
-        &*PUT_DEPLOY_PARAMS
+        &PUT_DEPLOY_PARAMS
     }
 }
 
@@ -59,7 +59,7 @@ pub struct PutDeployResult {
 
 impl DocExample for PutDeployResult {
     fn doc_example() -> &'static Self {
-        &*PUT_DEPLOY_RESULT
+        &PUT_DEPLOY_RESULT
     }
 }
 
