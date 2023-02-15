@@ -463,7 +463,7 @@ where
             for key in withdraw_keys {
                 // Transform only those withdraw purses that are still to be
                 // processed in the unbonding queue.
-                let withdraw_purses: Vec<casper_types::system::auction::WithdrawPurse> =
+                let withdraw_purses =
                     tracking_copy
                         .borrow_mut()
                         .read(correlation_id, &key)
