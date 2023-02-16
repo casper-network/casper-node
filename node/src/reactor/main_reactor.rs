@@ -26,6 +26,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
@@ -44,7 +46,7 @@ use crate::{
         rpc_server::RpcServer,
         shutdown_trigger::{self, ShutdownTrigger},
         storage::Storage,
-        sync_leaper::SyncLeaper,
+        sync_leaper::{self, SyncLeaper},
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
@@ -70,13 +72,11 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, NodeId, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
 };
-#[cfg(test)]
-use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -187,7 +187,6 @@ pub(crate) struct MainReactor {
     control_logic_default_delay: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
-
     last_sync_leap_highest_block_hash: Option<BlockHash>,
 }
 
@@ -1173,6 +1172,34 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
+    fn request_leap_if_not_redundant(
+        &self,
+        sync_leap_identifier: SyncLeapIdentifier,
+        effect_builder: EffectBuilder<MainEvent>,
+        peers_to_ask: Vec<NodeId>,
+    ) -> Effects<MainEvent> {
+        let should_attempt_leap = self.last_sync_leap_highest_block_hash.map_or(
+            true,
+            |last_sync_leap_highest_block_hash| {
+                last_sync_leap_highest_block_hash != sync_leap_identifier.block_hash()
+            },
+        );
+        if should_attempt_leap {
+            effect_builder.immediately().event(move |_| {
+                MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                    sync_leap_identifier,
+                    peers_to_ask,
+                })
+            })
+        } else {
+            debug!(
+                state = %self.state,
+                block_hash = %sync_leap_identifier.block_hash(),
+                "successful sync leap for block hash already received, aborting leap attempt");
+            Effects::new()
+        }
+    }
+
     fn update_validator_weights(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,

@@ -14,7 +14,6 @@ use crate::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::EraValidatorsRequest,
-        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{
@@ -526,26 +525,8 @@ impl MainReactor {
             );
         }
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
-        let should_attempt_leap = self.last_sync_leap_highest_block_hash.map_or(
-            true,
-            |last_sync_leap_highest_block_hash| {
-                last_sync_leap_highest_block_hash != sync_leap_identifier.block_hash()
-            },
-        );
-        let effects = if should_attempt_leap {
-            effect_builder.immediately().event(move |_| {
-                MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                    sync_leap_identifier,
-                    peers_to_ask,
-                })
-            })
-        } else {
-            debug!(
-                state = %self.state,
-                block_hash = %sync_leap_identifier.block_hash(),
-                "successful sync leap for block hash already received, aborting leap attempt");
-            Effects::new()
-        };
+        let effects =
+            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
         KeepUpInstruction::Do(offset, effects)
     }
 

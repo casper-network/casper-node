@@ -8,7 +8,6 @@ use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
-        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
         ValidatorBoundComponent,
     },
@@ -333,26 +332,8 @@ impl MainReactor {
         self.block_accumulator.reset_last_progress();
 
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-        let should_attempt_leap = self.last_sync_leap_highest_block_hash.map_or(
-            true,
-            |last_sync_leap_highest_block_hash| {
-                last_sync_leap_highest_block_hash != sync_leap_identifier.block_hash()
-            },
-        );
-        let effects = if should_attempt_leap {
-            effect_builder.immediately().event(move |_| {
-                MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                    sync_leap_identifier,
-                    peers_to_ask,
-                })
-            })
-        } else {
-            debug!(
-                state = %self.state,
-                block_hash = %sync_leap_identifier.block_hash(),
-                "successful sync leap for block hash already received, aborting leap attempt");
-            Effects::new()
-        };
+        let effects =
+            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }
 
