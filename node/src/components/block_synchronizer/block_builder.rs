@@ -318,16 +318,16 @@ impl BlockBuilder {
         self.peer_list.dishonest_peers()
     }
 
-    pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn disqualify_peer(&mut self, peer: NodeId) {
         debug!(?peer, "disqualify_peer");
         self.peer_list.disqualify_peer(peer);
     }
 
-    pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn promote_peer(&mut self, peer: NodeId) {
         self.peer_list.promote_peer(peer);
     }
 
-    pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn demote_peer(&mut self, peer: NodeId) {
         self.peer_list.demote_peer(peer);
     }
 
@@ -504,7 +504,9 @@ impl BlockBuilder {
             Ok(maybe) => {
                 debug!("register_fetched_execution_results: Ok(maybe)");
                 self.touch();
-                self.promote_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.promote_peer(peer);
+                }
                 Ok(maybe)
             }
             Err(BlockAcquisitionError::ExecutionResults(error)) => {
@@ -533,7 +535,9 @@ impl BlockBuilder {
                         };
                         debug!(is_checkable, "register_fetched_execution_results: ChunkCountMismatch");
                         if is_checkable {
-                            self.disqualify_peer(maybe_peer);
+                            if let Some(peer) = maybe_peer {
+                                self.disqualify_peer(peer);
+                            }
                         }
                     }
                     // malicious peer
@@ -542,7 +546,9 @@ impl BlockBuilder {
                     | execution_results_acquisition::Error::FailedToDeserialize { .. }
                     | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
                         debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToDeployHashLengthDiscrepancy");
-                        self.disqualify_peer(maybe_peer);
+                        if let Some(peer) = maybe_peer {
+                            self.disqualify_peer(peer);
+                        }
                     }
                     // checksum unavailable, so unknown if this peer is malicious
                     execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {
@@ -603,11 +609,15 @@ impl BlockBuilder {
         match acceptance {
             Ok(Some(Acceptance::NeededIt)) => {
                 self.touch();
-                self.promote_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.promote_peer(peer);
+                }
             }
             Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
             Err(error) => {
-                self.disqualify_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.disqualify_peer(peer);
+                }
                 return Err(Error::BlockAcquisition(error));
             }
         }
