@@ -465,9 +465,15 @@ impl GlobalStateSynchronizer {
             trie_awaiting.trie_written(written_trie);
         }
 
-        let (ready_tries, still_incomplete) = std::mem::take(&mut self.tries_awaiting_children)
-            .into_iter()
-            .partition(|(_, trie_awaiting)| trie_awaiting.ready_to_be_written());
+        let (ready_tries, still_incomplete): (BTreeMap<_, _>, BTreeMap<_, _>) =
+            std::mem::take(&mut self.tries_awaiting_children)
+                .into_iter()
+                .partition(|(_, trie_awaiting)| trie_awaiting.ready_to_be_written());
+        debug!(
+            ready_tries = ready_tries.len(),
+            still_incomplete = still_incomplete.len(),
+            "handle_trie_written"
+        );
         self.tries_awaiting_children = still_incomplete;
 
         let mut effects: Effects<Event> = ready_tries
