@@ -308,18 +308,27 @@ impl<T: StateReader> StateTracker<T> {
         }
     }
 
-    /// Generates the writes to the global state that will remove the pending withdraws of all the
-    /// old validators that will cease to be validators.
-    pub fn remove_withdraws(&mut self, removed: &BTreeSet<PublicKey>) {
-        let withdraws = self.reader.get_unbonds();
-        let withdraw_keys: BTreeSet<_> = withdraws.keys().collect();
-        for (key, value) in removed
-            .iter()
-            .map(PublicKey::to_account_hash)
-            .filter(|acc| withdraw_keys.contains(&acc))
-            .map(|acc| (Key::Withdraw(acc), StoredValue::Withdraw(vec![])))
-        {
-            self.write_entry(key, value);
+    /// Generates the writes to the global state that will remove the pending withdraws and unbonds
+    /// of all the old validators that will cease to be validators, and slashes their unbonding
+    /// purses.
+    pub fn remove_withdraws_and_unbonds(&mut self, removed: &BTreeSet<PublicKey>) {
+        let withdraws = self.reader.get_withdraws();
+        let unbonds = self.reader.get_unbonds();
+        for removed_validator in removed {
+            let acc = removed_validator.to_account_hash();
+            if let Some(withdraw_set) = withdraws.get(&acc) {
+                for withdraw in withdraw_set {
+                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
+            }
+
+            if let Some(unbond_set) = unbonds.get(&acc) {
+                for unbond in unbond_set {
+                    self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+            }
         }
     }
 

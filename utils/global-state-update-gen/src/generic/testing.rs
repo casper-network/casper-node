@@ -6,10 +6,11 @@ use casper_types::{
     account::{Account, AccountHash},
     system::auction::{
         Bid, Bids, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurses,
+        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, WithdrawPurse,
+        WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, CLValue, Key, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, CLValue, EraId, Key, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -29,6 +30,8 @@ struct MockStateReader {
     total_supply: U512,
     seigniorage_recipients: SeigniorageRecipientsSnapshot,
     bids: Bids,
+    withdraws: WithdrawPurses,
+    unbonds: UnbondingPurses,
 }
 
 impl MockStateReader {
@@ -39,6 +42,8 @@ impl MockStateReader {
             total_supply: U512::zero(),
             seigniorage_recipients: SeigniorageRecipientsSnapshot::new(),
             bids: Bids::new(),
+            withdraws: WithdrawPurses::new(),
+            unbonds: UnbondingPurses::new(),
         }
     }
 
@@ -117,6 +122,105 @@ impl MockStateReader {
 
         self
     }
+
+    /// Returns the bonding purse if the unbonder exists in `self.bids`.
+    fn unbonder_bonding_purse(
+        &self,
+        validator_public_key: &PublicKey,
+        unbonder_public_key: &PublicKey,
+    ) -> Option<URef> {
+        let bid = self.bids.get(validator_public_key)?;
+        if unbonder_public_key == validator_public_key {
+            return Some(*bid.bonding_purse());
+        }
+        Some(*bid.delegators().get(unbonder_public_key)?.bonding_purse())
+    }
+
+    /// Returns the bonding purse if the unbonder exists in `self.bids`, or creates a new account
+    /// with a nominal stake with the given validator and returns the new unbonder's bonding purse.
+    fn create_or_get_unbonder_bonding_purse<R: Rng>(
+        &mut self,
+        validator_public_key: &PublicKey,
+        unbonder_public_key: &PublicKey,
+        rng: &mut R,
+    ) -> URef {
+        if let Some(purse) = self.unbonder_bonding_purse(validator_public_key, unbonder_public_key)
+        {
+            return purse;
+        }
+        // // create the account if it doesn't exist
+        // let account_hash = unbonder_public_key.to_account_hash();
+        // if !self.accounts.contains_key(&account_hash) {
+        //     *self = self.with_account(account_hash, U512::from(100), rng);
+        // }
+
+        let bonding_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
+        let stake = U512::from(10);
+        self.purses.insert(bonding_purse.addr(), stake);
+        self.total_supply += stake;
+        bonding_purse
+    }
+
+    /// Creates a `WithdrawPurse` for 1 mote.  If the validator or delegator don't exist in
+    /// `self.bids`, a random bonding purse is assigned.
+    fn with_withdraw<R: Rng>(
+        mut self,
+        validator_public_key: PublicKey,
+        unbonder_public_key: PublicKey,
+        rng: &mut R,
+    ) -> Self {
+        let bonding_purse = self.create_or_get_unbonder_bonding_purse(
+            &validator_public_key,
+            &unbonder_public_key,
+            rng,
+        );
+
+        let withdraw = WithdrawPurse::new(
+            bonding_purse,
+            validator_public_key,
+            unbonder_public_key,
+            EraId::new(10),
+            U512::from(1),
+        );
+
+        let withdraws = self
+            .withdraws
+            .entry(withdraw.validator_public_key().to_account_hash())
+            .or_default();
+        withdraws.push(withdraw);
+        self
+    }
+
+    /// Creates an `UnbondingPurse` for 1 mote.  If the validator or delegator don't exist in
+    /// `self.bids`, a random bonding purse is assigned.
+    fn with_unbond<R: Rng>(
+        mut self,
+        validator_public_key: PublicKey,
+        unbonder_public_key: PublicKey,
+        rng: &mut R,
+    ) -> Self {
+        let bonding_purse = self.create_or_get_unbonder_bonding_purse(
+            &validator_public_key,
+            &unbonder_public_key,
+            rng,
+        );
+
+        let unbond = UnbondingPurse::new(
+            bonding_purse,
+            validator_public_key,
+            unbonder_public_key,
+            EraId::new(10),
+            U512::from(1),
+            None,
+        );
+
+        let unbonds = self
+            .unbonds
+            .entry(unbond.validator_public_key().to_account_hash())
+            .or_default();
+        unbonds.push(unbond);
+        self
+    }
 }
 
 impl StateReader for MockStateReader {
@@ -156,8 +260,12 @@ impl StateReader for MockStateReader {
         self.bids.clone()
     }
 
+    fn get_withdraws(&mut self) -> WithdrawPurses {
+        self.withdraws.clone()
+    }
+
     fn get_unbonds(&mut self) -> UnbondingPurses {
-        UnbondingPurses::new()
+        self.unbonds.clone()
     }
 }
 
@@ -1374,4 +1482,254 @@ fn should_remove_the_delegator_with_unbonding() {
     // - bonding purse balance for validator 1
     // - unbonding purse for delegator
     assert_eq!(update.len(), 5);
+}
+
+#[test]
+fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
+    let mut rng = TestRng::new();
+
+    let validator1 = PublicKey::random(&mut rng);
+    let validator2 = PublicKey::random(&mut rng);
+    let delegator1 = PublicKey::random(&mut rng);
+    let delegator2 = PublicKey::random(&mut rng);
+    let past_delegator1 = PublicKey::random(&mut rng);
+    let past_delegator2 = PublicKey::random(&mut rng);
+
+    let validator1_bonded_amount = U512::from(101);
+    let validator1_config = ValidatorConfig {
+        bonded_amount: validator1_bonded_amount,
+        delegation_rate: Some(5),
+        delegators: Some(vec![DelegatorConfig {
+            public_key: delegator1.clone(),
+            delegated_amount: U512::from(13),
+        }]),
+    };
+
+    let mut reader = MockStateReader::new()
+        .with_validators(
+            vec![
+                (
+                    validator1.clone(),
+                    validator1_bonded_amount,
+                    validator1_config.clone(),
+                ),
+                (
+                    validator2.clone(),
+                    U512::from(102),
+                    ValidatorConfig {
+                        bonded_amount: U512::from(102),
+                        delegation_rate: Some(5),
+                        delegators: Some(vec![DelegatorConfig {
+                            public_key: delegator2.clone(),
+                            delegated_amount: U512::from(14),
+                        }]),
+                    },
+                ),
+            ],
+            &mut rng,
+        )
+        .with_withdraw(validator1.clone(), validator1.clone(), &mut rng)
+        .with_withdraw(validator1.clone(), delegator1, &mut rng)
+        .with_withdraw(validator1.clone(), past_delegator1, &mut rng)
+        .with_withdraw(validator2.clone(), validator2.clone(), &mut rng)
+        .with_withdraw(validator2.clone(), delegator2.clone(), &mut rng)
+        .with_withdraw(validator2.clone(), past_delegator2, &mut rng);
+
+    // we'll be removing validator2
+    let config = Config {
+        accounts: vec![AccountConfig {
+            public_key: validator1.clone(),
+            balance: Some(validator1_bonded_amount),
+            validator: Some(validator1_config),
+        }],
+        only_listed_validators: true,
+        slash_instead_of_unbonding: true,
+        ..Default::default()
+    };
+
+    let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[ValidatorInfo::new(&validator1, U512::from(114))]);
+
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 327);
+
+    // check validator2 slashed
+    let old_bid2 = reader
+        .get_bids()
+        .get(&validator2)
+        .cloned()
+        .expect("should have bid");
+    update.assert_written_balance(*old_bid2.bonding_purse(), 0);
+    // check delegator2 slashed
+    update.assert_written_balance(
+        *old_bid2
+            .delegators()
+            .get(&delegator2)
+            .expect("should have delegator")
+            .bonding_purse(),
+        0,
+    );
+    // check past_delegator2 slashed
+    update.assert_written_balance(
+        *reader
+            .withdraws
+            .get(&validator2.to_account_hash())
+            .expect("should have withdraws for validator2")
+            .last()
+            .expect("should have withdraw purses")
+            .bonding_purse(),
+        0,
+    );
+
+    // check validator1 and its delegators not slashed
+    for withdraw in reader
+        .withdraws
+        .get(&validator1.to_account_hash())
+        .expect("should have withdraws for validator2")
+    {
+        update.assert_key_absent(&Key::Balance(withdraw.bonding_purse().addr()));
+    }
+
+    // check the withdraws under validator 2 are cleared
+    update.assert_withdraws_empty(&validator2);
+
+    // check the withdraws under validator 1 are unchanged
+    update.assert_key_absent(&Key::Withdraw(validator1.to_account_hash()));
+
+    // 7 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid for validator 2
+    // - bonding purse balance validator 2
+    // - bonding purse balance for delegator 2
+    // - bonding purse balance for past delegator 2
+    // - empty WithdrawPurses for validator 2
+    assert_eq!(update.len(), 7);
+}
+
+#[test]
+fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
+    let mut rng = TestRng::new();
+
+    let validator1 = PublicKey::random(&mut rng);
+    let validator2 = PublicKey::random(&mut rng);
+    let delegator1 = PublicKey::random(&mut rng);
+    let delegator2 = PublicKey::random(&mut rng);
+    let past_delegator1 = PublicKey::random(&mut rng);
+    let past_delegator2 = PublicKey::random(&mut rng);
+
+    let validator1_bonded_amount = U512::from(101);
+    let validator1_config = ValidatorConfig {
+        bonded_amount: validator1_bonded_amount,
+        delegation_rate: Some(5),
+        delegators: Some(vec![DelegatorConfig {
+            public_key: delegator1.clone(),
+            delegated_amount: U512::from(13),
+        }]),
+    };
+
+    let mut reader = MockStateReader::new()
+        .with_validators(
+            vec![
+                (
+                    validator1.clone(),
+                    validator1_bonded_amount,
+                    validator1_config.clone(),
+                ),
+                (
+                    validator2.clone(),
+                    U512::from(102),
+                    ValidatorConfig {
+                        bonded_amount: U512::from(102),
+                        delegation_rate: Some(5),
+                        delegators: Some(vec![DelegatorConfig {
+                            public_key: delegator2.clone(),
+                            delegated_amount: U512::from(14),
+                        }]),
+                    },
+                ),
+            ],
+            &mut rng,
+        )
+        .with_unbond(validator1.clone(), validator1.clone(), &mut rng)
+        .with_unbond(validator1.clone(), delegator1, &mut rng)
+        .with_unbond(validator1.clone(), past_delegator1, &mut rng)
+        .with_unbond(validator2.clone(), validator2.clone(), &mut rng)
+        .with_unbond(validator2.clone(), delegator2.clone(), &mut rng)
+        .with_unbond(validator2.clone(), past_delegator2, &mut rng);
+
+    // we'll be removing validator2
+    let config = Config {
+        accounts: vec![AccountConfig {
+            public_key: validator1.clone(),
+            balance: Some(validator1_bonded_amount),
+            validator: Some(validator1_config),
+        }],
+        only_listed_validators: true,
+        slash_instead_of_unbonding: true,
+        ..Default::default()
+    };
+
+    let update = get_update(&mut reader, config);
+
+    // check that the update contains the correct list of validators
+    update.assert_validators(&[ValidatorInfo::new(&validator1, U512::from(114))]);
+
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, 327);
+
+    // check validator2 slashed
+    let old_bid2 = reader
+        .get_bids()
+        .get(&validator2)
+        .cloned()
+        .expect("should have bid");
+    update.assert_written_balance(*old_bid2.bonding_purse(), 0);
+    // check delegator2 slashed
+    update.assert_written_balance(
+        *old_bid2
+            .delegators()
+            .get(&delegator2)
+            .expect("should have delegator")
+            .bonding_purse(),
+        0,
+    );
+    // check past_delegator2 slashed
+    update.assert_written_balance(
+        *reader
+            .unbonds
+            .get(&validator2.to_account_hash())
+            .expect("should have unbonds for validator2")
+            .last()
+            .expect("should have unbond purses")
+            .bonding_purse(),
+        0,
+    );
+
+    // check validator1 and its delegators not slashed
+    for unbond in reader
+        .unbonds
+        .get(&validator1.to_account_hash())
+        .expect("should have unbonds for validator2")
+    {
+        update.assert_key_absent(&Key::Balance(unbond.bonding_purse().addr()));
+    }
+
+    // check the unbonds under validator 2 are cleared
+    update.assert_unbonds_empty(&validator2);
+
+    // check the withdraws under validator 1 are unchanged
+    update.assert_key_absent(&Key::Unbond(validator1.to_account_hash()));
+
+    // 7 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - bid for validator 2
+    // - bonding purse balance validator 2
+    // - bonding purse balance for delegator 2
+    // - bonding purse balance for past delegator 2
+    // - empty UnbondingPurses for validator 2
+    assert_eq!(update.len(), 7);
 }
