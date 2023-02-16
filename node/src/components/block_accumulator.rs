@@ -187,7 +187,6 @@ impl BlockAccumulator {
         }
 
         if self.should_leap(block_height) {
-            debug!(%block_hash, "Leap: Block Accumulator: leap because the execution threshold is exceeded.");
             return SyncInstruction::Leap { block_hash };
         }
 
@@ -585,13 +584,27 @@ impl BlockAccumulator {
         self.last_progress = Timestamp::now();
     }
 
-    fn should_leap(&self, from_block_height: u64) -> bool {
+    fn should_leap(&self, block_height: u64) -> bool {
         match self.highest_usable_block_height() {
             Some(highest_usable_block_height) => {
-                let height_diff = highest_usable_block_height.saturating_sub(from_block_height);
-                height_diff > self.attempt_execution_threshold
+                let height_diff = highest_usable_block_height.saturating_sub(block_height);
+                if height_diff > self.attempt_execution_threshold {
+                    debug!(
+                        height_diff,
+                        attempt_execution_threshold = self.attempt_execution_threshold,
+                        "Leap: Block Accumulator: leap because height diff is larger than attempt execution threshold"
+                    );
+                    return true;
+                }
+                false
             }
-            None => true,
+            None => {
+                debug!(
+                    block_height,
+                    "Leap: Block Accumulator: leap because no highest usable block height"
+                );
+                true
+            }
         }
     }
 
