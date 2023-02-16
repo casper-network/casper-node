@@ -187,6 +187,8 @@ pub(crate) struct MainReactor {
     control_logic_default_delay: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
+
+    last_sync_leap_highest_block_hash: Option<BlockHash>,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -390,6 +392,7 @@ impl reactor::Reactor for MainReactor {
             switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
+            last_sync_leap_highest_block_hash: Default::default(),
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder

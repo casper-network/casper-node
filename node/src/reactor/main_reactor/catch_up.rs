@@ -288,7 +288,7 @@ impl MainReactor {
                 best_available,
                 from_peers,
                 ..
-            } => self.catch_up_leap_received(effect_builder, rng, best_available, from_peers),
+            } => self.catch_up_leap_received(effect_builder, rng, *best_available, from_peers),
             LeapState::Failed { error, .. } => {
                 self.catch_up_leap_failed(effect_builder, rng, block_hash, error)
             }
@@ -333,12 +333,26 @@ impl MainReactor {
         self.block_accumulator.reset_last_progress();
 
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-        let effects = effect_builder.immediately().event(move |_| {
-            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                sync_leap_identifier,
-                peers_to_ask,
+        let should_attempt_leap = self.last_sync_leap_highest_block_hash.map_or(
+            true,
+            |last_sync_leap_highest_block_hash| {
+                last_sync_leap_highest_block_hash != sync_leap_identifier.block_hash()
+            },
+        );
+        let effects = if should_attempt_leap {
+            effect_builder.immediately().event(move |_| {
+                MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                    sync_leap_identifier,
+                    peers_to_ask,
+                })
             })
-        });
+        } else {
+            debug!(
+                state = %self.state,
+                block_hash = %sync_leap_identifier.block_hash(),
+                "successful sync leap for block hash already received, aborting leap attempt");
+            Effects::new()
+        };
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }
 
@@ -346,24 +360,26 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-        best_available: Box<SyncLeap>,
+        sync_leap: SyncLeap,
         from_peers: Vec<NodeId>,
     ) -> CatchUpInstruction {
-        let block_hash = best_available.highest_block_hash();
-        let block_height = best_available.highest_block_height();
+        let block_hash = sync_leap.highest_block_hash();
+        let block_height = sync_leap.highest_block_height();
         info!(
-            %best_available,
+            %sync_leap,
             %block_height,
             %block_hash,
             "CatchUp: leap received"
         );
+
+        self.last_sync_leap_highest_block_hash = Some(block_hash);
 
         if let Err(msg) = self.update_highest_switch_block() {
             return CatchUpInstruction::Fatal(msg);
         }
 
         for validator_weights in
-            best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
+            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
         {
             self.validator_matrix
                 .register_era_validator_weights(validator_weights);
@@ -384,7 +400,7 @@ impl MainReactor {
         ));
 
         self.block_synchronizer
-            .register_sync_leap(&best_available, from_peers, true);
+            .register_sync_leap(&sync_leap, from_peers, true);
 
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }

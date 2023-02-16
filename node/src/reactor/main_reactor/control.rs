@@ -73,6 +73,7 @@ impl MainReactor {
                 }
                 UpgradingInstruction::CatchUp => {
                     info!("Upgrading: switch to CatchUp");
+                    self.last_sync_leap_highest_block_hash = None;
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
@@ -89,6 +90,7 @@ impl MainReactor {
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
                     Ok(effects) => {
                         info!("CatchUp: switch to Validate at genesis");
+                        self.last_sync_leap_highest_block_hash = None;
                         self.state = ReactorState::Validate;
                         (Duration::ZERO, effects)
                     }
@@ -122,6 +124,7 @@ impl MainReactor {
                     }
                     // purge to avoid polluting the status endpoints w/ stale state
                     self.block_synchronizer.purge();
+                    self.last_sync_leap_highest_block_hash = None;
                     info!("CatchUp: switch to KeepUp");
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
@@ -146,6 +149,7 @@ impl MainReactor {
                 }
                 KeepUpInstruction::CatchUp => {
                     self.block_synchronizer.purge();
+                    self.last_sync_leap_highest_block_hash = None;
                     info!("KeepUp: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
