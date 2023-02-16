@@ -24,6 +24,7 @@ pub struct StateTracker<T> {
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
     bids_cache: Option<Bids>,
+    seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
 }
 
 impl<T: StateReader> StateTracker<T> {
@@ -48,6 +49,7 @@ impl<T: StateReader> StateTracker<T> {
             unbonds_cache: BTreeMap::new(),
             purses_cache: BTreeMap::new(),
             bids_cache: None,
+            seigniorage_recipients: None,
         }
     }
 
@@ -187,6 +189,10 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
     pub fn read_snapshot(&mut self) -> (Key, SeigniorageRecipientsSnapshot) {
+        if let Some(key_and_snapshot) = &self.seigniorage_recipients {
+            return key_and_snapshot.clone();
+        }
+
         // Read the key under which the snapshot is stored.
         let validators_key = self.reader.get_seigniorage_recipients_key();
 
@@ -196,7 +202,9 @@ impl<T: StateReader> StateTracker<T> {
             .as_cl_value()
             .cloned()
             .expect("should be cl value");
-        (validators_key, cl_value.into_t().expect("should convert"))
+        let snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
+        self.seigniorage_recipients = Some((validators_key, snapshot.clone()));
+        (validators_key, snapshot)
     }
 
     /// Reads the bids from the global state.
