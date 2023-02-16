@@ -291,6 +291,7 @@ impl BlockSynchronizer {
             should_fetch_execution_state,
             self.max_simultaneous_peers,
             self.config.peer_refresh_interval,
+            self.config.latch_reset_interval,
         );
         if should_fetch_execution_state {
             self.historical.replace(builder);
@@ -340,6 +341,7 @@ impl BlockSynchronizer {
                         should_fetch_execution_state,
                         self.max_simultaneous_peers,
                         self.config.peer_refresh_interval,
+                        self.config.latch_reset_interval,
                     );
                     apply_sigs(&mut builder, maybe_sigs);
                     if should_fetch_execution_state {

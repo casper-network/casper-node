@@ -79,6 +79,7 @@ pub(super) struct BlockBuilder {
     execution_progress: ExecutionProgress,
     last_progress: Timestamp,
     in_flight_latch: Option<Timestamp>,
+    latch_reset_interval: TimeDiff,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -104,6 +105,7 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
+        latch_reset_interval: TimeDiff,
     ) -> Self {
         BlockBuilder {
             block_hash,
@@ -119,6 +121,7 @@ impl BlockBuilder {
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
             in_flight_latch: None,
+            latch_reset_interval,
         }
     }
 
@@ -130,6 +133,7 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
+        latch_reset_interval: TimeDiff,
     ) -> Self {
         let block_hash = block_header.block_hash();
         let era_id = Some(block_header.era_id());
@@ -147,7 +151,7 @@ impl BlockBuilder {
         );
         let mut peer_list = PeerList::new(max_simultaneous_peers, peer_refresh_interval);
         peers.iter().for_each(|p| peer_list.register_peer(*p));
-        
+
         BlockBuilder {
             block_hash,
             era_id,
@@ -159,6 +163,7 @@ impl BlockBuilder {
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
             in_flight_latch: None,
+            latch_reset_interval,
         }
     }
 
@@ -214,9 +219,7 @@ impl BlockBuilder {
             //
             // if latch_reset_interval has passed, we reset the latch and ask again.
 
-            // !todo move reset interval to config
-            let latch_reset_interval = TimeDiff::from_seconds(5);
-            if Timestamp::now().saturating_diff(timestamp) > latch_reset_interval {
+            if Timestamp::now().saturating_diff(timestamp) > self.latch_reset_interval {
                 self.in_flight_latch = None;
             }
         }
