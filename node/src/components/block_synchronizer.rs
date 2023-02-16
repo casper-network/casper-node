@@ -276,7 +276,6 @@ impl BlockSynchronizer {
         &mut self,
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
-        requires_strict_finality: bool,
     ) -> bool {
         if let (true, Some(builder), _) | (false, _, Some(builder)) = (
             should_fetch_execution_state,
@@ -290,7 +289,6 @@ impl BlockSynchronizer {
         let builder = BlockBuilder::new(
             block_hash,
             should_fetch_execution_state,
-            requires_strict_finality,
             self.max_simultaneous_peers,
             self.config.peer_refresh_interval,
         );

@@ -126,7 +126,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let peers: Vec<NodeId> = random_peers(&mut rng, num_peers).iter().cloned().collect();
 
     // Set up the synchronizer for the test block such that the next step is getting global state
-    block_synchronizer.register_block_by_hash(*block.hash(), true, true);
+    block_synchronizer.register_block_by_hash(*block.hash(), true);
     assert!(
         block_synchronizer.historical.is_some(),
         "we only get global state on historical sync"
@@ -274,7 +274,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
 
     // Set up the synchronizer for the test block such that the next step is getting era validators.
     let block = Block::random(&mut rng);
-    block_synchronizer.register_block_by_hash(*block.hash(), true, true);
+    block_synchronizer.register_block_by_hash(*block.hash(), true);
     block_synchronizer.register_peers(*block.hash(), peers.clone());
     block_synchronizer
         .historical

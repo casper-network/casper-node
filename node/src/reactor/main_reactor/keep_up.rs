@@ -246,7 +246,7 @@ impl MainReactor {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
                 if self
                     .block_synchronizer
-                    .register_block_by_hash(block_hash, false, true)
+                    .register_block_by_hash(block_hash, false)
                 {
                     info!(%block_hash, "KeepUp: BlockSync: registered block by hash");
                     Some(KeepUpInstruction::Do(
@@ -541,7 +541,7 @@ impl MainReactor {
     ) -> KeepUpInstruction {
         if self
             .block_synchronizer
-            .register_block_by_hash(parent_hash, true, true)
+            .register_block_by_hash(parent_hash, true)
         {
             // sync the parent_hash block; we get a random sampling of peers to ask.
             // it is possible that we may get a random sampling that do not have the data

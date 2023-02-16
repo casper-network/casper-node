@@ -72,7 +72,6 @@ pub(super) struct BlockBuilder {
     // imputed
     block_hash: BlockHash,
     should_fetch_execution_state: bool,
-    requires_strict_finality: bool,
     peer_list: PeerList,
 
     // progress tracking
@@ -103,7 +102,6 @@ impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
-        requires_strict_finality: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
     ) -> Self {
@@ -117,7 +115,6 @@ impl BlockBuilder {
             ),
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
-            requires_strict_finality,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
@@ -150,11 +147,7 @@ impl BlockBuilder {
         );
         let mut peer_list = PeerList::new(max_simultaneous_peers, peer_refresh_interval);
         peers.iter().for_each(|p| peer_list.register_peer(*p));
-
-        // we always require strict finality when synchronizing a block
-        // via a sync leap response
-        let requires_strict_finality = true;
-
+        
         BlockBuilder {
             block_hash,
             era_id,
@@ -162,7 +155,6 @@ impl BlockBuilder {
             acquisition_state,
             peer_list,
             should_fetch_execution_state,
-            requires_strict_finality,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
