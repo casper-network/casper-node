@@ -282,6 +282,17 @@ fn upsert_acceptor() {
     )
     .unwrap();
 
+    let random_block_hash = BlockHash::random(&mut rng);
+    accumulator.upsert_acceptor(random_block_hash, Some(era0), Some(*ALICE_NODE_ID));
+    assert!(accumulator
+        .block_acceptors
+        .remove(&random_block_hash)
+        .is_some());
+    assert!(accumulator
+        .peer_block_timestamps
+        .remove(&ALICE_NODE_ID)
+        .is_some());
+
     accumulator.register_local_tip(0, EraId::new(0));
 
     let max_block_count =
