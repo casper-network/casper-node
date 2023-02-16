@@ -474,50 +474,11 @@ where
 
                 // Ensure that sufficient balance exists for all unbond purses that are to be
                 // migrated.
-                {
-                    let mut balances = BTreeMap::new();
-                    for purse in withdraw_purses.iter() {
-                        match balances.entry(*purse.bonding_purse()) {
-                            Entry::Vacant(entry) => {
-                                entry.insert(*purse.amount());
-                            }
-                            Entry::Occupied(mut entry) => {
-                                let value = entry.get_mut();
-                                let new_val =
-                                    value.checked_add(*purse.amount()).ok_or_else(|| {
-                                        Error::Mint(
-                                            "overflowed a u512 during unbond migration".into(),
-                                        )
-                                    })?;
-                                *value = new_val;
-                            }
-                        }
-                    }
-
-                    for (unbond_purse_uref, unbond_amount) in balances {
-                        let key = match tracking_copy
-                            .borrow_mut()
-                            .get_purse_balance_key(correlation_id, unbond_purse_uref.into())
-                        {
-                            Ok(key) => key,
-                            Err(_) => return Err(Error::Mint("purse balance not found".into())),
-                        };
-                        let current_balance = tracking_copy
-                            .borrow_mut()
-                            .get_purse_balance(CorrelationId::new(), key)?
-                            .value();
-
-                        if unbond_amount > current_balance {
-                            // If we don't have enough balance to migrate, the only thing we can do
-                            // is to fail the upgrade.
-                            error!("commit_upgrade failed during migration - insufficient funds({current_balance}) in purse({unbond_purse_uref}) to unbond({unbond_amount}) ");
-                            return Err(Error::Mint(
-                                "insufficient balance detected while migrating unbond purses"
-                                    .into(),
-                            ));
-                        }
-                    }
-                }
+                fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
+                    &withdraw_purses,
+                    &tracking_copy,
+                    correlation_id,
+                )?;
 
                 let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
                     .into_iter()
@@ -2236,6 +2197,50 @@ where
             .map_err(Into::into)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
     }
+}
+
+fn fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
+    withdraw_purses: &Vec<casper_types::system::auction::WithdrawPurse>,
+    tracking_copy: &Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    correlation_id: CorrelationId,
+) -> Result<(), Error> {
+    let mut balances = BTreeMap::new();
+    for purse in withdraw_purses.iter() {
+        match balances.entry(*purse.bonding_purse()) {
+            Entry::Vacant(entry) => {
+                entry.insert(*purse.amount());
+            }
+            Entry::Occupied(mut entry) => {
+                let value = entry.get_mut();
+                let new_val = value.checked_add(*purse.amount()).ok_or_else(|| {
+                    Error::Mint("overflowed a u512 during unbond migration".into())
+                })?;
+                *value = new_val;
+            }
+        }
+    }
+    Ok(for (unbond_purse_uref, unbond_amount) in balances {
+        let key = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance_key(correlation_id, unbond_purse_uref.into())
+        {
+            Ok(key) => key,
+            Err(_) => return Err(Error::Mint("purse balance not found".into())),
+        };
+        let current_balance = tracking_copy
+            .borrow_mut()
+            .get_purse_balance(CorrelationId::new(), key)?
+            .value();
+
+        if unbond_amount > current_balance {
+            // If we don't have enough balance to migrate, the only thing we can do
+            // is to fail the upgrade.
+            error!(%current_balance, %unbond_purse_uref, %unbond_amount, "commit_upgrade failed during migration - insufficient in purse to unbond");
+            return Err(Error::Mint(
+                "insufficient balance detected while migrating unbond purses".into(),
+            ));
+        }
+    })
 }
 
 fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool {
