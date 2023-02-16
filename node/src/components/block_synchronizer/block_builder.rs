@@ -125,6 +125,7 @@ impl BlockBuilder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new_from_sync_leap(
         block_header: &BlockHeader,
         maybe_sigs: Option<&BlockSignatures>,
