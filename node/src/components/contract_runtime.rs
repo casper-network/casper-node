@@ -375,6 +375,9 @@ impl ContractRuntime {
                 trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+
+                self.try_init_system_contract_registry_cache();
+
                 let system_contract_registry = self.system_contract_registry.clone();
                 // Increment the counter to track the amount of times GetEraValidators was
                 // requested.
@@ -688,10 +691,7 @@ impl ContractRuntime {
         Ok(result)
     }
 
-    pub(crate) fn set_initial_state(
-        &mut self,
-        sequential_block_state: ExecutionPreState,
-    ) -> Result<(), ConfigError> {
+    pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
@@ -706,28 +706,6 @@ impl ContractRuntime {
                 .exec_queue_size
                 .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
         }
-
-        // Initialize the system contract registry.
-        //
-        // This is assumed to always work. In case following query fails we assume that the node is
-        // incompatible with the network which could happen if (for example) a node operator skipped
-        // important update and did not migrate old protocol data db into the global state.
-        let state_root_hash = execution_pre_state.pre_state_root_hash;
-
-        match self
-            .engine_state
-            .get_system_contract_registry(CorrelationId::default(), state_root_hash)
-        {
-            Ok(system_contract_registry) => {
-                self.system_contract_registry = Some(system_contract_registry);
-            }
-            Err(error) => {
-                error!(%state_root_hash, %error, "unable to initialize contract runtime with a system contract registry");
-                return Err(error.into());
-            }
-        }
-
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -920,6 +898,25 @@ impl ContractRuntime {
     #[cfg(test)]
     pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
         &self.engine_state
+    }
+
+    #[inline]
+    fn try_init_system_contract_registry_cache(&mut self) {
+        // The system contract registry is stable so we can use the latest state root hash that we
+        // know from the execution pre-state to try and initialize it
+        let state_root_hash = self
+            .execution_pre_state
+            .lock()
+            .expect("ContractRuntime: execution_pre_state poisoned mutex")
+            .pre_state_root_hash;
+
+        // Try to cache system contract registry if possible.
+        if self.system_contract_registry.is_none() {
+            self.system_contract_registry = self
+                .engine_state
+                .get_system_contract_registry(CorrelationId::new(), state_root_hash)
+                .ok();
+        };
     }
 }
 
