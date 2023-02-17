@@ -18,6 +18,7 @@ use casper_types::{
 use super::{ActivationPoint, GlobalStateUpdate};
 use crate::types::BlockHeader;
 
+/// Configuration values associated with the protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {
     #[data_size(skip)]

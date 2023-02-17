@@ -12,21 +12,22 @@ use casper_types::{
     TimeDiff,
 };
 
+/// Configuration values relevant to Highway consensus.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct HighwayConfig {
+pub struct HighwayConfig {
     /// The upper limit for Highway round lengths.
-    pub(crate) maximum_round_length: TimeDiff,
+    pub maximum_round_length: TimeDiff,
     /// The factor by which rewards for a round are multiplied if the greatest summit has ≤50%
     /// quorum, i.e. no finality.
     #[data_size(skip)]
-    pub(crate) reduced_reward_multiplier: Ratio<u64>,
+    pub reduced_reward_multiplier: Ratio<u64>,
 }
 
 impl HighwayConfig {
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
-    pub(super) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         if self.reduced_reward_multiplier > Ratio::new(1, 1) {
             error!(
                 rrm = %self.reduced_reward_multiplier,
