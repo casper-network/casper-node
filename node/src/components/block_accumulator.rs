@@ -257,12 +257,13 @@ impl BlockAccumulator {
             btree_map::Entry::Vacant(entry) => entry,
         };
 
-        // The acceptor doesn't exist. Don't create it if the item's era is not provided, the local
-        // tip doesn't have an era or the item's era is older than the local tip era by more than
-        // `recent_era_interval`.
+        // The acceptor doesn't exist. Don't create it if the item's era is not
+        // provided or the item's era is older than the local tip era by more
+        // than `recent_era_interval`.
         match (maybe_era_id, self.local_tip) {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
+            (Some(_), None) => {}
             _ => {
                 // If we created the event, it's safe to create the acceptor.
                 if maybe_sender.is_some() {
