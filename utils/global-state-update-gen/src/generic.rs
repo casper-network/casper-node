@@ -131,7 +131,9 @@ fn update_auction_state<T: StateReader>(
         slash,
     );
 
-    state.remove_withdraws(&validators_diff.removed);
+    if slash {
+        state.remove_withdraws_and_unbonds(&validators_diff.removed);
+    }
 
     // We need to output the validators for the next era, which are contained in the first entry
     // in the snapshot.
