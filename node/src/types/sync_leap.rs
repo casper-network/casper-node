@@ -23,6 +23,8 @@ use crate::{
     utils::{self, BlockSignatureError},
 };
 
+use super::{chainspec::GlobalStateUpdate, ActivationPoint};
+
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
     #[error("No ancestors of the trusted block provided.")]
@@ -191,10 +193,30 @@ impl Display for SyncLeap {
     }
 }
 
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct SyncLeapValidationMetaData {
+    recent_era_count: u64,
+    activation_point: ActivationPoint,
+    global_state_update: Option<GlobalStateUpdate>,
+    #[data_size(skip)]
+    finality_threshold_fraction: Ratio<u64>,
+}
+
+impl SyncLeapValidationMetaData {
+    pub(crate) fn new(chainspec: &Chainspec) -> Self {
+        Self {
+            recent_era_count: chainspec.core_config.recent_era_count(),
+            activation_point: chainspec.protocol_config.activation_point,
+            global_state_update: chainspec.protocol_config.global_state_update.clone(),
+            finality_threshold_fraction: chainspec.core_config.finality_threshold_fraction,
+        }
+    }
+}
+
 impl FetchItem for SyncLeap {
     type Id = SyncLeapIdentifier;
     type ValidationError = SyncLeapValidationError;
-    type ValidationMetadata = Arc<Chainspec>;
+    type ValidationMetadata = SyncLeapValidationMetaData;
 
     const TAG: Tag = Tag::SyncLeap;
 
@@ -205,12 +227,15 @@ impl FetchItem for SyncLeap {
         }
     }
 
-    fn validate(&self, chainspec: &Arc<Chainspec>) -> Result<(), Self::ValidationError> {
+    fn validate(
+        &self,
+        validation_metadata: &SyncLeapValidationMetaData,
+    ) -> Result<(), Self::ValidationError> {
         if self.trusted_ancestor_headers.is_empty() && self.trusted_block_header.height() > 0 {
             return Err(SyncLeapValidationError::MissingTrustedAncestors);
         }
         if self.signed_block_headers.len() as u64
-            > chainspec.core_config.recent_era_count().saturating_add(1)
+            > validation_metadata.recent_era_count.saturating_add(1)
         {
             return Err(SyncLeapValidationError::TooManySwitchBlocks);
         }
@@ -256,11 +281,8 @@ impl FetchItem for SyncLeap {
                     // If this is a switch block right before the upgrade to the current protocol
                     // version, and if this upgrade changes the validator set, use the validator
                     // weights from the chainspec.
-                    if header.next_block_era_id()
-                        == chainspec.protocol_config.activation_point.era_id()
-                    {
-                        if let Some(updated_weights) = chainspec
-                            .protocol_config
+                    if header.next_block_era_id() == validation_metadata.activation_point.era_id() {
+                        if let Some(updated_weights) = validation_metadata
                             .global_state_update
                             .as_ref()
                             .and_then(|update| update.validators.as_ref())
@@ -273,7 +295,7 @@ impl FetchItem for SyncLeap {
                         for sigs in era_sigs {
                             if let Err(err) = utils::check_sufficient_block_signatures(
                                 validator_weights,
-                                chainspec.core_config.finality_threshold_fraction,
+                                validation_metadata.finality_threshold_fraction,
                                 Some(sigs),
                             ) {
                                 return Err(SyncLeapValidationError::HeadersNotSufficientlySigned(

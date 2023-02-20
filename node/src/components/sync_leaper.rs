@@ -20,7 +20,7 @@ use crate::{
         Component,
     },
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
-    types::{Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{Chainspec, NodeId, SyncLeap, SyncLeapIdentifier, SyncLeapValidationMetaData},
     NodeRng,
 };
 pub(crate) use error::LeapActivityError;
@@ -276,7 +276,7 @@ where
                                 .fetch::<SyncLeap>(
                                     sync_leap_identifier,
                                     peer,
-                                    self.chainspec.clone(),
+                                    SyncLeapValidationMetaData::new(&self.chainspec),
                                 )
                                 .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                                     sync_leap_identifier,
