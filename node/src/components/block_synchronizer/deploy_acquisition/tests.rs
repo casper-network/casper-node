@@ -111,6 +111,30 @@ fn apply_approvals_on_acquisition_by_hash_creates_correct_ids() {
 }
 
 #[test]
+fn apply_approvals_hashes_after_having_already_applied_deploys() {
+    let mut rng = TestRng::new();
+    let test_deploys = gen_test_deploys(&mut rng);
+    let mut deploy_acquisition =
+        DeployAcquisition::new_by_hash(test_deploys.keys().copied().collect(), false);
+    let (first_deploy_hash, first_deploy) = test_deploys.first_key_value().unwrap();
+
+    let approvals_hashes = gen_approvals_hashes(&mut rng, test_deploys.values());
+
+    // Apply a valid deploy that was not applied before. This should succeed.
+    let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
+        *first_deploy_hash,
+        first_deploy.approvals_hash().unwrap(),
+    ));
+    assert_matches!(acceptance, Some(Acceptance::NeededIt));
+
+    // Apply approvals hashes. This should fail since we have already acquired deploys by hash.
+    assert_matches!(
+        deploy_acquisition.apply_approvals_hashes(&approvals_hashes),
+        Err(Error::EncounteredNonVacantDeployState)
+    );
+}
+
+#[test]
 fn partially_applied_deploys_on_acquisition_by_hash_should_need_missing_deploys() {
     let mut rng = TestRng::new();
     let test_deploys = gen_test_deploys(&mut rng);
