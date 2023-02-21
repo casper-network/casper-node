@@ -930,7 +930,7 @@ impl BlockSynchronizer {
                 debug!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
             } else {
                 if let Some(root_hash) = maybe_root_hash {
-                    if let Err(error) = builder.register_global_state(root_hash) {
+                    if let Err(error) = builder.register_global_state(root_hash.into_inner()) {
                         error!(%block_hash, %error, "BlockSynchronizer: failed to apply global state");
                     }
                 }

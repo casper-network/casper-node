@@ -244,7 +244,7 @@ async fn trie_accumulator_error_cancels_request() {
         peers1.iter().cloned().collect(),
     ));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
-        trie_hash1,
+        trie_hash1.into(),
         trie_accumulator_result,
         reactor.effect_builder(),
     );
@@ -295,7 +295,7 @@ async fn successful_trie_fetch_puts_trie_to_store() {
     // Simulate a successful trie fetch
     let trie_accumulator_result = Ok(TrieAccumulatorResponse::new(trie.clone(), Vec::new()));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
-        state_root_hash,
+        state_root_hash.into(),
         trie_accumulator_result,
         reactor.effect_builder(),
     );
@@ -335,9 +335,9 @@ async fn trie_store_error_cancels_request() {
     // Assuming we received the trie from the accumulator, check the behavior when we an error
     // is returned when trying to put the trie to the store.
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        Digest::hash(trie.inner()),
+        Digest::hash(trie.inner()).into(),
         trie,
-        [state_root_hash].iter().cloned().collect(),
+        [state_root_hash.into()].iter().cloned().collect(),
         Err(engine_state::Error::RootNotFound(state_root_hash)),
         reactor.effect_builder(),
     );
@@ -382,7 +382,7 @@ async fn missing_trie_node_children_triggers_fetch() {
         Vec::new(),
     ));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
-        state_root_hash,
+        state_root_hash.into(),
         trie_accumulator_result,
         reactor.effect_builder(),
     );
@@ -407,9 +407,9 @@ async fn missing_trie_node_children_triggers_fetch() {
         .collect();
 
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        Digest::hash(request_trie.inner()),
+        Digest::hash(request_trie.inner()).into(),
         request_trie.clone(),
-        [state_root_hash].iter().cloned().collect(),
+        [state_root_hash.into()].iter().cloned().collect(),
         Err(engine_state::Error::MissingTrieNodeChildren(
             missing_trie_nodes_hashes.clone(),
         )),
@@ -449,7 +449,7 @@ async fn missing_trie_node_children_triggers_fetch() {
         Vec::new(),
     ));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
-        trie_hash,
+        trie_hash.into(),
         trie_accumulator_result,
         reactor.effect_builder(),
     );
@@ -470,10 +470,10 @@ async fn missing_trie_node_children_triggers_fetch() {
 
     // Handle put trie to store for the missing child
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        trie_hash,
+        trie_hash.into(),
         missing_tries[num_missing_trie_nodes - 1].clone(),
-        [state_root_hash].iter().cloned().collect(),
-        Ok(trie_hash),
+        [state_root_hash.into()].iter().cloned().collect(),
+        Ok(trie_hash.into()),
         reactor.effect_builder(),
     );
 
@@ -490,7 +490,7 @@ async fn missing_trie_node_children_triggers_fetch() {
     assert_eq!(
         global_state_synchronizer
             .tries_awaiting_children
-            .get(&Digest::hash(request_trie.inner()))
+            .get(&Digest::hash(request_trie.inner()).into())
             .unwrap()
             .missing_children
             .len(),
@@ -536,7 +536,7 @@ async fn stored_trie_finalizes_request() {
     let trie_hash = Digest::hash(trie.inner());
     let trie_accumulator_result = Ok(TrieAccumulatorResponse::new(trie.clone(), Vec::new()));
     let mut effects = global_state_synchronizer.handle_fetched_trie(
-        trie_hash,
+        trie_hash.into(),
         trie_accumulator_result,
         reactor.effect_builder(),
     );
@@ -548,10 +548,10 @@ async fn stored_trie_finalizes_request() {
 
     // Generate a successful trie store
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        trie_hash,
+        trie_hash.into(),
         trie,
-        [state_root_hash].iter().cloned().collect(),
-        Ok(trie_hash),
+        [state_root_hash.into()].iter().cloned().collect(),
+        Ok(trie_hash.into()),
         reactor.effect_builder(),
     );
     // Check that request was successfully serviced and the global synchronizer is finished with

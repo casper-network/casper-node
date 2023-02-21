@@ -187,7 +187,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     block_synchronizer.global_state_synced(
         *block.hash(),
         Ok(GlobalStateSynchronizerResponse::new(
-            *block.state_root_hash(),
+            (*block.state_root_hash()).into(),
             unreliable_peers.clone(),
         )),
     );
