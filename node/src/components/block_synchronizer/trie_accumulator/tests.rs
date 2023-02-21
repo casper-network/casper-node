@@ -1,32 +1,12 @@
 use super::*;
 use crate::{
+    components::block_synchronizer::tests::test_utils::test_chunks_with_proof,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::ValueOrChunk,
     utils,
 };
 use casper_types::testing::TestRng;
 use futures::channel::oneshot;
-use rand::Rng;
-
-fn test_chunks_with_proof(num_chunks: u64) -> (Vec<ChunkWithProof>, Vec<TrieOrChunkId>, Vec<u8>) {
-    let mut rng = rand::thread_rng();
-    let data: Vec<u8> = (0..ChunkWithProof::CHUNK_SIZE_BYTES * num_chunks as usize)
-        .into_iter()
-        .map(|_| rng.gen())
-        .collect();
-
-    let chunks: Vec<ChunkWithProof> = (0..num_chunks)
-        .into_iter()
-        .map(|index| ChunkWithProof::new(&data, index).unwrap())
-        .collect();
-
-    let chunk_ids: Vec<TrieOrChunkId> = (0..num_chunks)
-        .into_iter()
-        .map(|index| TrieOrChunkId(index, chunks[index as usize].proof().root_hash()))
-        .collect();
-
-    (chunks, chunk_ids, data)
-}
 
 /// Event for the mock reactor.
 #[derive(Debug)]

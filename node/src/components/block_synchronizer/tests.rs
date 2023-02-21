@@ -1,3 +1,5 @@
+pub(crate) mod test_utils;
+
 use std::{collections::HashSet, iter, rc::Rc, time::Duration};
 
 use casper_types::testing::TestRng;
