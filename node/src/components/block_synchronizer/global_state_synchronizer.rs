@@ -248,6 +248,7 @@ impl GlobalStateSynchronizer {
         REv: From<TrieAccumulatorRequest> + Send,
     {
         let state_root_hash = request.state_root_hash;
+
         match self.request_states.entry(state_root_hash) {
             Entry::Vacant(entry) => {
                 let mut root_hashes = HashSet::new();
@@ -263,6 +264,13 @@ impl GlobalStateSynchronizer {
             }
         }
 
+        debug!(
+            %state_root_hash,
+            fetch_queue_length = self.fetch_queue.queue.len(),
+            tries_awaiting_children_length = self.tries_awaiting_children.len(),
+            "handle_request"
+        );
+
         self.parallel_fetch(effect_builder)
     }
 
@@ -277,6 +285,14 @@ impl GlobalStateSynchronizer {
             .max_parallel_trie_fetches
             .saturating_sub(self.in_flight.len());
 
+        debug!(
+            in_flight_length = self.in_flight.len(),
+            fetch_queue_length = self.fetch_queue.queue.len(),
+            request_states_length = self.request_states.len(),
+            num_fetches_to_start,
+            "parallel_fetch"
+        );
+
         let to_fetch = self.fetch_queue.take(num_fetches_to_start);
 
         for (trie_hash, request_root_hashes) in to_fetch {
@@ -287,7 +303,7 @@ impl GlobalStateSynchronizer {
                 .collect();
             if peers.is_empty() {
                 // if we have no peers, fail - trie accumulator would return an error, anyway
-                debug!(%trie_hash, "no peers available for requesting trie");
+                debug!(%trie_hash, "no peers available for requesting trie, cancelling request");
                 return self.cancel_request(trie_hash, Error::NoPeersAvailable(trie_hash));
             } else {
                 match self.in_flight.entry(trie_hash) {
@@ -331,6 +347,14 @@ impl GlobalStateSynchronizer {
             HashSet::new()
         };
 
+        debug!(
+            in_flight_length = self.in_flight.len(),
+            fetch_queue_length = self.fetch_queue.queue.len(),
+            request_states_length = self.request_states.len(),
+            request_root_hashes_length = request_root_hashes.len(),
+            "handle_fetched_trie"
+        );
+
         let trie_raw = match trie_accumulator_result {
             Ok(response) => {
                 for root_hash in request_root_hashes.iter() {
@@ -359,6 +383,7 @@ impl GlobalStateSynchronizer {
                         }
                         let unreliable_peers =
                             request_state.unreliable_peers.iter().copied().collect();
+                            debug!(%trie_hash, "unreliable peers for requesting trie, cancelling request");
                         self.cancel_request(root_hash, Error::TrieAccumulator(unreliable_peers))
                     } else {
                         Effects::new()
@@ -384,7 +409,10 @@ impl GlobalStateSynchronizer {
 
     pub(super) fn cancel_request(&mut self, root_hash: Digest, error: Error) -> Effects<Event> {
         match self.request_states.remove(&root_hash) {
-            Some(request_state) => request_state.respond(Err(error)),
+            Some(request_state) => {
+                debug!(%root_hash, "cancelling request");
+                request_state.respond(Err(error))
+            }
             None => Effects::new(),
         }
     }
