@@ -928,10 +928,6 @@ impl EraSupervisor {
                 }
                 .ignore()
             }
-            ProtocolOutcome::CreatedTargetedRequest(payload, to) => {
-                let message = ConsensusRequestMessage { era_id, payload };
-                effect_builder.enqueue_message(to, message.into()).ignore()
-            }
             ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
                 let message = ConsensusRequestMessage { era_id, payload };
 

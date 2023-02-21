@@ -194,7 +194,6 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedGossipMessage(EraMessage<C>),
     CreatedTargetedMessage(EraMessage<C>, NodeId),
     CreatedMessageToRandomPeer(EraMessage<C>),
-    CreatedTargetedRequest(EraRequest<C>, NodeId),
     CreatedRequestToRandomPeer(EraRequest<C>),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),

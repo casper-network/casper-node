@@ -1332,7 +1332,6 @@ impl<C: Context + 'static> Zug<C> {
                             | ProtocolOutcome::CreatedGossipMessage(_)
                             | ProtocolOutcome::CreatedTargetedMessage(_, _)
                             | ProtocolOutcome::CreatedMessageToRandomPeer(_)
-                            | ProtocolOutcome::CreatedTargetedRequest(_, _)
                             | ProtocolOutcome::CreatedRequestToRandomPeer(_)
                             | ProtocolOutcome::ScheduleTimer(_, _)
                             | ProtocolOutcome::QueueAction(_)
