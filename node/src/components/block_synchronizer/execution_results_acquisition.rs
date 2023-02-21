@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Display, Formatter},
@@ -417,6 +420,7 @@ impl ExecutionResultsAcquisition {
     }
 }
 
+#[derive(Debug)]
 enum ApplyChunkOutcome {
     NeedNext {
         chunks: HashMap<u64, ChunkWithProof>,
