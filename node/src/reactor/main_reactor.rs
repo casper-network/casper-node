@@ -1173,7 +1173,7 @@ impl reactor::Reactor for MainReactor {
 
 impl MainReactor {
     fn request_leap_if_not_redundant(
-        &self,
+        &mut self,
         sync_leap_identifier: SyncLeapIdentifier,
         effect_builder: EffectBuilder<MainEvent>,
         peers_to_ask: Vec<NodeId>,
@@ -1185,6 +1185,9 @@ impl MainReactor {
             },
         );
         if should_attempt_leap {
+            // latch accumulator progress to allow sync-leap time to do work
+            self.block_accumulator.reset_last_progress();
+
             effect_builder.immediately().event(move |_| {
                 MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
                     sync_leap_identifier,

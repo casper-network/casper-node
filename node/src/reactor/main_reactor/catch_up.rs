@@ -328,9 +328,6 @@ impl MainReactor {
             );
         }
 
-        // latch accumulator progress to allow sync-leap time to do work
-        self.block_accumulator.reset_last_progress();
-
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
         let effects =
             self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
