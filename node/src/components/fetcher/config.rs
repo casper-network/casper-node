@@ -14,7 +14,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub(crate) fn get_from_peer_timeout(&self) -> TimeDiff {
+    /// Returns `get_from_peer` timeout.
+    pub fn get_from_peer_timeout(&self) -> TimeDiff {
         self.get_from_peer_timeout
     }
 }

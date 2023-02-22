@@ -77,7 +77,7 @@ use crate::{
 };
 #[cfg(test)]
 use crate::{testing::network::NetworkedReactor, types::NodeId};
-pub(crate) use config::Config;
+pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
