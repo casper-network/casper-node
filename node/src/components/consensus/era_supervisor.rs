@@ -662,7 +662,7 @@ impl EraSupervisor {
                     self.iter_past(era_id, PAST_EVIDENCE_ERAS)
                         .flat_map(|e_id| {
                             self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
-                                consensus.request_evidence(sender, &pub_key)
+                                consensus.send_evidence(sender, &pub_key)
                             })
                         })
                         .collect()
@@ -1127,7 +1127,7 @@ impl EraSupervisor {
                 .iter_past_other(era_id, PAST_EVIDENCE_ERAS)
                 .flat_map(|e_id| {
                     self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
-                        consensus.request_evidence(sender, &pub_key)
+                        consensus.send_evidence(sender, &pub_key)
                     })
                 })
                 .collect(),

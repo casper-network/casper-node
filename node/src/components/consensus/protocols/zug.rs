@@ -2192,7 +2192,7 @@ where
         }
     }
 
-    fn request_evidence(&self, peer: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
+    fn send_evidence(&self, peer: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
         self.validators
             .get_index(vid)
             .and_then(|idx| self.faults.get(&idx))

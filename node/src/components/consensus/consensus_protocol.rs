@@ -305,7 +305,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     fn mark_faulty(&mut self, vid: &C::ValidatorId);
 
     /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
-    fn request_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C>;
+    fn send_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C>;
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
     fn set_paused(&mut self, paused: bool, now: Timestamp) -> ProtocolOutcomes<C>;
