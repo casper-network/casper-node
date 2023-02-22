@@ -3,7 +3,7 @@ mod tests;
 
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
-    fmt,
+    fmt, mem,
 };
 
 use datasize::DataSize;
@@ -224,6 +224,20 @@ impl FetchQueue {
                     .map(|root_set| (trie_hash, root_set))
             })
             .collect()
+    }
+
+    fn handle_request_cancelled(&mut self, root_hash: RootHash) {
+        self.request_root_hashes.retain(|_trie_hash, root_hashes| {
+            root_hashes.remove(&root_hash);
+            !root_hashes.is_empty()
+        });
+        // take the field temporarily out to avoid borrowing `self` in the closure later
+        let request_root_hashes = mem::take(&mut self.request_root_hashes);
+        // drop any queue entries that aren't related to any request anymore
+        self.queue
+            .retain(|trie_hash| request_root_hashes.contains_key(trie_hash));
+        // closure is done, we can store the value back in `self`
+        self.request_root_hashes = request_root_hashes;
     }
 }
 
@@ -451,6 +465,7 @@ impl GlobalStateSynchronizer {
         match self.request_states.remove(&root_hash) {
             Some(request_state) => {
                 debug!(%root_hash, "cancelling request");
+                self.fetch_queue.handle_request_cancelled(root_hash);
                 request_state.respond(Err(error))
             }
             None => {
