@@ -186,6 +186,10 @@ impl TrieAwaitingChildren {
     fn extend_request_hashes(&mut self, request_root_hashes: HashSet<RootHash>) {
         self.request_root_hashes.extend(request_root_hashes);
     }
+
+    fn handle_request_cancelled(&mut self, root_hash: &RootHash) {
+        self.request_root_hashes.remove(root_hash);
+    }
 }
 
 #[derive(Debug, Default, DataSize)]
@@ -226,9 +230,9 @@ impl FetchQueue {
             .collect()
     }
 
-    fn handle_request_cancelled(&mut self, root_hash: RootHash) {
+    fn handle_request_cancelled(&mut self, root_hash: &RootHash) {
         self.request_root_hashes.retain(|_trie_hash, root_hashes| {
-            root_hashes.remove(&root_hash);
+            root_hashes.remove(root_hash);
             !root_hashes.is_empty()
         });
         // take the field temporarily out to avoid borrowing `self` in the closure later
@@ -465,7 +469,11 @@ impl GlobalStateSynchronizer {
         match self.request_states.remove(&root_hash) {
             Some(request_state) => {
                 debug!(%root_hash, "cancelling request");
-                self.fetch_queue.handle_request_cancelled(root_hash);
+                self.fetch_queue.handle_request_cancelled(&root_hash);
+                // remove the association with the root hash in tries_awaiting_children
+                for trie_awaiting_children in self.tries_awaiting_children.values_mut() {
+                    trie_awaiting_children.handle_request_cancelled(&root_hash);
+                }
                 request_state.respond(Err(error))
             }
             None => {
@@ -475,9 +483,7 @@ impl GlobalStateSynchronizer {
         }
     }
 
-    fn finish_request(&mut self, trie_hash: TrieHash) -> Effects<Event> {
-        let root_hash = RootHash(trie_hash.0); // we don't know if it is a root hash - but if it's
-                                               // not, we just won't have a corresponding entry
+    fn finish_request(&mut self, root_hash: RootHash) -> Effects<Event> {
         match self.request_states.remove(&root_hash) {
             Some(request_state) => {
                 debug!(%root_hash, "finishing request");
@@ -485,7 +491,7 @@ impl GlobalStateSynchronizer {
                 request_state.respond(Ok(Response::new(root_hash, unreliable_peers)))
             }
             None => {
-                debug!(%root_hash, "not finishing request - root hash not found");
+                warn!(%root_hash, "not finishing request - root hash not found");
                 Effects::new()
             }
         }
@@ -505,9 +511,11 @@ impl GlobalStateSynchronizer {
         let mut effects = Effects::new();
 
         match put_trie_result {
-            Ok(digest) if digest == trie_hash => {
-                effects.extend(self.handle_trie_written(effect_builder, digest))
-            }
+            Ok(digest) if digest == trie_hash => effects.extend(self.handle_trie_written(
+                effect_builder,
+                digest,
+                request_root_hashes,
+            )),
             Ok(digest) => {
                 error!(
                     %digest,
@@ -548,6 +556,7 @@ impl GlobalStateSynchronizer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         written_trie: TrieHash,
+        request_root_hashes: HashSet<RootHash>,
     ) -> Effects<Event>
     where
         REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
@@ -558,7 +567,7 @@ impl GlobalStateSynchronizer {
         }
 
         let (ready_tries, still_incomplete): (BTreeMap<_, _>, BTreeMap<_, _>) =
-            std::mem::take(&mut self.tries_awaiting_children)
+            mem::take(&mut self.tries_awaiting_children)
                 .into_iter()
                 .partition(|(_, trie_awaiting)| trie_awaiting.ready_to_be_written());
         debug!(
@@ -585,7 +594,10 @@ impl GlobalStateSynchronizer {
 
         // If there is a request state associated with the trie we just wrote, it means that it was
         // a root trie and we can report fetching to be finished.
-        effects.extend(self.finish_request(written_trie));
+        let potential_root_hash = RootHash(written_trie.0);
+        if request_root_hashes.contains(&potential_root_hash) {
+            effects.extend(self.finish_request(potential_root_hash));
+        }
 
         effects
     }
