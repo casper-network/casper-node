@@ -491,7 +491,10 @@ impl GlobalStateSynchronizer {
                 request_state.respond(Ok(Response::new(root_hash, unreliable_peers)))
             }
             None => {
-                warn!(%root_hash, "not finishing request - root hash not found");
+                // We only call this function after checking that the hash we're passing to it is
+                // among `request_root_hashes` - if we can't find the corresponding request, this
+                // is a bug
+                error!(%root_hash, "not finishing request - root hash not found");
                 Effects::new()
             }
         }
