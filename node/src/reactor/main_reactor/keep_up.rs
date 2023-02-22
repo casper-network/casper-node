@@ -14,7 +14,6 @@ use crate::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::EraValidatorsRequest,
-        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{
@@ -479,7 +478,7 @@ impl MainReactor {
                 best_available,
                 from_peers: _,
                 ..
-            } => self.sync_back_leap_received(best_available),
+            } => self.sync_back_leap_received(*best_available),
             LeapState::Failed { error, .. } => {
                 self.sync_back_leap_failed(effect_builder, rng, parent_hash, error)
             }
@@ -526,16 +525,12 @@ impl MainReactor {
             );
         }
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
-        let effects = effect_builder.immediately().event(move |_| {
-            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
-                sync_leap_identifier,
-                peers_to_ask,
-            })
-        });
+        let effects =
+            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
         KeepUpInstruction::Do(offset, effects)
     }
 
-    fn sync_back_leap_received(&mut self, best_available: Box<SyncLeap>) -> KeepUpInstruction {
+    fn sync_back_leap_received(&mut self, sync_leap: SyncLeap) -> KeepUpInstruction {
         // use the leap response to update our recent switch block data (if relevant) and
         // era validator weights. if there are other processes which are holding on discovery
         // of relevant newly-seen era validator weights, they should naturally progress
@@ -543,13 +538,14 @@ impl MainReactor {
         if let Err(msg) = self.update_highest_switch_block() {
             return KeepUpInstruction::Fatal(msg);
         }
-        let block_hash = best_available.highest_block_hash();
-        let block_height = best_available.highest_block_height();
-        info!(%best_available, %block_height, %block_hash, "historical: leap received");
-        debug!(?best_available, %block_height, %block_hash, "historical: best available leap received");
+        let block_hash = sync_leap.highest_block_hash();
+        let block_height = sync_leap.highest_block_height();
+        info!(%sync_leap, %block_height, %block_hash, "historical: leap received");
+
+        self.last_sync_leap_highest_block_hash = Some(block_hash);
 
         let era_validator_weights =
-            best_available.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
+            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "historical: attempt to register validators for era");
