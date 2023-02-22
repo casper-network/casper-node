@@ -273,24 +273,29 @@ impl GlobalStateSynchronizer {
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
     where
-        REv: From<TrieAccumulatorRequest> + Send,
+        REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
         let state_root_hash = request.state_root_hash;
 
-        match self.request_states.entry(RootHash(state_root_hash)) {
+        let mut effects = match self.request_states.entry(RootHash(state_root_hash)) {
             Entry::Vacant(entry) => {
                 let mut root_hashes = HashSet::new();
                 root_hashes.insert(RootHash(state_root_hash));
                 entry.insert(RequestState::new(request));
-                self.enqueue_trie_for_fetching(TrieHash(state_root_hash), root_hashes);
                 self.touch();
+                self.enqueue_trie_for_fetching(
+                    effect_builder,
+                    TrieHash(state_root_hash),
+                    root_hashes,
+                )
             }
             Entry::Occupied(entry) => {
                 if entry.into_mut().add_request(request) {
                     self.touch();
                 }
+                Effects::new()
             }
-        }
+        };
 
         debug!(
             %state_root_hash,
@@ -299,7 +304,9 @@ impl GlobalStateSynchronizer {
             "handle_request"
         );
 
-        self.parallel_fetch(effect_builder)
+        effects.extend(self.parallel_fetch(effect_builder));
+
+        effects
     }
 
     fn parallel_fetch<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
@@ -568,18 +575,34 @@ impl GlobalStateSynchronizer {
         effects
     }
 
-    fn enqueue_trie_for_fetching(
+    fn enqueue_trie_for_fetching<REv>(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         trie_hash: TrieHash,
         request_root_hashes: HashSet<RootHash>,
-    ) {
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest> + Send,
+    {
         // we might have fetched it already!
         if let Some(trie_awaiting) = self.tries_awaiting_children.get_mut(&trie_hash) {
             // if that's the case, just store the relevant requested hashes
-            trie_awaiting.extend_request_hashes(request_root_hashes);
+            trie_awaiting.extend_request_hashes(request_root_hashes.clone());
+            // simulate fetching having been completed in order to start fetching any children that
+            // might be still missing
+            let trie_raw = trie_awaiting.trie_raw.clone();
+            effect_builder
+                .put_trie_if_all_children_present(trie_raw.clone())
+                .event(move |put_trie_result| Event::PutTrieResult {
+                    trie_hash,
+                    trie_raw,
+                    request_root_hashes,
+                    put_trie_result: put_trie_result.map(TrieHash),
+                })
         } else {
             // otherwise, add to the queue
             self.fetch_queue.insert(trie_hash, request_root_hashes);
+            Effects::new()
         }
     }
 
@@ -592,16 +615,20 @@ impl GlobalStateSynchronizer {
         missing_children: Vec<TrieHash>,
     ) -> Effects<Event>
     where
-        REv: From<TrieAccumulatorRequest> + Send,
+        REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
-        for child in &missing_children {
-            self.enqueue_trie_for_fetching(*child, request_root_hashes.clone());
-        }
+        let mut effects: Effects<Event> = missing_children
+            .iter()
+            .flat_map(|child| {
+                self.enqueue_trie_for_fetching(effect_builder, *child, request_root_hashes.clone())
+            })
+            .collect();
         self.tries_awaiting_children.insert(
             trie_hash,
             TrieAwaitingChildren::new(trie_raw, missing_children, request_root_hashes),
         );
-        self.parallel_fetch(effect_builder)
+        effects.extend(self.parallel_fetch(effect_builder));
+        effects
     }
 }
 
