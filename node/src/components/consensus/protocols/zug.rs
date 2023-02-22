@@ -2199,7 +2199,7 @@ where
             .map(|fault| match fault {
                 Fault::Direct(msg, content, sign) => {
                     vec![ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Evidence(msg.clone(), content.clone(), sign.clone()).into(),
+                        Message::Evidence(msg.clone(), content.clone(), *sign).into(),
                         peer,
                     )]
                 }
