@@ -276,7 +276,7 @@ where
                                 .fetch::<SyncLeap>(
                                     sync_leap_identifier,
                                     peer,
-                                    SyncLeapValidationMetaData::new(&self.chainspec),
+                                    SyncLeapValidationMetaData::from_chainspec(&self.chainspec),
                                 )
                                 .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                                     sync_leap_identifier,

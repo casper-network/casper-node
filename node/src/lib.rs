@@ -125,3 +125,184 @@ pub(crate) fn new_rng() -> NodeRng {
 pub(crate) fn new_rng() -> NodeRng {
     NodeRng::new()
 }
+
+// TODO[RC]: Move to a separate file?
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, iter};
+
+    use casper_types::{testing::TestRng, PublicKey, SecretKey, Timestamp, U512};
+    use rand::Rng;
+
+    use crate::types::{Block, FinalizedBlock};
+
+    // Utility struct that can be turned into an iterator that generates
+    // continuous and descending blocks (i.e. blocks that have consecutive height
+    // and parent hashes are correctly set). The height of the first block
+    // in a series is chosen randomly.
+    //
+    // Additionally, this struct allows to generate switch blocks at a specific location in the
+    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
+    // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
+    // the `validators` parameter using the default weight.
+    pub(crate) struct TestBlockSpec<'a> {
+        block: Block,
+        rng: &'a mut TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+        validators: &'a [(SecretKey, PublicKey)],
+    }
+
+    impl<'a> TestBlockSpec<'a> {
+        pub(crate) fn new(
+            test_rng: &'a mut TestRng,
+
+            // Merge these two into "SwitchBlockSpec"
+            switch_block_indices: Option<Vec<u64>>,
+            validators: &'a [(SecretKey, PublicKey)],
+        ) -> Self {
+            let block = Block::random(test_rng);
+            Self {
+                block,
+                rng: test_rng,
+                switch_block_indices,
+                validators,
+            }
+        }
+
+        pub(crate) fn iter(&mut self) -> TestBlockIterator {
+            let block_height = self.block.height();
+            TestBlockIterator {
+                block: self.block.clone(),
+                rng: self.rng,
+                switch_block_indices: self.switch_block_indices.clone().map(
+                    |switch_block_indices| {
+                        switch_block_indices
+                            .iter()
+                            .map(|index| index + block_height)
+                            .collect()
+                    },
+                ),
+                validators: self
+                    .validators
+                    .iter()
+                    .map(|(_, public_key)| (public_key.clone(), 100.into()))
+                    .collect(),
+            }
+        }
+    }
+
+    pub(crate) struct TestBlockIterator<'a> {
+        block: Block,
+        rng: &'a mut TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+        validators: BTreeMap<PublicKey, U512>,
+    }
+
+    impl<'a> Iterator for TestBlockIterator<'a> {
+        type Item = Block;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let (is_switch_block, is_successor_of_switch_block, validators) =
+                match &self.switch_block_indices {
+                    Some(switch_block_heights)
+                        if switch_block_heights.contains(&self.block.height()) =>
+                    {
+                        let is_successor_of_switch_block =
+                            switch_block_heights.contains(&(self.block.height() - 1));
+
+                        // let secret_keys: Vec<SecretKey> = iter::repeat_with(|| {
+                        //     SecretKey::ed25519_from_bytes(
+                        //         self.rng.gen::<[u8; SecretKey::ED25519_LENGTH]>(),
+                        //     )
+                        //     .unwrap()
+                        // })
+                        // .take(4)
+                        // .collect();
+                        // let validators: BTreeMap<_, _> = secret_keys
+                        //     .iter()
+                        //     .map(|sk| (PublicKey::from(sk), 100.into()))
+                        //     .collect();
+
+                        (
+                            true,
+                            is_successor_of_switch_block,
+                            Some(self.validators.clone()),
+                        )
+                    }
+                    Some(switch_block_heights) => {
+                        let is_successor_of_switch_block =
+                            switch_block_heights.contains(&(self.block.height() - 1));
+                        (false, is_successor_of_switch_block, None)
+                    }
+                    None => (false, false, None),
+                };
+
+            let next = Block::new(
+                *self.block.hash(),
+                self.block.header().accumulated_seed(),
+                *self.block.header().state_root_hash(),
+                FinalizedBlock::random_with_specifics(
+                    &mut self.rng,
+                    if is_successor_of_switch_block {
+                        self.block.header().era_id().successor()
+                    } else {
+                        self.block.header().era_id()
+                    },
+                    self.block.header().height() + 1,
+                    is_switch_block,
+                    Timestamp::now(),
+                    iter::empty(),
+                ),
+                validators,
+                self.block.header().protocol_version(),
+            )
+            .unwrap();
+            self.block = next.clone();
+            Some(next)
+        }
+    }
+
+    #[test]
+    fn test_block_iter() {
+        let mut rng = TestRng::new();
+        let mut test_block = TestBlockSpec::new(&mut rng, None, &[]);
+        let mut block_batch = test_block.iter().take(100);
+        let mut parent_block: Block = block_batch.next().unwrap();
+        for current_block in block_batch {
+            assert_eq!(
+                current_block.header().height(),
+                parent_block.header().height() + 1,
+                "height should grow monotonically"
+            );
+            assert_eq!(
+                current_block.header().parent_hash(),
+                parent_block.hash(),
+                "block's parent should point at previous block"
+            );
+            parent_block = current_block;
+        }
+    }
+
+    #[test]
+    fn test_block_iter_creates_switch_blocks() {
+        let switch_block_indices = vec![0, 10, 76];
+
+        let mut rng = TestRng::new();
+        let mut test_block = TestBlockSpec::new(&mut rng, Some(switch_block_indices.clone()), &[]);
+        let block_batch: Vec<_> = test_block.iter().take(100).collect();
+
+        let base_height = block_batch.first().expect("should have block").height();
+
+        for block in block_batch {
+            if switch_block_indices
+                .iter()
+                .map(|index| index + base_height)
+                .any(|index| index == block.height())
+            {
+                assert!(block.header().is_switch_block())
+            } else {
+                assert!(!block.header().is_switch_block())
+            }
+        }
+    }
+}

@@ -2,7 +2,6 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
     iter,
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -111,17 +110,15 @@ pub(crate) struct SyncLeap {
 }
 
 impl SyncLeap {
-    pub(crate) fn switch_blocks(&self) -> impl Iterator<Item = &BlockHeader> {
-        self.headers().filter(|header| header.is_switch_block())
-    }
-
     pub(crate) fn era_validator_weights(
         &self,
         fault_tolerance_fraction: Ratio<u64>,
     ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
-        let switch_block_heights: HashSet<_> =
-            self.switch_blocks().map(BlockHeader::height).collect();
-        self.switch_blocks()
+        let switch_block_heights: HashSet<_> = self
+            .switch_blocks_headers()
+            .map(BlockHeader::height)
+            .collect();
+        self.switch_blocks_headers()
             .find(|block_header| block_header.is_genesis())
             .into_iter()
             .flat_map(move |block_header| {
@@ -132,7 +129,7 @@ impl SyncLeap {
                 ))
             })
             .chain(
-                self.switch_blocks()
+                self.switch_blocks_headers()
                     // filter out switch blocks preceding immediate switch blocks - we don't want
                     // to read the era validators directly from them, as they might have been
                     // altered by the upgrade, we'll get them from the blocks' global states
@@ -181,6 +178,10 @@ impl SyncLeap {
             .chain(&self.trusted_ancestor_headers)
             .chain(self.signed_block_headers.iter().map(|sh| &sh.block_header))
     }
+
+    pub(crate) fn switch_blocks_headers(&self) -> impl Iterator<Item = &BlockHeader> {
+        self.headers().filter(|header| header.is_switch_block())
+    }
 }
 
 impl Display for SyncLeap {
@@ -203,7 +204,21 @@ pub(crate) struct SyncLeapValidationMetaData {
 }
 
 impl SyncLeapValidationMetaData {
-    pub(crate) fn new(chainspec: &Chainspec) -> Self {
+    pub(crate) fn new(
+        recent_era_count: u64,
+        activation_point: ActivationPoint,
+        global_state_update: Option<GlobalStateUpdate>,
+        finality_threshold_fraction: Ratio<u64>,
+    ) -> Self {
+        Self {
+            recent_era_count,
+            activation_point,
+            global_state_update,
+            finality_threshold_fraction,
+        }
+    }
+
+    pub(crate) fn from_chainspec(chainspec: &Chainspec) -> Self {
         Self {
             recent_era_count: chainspec.core_config.recent_era_count(),
             activation_point: chainspec.protocol_config.activation_point,
@@ -278,18 +293,21 @@ impl FetchItem for SyncLeap {
             if let Some(header) = headers.remove(&hash) {
                 verified.push(*header.parent_hash());
                 if let Some(mut validator_weights) = header.next_era_validator_weights() {
+                    // TODO[RC]: Don't forget to uncomment this!
+
                     // If this is a switch block right before the upgrade to the current protocol
                     // version, and if this upgrade changes the validator set, use the validator
                     // weights from the chainspec.
-                    if header.next_block_era_id() == validation_metadata.activation_point.era_id() {
-                        if let Some(updated_weights) = validation_metadata
-                            .global_state_update
-                            .as_ref()
-                            .and_then(|update| update.validators.as_ref())
-                        {
-                            validator_weights = updated_weights
-                        }
-                    }
+
+                    // if header.next_block_era_id() == validation_metadata.activation_point.era_id() {
+                    //     if let Some(updated_weights) = validation_metadata
+                    //         .global_state_update
+                    //         .as_ref()
+                    //         .and_then(|update| update.validators.as_ref())
+                    //     {
+                    //         validator_weights = updated_weights
+                    //     }
+                    // }
 
                     if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
                         for sigs in era_sigs {
@@ -327,5 +345,137 @@ impl FetchItem for SyncLeap {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::iter;
+
+    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey};
+    use itertools::Itertools;
+    use num_rational::Ratio;
+
+    use crate::{
+        components::fetcher::FetchItem,
+        tests::TestBlockSpec,
+        types::{
+            ActivationPoint, Block, BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
+            SyncLeapValidationMetaData,
+        },
+    };
+
+    use super::SyncLeap;
+
+    fn _dump_chain(chain: &[Block]) {
+        for block in chain {
+            println!(
+                "block={} - era={} - is_switch={} - next_era_validator_weights={}",
+                block.header().height(),
+                block.header().era_id(),
+                block.header().is_switch_block(),
+                block.header().next_era_validator_weights().is_some()
+            );
+        }
+    }
+
+    fn _dump_sync_leap(sync_leap: &SyncLeap) {
+        println!(
+            "trusted_block_header={}, trusted_ancestor_headers={}, signed_block_headers={}",
+            sync_leap.trusted_block_header.height(),
+            sync_leap
+                .trusted_ancestor_headers
+                .iter()
+                .map(|header| header.height())
+                .join(","),
+            sync_leap
+                .signed_block_headers
+                .iter()
+                .map(|header_with_metadata| header_with_metadata.block_header.height())
+                .join(",")
+        );
+    }
+
+    fn make_signed_block_header(
+        height: usize,
+        test_chain: &[Block],
+        validators: &[(SecretKey, PublicKey)],
+    ) -> BlockHeaderWithMetadata {
+        let header = test_chain.get(height).unwrap().header().clone();
+        let hash = header.block_hash();
+        let era_id = header.era_id();
+        let mut block_signatures = BlockSignatures::new(hash, era_id);
+        validators.iter().for_each(|(secret_key, public_key)| {
+            let finality_signature =
+                FinalitySignature::create(hash, era_id, &secret_key, public_key.clone());
+            block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
+        });
+
+        BlockHeaderWithMetadata {
+            block_header: header,
+            block_signatures,
+        }
+    }
+
+    fn make_test_sync_leap_for_non_switch_block(rng: &mut TestRng) -> SyncLeap {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S       q   S           S
+
+        // where:
+        // S - switch block
+        // q - query for this trusted block
+
+        let validators: Vec<_> = iter::repeat_with(|| crypto::generate_ed25519_keypair())
+            .take(2)
+            .collect();
+        let mut test_chain_spec = TestBlockSpec::new(rng, Some(vec![0, 3, 6, 9]), &validators);
+        let test_chain: Vec<_> = test_chain_spec.iter().take(12).collect();
+
+        let trusted_block_header = test_chain.get(5).unwrap().header().clone();
+
+        let trusted_ancestor_headers: Vec<_> = [4, 3]
+            .iter()
+            .map(|height| test_chain.get(*height).unwrap().header().clone())
+            .collect();
+
+        let signed_block_headers: Vec<_> = [6, 9, 11]
+            .iter()
+            .map(|height| make_signed_block_header(*height, &test_chain, &validators))
+            .collect();
+
+        SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header,
+            trusted_ancestor_headers,
+            signed_block_headers,
+        }
+    }
+
+    fn default_sync_leap_validation_metadata() -> SyncLeapValidationMetaData {
+        let unbonding_delay = 7;
+        let auction_delay = 1;
+        let activation_point = ActivationPoint::EraId(3000.into());
+        let finality_threshold_fraction = Ratio::new(1, 3);
+
+        SyncLeapValidationMetaData::new(
+            unbonding_delay - auction_delay,
+            activation_point,
+            None,
+            finality_threshold_fraction,
+        )
+    }
+
+    #[test]
+    fn should_validate_correct_sync_leap() {
+        let mut rng = TestRng::new();
+
+        // TODO[RC]: Add the "switch block" variant.
+        let sync_leap = make_test_sync_leap_for_non_switch_block(&mut rng);
+
+        let validation_metadata = default_sync_leap_validation_metadata();
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(result.is_ok());
     }
 }
