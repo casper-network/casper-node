@@ -2,7 +2,7 @@
 mod tests;
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet},
     fmt, mem,
 };
 
@@ -66,6 +66,11 @@ pub(crate) enum Error {
     PutTrie(engine_state::Error, Vec<NodeId>),
     #[error("no peers available to ask for a trie: {0}")]
     NoPeersAvailable(TrieHash),
+    #[error("received request for {hash_requested} while syncing another root hash: {hash_being_synced}")]
+    ProcessingAnotherRequest {
+        hash_being_synced: Digest,
+        hash_requested: Digest,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -102,7 +107,6 @@ pub(crate) enum Event {
     PutTrieResult {
         trie_hash: TrieHash,
         trie_raw: TrieRaw,
-        request_root_hashes: HashSet<RootHash>,
         #[serde(skip)]
         put_trie_result: Result<TrieHash, engine_state::Error>,
     },
@@ -112,6 +116,7 @@ pub(crate) enum Event {
 
 #[derive(Debug, DataSize)]
 struct RequestState {
+    root_hash: RootHash,
     block_hashes: HashSet<BlockHash>,
     peers: HashSet<NodeId>,
     responders: Vec<Responder<Result<Response, Error>>>,
@@ -123,6 +128,7 @@ impl RequestState {
         let mut block_hashes = HashSet::new();
         block_hashes.insert(request.block_hash);
         Self {
+            root_hash: RootHash(request.state_root_hash),
             block_hashes,
             peers: request.peers,
             responders: vec![request.responder],
@@ -153,19 +159,13 @@ impl RequestState {
 struct TrieAwaitingChildren {
     trie_raw: TrieRaw,
     missing_children: HashSet<TrieHash>,
-    request_root_hashes: HashSet<RootHash>,
 }
 
 impl TrieAwaitingChildren {
-    fn new(
-        trie_raw: TrieRaw,
-        missing_children: Vec<TrieHash>,
-        request_root_hashes: HashSet<RootHash>,
-    ) -> Self {
+    fn new(trie_raw: TrieRaw, missing_children: Vec<TrieHash>) -> Self {
         Self {
             trie_raw,
             missing_children: missing_children.into_iter().collect(),
-            request_root_hashes,
         }
     }
 
@@ -179,40 +179,27 @@ impl TrieAwaitingChildren {
         self.missing_children.is_empty()
     }
 
-    fn decompose(self) -> (TrieRaw, HashSet<RootHash>) {
-        (self.trie_raw, self.request_root_hashes)
-    }
-
-    fn extend_request_hashes(&mut self, request_root_hashes: HashSet<RootHash>) {
-        self.request_root_hashes.extend(request_root_hashes);
-    }
-
-    fn handle_request_cancelled(&mut self, root_hash: &RootHash) {
-        self.request_root_hashes.remove(root_hash);
+    fn into_trie_raw(self) -> TrieRaw {
+        self.trie_raw
     }
 }
 
 #[derive(Debug, Default, DataSize)]
 struct FetchQueue {
     queue: Vec<TrieHash>,
-    /// a map of trie_hash → set of state root hashes awaiting this trie
-    request_root_hashes: BTreeMap<TrieHash, HashSet<RootHash>>,
+    /// set of the same values that are in the queue - so that we can quickly check that we do not
+    /// duplicate the same entry in the queue
+    hashes_set: HashSet<TrieHash>,
 }
 
 impl FetchQueue {
-    fn insert(&mut self, trie_hash: TrieHash, request_root_hashes: HashSet<RootHash>) {
-        match self.request_root_hashes.entry(trie_hash) {
-            Entry::Vacant(entry) => {
-                entry.insert(request_root_hashes);
-                self.queue.push(trie_hash);
-            }
-            Entry::Occupied(entry) => {
-                entry.into_mut().extend(request_root_hashes);
-            }
+    fn insert(&mut self, trie_hash: TrieHash) {
+        if self.hashes_set.insert(trie_hash) {
+            self.queue.push(trie_hash);
         }
     }
 
-    fn take(&mut self, num_to_take: usize) -> Vec<(TrieHash, HashSet<RootHash>)> {
+    fn take(&mut self, num_to_take: usize) -> Vec<TrieHash> {
         // `to_return` will contain `num_to_take` elements from the end of the queue (or all of
         // them if `num_to_take` is greater than queue length).
         // Taking elements from the end will essentially make our traversal depth-first instead of
@@ -220,28 +207,16 @@ impl FetchQueue {
         let to_return = self
             .queue
             .split_off(self.queue.len().saturating_sub(num_to_take));
+        // remove the returned hashes from the "duplication prevention" set
+        for returned_hash in &to_return {
+            self.hashes_set.remove(returned_hash);
+        }
         to_return
-            .into_iter()
-            .filter_map(|trie_hash| {
-                self.request_root_hashes
-                    .remove(&trie_hash)
-                    .map(|root_set| (trie_hash, root_set))
-            })
-            .collect()
     }
 
-    fn handle_request_cancelled(&mut self, root_hash: &RootHash) {
-        self.request_root_hashes.retain(|_trie_hash, root_hashes| {
-            root_hashes.remove(root_hash);
-            !root_hashes.is_empty()
-        });
-        // take the field temporarily out to avoid borrowing `self` in the closure later
-        let request_root_hashes = mem::take(&mut self.request_root_hashes);
-        // drop any queue entries that aren't related to any request anymore
-        self.queue
-            .retain(|trie_hash| request_root_hashes.contains_key(trie_hash));
-        // closure is done, we can store the value back in `self`
-        self.request_root_hashes = request_root_hashes;
+    fn handle_request_cancelled(&mut self) {
+        self.queue = vec![];
+        self.hashes_set = HashSet::new();
     }
 }
 
@@ -249,12 +224,10 @@ impl FetchQueue {
 pub(super) struct GlobalStateSynchronizer {
     max_parallel_trie_fetches: usize,
     trie_accumulator: TrieAccumulator,
-    request_states: BTreeMap<RootHash, RequestState>,
+    request_state: Option<RequestState>,
     tries_awaiting_children: BTreeMap<TrieHash, TrieAwaitingChildren>,
     fetch_queue: FetchQueue,
-    /// A map with trie hashes as the keys, and the values being sets of state root hashes that
-    /// were requested for syncing and have those tries as descendants.
-    in_flight: BTreeMap<TrieHash, HashSet<RootHash>>,
+    in_flight: HashSet<TrieHash>,
     last_progress: Option<Timestamp>,
 }
 
@@ -263,7 +236,7 @@ impl GlobalStateSynchronizer {
         Self {
             max_parallel_trie_fetches,
             trie_accumulator: TrieAccumulator::new(),
-            request_states: Default::default(),
+            request_state: None,
             tries_awaiting_children: Default::default(),
             fetch_queue: Default::default(),
             in_flight: Default::default(),
@@ -281,8 +254,9 @@ impl GlobalStateSynchronizer {
 
     /// Returns whether we are already processing a request for the given hash.
     pub(super) fn has_global_state_request(&self, global_state_hash: &Digest) -> bool {
-        self.request_states
-            .contains_key(&RootHash(*global_state_hash))
+        self.request_state
+            .as_ref()
+            .map_or(false, |state| state.root_hash.0 == *global_state_hash)
     }
 
     fn handle_request<REv>(
@@ -295,20 +269,22 @@ impl GlobalStateSynchronizer {
     {
         let state_root_hash = request.state_root_hash;
 
-        let mut effects = match self.request_states.entry(RootHash(state_root_hash)) {
-            Entry::Vacant(entry) => {
-                let mut root_hashes = HashSet::new();
-                root_hashes.insert(RootHash(state_root_hash));
-                entry.insert(RequestState::new(request));
+        let mut effects = match &mut self.request_state {
+            None => {
+                self.request_state = Some(RequestState::new(request));
                 self.touch();
-                self.enqueue_trie_for_fetching(
-                    effect_builder,
-                    TrieHash(state_root_hash),
-                    root_hashes,
-                )
+                self.enqueue_trie_for_fetching(effect_builder, TrieHash(state_root_hash))
             }
-            Entry::Occupied(entry) => {
-                if entry.into_mut().add_request(request) {
+            Some(state) => {
+                if state.root_hash.0 != state_root_hash {
+                    return request
+                        .responder
+                        .respond(Err(Error::ProcessingAnotherRequest {
+                            hash_being_synced: state.root_hash.0,
+                            hash_requested: state_root_hash,
+                        }))
+                        .ignore();
+                } else if state.add_request(request) {
                     self.touch();
                 }
                 Effects::new()
@@ -333,6 +309,11 @@ impl GlobalStateSynchronizer {
     {
         let mut effects = Effects::new();
 
+        if self.request_state.is_none() {
+            debug!("called parallel_fetch while not processing any requests");
+            return effects;
+        }
+
         // if we're not finished, figure out how many new fetching tasks we can start
         let num_fetches_to_start = self
             .max_parallel_trie_fetches
@@ -341,45 +322,30 @@ impl GlobalStateSynchronizer {
         debug!(
             in_flight_length = self.in_flight.len(),
             fetch_queue_length = self.fetch_queue.queue.len(),
-            request_states_length = self.request_states.len(),
             num_fetches_to_start,
             "parallel_fetch"
         );
 
         let to_fetch = self.fetch_queue.take(num_fetches_to_start);
 
-        for (trie_hash, request_root_hashes) in to_fetch {
-            let peers: Vec<_> = request_root_hashes
+        for trie_hash in to_fetch {
+            let peers: Vec<_> = self
+                .request_state
                 .iter()
-                .filter_map(|request_root_hash| self.request_states.get(request_root_hash))
-                .flat_map(|request_state| request_state.peers.iter().copied())
+                .flat_map(|state| state.peers.iter())
+                .cloned()
                 .collect();
             if peers.is_empty() {
                 // if we have no peers, fail - trie accumulator would return an error, anyway
                 debug!(%trie_hash, "no peers available for requesting trie, cancelling request");
-                return request_root_hashes
-                    .into_iter()
-                    .flat_map(|root_hash| {
-                        self.cancel_request(root_hash, Error::NoPeersAvailable(trie_hash))
-                    })
-                    .collect();
-            } else {
-                match self.in_flight.entry(trie_hash) {
-                    Entry::Vacant(entry) => {
-                        entry.insert(request_root_hashes);
-                        effects.extend(effect_builder.fetch_trie(trie_hash.0, peers).event(
-                            move |trie_accumulator_result| Event::FetchedTrie {
-                                trie_hash,
-                                trie_accumulator_result,
-                            },
-                        ));
-                    }
-                    Entry::Occupied(entry) => {
-                        // we have already started fetching the trie - don't reattempt, only store
-                        // the hashes of relevant state roots
-                        entry.into_mut().extend(request_root_hashes);
-                    }
-                }
+                return self.cancel_request(Error::NoPeersAvailable(trie_hash));
+            } else if self.in_flight.insert(trie_hash) {
+                effects.extend(effect_builder.fetch_trie(trie_hash.0, peers).event(
+                    move |trie_accumulator_result| Event::FetchedTrie {
+                        trie_hash,
+                        trie_accumulator_result,
+                    },
+                ));
             }
         }
 
@@ -395,60 +361,56 @@ impl GlobalStateSynchronizer {
     where
         REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
-        let request_root_hashes = if let Some(hashes) = self.in_flight.remove(&trie_hash) {
-            hashes
-        } else {
-            error!(
-                %trie_hash,
-                "received FetchedTrie, but no in_flight entry is present - this is a bug"
-            );
-            HashSet::new()
-        };
+        // A result of `false` probably indicates that this is a stale fetch from a previously
+        // cancelled request - we shouldn't cancel the current request if the result is an error in
+        // such a case.
+        let in_flight_was_present = self.in_flight.remove(&trie_hash);
 
         debug!(
+            %trie_hash,
             in_flight_length = self.in_flight.len(),
             fetch_queue_length = self.fetch_queue.queue.len(),
-            request_states_length = self.request_states.len(),
-            request_root_hashes_length = request_root_hashes.len(),
+            processing_request = self.request_state.is_some(),
             "handle_fetched_trie"
         );
 
         let trie_raw = match trie_accumulator_result {
             Ok(response) => {
-                for root_hash in request_root_hashes.iter() {
-                    if let Some(request_state) = self.request_states.get_mut(root_hash) {
-                        request_state
-                            .unreliable_peers
-                            .extend(response.unreliable_peers());
-                    }
+                if let Some(request_state) = &mut self.request_state {
+                    request_state
+                        .unreliable_peers
+                        .extend(response.unreliable_peers());
                 }
                 response.trie()
             }
             Err(error) => {
                 debug!(%error, "error fetching a trie");
-                let mut effects = Effects::new();
-                effects.extend(request_root_hashes.into_iter().flat_map(|root_hash| {
-                    if let Some(request_state) = self.request_states.get_mut(&root_hash) {
-                        match &error {
-                            TrieAccumulatorError::Absent(_, _, unreliable_peers)
-                            | TrieAccumulatorError::PeersExhausted(_, unreliable_peers) => {
-                                request_state.unreliable_peers.extend(unreliable_peers);
-                            }
-                            TrieAccumulatorError::NoPeers(_) => {
-                                // Trie accumulator did not have any peers to download from
-                                // so the request will be canceled with no peers to report
-                            }
-                        }
-                        let unreliable_peers =
-                            request_state.unreliable_peers.iter().copied().collect();
-                            debug!(%trie_hash, "unreliable peers for requesting trie, cancelling request");
-                        self.cancel_request(root_hash, Error::TrieAccumulator(unreliable_peers))
-                    } else {
-                        Effects::new()
+                let new_unreliable_peers = match error {
+                    TrieAccumulatorError::Absent(_, _, unreliable_peers)
+                    | TrieAccumulatorError::PeersExhausted(_, unreliable_peers) => unreliable_peers,
+                    TrieAccumulatorError::NoPeers(_) => {
+                        // Trie accumulator did not have any peers to download from
+                        // so the request will be canceled with no peers to report
+                        vec![]
                     }
-                }));
+                };
+                let unreliable_peers = self.request_state.as_mut().map_or_else(Vec::new, |state| {
+                    state.peers.extend(new_unreliable_peers);
+                    state.peers.iter().copied().collect()
+                });
+                debug!(%trie_hash, "unreliable peers for requesting trie, cancelling request");
+                let mut effects = if in_flight_was_present {
+                    self.cancel_request(Error::TrieAccumulator(unreliable_peers))
+                } else {
+                    Effects::new()
+                };
+
                 // continue fetching other requests if any
-                effects.extend(self.parallel_fetch(effect_builder));
+                // request_state might be `None` if we are processing fetch responses that were in
+                // flight when we cancelled a request
+                if self.request_state.is_some() {
+                    effects.extend(self.parallel_fetch(effect_builder));
+                }
                 return effects;
             }
         };
@@ -460,41 +422,37 @@ impl GlobalStateSynchronizer {
             .event(move |put_trie_result| Event::PutTrieResult {
                 trie_hash,
                 trie_raw: *trie_raw,
-                request_root_hashes,
                 put_trie_result: put_trie_result.map(TrieHash),
             })
     }
 
-    pub(super) fn cancel_request(&mut self, root_hash: RootHash, error: Error) -> Effects<Event> {
-        match self.request_states.remove(&root_hash) {
+    pub(super) fn cancel_request(&mut self, error: Error) -> Effects<Event> {
+        match self.request_state.take() {
             Some(request_state) => {
-                debug!(%root_hash, "cancelling request");
-                self.fetch_queue.handle_request_cancelled(&root_hash);
-                // remove the association with the root hash in tries_awaiting_children
-                for trie_awaiting_children in self.tries_awaiting_children.values_mut() {
-                    trie_awaiting_children.handle_request_cancelled(&root_hash);
-                }
+                debug!(root_hash=%request_state.root_hash, "cancelling request");
+                self.fetch_queue.handle_request_cancelled();
+                self.in_flight = HashSet::new();
                 request_state.respond(Err(error))
             }
             None => {
-                debug!(%root_hash, "not cancelling request - root hash not found");
+                debug!("not cancelling request - none being processed");
                 Effects::new()
             }
         }
     }
 
-    fn finish_request(&mut self, root_hash: RootHash) -> Effects<Event> {
-        match self.request_states.remove(&root_hash) {
+    fn finish_request(&mut self) -> Effects<Event> {
+        match self.request_state.take() {
             Some(request_state) => {
+                let root_hash = request_state.root_hash;
                 debug!(%root_hash, "finishing request");
                 let unreliable_peers = request_state.unreliable_peers.iter().copied().collect();
                 request_state.respond(Ok(Response::new(root_hash, unreliable_peers)))
             }
             None => {
-                // We only call this function after checking that the hash we're passing to it is
-                // among `request_root_hashes` - if we can't find the corresponding request, this
-                // is a bug
-                error!(%root_hash, "not finishing request - root hash not found");
+                // We only call this function after checking that we are processing a request - if
+                // the request is None, this is a bug
+                error!("not finishing request - none being processed");
                 Effects::new()
             }
         }
@@ -504,7 +462,6 @@ impl GlobalStateSynchronizer {
         &mut self,
         trie_hash: TrieHash,
         trie_raw: TrieRaw,
-        request_root_hashes: HashSet<RootHash>,
         put_trie_result: Result<TrieHash, engine_state::Error>,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
@@ -514,11 +471,9 @@ impl GlobalStateSynchronizer {
         let mut effects = Effects::new();
 
         match put_trie_result {
-            Ok(digest) if digest == trie_hash => effects.extend(self.handle_trie_written(
-                effect_builder,
-                digest,
-                request_root_hashes,
-            )),
+            Ok(digest) if digest == trie_hash => {
+                effects.extend(self.handle_trie_written(effect_builder, digest))
+            }
             Ok(digest) => {
                 error!(
                     %digest,
@@ -531,27 +486,25 @@ impl GlobalStateSynchronizer {
                 effects.extend(self.handle_trie_missing_children(
                     effect_builder,
                     trie_hash,
-                    request_root_hashes,
                     trie_raw,
                     missing_children.into_iter().map(TrieHash).collect(),
                 ))
             }
             Err(error) => {
                 warn!(%trie_hash, %error, "couldn't put trie into global state");
-                for root_hash in request_root_hashes {
-                    if let Some(request_state) = self.request_states.get_mut(&root_hash) {
-                        let unreliable_peers =
-                            request_state.unreliable_peers.iter().copied().collect();
-                        effects.extend(self.cancel_request(
-                            root_hash,
-                            Error::PutTrie(error.clone(), unreliable_peers),
-                        ));
-                    }
+                if let Some(request_state) = &mut self.request_state {
+                    let unreliable_peers = request_state.unreliable_peers.iter().copied().collect();
+                    effects.extend(self.cancel_request(Error::PutTrie(error, unreliable_peers)));
                 }
             }
         }
 
-        effects.extend(self.parallel_fetch(effect_builder));
+        // request_state can be none if we're processing a result of a fetch that was in flight
+        // when a request got cancelled
+        if self.request_state.is_some() {
+            effects.extend(self.parallel_fetch(effect_builder));
+        }
+
         effects
     }
 
@@ -559,11 +512,12 @@ impl GlobalStateSynchronizer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         written_trie: TrieHash,
-        request_root_hashes: HashSet<RootHash>,
     ) -> Effects<Event>
     where
         REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
+        self.touch();
+
         // Remove the written trie from dependencies of the tries that are waiting.
         for trie_awaiting in self.tries_awaiting_children.values_mut() {
             trie_awaiting.trie_written(written_trie);
@@ -583,13 +537,12 @@ impl GlobalStateSynchronizer {
         let mut effects: Effects<Event> = ready_tries
             .into_iter()
             .flat_map(|(trie_hash, trie_awaiting)| {
-                let (trie_raw, request_root_hashes) = trie_awaiting.decompose();
+                let trie_raw = trie_awaiting.into_trie_raw();
                 effect_builder
                     .put_trie_if_all_children_present(trie_raw.clone())
                     .event(move |put_trie_result| Event::PutTrieResult {
                         trie_hash,
                         trie_raw,
-                        request_root_hashes,
                         put_trie_result: put_trie_result.map(TrieHash),
                     })
             })
@@ -597,9 +550,10 @@ impl GlobalStateSynchronizer {
 
         // If there is a request state associated with the trie we just wrote, it means that it was
         // a root trie and we can report fetching to be finished.
-        let potential_root_hash = RootHash(written_trie.0);
-        if request_root_hashes.contains(&potential_root_hash) {
-            effects.extend(self.finish_request(potential_root_hash));
+        if let Some(request_state) = &mut self.request_state {
+            if TrieHash(request_state.root_hash.0) == written_trie {
+                effects.extend(self.finish_request());
+            }
         }
 
         effects
@@ -609,15 +563,12 @@ impl GlobalStateSynchronizer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         trie_hash: TrieHash,
-        request_root_hashes: HashSet<RootHash>,
     ) -> Effects<Event>
     where
         REv: From<ContractRuntimeRequest> + Send,
     {
         // we might have fetched it already!
         if let Some(trie_awaiting) = self.tries_awaiting_children.get_mut(&trie_hash) {
-            // if that's the case, just store the relevant requested hashes
-            trie_awaiting.extend_request_hashes(request_root_hashes.clone());
             // simulate fetching having been completed in order to start fetching any children that
             // might be still missing
             let trie_raw = trie_awaiting.trie_raw.clone();
@@ -626,12 +577,11 @@ impl GlobalStateSynchronizer {
                 .event(move |put_trie_result| Event::PutTrieResult {
                     trie_hash,
                     trie_raw,
-                    request_root_hashes,
                     put_trie_result: put_trie_result.map(TrieHash),
                 })
         } else {
             // otherwise, add to the queue
-            self.fetch_queue.insert(trie_hash, request_root_hashes);
+            self.fetch_queue.insert(trie_hash);
             Effects::new()
         }
     }
@@ -640,22 +590,28 @@ impl GlobalStateSynchronizer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         trie_hash: TrieHash,
-        request_root_hashes: HashSet<RootHash>,
         trie_raw: TrieRaw,
         missing_children: Vec<TrieHash>,
     ) -> Effects<Event>
     where
         REv: From<TrieAccumulatorRequest> + From<ContractRuntimeRequest> + Send,
     {
+        if self.request_state.is_none() {
+            // this can be valid if we're processing a fetch result that was in flight while we
+            // were cancelling a request - but we don't want to continue queueing further tries for
+            // fetching
+            return Effects::new();
+        }
+
+        self.touch();
+
         let mut effects: Effects<Event> = missing_children
             .iter()
-            .flat_map(|child| {
-                self.enqueue_trie_for_fetching(effect_builder, *child, request_root_hashes.clone())
-            })
+            .flat_map(|child| self.enqueue_trie_for_fetching(effect_builder, *child))
             .collect();
         self.tries_awaiting_children.insert(
             trie_hash,
-            TrieAwaitingChildren::new(trie_raw, missing_children, request_root_hashes),
+            TrieAwaitingChildren::new(trie_raw, missing_children),
         );
         effects.extend(self.parallel_fetch(effect_builder));
         effects
@@ -687,15 +643,8 @@ where
             Event::PutTrieResult {
                 trie_hash,
                 trie_raw,
-                request_root_hashes,
                 put_trie_result,
-            } => self.handle_put_trie_result(
-                trie_hash,
-                trie_raw,
-                request_root_hashes,
-                put_trie_result,
-                effect_builder,
-            ),
+            } => self.handle_put_trie_result(trie_hash, trie_raw, put_trie_result, effect_builder),
             Event::TrieAccumulatorEvent(event) => reactor::wrap_effects(
                 Event::TrieAccumulatorEvent,
                 self.trie_accumulator

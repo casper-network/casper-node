@@ -125,13 +125,13 @@ async fn fetch_request_without_peers_is_canceled() {
     // Since the request does not have any peers, it should be canceled.
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 0);
+    assert!(global_state_synchronizer.request_state.is_none());
     assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
     assert_eq!(global_state_synchronizer.in_flight.len(), 0);
     assert!(global_state_synchronizer.last_progress.is_some());
 
     // Check if the error is propagated on the channel
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     let result = receiver.await.unwrap();
     assert!(result.is_err());
 }
@@ -145,54 +145,74 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
 
     let mut progress = Timestamp::now();
 
-    // Create multiple distinct requests up to the fetch limit
-    for i in 0..parallel_fetch_limit {
-        // Add a small delay between requests
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        let (request, _) = random_sync_global_state_request(
-            &mut rng,
-            2,
-            Responder::without_shutdown(oneshot::channel().0),
-        );
-        let trie_hash = request.state_root_hash;
-        let peers = request.peers.clone();
-        let mut effects =
-            global_state_synchronizer.handle_request(request, reactor.effect_builder());
-        assert_eq!(effects.len(), 1);
-        assert_eq!(global_state_synchronizer.request_states.len(), i + 1);
-        // Fetch should be always 0 as long as we're below parallel_fetch_limit
-        assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
-        assert_eq!(global_state_synchronizer.in_flight.len(), i + 1);
-        assert!(global_state_synchronizer.last_progress().unwrap() > progress);
-        progress = global_state_synchronizer.last_progress().unwrap();
-
-        // Check if trie_accumulator requests were generated for all tries.
-        tokio::spawn(async move { effects.remove(0).await });
-        reactor
-            .expect_trie_accumulator_request(&trie_hash, &peers)
-            .await;
-    }
-
-    // Create another request
-    let (request, _) = random_sync_global_state_request(
+    let (request, trie_raw) = random_sync_global_state_request(
         &mut rng,
         2,
         Responder::without_shutdown(oneshot::channel().0),
     );
+    let trie_hash = request.state_root_hash;
+    let peers = request.peers.clone();
+    let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
+    assert_eq!(effects.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
+    // Fetch should be always 0 as long as we're below parallel_fetch_limit
+    assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
+    // At first the synchronizer only fetches the root node.
+    assert_eq!(global_state_synchronizer.in_flight.len(), 1);
+    assert!(global_state_synchronizer.last_progress().unwrap() > progress);
+    progress = global_state_synchronizer.last_progress().unwrap();
 
-    // This request should be registered but a fetch should not be started since the limit was
-    // exceeded
-    let effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
-    assert_eq!(effects.len(), 0);
-    assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 1);
+    // Check if trie_accumulator requests were generated for all tries.
+    tokio::spawn(effects.remove(0));
+    reactor
+        .expect_trie_accumulator_request(&trie_hash, &peers)
+        .await;
+
+    // sleep a bit so that the next progress timestamp is different
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    // simulate the fetch returning a trie
+    let effects = global_state_synchronizer.handle_fetched_trie(
+        TrieHash(trie_hash),
+        Ok(TrieAccumulatorResponse::new(trie_raw.clone(), vec![])),
+        reactor.effect_builder(),
+    );
+
+    assert_eq!(effects.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
+    assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
+    // the fetch request is no longer in flight
+    assert_eq!(global_state_synchronizer.in_flight.len(), 0);
+    assert!(global_state_synchronizer.last_progress().unwrap() > progress);
+    progress = global_state_synchronizer.last_progress().unwrap();
+
+    // sleep a bit so that the next progress timestamp is different
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    // simulate synchronizer processing the fetched trie
+    let effects = global_state_synchronizer.handle_put_trie_result(
+        TrieHash(trie_hash),
+        trie_raw,
+        // root node would have some children that we haven't yet downloaded
+        Err(engine_state::Error::MissingTrieNodeChildren(
+            (0u8..255)
+                .into_iter()
+                // TODO: generate random hashes when `rng.gen` works
+                .map(|i| Digest::hash([i; 32]))
+                .collect(),
+        )),
+        reactor.effect_builder(),
+    );
+
+    assert_eq!(effects.len(), parallel_fetch_limit);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(
-        global_state_synchronizer.request_states.len(),
-        parallel_fetch_limit + 1
+        global_state_synchronizer.fetch_queue.queue.len(),
+        255 - parallel_fetch_limit
     );
     assert_eq!(
         global_state_synchronizer.in_flight.len(),
         parallel_fetch_limit
     );
+    assert!(global_state_synchronizer.last_progress().unwrap() > progress);
 }
 
 #[tokio::test]
@@ -203,39 +223,49 @@ async fn trie_accumulator_error_cancels_request() {
     let mut global_state_synchronizer = GlobalStateSynchronizer::new(1);
 
     // Create and register one request
-    let (sender, receiver) = oneshot::channel();
+    let (sender, receiver1) = oneshot::channel();
     let (request1, _) =
         random_sync_global_state_request(&mut rng, 2, Responder::without_shutdown(sender));
     let trie_hash1 = request1.state_root_hash;
     let peers1 = request1.peers.clone();
     let mut effects = global_state_synchronizer.handle_request(request1, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
 
     // Validate that a trie accumulator request was created
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_trie_accumulator_request(&trie_hash1, &peers1)
         .await;
 
     // Create and register a second request
-    let (request2, _) = random_sync_global_state_request(
-        &mut rng,
-        2,
-        Responder::without_shutdown(oneshot::channel().0),
-    );
+    let (sender, receiver2) = oneshot::channel();
+    let (request2, _) =
+        random_sync_global_state_request(&mut rng, 2, Responder::without_shutdown(sender));
     let trie_hash2 = request2.state_root_hash;
-    let peers2 = request2.peers.clone();
-    let effects = global_state_synchronizer.handle_request(request2, reactor.effect_builder());
-    // This request should not generate a trie fetch since the in flight limit was reached
-    assert_eq!(effects.len(), 0);
-    assert_eq!(global_state_synchronizer.request_states.len(), 2);
-    // 2nd request is in the fetch queue
-    assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 1);
+    let _peers2 = request2.peers.clone();
+    let mut effects = global_state_synchronizer.handle_request(request2, reactor.effect_builder());
+    // This request should generate an error response
+    assert_eq!(effects.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
+    assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
     // First request is in flight
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
+
+    tokio::spawn(effects.remove(0));
+    match receiver2.await.unwrap() {
+        // the synchronizer should say that it's already processing a different request
+        Err(Error::ProcessingAnotherRequest {
+            hash_being_synced,
+            hash_requested,
+        }) => {
+            assert_eq!(hash_being_synced, trie_hash1);
+            assert_eq!(hash_requested, trie_hash2);
+        }
+        res => panic!("unexpected result: {:?}", res),
+    }
 
     // Simulate a trie_accumulator error for the first trie
     let trie_accumulator_result = Err(TrieAccumulatorError::Absent(
@@ -248,23 +278,16 @@ async fn trie_accumulator_error_cancels_request() {
         trie_accumulator_result,
         reactor.effect_builder(),
     );
-    assert_eq!(effects.len(), 2);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
-    assert_eq!(global_state_synchronizer.in_flight.len(), 1);
+    assert_eq!(effects.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_none());
+    assert_eq!(global_state_synchronizer.in_flight.len(), 0);
 
-    let trie_fetch_effect = effects.pop().unwrap();
     let cancel_effect = effects.pop().unwrap();
 
     // Check if we got the error for the first trie on the channel
-    tokio::spawn(async move { cancel_effect.await });
-    let result = receiver.await.unwrap();
+    tokio::spawn(cancel_effect);
+    let result = receiver1.await.unwrap();
     assert!(result.is_err());
-
-    // Validate that a trie accumulator request was created
-    tokio::spawn(async move { trie_fetch_effect.await });
-    reactor
-        .expect_trie_accumulator_request(&trie_hash2, &peers2)
-        .await;
 }
 
 #[tokio::test]
@@ -284,10 +307,10 @@ async fn successful_trie_fetch_puts_trie_to_store() {
 
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
     // Validate that we got a trie_accumulator request
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_trie_accumulator_request(&state_root_hash, &peers)
         .await;
@@ -300,11 +323,11 @@ async fn successful_trie_fetch_puts_trie_to_store() {
         reactor.effect_builder(),
     );
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 0);
 
     // Should attempt to put the trie to the trie store
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor.expect_put_trie_request(&trie).await;
 }
 
@@ -323,11 +346,11 @@ async fn trie_store_error_cancels_request() {
 
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
 
     // Validate that we got a trie_accumulator request
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_trie_accumulator_request(&state_root_hash, &peers)
         .await;
@@ -337,14 +360,13 @@ async fn trie_store_error_cancels_request() {
     let mut effects = global_state_synchronizer.handle_put_trie_result(
         Digest::hash(trie.inner()).into(),
         trie,
-        [state_root_hash.into()].iter().cloned().collect(),
         Err(engine_state::Error::RootNotFound(state_root_hash)),
         reactor.effect_builder(),
     );
     assert_eq!(effects.len(), 1);
     // Request should be canceled.
-    assert_eq!(global_state_synchronizer.request_states.len(), 0);
-    tokio::spawn(async move { effects.remove(0).await });
+    assert!(global_state_synchronizer.request_state.is_none());
+    tokio::spawn(effects.remove(0));
     let result = receiver.await.unwrap();
     assert!(result.is_err());
 }
@@ -367,11 +389,11 @@ async fn missing_trie_node_children_triggers_fetch() {
 
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
 
     // Validate that we got a trie_accumulator request
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_trie_accumulator_request(&state_root_hash, &peers)
         .await;
@@ -387,11 +409,11 @@ async fn missing_trie_node_children_triggers_fetch() {
         reactor.effect_builder(),
     );
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 0);
 
     // Should try to put the trie in the store.
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor.expect_put_trie_request(&request_trie).await;
 
     // Simulate an error from the trie store where the trie is missing children.
@@ -409,7 +431,6 @@ async fn missing_trie_node_children_triggers_fetch() {
     let mut effects = global_state_synchronizer.handle_put_trie_result(
         Digest::hash(request_trie.inner()).into(),
         request_trie.clone(),
-        [state_root_hash.into()].iter().cloned().collect(),
         Err(engine_state::Error::MissingTrieNodeChildren(
             missing_trie_nodes_hashes.clone(),
         )),
@@ -420,7 +441,7 @@ async fn missing_trie_node_children_triggers_fetch() {
     // trie_accumulator fetch request for each of the missing children.
     assert_eq!(effects.len(), parallel_fetch_limit);
     assert_eq!(global_state_synchronizer.tries_awaiting_children.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(
         global_state_synchronizer.in_flight.len(),
         parallel_fetch_limit
@@ -433,7 +454,7 @@ async fn missing_trie_node_children_triggers_fetch() {
 
     // Check the requests that were issued.
     for (idx, effect) in effects.drain(0..).rev().enumerate() {
-        tokio::spawn(async move { effect.await });
+        tokio::spawn(effect);
         reactor
             .expect_trie_accumulator_request(
                 &missing_trie_nodes_hashes[num_missing_trie_nodes - idx - 1],
@@ -454,7 +475,7 @@ async fn missing_trie_node_children_triggers_fetch() {
         reactor.effect_builder(),
     );
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(
         global_state_synchronizer.in_flight.len(),
         parallel_fetch_limit - 1
@@ -463,7 +484,7 @@ async fn missing_trie_node_children_triggers_fetch() {
         global_state_synchronizer.fetch_queue.queue.len(),
         num_missing_trie_nodes - parallel_fetch_limit
     );
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_put_trie_request(&missing_tries[num_missing_trie_nodes - 1])
         .await;
@@ -472,14 +493,13 @@ async fn missing_trie_node_children_triggers_fetch() {
     let mut effects = global_state_synchronizer.handle_put_trie_result(
         trie_hash.into(),
         missing_tries[num_missing_trie_nodes - 1].clone(),
-        [state_root_hash.into()].iter().cloned().collect(),
         Ok(trie_hash.into()),
         reactor.effect_builder(),
     );
 
     assert_eq!(effects.len(), 1);
     assert_eq!(global_state_synchronizer.tries_awaiting_children.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     // Check if one of the pending fetches for the missing children was picked up.
     // The in flight value should have reached the limit.
     assert_eq!(
@@ -498,7 +518,7 @@ async fn missing_trie_node_children_triggers_fetch() {
     );
 
     // Check that a fetch was created for the next missing child.
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_trie_accumulator_request(
             &missing_trie_nodes_hashes[num_missing_trie_nodes - parallel_fetch_limit - 1],
@@ -523,11 +543,11 @@ async fn stored_trie_finalizes_request() {
 
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 1);
 
     // Validate that we got a trie_accumulator request
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor
         .expect_trie_accumulator_request(&state_root_hash, &peers)
         .await;
@@ -541,16 +561,15 @@ async fn stored_trie_finalizes_request() {
         reactor.effect_builder(),
     );
     assert_eq!(effects.len(), 1);
-    assert_eq!(global_state_synchronizer.request_states.len(), 1);
+    assert!(global_state_synchronizer.request_state.is_some());
     assert_eq!(global_state_synchronizer.in_flight.len(), 0);
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     reactor.expect_put_trie_request(&trie).await;
 
     // Generate a successful trie store
     let mut effects = global_state_synchronizer.handle_put_trie_result(
         trie_hash.into(),
         trie,
-        [state_root_hash.into()].iter().cloned().collect(),
         Ok(trie_hash.into()),
         reactor.effect_builder(),
     );
@@ -558,10 +577,10 @@ async fn stored_trie_finalizes_request() {
     // it.
     assert_eq!(effects.len(), 1);
     assert_eq!(global_state_synchronizer.tries_awaiting_children.len(), 0);
-    assert_eq!(global_state_synchronizer.request_states.len(), 0);
+    assert!(global_state_synchronizer.request_state.is_none());
     assert_eq!(global_state_synchronizer.in_flight.len(), 0);
     assert_eq!(global_state_synchronizer.fetch_queue.queue.len(), 0);
-    tokio::spawn(async move { effects.remove(0).await });
+    tokio::spawn(effects.remove(0));
     let result = receiver.await.unwrap();
     assert!(result.is_ok());
 }

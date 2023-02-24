@@ -921,6 +921,14 @@ impl BlockSynchronizer {
                         );
                         (None, Vec::new())
                     }
+                    GlobalStateSynchronizerError::ProcessingAnotherRequest {
+                        hash_being_synced,
+                        hash_requested,
+                    } => {
+                        warn!(%hash_being_synced, %hash_requested,
+                        "BlockSynchronizer: global state sync is processing another request");
+                        (None, Vec::new())
+                    }
                 }
             }
         };
