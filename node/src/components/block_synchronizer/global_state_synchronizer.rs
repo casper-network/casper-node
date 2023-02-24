@@ -100,6 +100,7 @@ impl Response {
 pub(crate) enum Event {
     #[from]
     Request(SyncGlobalStateRequest),
+    GetPeers(Vec<NodeId>),
     FetchedTrie {
         trie_hash: TrieHash,
         trie_accumulator_result: Result<TrieAccumulatorResponse, TrieAccumulatorError>,
@@ -118,7 +119,6 @@ pub(crate) enum Event {
 struct RequestState {
     root_hash: RootHash,
     block_hashes: HashSet<BlockHash>,
-    peers: HashSet<NodeId>,
     responders: Vec<Responder<Result<Response, Error>>>,
     unreliable_peers: HashSet<NodeId>,
 }
@@ -130,20 +130,15 @@ impl RequestState {
         Self {
             root_hash: RootHash(request.state_root_hash),
             block_hashes,
-            peers: request.peers,
             responders: vec![request.responder],
             unreliable_peers: HashSet::new(),
         }
     }
 
-    /// Extends the responders and known peers based on an additional request.
-    /// Returns `true` if we added some new peers to the peers list.
-    fn add_request(&mut self, request: SyncGlobalStateRequest) -> bool {
-        let old_peers_len = self.peers.len();
-        self.peers.extend(request.peers);
+    /// Extends the responders based on an additional request.
+    fn add_request(&mut self, request: SyncGlobalStateRequest) {
         self.block_hashes.insert(request.block_hash);
         self.responders.push(request.responder);
-        old_peers_len != self.peers.len()
     }
 
     /// Consumes this request state and sends the response on all responders.
@@ -253,13 +248,6 @@ impl GlobalStateSynchronizer {
         self.last_progress
     }
 
-    /// Returns whether we are already processing a request for the given hash.
-    pub(super) fn has_global_state_request(&self, global_state_hash: &Digest) -> bool {
-        self.request_state
-            .as_ref()
-            .map_or(false, |state| state.root_hash.0 == *global_state_hash)
-    }
-
     fn handle_request<REv>(
         &mut self,
         request: SyncGlobalStateRequest,
@@ -285,7 +273,8 @@ impl GlobalStateSynchronizer {
                             hash_requested: state_root_hash,
                         }))
                         .ignore();
-                } else if state.add_request(request) {
+                } else {
+                    state.add_request(request);
                     self.touch();
                 }
                 Effects::new()
@@ -304,7 +293,17 @@ impl GlobalStateSynchronizer {
         effects
     }
 
-    fn parallel_fetch<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
+    fn parallel_fetch<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event> {
+        effect_builder
+            .immediately()
+            .event(|()| Event::GetPeers(vec![]))
+    }
+
+    fn parallel_fetch_with_peers<REv>(
+        &mut self,
+        peers: Vec<NodeId>,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event>
     where
         REv: From<TrieAccumulatorRequest> + Send,
     {
@@ -315,12 +314,15 @@ impl GlobalStateSynchronizer {
             return effects;
         }
 
+        // Just to not overdo parallel trie fetches in small networks. 5000 parallel trie fetches
+        // seemed to be fine in networks of 100 peers, so we set the limit at 50 * number of peers.
+        let max_parallel_trie_fetches = self.max_parallel_trie_fetches.min(peers.len() * 50);
+
         // if we're not finished, figure out how many new fetching tasks we can start
-        let num_fetches_to_start = self
-            .max_parallel_trie_fetches
-            .saturating_sub(self.in_flight.len());
+        let num_fetches_to_start = max_parallel_trie_fetches.saturating_sub(self.in_flight.len());
 
         debug!(
+            max_parallel_trie_fetches,
             in_flight_length = self.in_flight.len(),
             fetch_queue_length = self.fetch_queue.queue.len(),
             num_fetches_to_start,
@@ -328,13 +330,6 @@ impl GlobalStateSynchronizer {
         );
 
         let to_fetch = self.fetch_queue.take(num_fetches_to_start);
-
-        let peers: Vec<_> = self
-            .request_state
-            .iter()
-            .flat_map(|state| state.peers.iter())
-            .cloned()
-            .collect();
 
         if peers.is_empty() {
             // if we have no peers, fail - trie accumulator would return an error, anyway
@@ -620,14 +615,6 @@ impl GlobalStateSynchronizer {
         effects.extend(self.parallel_fetch(effect_builder));
         effects
     }
-
-    pub(crate) fn register_peers(&mut self, peers: Vec<NodeId>, block_hash: BlockHash) {
-        if let Some(state) = &mut self.request_state {
-            if state.block_hashes.contains(&block_hash) {
-                state.peers.extend(peers);
-            }
-        }
-    }
 }
 
 impl<REv> Component<REv> for GlobalStateSynchronizer
@@ -648,6 +635,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::Request(request) => self.handle_request(request, effect_builder),
+            Event::GetPeers(peers) => self.parallel_fetch_with_peers(peers, effect_builder),
             Event::FetchedTrie {
                 trie_hash,
                 trie_accumulator_result,

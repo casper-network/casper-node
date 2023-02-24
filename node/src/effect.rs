@@ -1365,7 +1365,6 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         state_root_hash: Digest,
-        peers: HashSet<NodeId>,
     ) -> Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>
     where
         REv: From<SyncGlobalStateRequest>,
@@ -1374,7 +1373,6 @@ impl<REv> EffectBuilder<REv> {
             |responder| SyncGlobalStateRequest {
                 block_hash,
                 state_root_hash,
-                peers,
                 responder,
             },
             QueueKind::SyncGlobalState,

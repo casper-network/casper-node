@@ -1057,7 +1057,6 @@ impl Display for TrieAccumulatorRequest {
 pub(crate) struct SyncGlobalStateRequest {
     pub(crate) block_hash: BlockHash,
     pub(crate) state_root_hash: Digest,
-    pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
     pub(crate) responder:
         Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
@@ -1189,7 +1188,7 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
-    SyncGlobalStates(Vec<(BlockHash, Digest)>, Vec<NodeId>),
+    SyncGlobalStates(Vec<(BlockHash, Digest)>),
     Status {
         responder: Responder<BlockSynchronizerStatus>,
     },
@@ -1207,7 +1206,7 @@ impl Display for BlockSynchronizerRequest {
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")
             }
-            BlockSynchronizerRequest::SyncGlobalStates(_, _) => {
+            BlockSynchronizerRequest::SyncGlobalStates(_) => {
                 write!(f, "request to sync global states")
             }
         }

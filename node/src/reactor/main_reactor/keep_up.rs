@@ -346,9 +346,6 @@ impl MainReactor {
         block_era_id: EraId,
         parent_metadata: ParentMetadata,
     ) -> KeepUpInstruction {
-        let simultaneous_peer_requests =
-            self.chainspec.core_config.simultaneous_peer_requests as usize;
-
         // We try to read the validator sets from global states of two blocks - if either returns
         // `RootNotFound`, we'll initiate fetching of the corresponding global state.
         let effects = async move {
@@ -372,7 +369,7 @@ impl MainReactor {
             // A return value of `Ok` means that validators were read successfully.
             // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
             // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            let result = match (parent_era_validators_result, block_era_validators_result) {
+            match (parent_era_validators_result, block_era_validators_result) {
                 // Both states were present - return the result.
                 (Ok(parent_era_validators), Ok(block_era_validators)) => {
                     Ok((parent_era_validators, block_era_validators))
@@ -407,25 +404,6 @@ impl MainReactor {
                     );
                     Err(vec![])
                 }
-            };
-
-            match result {
-                // If we got `Err`, we initiate syncing of the global states.
-                Err(global_state_hashes) => {
-                    let peers_to_ask = effect_builder
-                        .get_fully_connected_peers(simultaneous_peer_requests)
-                        .await;
-                    if peers_to_ask.is_empty() {
-                        // If no peers, we do nothing - this should effectively wait and retry
-                        // later.
-                        Err((vec![], vec![]))
-                    } else {
-                        // Return the hashes and peers.
-                        Err((global_state_hashes, peers_to_ask))
-                    }
-                }
-                // Nothing to do with an `Ok` result.
-                Ok(res) => Ok(res),
             }
         }
         .result(
@@ -439,10 +417,9 @@ impl MainReactor {
                 )
             },
             // A global state was missing - we ask the BlockSynchronizer to fetch what is needed.
-            |(global_states_to_sync, peers_to_ask)| {
+            |global_states_to_sync| {
                 MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::SyncGlobalStates(
                     global_states_to_sync,
-                    peers_to_ask,
                 ))
             },
         );

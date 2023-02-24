@@ -622,4 +622,8 @@ impl BlockBuilder {
         self.last_progress = Timestamp::now();
         self.in_flight_latch = None;
     }
+
+    pub(crate) fn peer_list(&self) -> &PeerList {
+        &self.peer_list
+    }
 }
