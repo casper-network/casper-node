@@ -321,7 +321,8 @@ impl BlockSynchronizer {
                 if builder.block_hash() == block_header.block_hash() =>
             {
                 apply_sigs(builder, maybe_sigs);
-                builder.register_peers(peers);
+                builder.register_peers(peers.clone());
+                self.global_sync.register_peers(peers, builder.block_hash());
             }
             _ => {
                 let era_id = block_header.era_id();
@@ -355,7 +356,8 @@ impl BlockSynchronizer {
     pub(crate) fn register_peers(&mut self, block_hash: BlockHash, peers: Vec<NodeId>) {
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
-                builder.register_peers(peers);
+                builder.register_peers(peers.clone());
+                self.global_sync.register_peers(peers, block_hash);
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
@@ -912,7 +914,7 @@ impl BlockSynchronizer {
                     | GlobalStateSynchronizerError::PutTrie(_, unreliable_peers) => {
                         (None, unreliable_peers)
                     }
-                    GlobalStateSynchronizerError::NoPeersAvailable(_) => {
+                    GlobalStateSynchronizerError::NoPeersAvailable => {
                         // This should never happen. Before creating a sync request,
                         // the block synchronizer will request another set of peers
                         // (both random and from the accumulator).

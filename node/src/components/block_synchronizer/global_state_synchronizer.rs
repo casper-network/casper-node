@@ -64,8 +64,8 @@ pub(crate) enum Error {
     TrieAccumulator(Vec<NodeId>),
     #[error("ContractRuntime failed to put a trie into global state: {0}; unreliable peers {}", DisplayIter::new(.1))]
     PutTrie(engine_state::Error, Vec<NodeId>),
-    #[error("no peers available to ask for a trie: {0}")]
-    NoPeersAvailable(TrieHash),
+    #[error("no peers available to ask for a trie")]
+    NoPeersAvailable,
     #[error("received request for {hash_requested} while syncing another root hash: {hash_being_synced}")]
     ProcessingAnotherRequest {
         hash_being_synced: Digest,
@@ -225,6 +225,7 @@ pub(super) struct GlobalStateSynchronizer {
     max_parallel_trie_fetches: usize,
     trie_accumulator: TrieAccumulator,
     request_state: Option<RequestState>,
+    // TODO: write some smarter cache that purges stale entries and limits memory usage
     tries_awaiting_children: BTreeMap<TrieHash, TrieAwaitingChildren>,
     fetch_queue: FetchQueue,
     in_flight: HashSet<TrieHash>,
@@ -328,19 +329,22 @@ impl GlobalStateSynchronizer {
 
         let to_fetch = self.fetch_queue.take(num_fetches_to_start);
 
+        let peers: Vec<_> = self
+            .request_state
+            .iter()
+            .flat_map(|state| state.peers.iter())
+            .cloned()
+            .collect();
+
+        if peers.is_empty() {
+            // if we have no peers, fail - trie accumulator would return an error, anyway
+            debug!("no peers available, cancelling request");
+            return self.cancel_request(Error::NoPeersAvailable);
+        }
+
         for trie_hash in to_fetch {
-            let peers: Vec<_> = self
-                .request_state
-                .iter()
-                .flat_map(|state| state.peers.iter())
-                .cloned()
-                .collect();
-            if peers.is_empty() {
-                // if we have no peers, fail - trie accumulator would return an error, anyway
-                debug!(%trie_hash, "no peers available for requesting trie, cancelling request");
-                return self.cancel_request(Error::NoPeersAvailable(trie_hash));
-            } else if self.in_flight.insert(trie_hash) {
-                effects.extend(effect_builder.fetch_trie(trie_hash.0, peers).event(
+            if self.in_flight.insert(trie_hash) {
+                effects.extend(effect_builder.fetch_trie(trie_hash.0, peers.clone()).event(
                     move |trie_accumulator_result| Event::FetchedTrie {
                         trie_hash,
                         trie_accumulator_result,
@@ -395,8 +399,8 @@ impl GlobalStateSynchronizer {
                     }
                 };
                 let unreliable_peers = self.request_state.as_mut().map_or_else(Vec::new, |state| {
-                    state.peers.extend(new_unreliable_peers);
-                    state.peers.iter().copied().collect()
+                    state.unreliable_peers.extend(new_unreliable_peers);
+                    state.unreliable_peers.iter().copied().collect()
                 });
                 debug!(%trie_hash, "unreliable peers for requesting trie, cancelling request");
                 let mut effects = if in_flight_was_present {
@@ -615,6 +619,14 @@ impl GlobalStateSynchronizer {
         );
         effects.extend(self.parallel_fetch(effect_builder));
         effects
+    }
+
+    pub(crate) fn register_peers(&mut self, peers: Vec<NodeId>, block_hash: BlockHash) {
+        if let Some(state) = &mut self.request_state {
+            if state.block_hashes.contains(&block_hash) {
+                state.peers.extend(peers);
+            }
+        }
     }
 }
 
