@@ -163,7 +163,11 @@ mod specimen_support {
                     Vertex::Evidence(LargestSpecimen::largest_specimen(estimator))
                 }
                 VertexDiscriminants::Endorsements => {
-                    Vertex::Endorsements(LargestSpecimen::largest_specimen(estimator))
+                    if !estimator.require_parameter_bool("endorsements_disabled") {
+                        Vertex::Endorsements(LargestSpecimen::largest_specimen(estimator))
+                    } else {
+                        Vertex::Ping(LargestSpecimen::largest_specimen(estimator))
+                    }
                 }
                 VertexDiscriminants::Ping => {
                     Vertex::Ping(LargestSpecimen::largest_specimen(estimator))
@@ -207,7 +211,11 @@ mod specimen_support {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
             Endorsements {
                 unit: LargestSpecimen::largest_specimen(estimator),
-                endorsers: vec_prop_specimen(estimator, "validator_count"),
+                endorsers: if !estimator.require_parameter_bool("endorsements_disabled") {
+                    vec_prop_specimen(estimator, "validator_count")
+                } else {
+                    Vec::new()
+                },
             }
         }
     }

@@ -78,6 +78,10 @@ pub(crate) trait SizeEstimator: 'static {
             )
         })
     }
+
+    fn require_parameter_bool(&self, name: &'static str) -> bool {
+        self.require_parameter::<i64>(name) != 0
+    }
 }
 
 /// Supports returning a maximum size specimen.

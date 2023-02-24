@@ -539,6 +539,7 @@ mod tests {
                 // chainspec: validator_slots:
                 "max_accusations_per_block" => Some(100),
                 "max_pointer_per_node" => Some(255),
+                "endorsements_disabled" => Some(0),
                 _ => None,
             }
         }

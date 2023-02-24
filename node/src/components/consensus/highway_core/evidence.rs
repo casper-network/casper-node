@@ -186,16 +186,25 @@ mod specimen_support {
                     LargestSpecimen::largest_specimen(estimator),
                     LargestSpecimen::largest_specimen(estimator),
                 ),
-                EvidenceDiscriminants::Endorsements => Evidence::Endorsements {
-                    endorsement1: LargestSpecimen::largest_specimen(estimator),
-                    unit1: LargestSpecimen::largest_specimen(estimator),
-                    endorsement2: LargestSpecimen::largest_specimen(estimator),
-                    unit2: LargestSpecimen::largest_specimen(estimator),
-                    swimlane2: vec_of_largest_specimen(
-                        estimator,
-                        estimator_max_rounds_per_era(estimator),
-                    ),
-                },
+                EvidenceDiscriminants::Endorsements => {
+                    if !estimator.require_parameter_bool("endorsements_disabled") {
+                        Evidence::Endorsements {
+                            endorsement1: LargestSpecimen::largest_specimen(estimator),
+                            unit1: LargestSpecimen::largest_specimen(estimator),
+                            endorsement2: LargestSpecimen::largest_specimen(estimator),
+                            unit2: LargestSpecimen::largest_specimen(estimator),
+                            swimlane2: vec_of_largest_specimen(
+                                estimator,
+                                estimator_max_rounds_per_era(estimator),
+                            ),
+                        }
+                    } else {
+                        Evidence::Equivocation(
+                            LargestSpecimen::largest_specimen(estimator),
+                            LargestSpecimen::largest_specimen(estimator),
+                        )
+                    }
+                }
             })
         }
     }
