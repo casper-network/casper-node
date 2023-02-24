@@ -12,6 +12,7 @@
     "last_progress",
     "peers",
     "reactor_state",
+    "starting_state_root_hash",
     "uptime"
   ],
   "properties": {
@@ -37,12 +38,9 @@
     },
     "starting_state_root_hash": {
       "description": "The state root hash of the lowest block in the available block range.",
-      "anyOf": [
+      "allOf": [
         {
           "$ref": "#/definitions/Digest"
-        },
-        {
-          "type": "null"
         }
       ]
     },
