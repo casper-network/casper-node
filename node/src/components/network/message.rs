@@ -489,6 +489,8 @@ mod tests {
         components::network::{message_pack_format::MessagePackFormat, BincodeFormat},
         protocol,
         testing::specimen::{LargestSpecimen, SizeEstimator},
+        types::{Chainspec, ChainspecRawBytes},
+        utils::Loadable,
     };
 
     use super::*;
@@ -506,8 +508,18 @@ mod tests {
     }
 
     /// An estimator that uses the serialized network representation as a measure of size.
-    #[derive(Copy, Clone, Debug)]
-    pub(crate) struct NetworkMessageEstimator;
+    #[derive(Clone, Debug)]
+    pub(crate) struct NetworkMessageEstimator {
+        /// The chainspec to retrieve estimation values from.
+        chainspec: Arc<Chainspec>,
+    }
+
+    impl NetworkMessageEstimator {
+        /// Creates a new network message estimator.
+        pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
+            Self { chainspec }
+        }
+    }
 
     impl SizeEstimator for NetworkMessageEstimator {
         fn estimate<T: Serialize>(&self, val: &T) -> usize {
@@ -515,39 +527,54 @@ mod tests {
         }
 
         fn get_parameter(&self, name: &'static str) -> Option<i64> {
-            match name {
-                // Limit to a network name of a thousand characters for now.
-                "network_name_limit" => Some(1000),
-                "contract_name_limit" => Some(1000),
-                "entry_point_limit" => Some(1000),
-                // chainspec: unbonding_delay - auction_delay:
-                "recent_era_count" => Some(7 - 1),
-                // chainspec: validator_slots:
-                "validator_count" => Some(100),
-                "minimum_era_height" => Some(20),
-                "era_duration_ms" => Some(120 * 60 * 1000),
-                // MAX (minimum_block_time, 1ms)
-                "minimum_round_length_ms" => Some(32768),
-                // chainspec: max_deploy_size (The maximum size contract bytes)
-                "module_bytes" => Some(1_048_576),
-                // chainspec: block_max_deploy_count and block_max_transfer_count:
-                "approvals_hashes" => Some(50 + 1250),
-                // chainspec: block_max_deploy_count
-                "max_deploys_per_block" => Some(50),
-                // chainspec: block_max_transfer_count
-                "max_transfers_per_block" => Some(1250),
-                // chainspec: validator_slots:
-                "max_accusations_per_block" => Some(100),
-                "max_pointer_per_node" => Some(255),
-                "endorsements_disabled" => Some(0),
-                _ => None,
-            }
+            Some(match name {
+                // The name limit will be larger than the actual name, so it is a safe upper bound.
+                "network_name_limit" => self.chainspec.network_config.name.len() as i64,
+                // These limits are making deploys bigger then they actually are, since many items
+                // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
+                "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
+                "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
+                "recent_era_count" => {
+                    (self.chainspec.core_config.unbonding_delay
+                        - self.chainspec.core_config.auction_delay) as i64
+                }
+                "validator_count" => self.chainspec.core_config.validator_slots as i64,
+                "minimum_era_height" => self.chainspec.core_config.minimum_era_height as i64,
+                "era_duration_ms" => self.chainspec.core_config.era_duration.millis() as i64,
+                "minimum_round_length_ms" => self
+                    .chainspec
+                    .core_config
+                    .minimum_block_time
+                    .millis()
+                    .max(1) as i64,
+                "module_bytes" => self.chainspec.deploy_config.max_deploy_size as i64,
+                "approvals_hashes" => {
+                    (self.chainspec.deploy_config.block_max_deploy_count
+                        + self.chainspec.deploy_config.block_max_transfer_count)
+                        as i64
+                }
+                "max_deploys_per_block" => {
+                    self.chainspec.deploy_config.block_max_deploy_count as i64
+                }
+                "max_transfers_per_block" => {
+                    self.chainspec.deploy_config.block_max_transfer_count as i64
+                }
+                "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
+                // `RADIX` from EE.
+                "max_pointer_per_node" => 255,
+                "endorsements_disabled" => 1,
+                _ => return None,
+            })
         }
     }
 
     #[test]
     fn serialized_message_does_not_exceed_maximum_size() {
-        let estimator = NetworkMessageEstimator;
+        let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
+            Loadable::from_resources("production");
+
+        let maximum_net_message_size = chainspec.network_config.maximum_net_message_size;
+        let estimator = NetworkMessageEstimator::new(Arc::new(chainspec));
 
         // Note: In theory, this check could be moved into chainspec validation.
         let specimen = Message::<protocol::Message>::largest_specimen(&estimator);
@@ -556,9 +583,10 @@ mod tests {
 
         // Print the largest specimen.
         println!("{:?}", specimen);
+        println!("size: {}", serialized.len());
 
-        // Currently assume a limit of 10 MB.
-        assert_eq!(serialized.len(), 1024 * 1024 * 10);
+        // Ensure it is not larger than the allowed limit.
+        assert!(serialized.len() as u32 <= maximum_net_message_size);
     }
 
     /// Version 1.0.0 network level message.
