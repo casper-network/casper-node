@@ -264,13 +264,12 @@ mod tests {
 
     use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig, Nonce};
     use crate::{
-        components::network::health::TaggedTimestamp,
-        testing::{specimen::LargestSpecimen, test_clock::TestClock},
-        types::NodeRng,
+        components::network::health::TaggedTimestamp, testing::test_clock::TestClock,
+        types::NodeRng, utils::specimen::LargestSpecimen,
     };
 
     impl LargestSpecimen for Nonce {
-        fn largest_specimen<E: crate::testing::specimen::SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: crate::utils::specimen::SizeEstimator>(estimator: &E) -> Self {
             Self(LargestSpecimen::largest_specimen(estimator))
         }
     }

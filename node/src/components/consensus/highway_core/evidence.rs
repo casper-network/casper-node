@@ -5,6 +5,7 @@ use std::iter;
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 use thiserror::Error;
 
 use crate::components::consensus::{
@@ -39,13 +40,14 @@ pub(crate) enum EvidenceError {
 }
 
 /// Evidence that a validator is faulty.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Evidence<C>
 where
     C: Context,
@@ -165,12 +167,11 @@ impl<C: Context> Evidence<C> {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
 
     use crate::{
         components::consensus::ClContext,
-        testing::specimen::{
+        utils::specimen::{
             estimator_max_rounds_per_era, largest_variant, vec_of_largest_specimen,
             LargestSpecimen, SizeEstimator,
         },

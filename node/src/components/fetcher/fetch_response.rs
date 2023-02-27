@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Message to be returned by a peer. Indicates if the item could be fetched or not.
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[derive(Debug, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub enum FetchResponse<T, Id> {
     /// The requested item.
     Fetched(T),
@@ -39,9 +38,8 @@ where
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
-    use crate::testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
     use serde::Serialize;
 
     use super::{FetchResponse, FetchResponseDiscriminants};

@@ -308,9 +308,8 @@ impl FetchItem for SyncLeap {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
-    use crate::testing::specimen::{
+    use crate::utils::specimen::{
         estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen, LargestSpecimen,
         SizeEstimator,
     };

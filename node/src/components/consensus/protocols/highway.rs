@@ -18,6 +18,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
@@ -651,13 +652,12 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum HighwayMessage<C>
 where
     C: Context,
@@ -673,11 +673,10 @@ where
     LatestStateRequest(IndexPanorama),
 }
 
-#[cfg(test)]
 mod specimen_support {
     use crate::{
         components::consensus::ClContext,
-        testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+        utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
     };
 
     use super::{HighwayMessage, HighwayMessageDiscriminants};
@@ -1106,15 +1105,4 @@ pub fn max_rounds_per_era(
     minimum_round_length: TimeDiff,
 ) -> u64 {
     minimum_era_height.max((TimeDiff::from_millis(1) + era_duration) / minimum_round_length)
-}
-
-#[test]
-fn max_rounds_per_era_returns_the_correct_value_for_prod_chainspec_value() {
-    let max_rounds_per_era = max_rounds_per_era(
-        20,
-        TimeDiff::from_seconds(120 * 60),
-        TimeDiff::from_millis(32768),
-    );
-
-    assert_eq!(219, max_rounds_per_era);
 }

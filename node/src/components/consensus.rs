@@ -29,6 +29,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 use tracing::{info, trace};
 
 use casper_types::{EraId, PublicKey, Timestamp};
@@ -64,7 +65,6 @@ pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
-#[cfg(test)]
 pub(crate) use protocols::highway::max_rounds_per_era;
 pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use validator_change::ValidatorChange;
@@ -72,9 +72,8 @@ pub(crate) use validator_change::ValidatorChange;
 const COMPONENT_NAME: &str = "consensus";
 
 /// A message to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum EraMessage<C>
 where
     C: Context,
@@ -132,9 +131,8 @@ impl<C: Context> EraRequest<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[derive(DataSize, Clone, Serialize, Deserialize, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol {
@@ -371,9 +369,8 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[cfg(test)]
 mod specimen_support {
-    use crate::testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
 
     use super::{
         ClContext, ConsensusMessage, ConsensusMessageDiscriminants, ConsensusRequestMessage,

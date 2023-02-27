@@ -2250,14 +2250,13 @@ where
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
     use std::collections::BTreeSet;
 
     use crate::{
         components::consensus::{utils::ValidatorIndex, ClContext},
         memoize,
-        testing::specimen::{
+        utils::specimen::{
             btree_map_distinct_from_prop, btree_set_distinct_from_prop, largest_variant,
             vec_prop_specimen, LargeUniqueSequence, LargestSpecimen, SizeEstimator,
         },

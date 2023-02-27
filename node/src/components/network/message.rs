@@ -14,10 +14,17 @@ use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use strum::EnumDiscriminants;
 
-use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
+use crate::{
+    effect::EffectBuilder,
+    protocol,
+    types::{Chainspec, NodeId},
+    utils::opt_display::OptDisplay,
+    utils::specimen::{LargestSpecimen, SizeEstimator},
+};
 
-use super::{counting_format::ConnectionId, health::Nonce};
+use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -25,9 +32,8 @@ fn default_protocol_version() -> ProtocolVersion {
     ProtocolVersion::V1_0_0
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
     Handshake {
@@ -426,7 +432,7 @@ mod specimen_support {
 
     use serde::Serialize;
 
-    use crate::testing::specimen::{
+    use crate::utils::specimen::{
         largest_variant, LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT,
     };
 
@@ -476,6 +482,86 @@ mod specimen_support {
     }
 }
 
+/// An estimator that uses the serialized network representation as a measure of size.
+#[derive(Clone, Debug)]
+pub(crate) struct NetworkMessageEstimator<'a> {
+    /// The chainspec to retrieve estimation values from.
+    chainspec: &'a Chainspec,
+}
+
+impl<'a> NetworkMessageEstimator<'a> {
+    /// Creates a new network message estimator.
+    pub(crate) fn new(chainspec: &'a Chainspec) -> Self {
+        Self { chainspec }
+    }
+}
+
+/// Encoding helper function.
+///
+/// Encodes a message in the same manner the network component would before sending it.
+fn serialize_net_message<T>(data: &T) -> Vec<u8>
+where
+    T: Serialize,
+{
+    BincodeFormat::default()
+        .serialize_arbitrary(data)
+        .expect("did not expect serialization to fail")
+}
+
+/// Creates a serialized specimen of the largest possible networking message.
+pub(crate) fn generate_largest_message<E: SizeEstimator>(estimator: &E) -> Vec<u8> {
+    let specimen = Message::<protocol::Message>::largest_specimen(estimator);
+    serialize_net_message(&specimen)
+}
+
+impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
+    fn estimate<T: Serialize>(&self, val: &T) -> usize {
+        serialize_net_message(&val).len()
+    }
+
+    fn get_parameter(&self, name: &'static str) -> Option<i64> {
+        Some(match name {
+            // The name limit will be larger than the actual name, so it is a safe upper bound.
+            "network_name_limit" => self.chainspec.network_config.name.len() as i64,
+            // These limits are making deploys bigger then they actually are, since many items
+            // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
+            "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "recent_era_count" => {
+                (self.chainspec.core_config.unbonding_delay
+                    - self.chainspec.core_config.auction_delay) as i64
+            }
+            "validator_count" => self.chainspec.core_config.validator_slots as i64,
+            "minimum_era_height" => self.chainspec.core_config.minimum_era_height as i64,
+            "era_duration_ms" => self.chainspec.core_config.era_duration.millis() as i64,
+            "minimum_round_length_ms" => self
+                .chainspec
+                .core_config
+                .minimum_block_time
+                .millis()
+                .max(1) as i64,
+            "module_bytes" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "approvals_hashes" => {
+                (self.chainspec.deploy_config.block_max_deploy_count
+                    + self.chainspec.deploy_config.block_max_transfer_count) as i64
+            }
+            "max_deploys_per_block" => self.chainspec.deploy_config.block_max_deploy_count as i64,
+            "max_transfers_per_block" => {
+                self.chainspec.deploy_config.block_max_transfer_count as i64
+            }
+            "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
+            // `RADIX` from EE.
+            "max_pointer_per_node" => 255,
+            "endorsements_disabled" => 1,
+            _ => return None,
+        })
+    }
+
+    fn key(&self) -> &str {
+        "NetworkMessageEstimator"
+    }
+}
+
 #[cfg(test)]
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
@@ -490,89 +576,12 @@ mod tests {
     use crate::{
         components::network::{message_pack_format::MessagePackFormat, BincodeFormat},
         protocol,
-        testing::specimen::{LargestSpecimen, SizeEstimator},
         types::{Chainspec, ChainspecRawBytes},
+        utils::specimen::LargestSpecimen,
         utils::Loadable,
     };
 
     use super::*;
-
-    /// Encoding helper function.
-    ///
-    /// Encodes a message in the same manner the network component would before sending it.
-    fn serialize_net_message<T>(data: &T) -> Vec<u8>
-    where
-        T: Serialize,
-    {
-        BincodeFormat::default()
-            .serialize_arbitrary(data)
-            .expect("did not expect serialization to fail")
-    }
-
-    /// An estimator that uses the serialized network representation as a measure of size.
-    #[derive(Clone, Debug)]
-    pub(crate) struct NetworkMessageEstimator<'a> {
-        /// The chainspec to retrieve estimation values from.
-        chainspec: &'a Chainspec,
-    }
-
-    impl<'a> NetworkMessageEstimator<'a> {
-        /// Creates a new network message estimator.
-        pub(crate) fn new(chainspec: &'a Chainspec) -> Self {
-            Self { chainspec }
-        }
-    }
-
-    impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
-        fn estimate<T: Serialize>(&self, val: &T) -> usize {
-            serialize_net_message(&val).len()
-        }
-
-        fn get_parameter(&self, name: &'static str) -> Option<i64> {
-            Some(match name {
-                // The name limit will be larger than the actual name, so it is a safe upper bound.
-                "network_name_limit" => self.chainspec.network_config.name.len() as i64,
-                // These limits are making deploys bigger then they actually are, since many items
-                // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
-                "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-                "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-                "recent_era_count" => {
-                    (self.chainspec.core_config.unbonding_delay
-                        - self.chainspec.core_config.auction_delay) as i64
-                }
-                "validator_count" => self.chainspec.core_config.validator_slots as i64,
-                "minimum_era_height" => self.chainspec.core_config.minimum_era_height as i64,
-                "era_duration_ms" => self.chainspec.core_config.era_duration.millis() as i64,
-                "minimum_round_length_ms" => self
-                    .chainspec
-                    .core_config
-                    .minimum_block_time
-                    .millis()
-                    .max(1) as i64,
-                "module_bytes" => self.chainspec.deploy_config.max_deploy_size as i64,
-                "approvals_hashes" => {
-                    (self.chainspec.deploy_config.block_max_deploy_count
-                        + self.chainspec.deploy_config.block_max_transfer_count)
-                        as i64
-                }
-                "max_deploys_per_block" => {
-                    self.chainspec.deploy_config.block_max_deploy_count as i64
-                }
-                "max_transfers_per_block" => {
-                    self.chainspec.deploy_config.block_max_transfer_count as i64
-                }
-                "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
-                // `RADIX` from EE.
-                "max_pointer_per_node" => 255,
-                "endorsements_disabled" => 1,
-                _ => return None,
-            })
-        }
-
-        fn key(&self) -> &str {
-            "NetworkMessageEstimator"
-        }
-    }
 
     #[test]
     fn serialized_message_does_not_exceed_maximum_size() {

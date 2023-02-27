@@ -169,11 +169,10 @@ pub(crate) enum ApprovalsHashesValidationError {
     },
 }
 
-#[cfg(test)]
 mod specimen_support {
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
-        testing::specimen::{
+        utils::specimen::{
             largest_variant, vec_of_largest_specimen, vec_prop_specimen, LargestSpecimen,
             SizeEstimator,
         },

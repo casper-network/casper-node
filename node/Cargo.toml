@@ -72,6 +72,7 @@ smallvec = { version = "1", features = ["serde"] }
 static_assertions = "1"
 stats_alloc = "0.1.8"
 structopt = "0.3.14"
+strum = { version = "0.24.1", features = ["strum_macros", "derive"] }
 sys-info = "0.8.0"
 tempfile = "3"
 thiserror = "1"
@@ -104,7 +105,6 @@ proptest = "1.0.0"
 proptest-derive = "0.3.0"
 rand_core = "0.6.2"
 reqwest = { version = "0.11.3", features = ["stream"] }
-strum = { version = "0.24.1", features = ["strum_macros", "derive"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]

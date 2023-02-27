@@ -820,9 +820,8 @@ pub struct BlockHeader {
     block_hash: OnceCell<BlockHash>,
 }
 
-#[cfg(test)]
 mod specimen_support {
-    use crate::testing::specimen::{btree_map_distinct_from_prop, LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{btree_map_distinct_from_prop, LargestSpecimen, SizeEstimator};
 
     use super::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHeader,

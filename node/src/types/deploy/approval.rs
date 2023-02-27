@@ -40,6 +40,11 @@ impl Approval {
     pub fn signature(&self) -> &Signature {
         &self.signature
     }
+
+    /// Constructs an `Approval` directly without any checks or additional calculations.
+    pub fn from_parts(signer: PublicKey, signature: Signature) -> Self {
+        Approval { signer, signature }
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -50,12 +55,6 @@ impl Approval {
             signer: PublicKey::random(rng),
             signature: Signature::ed25519([0; Signature::ED25519_LENGTH]).unwrap(),
         }
-    }
-
-    /// Constructs an `Approval` directly without any checks or additional calculations.
-    #[cfg(test)]
-    pub fn from_parts(signer: PublicKey, signature: Signature) -> Self {
-        Approval { signer, signature }
     }
 }
 

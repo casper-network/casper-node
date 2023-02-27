@@ -7,6 +7,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
+use strum::EnumDiscriminants;
 
 use crate::components::consensus::{
     highway_core::{
@@ -18,13 +19,12 @@ use crate::components::consensus::{
 };
 
 /// The observed behavior of a validator at some point in time.
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Observation<C>
 where
     C: Context,
@@ -244,12 +244,11 @@ impl<C: Context> Panorama<C> {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
     use crate::{
         components::consensus::ClContext,
         memoize,
-        testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+        utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
     };
 
     use super::{Observation, ObservationDiscriminants};

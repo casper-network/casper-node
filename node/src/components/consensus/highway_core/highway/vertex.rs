@@ -6,6 +6,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::Timestamp;
+use strum::EnumDiscriminants;
 
 use crate::components::consensus::{
     highway_core::{
@@ -19,13 +20,24 @@ use crate::components::consensus::{
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-#[derive(DataSize, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    DataSize,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    EnumDiscriminants,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Dependency<C>
 where
     C: Context,
@@ -46,13 +58,12 @@ impl<C: Context> Dependency<C> {
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Vertex<C>
 where
     C: Context,
@@ -138,7 +149,6 @@ impl<C: Context> Vertex<C> {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
     use super::{
         Dependency, DependencyDiscriminants, Endorsements, HashedWireUnit, Ping, SignedEndorsement,
@@ -147,7 +157,7 @@ mod specimen_support {
     use crate::{
         components::consensus::ClContext,
         memoize,
-        testing::specimen::{
+        utils::specimen::{
             btree_set_distinct_from_prop, largest_variant, vec_prop_specimen, LargestSpecimen,
             SizeEstimator,
         },

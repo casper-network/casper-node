@@ -6,6 +6,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use either::Either;
+use strum::EnumDiscriminants;
 
 use crate::{
     components::consensus::{
@@ -19,13 +20,14 @@ use crate::{
 /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
 /// which are somewhat decoupled from the rest of the protocol. These messages, along with the
 /// instance and round ID, are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize)]
+#[derive(
+    Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize, EnumDiscriminants,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Content<C>
 where
     C: Context,
@@ -224,13 +226,12 @@ where
 }
 
 /// All messages of the protocol.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Message<C>
 where
     C: Context,

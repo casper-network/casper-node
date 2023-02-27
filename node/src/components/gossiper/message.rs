@@ -4,13 +4,13 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 
 use super::GossipItem;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 #[serde(bound = "for<'a> T: Deserialize<'a>")]
-#[cfg_attr(test, derive(strum::EnumDiscriminants))]
-#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub(crate) enum Message<T: GossipItem> {
     /// Gossiped out to random peers to notify them of an item we hold.
     Gossip(T::Id),
@@ -46,11 +46,10 @@ impl<T: GossipItem> Display for Message<T> {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
     use crate::{
         components::gossiper::GossipItem,
-        testing::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+        utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
     };
 
     use super::{Message, MessageDiscriminants};

@@ -49,11 +49,10 @@ impl<C: Context> Endorsement<C> {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
     use crate::{
         components::consensus::ClContext,
-        testing::specimen::{LargestSpecimen, SizeEstimator},
+        utils::specimen::{LargestSpecimen, SizeEstimator},
     };
 
     use super::Endorsement;

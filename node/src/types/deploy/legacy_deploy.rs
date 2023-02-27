@@ -84,9 +84,8 @@ mod tests {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
-    use crate::testing::specimen::{LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{LargestSpecimen, SizeEstimator};
 
     use super::LegacyDeploy;
 

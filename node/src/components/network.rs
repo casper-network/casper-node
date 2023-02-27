@@ -84,7 +84,10 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     identity::Identity,
     insights::NetworkInsights,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+    message::{
+        generate_largest_message, EstimatorWeights, FromIncoming, Message, MessageKind,
+        NetworkMessageEstimator, Payload,
+    },
 };
 use self::{
     blocklist::BlocklistJustification,

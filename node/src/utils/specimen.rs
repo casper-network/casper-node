@@ -18,7 +18,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::Bytes,
-    crypto::{sign, PublicKey, PublicKeyDiscriminants, Signature},
+    crypto::{sign, PublicKey, Signature},
     AsymmetricType, ContractHash, ContractPackageHash, EraId, ProtocolVersion, RuntimeArgs,
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
@@ -32,7 +32,6 @@ use crate::{
         fetcher::Tag,
     },
     protocol::Message,
-    testing::TestRng,
     types::{
         Approval, ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
         BlockHeader, BlockPayload, Deploy, DeployHashWithApprovals, DeployId, FinalitySignature,
@@ -382,8 +381,7 @@ where
     E: SizeEstimator,
 {
     fn large_unique_sequence(_estimator: &E, _count: usize) -> BTreeSet<Self> {
-        #[allow(unused_imports)]
-        use {PublicKeyDiscriminants, TestRng};
+        // TODO: Actually generate largest public key.
 
         let mut set = BTreeSet::new();
 

@@ -25,7 +25,7 @@ use casper_execution_engine::{
     core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::{ChunkWithProof, Digest};
+use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
@@ -47,7 +47,10 @@ pub(crate) use self::{
     network_config::NetworkConfig,
     protocol_config::ProtocolConfig,
 };
-use crate::utils::Loadable;
+use crate::{
+    components::network::{generate_largest_message, NetworkMessageEstimator},
+    utils::Loadable,
+};
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_FILENAME: &str = "chainspec.toml";
@@ -75,13 +78,14 @@ pub struct Chainspec {
 impl Chainspec {
     /// Returns `false` and logs errors if the values set in the config don't make sense.
     pub(crate) fn is_valid(&self) -> bool {
-        if (self.network_config.maximum_net_message_size as usize)
-            < ChunkWithProof::CHUNK_SIZE_BYTES * 3
-        {
-            warn!(
-                "config value [network][maximum_net_message_size] should be set to at least
-            CHUNK_SIZE_BYTES * 3 ({})",
-                ChunkWithProof::CHUNK_SIZE_BYTES * 3
+        // Ensure the size of the largest message generated under these chainspec settings does not
+        // exceed the configured message size limit.
+        let estimator = NetworkMessageEstimator::new(&self);
+        let serialized = generate_largest_message(&estimator);
+
+        if serialized.len() > self.network_config.maximum_net_message_size as usize {
+            warn!(calculated_length=serialized.len(), configured_maximum=self.network_config.maximum_net_message_size,
+                "config value [network][maximum_net_message_size] is too small to accomodate the maximum message size",
             );
         }
 

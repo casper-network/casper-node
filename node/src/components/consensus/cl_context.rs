@@ -79,10 +79,9 @@ impl Context for ClContext {
     }
 }
 
-#[cfg(test)]
 mod specimen_support {
     use super::Keypair;
-    use crate::testing::specimen::{LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{LargestSpecimen, SizeEstimator};
     use casper_types::{PublicKey, SecretKey};
     use std::sync::Arc;
 
