@@ -294,21 +294,18 @@ impl FetchItem for SyncLeap {
             if let Some(header) = headers.remove(&hash) {
                 verified.push(*header.parent_hash());
                 if let Some(mut validator_weights) = header.next_era_validator_weights() {
-                    // TODO[RC]: Don't forget to uncomment this!
-
                     // If this is a switch block right before the upgrade to the current protocol
                     // version, and if this upgrade changes the validator set, use the validator
                     // weights from the chainspec.
-
-                    // if header.next_block_era_id() == validation_metadata.activation_point.era_id() {
-                    //     if let Some(updated_weights) = validation_metadata
-                    //         .global_state_update
-                    //         .as_ref()
-                    //         .and_then(|update| update.validators.as_ref())
-                    //     {
-                    //         validator_weights = updated_weights
-                    //     }
-                    // }
+                    if header.next_block_era_id() == validation_metadata.activation_point.era_id() {
+                        if let Some(updated_weights) = validation_metadata
+                            .global_state_update
+                            .as_ref()
+                            .and_then(|update| update.validators.as_ref())
+                        {
+                            validator_weights = updated_weights
+                        }
+                    }
 
                     if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
                         for sigs in era_sigs {
@@ -331,7 +328,7 @@ impl FetchItem for SyncLeap {
 
         // any orphaned headers == incomplete proof
         let incomplete_headers_proof = !headers.is_empty();
-        // if trusted_ancestor_only == false, any orphaned signatures == incomplete proof
+        // any orphaned signatures == incomplete proof
         let incomplete_signatures_proof = !signatures.is_empty();
 
         if incomplete_headers_proof || incomplete_signatures_proof {
@@ -351,7 +348,6 @@ impl FetchItem for SyncLeap {
 
 #[cfg(test)]
 mod tests {
-
     use std::iter;
 
     use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey};
@@ -365,6 +361,7 @@ mod tests {
             sync_leap::SyncLeapValidationError, ActivationPoint, Block, BlockHeaderWithMetadata,
             BlockSignatures, FinalitySignature, SyncLeapValidationMetaData,
         },
+        utils::BlockSignatureError,
     };
 
     use super::SyncLeap;
@@ -402,6 +399,7 @@ mod tests {
         height: usize,
         test_chain: &[Block],
         validators: &[(SecretKey, PublicKey)],
+        add_proofs: bool,
     ) -> BlockHeaderWithMetadata {
         let header = test_chain.get(height).unwrap().header().clone();
         let hash = header.block_hash();
@@ -410,7 +408,9 @@ mod tests {
         validators.iter().for_each(|(secret_key, public_key)| {
             let finality_signature =
                 FinalitySignature::create(hash, era_id, &secret_key, public_key.clone());
-            block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
+            if add_proofs {
+                block_signatures.insert_proof(public_key.clone(), finality_signature.signature);
+            }
         });
 
         BlockHeaderWithMetadata {
@@ -425,6 +425,7 @@ mod tests {
         query: usize,
         trusted_ancestor_headers: &[usize],
         signed_block_headers: &[usize],
+        add_proofs: bool,
     ) -> SyncLeap {
         let validators: Vec<_> = iter::repeat_with(|| crypto::generate_ed25519_keypair())
             .take(2)
@@ -445,7 +446,7 @@ mod tests {
 
         let signed_block_headers: Vec<_> = signed_block_headers
             .iter()
-            .map(|height| make_signed_block_header(*height, &test_chain, &validators))
+            .map(|height| make_signed_block_header(*height, &test_chain, &validators, add_proofs))
             .collect();
 
         SyncLeap {
@@ -484,12 +485,14 @@ mod tests {
         let query = 5;
         let trusted_ancestor_headers = [4, 3];
         let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
         let sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
             &trusted_ancestor_headers,
             &signed_block_headers,
+            add_proofs,
         );
 
         let result = sync_leap.validate(&validation_metadata);
@@ -499,12 +502,14 @@ mod tests {
         let query = 6;
         let trusted_ancestor_headers = [5, 4, 3];
         let signed_block_headers = [9, 11];
+        let add_proofs = true;
         let sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
             &trusted_ancestor_headers,
             &signed_block_headers,
+            add_proofs,
         );
 
         let result = sync_leap.validate(&validation_metadata);
@@ -711,12 +716,14 @@ mod tests {
 
         let query = 5;
         let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
         let sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
             &trusted_ancestor_headers,
             &signed_block_headers,
+            add_proofs,
         );
 
         let result = sync_leap.validate(&validation_metadata);
@@ -739,12 +746,14 @@ mod tests {
         let query = 5;
         let trusted_ancestor_headers = [4, 3];
         let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
         let mut sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
             &trusted_ancestor_headers,
             &signed_block_headers,
+            add_proofs,
         );
 
         // When `trusted_ancestor_only` we expect an error when `signed_block_headers` is not empty.
@@ -755,5 +764,35 @@ mod tests {
             result,
             Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders)
         ));
+    }
+
+    #[test]
+    fn should_detect_not_sufficiently_signed_headers() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = false;
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(
+            matches!(result, Err(SyncLeapValidationError::HeadersNotSufficientlySigned(inner))
+             if matches!(&inner, BlockSignatureError::InsufficientWeightForFinality{ trusted_validator_weights: _, block_signatures: _, signature_weight, total_validator_weight:_, fault_tolerance_fraction:_ } if signature_weight == &Some(Box::new(0.into()))))
+        );
     }
 }
