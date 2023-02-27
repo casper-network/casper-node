@@ -621,7 +621,7 @@ mod tests {
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
 
-        let trusted_ancestor_headers: Vec<_> = block_iterator
+        let trusted_ancestor_headers = block_iterator
             .take(3)
             .map(|block| block.take_header())
             .collect();
@@ -644,7 +644,7 @@ mod tests {
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
 
-        let trusted_ancestor_headers: Vec<_> = block_iterator
+        let trusted_ancestor_headers = block_iterator
             .take(1)
             .map(|block| block.take_header())
             .collect();
@@ -659,6 +659,72 @@ mod tests {
         assert!(!matches!(
             result,
             Err(SyncLeapValidationError::TrustedAncestorsNotSorted)
+        ));
+    }
+
+    #[test]
+    fn should_detect_missing_ancestor_switch_block() {
+        let mut rng = TestRng::new();
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        // Make sure `TestBlockIterator` creates no switch blocks.
+        let switch_blocks = None;
+
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(0);
+        let block_iterator =
+            TestBlockIterator::new(block.clone(), &mut rng, switch_blocks, Default::default());
+
+        let trusted_ancestor_headers: Vec<_> = block_iterator
+            .take(3)
+            .map(|block| block.take_header())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers,
+            signed_block_headers: Default::default(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::MissingAncestorSwitchBlock)
+        ));
+    }
+
+    #[test]
+    fn should_detect_unexpected_ancestor_switch_block() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S       S   S           S           S
+        let switch_blocks = [0, 2, 3, 6, 9];
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        let mut rng = TestRng::new();
+
+        // Querying for a non-switch block.
+        let query = 5;
+
+        // Intentionally include two consecutive switch blocks (3, 2) in the `trusted_ancestor_headers`, which should trigger the error.
+        let trusted_ancestor_headers = [4, 3, 2];
+
+        let signed_block_headers = [6, 9, 11];
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+        );
+
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::UnexpectedAncestorSwitchBlock)
         ));
     }
 }
