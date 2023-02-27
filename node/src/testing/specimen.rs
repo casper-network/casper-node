@@ -358,10 +358,12 @@ impl LargestSpecimen for SemVer {
     }
 }
 
-// Dummy implementation to replace the buggy real one below:
 impl LargestSpecimen for PublicKey {
     fn largest_specimen<E: SizeEstimator>(_estimator: &E) -> Self {
-        PublicKey::system()
+        PublicKey::large_unique_sequence(estimator, 1)
+            .into_iter()
+            .next()
+            .unwrap()
     }
 }
 
@@ -381,78 +383,6 @@ where
         set
     }
 }
-/*
-thread_local! {
-    static RNG: once_cell::sync::Lazy<RefCell<TestRng>> =
-        once_cell::sync::Lazy::new(|| RefCell::new(TestRng::new()));
-}
-
-impl LargestSpecimen for PublicKey {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        thread_local! {
-            static MEMOIZED: RefCell<HashMap<TypeId, PublicKey>> = Default::default();
-        }
-
-        MEMOIZED.with(|cache| {
-            cache
-                .try_borrow_mut()
-                .expect("cannot borrow the memoization cache")
-                .entry(TypeId::of::<E>())
-                .or_insert_with(|| {
-                    RNG.with(|rng| {
-                        largest_random_public_key(
-                            estimator,
-                            &mut rng.try_borrow_mut().expect("the test rng to be acquired"),
-                        )
-                    })
-                })
-                .clone()
-        })
-    }
-}
-
-fn largest_random_public_key<E: SizeEstimator>(estimator: &E, rng: &mut TestRng) -> PublicKey {
-    println!("largest_random_public_key");
-    largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, move |variant| {
-        match variant {
-            PublicKeyDiscriminants::System => PublicKey::system(),
-            PublicKeyDiscriminants::Ed25519 => PublicKey::random_ed25519(rng),
-            PublicKeyDiscriminants::Secp256k1 => PublicKey::random_secp256k1(rng),
-        }
-    })
-}
-
-impl<E> LargeUniqueSequence<E> for PublicKey
-where
-    E: SizeEstimator,
-{
-    fn large_unique_sequence(estimator: &E, count: usize) -> BTreeSet<Self> {
-        thread_local! {
-            static MEMOIZED: RefCell<HashMap<(TypeId, usize), BTreeSet<PublicKey>>> = Default::default();
-        }
-
-        MEMOIZED.with(|cache| {
-            cache
-                .try_borrow_mut()
-                .expect("cannot borrow the memoization cache")
-                .entry((TypeId::of::<E>(), count))
-                .or_insert_with(|| {
-                    RNG.with(|rng| {
-                        (0..count)
-                            .map(move |_| {
-                                largest_random_public_key(
-                                    estimator,
-                                    &mut rng.try_borrow_mut().expect("the test rng to be acquired"),
-                                )
-                            })
-                            .collect()
-                    })
-                })
-                .clone()
-        })
-    }
-}
-*/
 
 impl<E> LargeUniqueSequence<E> for Digest
 where
