@@ -706,12 +706,10 @@ mod tests {
 
         let mut rng = TestRng::new();
 
-        // Querying for a non-switch block.
-        let query = 5;
-
         // Intentionally include two consecutive switch blocks (3, 2) in the `trusted_ancestor_headers`, which should trigger the error.
         let trusted_ancestor_headers = [4, 3, 2];
 
+        let query = 5;
         let signed_block_headers = [6, 9, 11];
         let sync_leap = make_test_sync_leap(
             &mut rng,
@@ -725,6 +723,37 @@ mod tests {
         assert!(matches!(
             result,
             Err(SyncLeapValidationError::UnexpectedAncestorSwitchBlock)
+        ));
+    }
+
+    #[test]
+    fn should_detect_unexpected_signed_block_header() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let mut sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+        );
+
+        // When `trusted_ancestor_only` we expect an error when `signed_block_headers` is not empty.
+        sync_leap.trusted_ancestor_only = true;
+
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders)
         ));
     }
 }
