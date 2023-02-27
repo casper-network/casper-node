@@ -403,31 +403,38 @@ where
     }
 }
 
-impl LargestSpecimen for Signature {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        static MEMOIZED: Lazy<Mutex<HashMap<String, Signature>>> =
+/// Memoize a value using a local static variable.
+macro_rules! memoize {
+    ($ty:ty, $estimator:expr, $blk:block) => {{
+        static MEMOIZED: Lazy<Mutex<HashMap<String, $ty>>> =
             Lazy::new(|| Mutex::new(HashMap::new()));
-
         *MEMOIZED
             .lock()
-            .expect("memoized signature specimen cache disappeared")
-            .entry(estimator.key().to_owned())
-            .or_insert_with(|| {
-                let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
-                let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
+            .expect("memoization cache disappeared")
+            .entry($estimator.key().to_owned())
+            .or_insert_with(|| $blk)
+    }};
+}
 
-                largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| {
-                    match variant {
-                        SignatureDiscriminants::System => Signature::system(),
-                        SignatureDiscriminants::Ed25519 => {
-                            sign([0_u8], ed25519_sec, &ed25519_sec.into())
-                        }
-                        SignatureDiscriminants::Secp256k1 => {
-                            sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
-                        }
+impl LargestSpecimen for Signature {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        memoize!(Signature, estimator, {
+            let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+            let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
+
+            largest_variant::<Self, SignatureDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    SignatureDiscriminants::System => Signature::system(),
+                    SignatureDiscriminants::Ed25519 => {
+                        sign([0_u8], ed25519_sec, &ed25519_sec.into())
                     }
-                })
-            })
+                    SignatureDiscriminants::Secp256k1 => {
+                        sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
+                    }
+                },
+            )
+        })
     }
 }
 
