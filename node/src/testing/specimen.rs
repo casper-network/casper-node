@@ -470,7 +470,7 @@ impl LargestSpecimen for Signature {
         }
 
         MEMOIZED.with(|cache| {
-            cache
+            *cache
                 .try_borrow_mut()
                 .expect("cannot borrow the memoization cache")
                 .entry(TypeId::of::<E>())
@@ -490,7 +490,6 @@ impl LargestSpecimen for Signature {
                         }
                     })
                 })
-                .clone()
         })
     }
 }
