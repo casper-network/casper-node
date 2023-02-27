@@ -132,7 +132,6 @@ mod tests {
     use std::{collections::BTreeMap, iter};
 
     use casper_types::{testing::TestRng, PublicKey, SecretKey, Timestamp, U512};
-    use rand::Rng;
 
     use crate::types::{Block, FinalizedBlock};
 
@@ -145,18 +144,18 @@ mod tests {
     // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
     // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
     // the `validators` parameter using the default weight.
-    pub(crate) struct TestBlockSpec<'a> {
+    pub(crate) struct TestChainSpec<'a> {
         block: Block,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
         validators: &'a [(SecretKey, PublicKey)],
     }
 
-    impl<'a> TestBlockSpec<'a> {
+    impl<'a> TestChainSpec<'a> {
         pub(crate) fn new(
             test_rng: &'a mut TestRng,
 
-            // Merge these two into "SwitchBlockSpec"
+            // TODO[RC]: Merge these into "SwitchBlockSpec"
             switch_block_indices: Option<Vec<u64>>,
             validators: &'a [(SecretKey, PublicKey)],
         ) -> Self {
@@ -185,7 +184,7 @@ mod tests {
                 validators: self
                     .validators
                     .iter()
-                    .map(|(_, public_key)| (public_key.clone(), 100.into()))
+                    .map(|(_, public_key)| (public_key.clone(), 100.into())) // TODO[RC]: No magic numbers
                     .collect(),
             }
         }
@@ -231,7 +230,7 @@ mod tests {
                     }
                     Some(switch_block_heights) => {
                         let is_successor_of_switch_block =
-                            switch_block_heights.contains(&(self.block.height() - 1));
+                            switch_block_heights.contains(&(self.block.height().saturating_sub(1)));
                         (false, is_successor_of_switch_block, None)
                     }
                     None => (false, false, None),
@@ -265,7 +264,7 @@ mod tests {
     #[test]
     fn test_block_iter() {
         let mut rng = TestRng::new();
-        let mut test_block = TestBlockSpec::new(&mut rng, None, &[]);
+        let mut test_block = TestChainSpec::new(&mut rng, None, &[]);
         let mut block_batch = test_block.iter().take(100);
         let mut parent_block: Block = block_batch.next().unwrap();
         for current_block in block_batch {
@@ -288,7 +287,7 @@ mod tests {
         let switch_block_indices = vec![0, 10, 76];
 
         let mut rng = TestRng::new();
-        let mut test_block = TestBlockSpec::new(&mut rng, Some(switch_block_indices.clone()), &[]);
+        let mut test_block = TestChainSpec::new(&mut rng, Some(switch_block_indices.clone()), &[]);
         let block_batch: Vec<_> = test_block.iter().take(100).collect();
 
         let base_height = block_batch.first().expect("should have block").height();

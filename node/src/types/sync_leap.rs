@@ -204,6 +204,7 @@ pub(crate) struct SyncLeapValidationMetaData {
 }
 
 impl SyncLeapValidationMetaData {
+    #[cfg(any(feature = "testing", test))]
     pub(crate) fn new(
         recent_era_count: u64,
         activation_point: ActivationPoint,
@@ -359,9 +360,10 @@ mod tests {
 
     use crate::{
         components::fetcher::FetchItem,
-        tests::TestBlockSpec,
+        tests::TestChainSpec,
         types::{
-            ActivationPoint, Block, BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
+            sync_leap::SyncLeapValidationError, ActivationPoint, Block, BlockHeader,
+            BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
             SyncLeapValidationMetaData,
         },
     };
@@ -418,29 +420,31 @@ mod tests {
         }
     }
 
-    fn make_test_sync_leap_for_non_switch_block(rng: &mut TestRng) -> SyncLeap {
-        // Chain
-        // 0   1   2   3   4   5   6   7   8   9   10   11
-        // S           S       q   S           S
-
-        // where:
-        // S - switch block
-        // q - query for this trusted block
-
+    fn make_test_sync_leap(
+        rng: &mut TestRng,
+        switch_blocks: &[u64],
+        query: usize,
+        trusted_ancestor_headers: &[usize],
+        signed_block_headers: &[usize],
+    ) -> SyncLeap {
         let validators: Vec<_> = iter::repeat_with(|| crypto::generate_ed25519_keypair())
             .take(2)
             .collect();
-        let mut test_chain_spec = TestBlockSpec::new(rng, Some(vec![0, 3, 6, 9]), &validators);
+        let mut test_chain_spec = TestChainSpec::new(
+            rng,
+            Some(switch_blocks.iter().copied().collect()),
+            &validators,
+        );
         let test_chain: Vec<_> = test_chain_spec.iter().take(12).collect();
 
-        let trusted_block_header = test_chain.get(5).unwrap().header().clone();
+        let trusted_block_header = test_chain.get(query).unwrap().header().clone();
 
-        let trusted_ancestor_headers: Vec<_> = [4, 3]
+        let trusted_ancestor_headers: Vec<_> = trusted_ancestor_headers
             .iter()
             .map(|height| test_chain.get(*height).unwrap().header().clone())
             .collect();
 
-        let signed_block_headers: Vec<_> = [6, 9, 11]
+        let signed_block_headers: Vec<_> = signed_block_headers
             .iter()
             .map(|height| make_signed_block_header(*height, &test_chain, &validators))
             .collect();
@@ -453,14 +457,14 @@ mod tests {
         }
     }
 
-    fn default_sync_leap_validation_metadata() -> SyncLeapValidationMetaData {
+    fn test_sync_leap_validation_metadata() -> SyncLeapValidationMetaData {
         let unbonding_delay = 7;
         let auction_delay = 1;
         let activation_point = ActivationPoint::EraId(3000.into());
         let finality_threshold_fraction = Ratio::new(1, 3);
 
         SyncLeapValidationMetaData::new(
-            unbonding_delay - auction_delay,
+            unbonding_delay - auction_delay, // As per `CoreConfig::recent_era_count()`.
             activation_point,
             None,
             finality_threshold_fraction,
@@ -469,13 +473,81 @@ mod tests {
 
     #[test]
     fn should_validate_correct_sync_leap() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+        let validation_metadata = test_sync_leap_validation_metadata();
+
         let mut rng = TestRng::new();
 
-        // TODO[RC]: Add the "switch block" variant.
-        let sync_leap = make_test_sync_leap_for_non_switch_block(&mut rng);
+        // Querying for a non-switch block.
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+        );
 
-        let validation_metadata = default_sync_leap_validation_metadata();
         let result = sync_leap.validate(&validation_metadata);
         assert!(result.is_ok());
+
+        // Querying for a switch block.
+        let query = 6;
+        let trusted_ancestor_headers = [5, 4, 3];
+        let signed_block_headers = [9, 11];
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+        );
+
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn should_check_trusted_ancestors() {
+        let mut rng = TestRng::new();
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        // Trusted ancestors can't be empty when trusted block height is greater than 0.
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(1);
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers: Default::default(),
+            signed_block_headers: Default::default(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::MissingTrustedAncestors)
+        ));
+
+        // When trusted block height is 0 and trusted ancestors are empty, validate
+        // should yield a result different than `SyncLeapValidationError::MissingTrustedAncestors`.
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(0);
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers: Default::default(),
+            signed_block_headers: Default::default(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(!matches!(
+            result,
+            Err(SyncLeapValidationError::MissingTrustedAncestors)
+        ));
     }
 }
