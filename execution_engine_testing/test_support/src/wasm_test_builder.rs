@@ -1166,7 +1166,12 @@ where
     }
 
     /// Gets all `[Key::Balance]`s in global state.
-    pub fn get_balance_keys(&mut self) -> Vec<Key> {
+    pub fn get_balance_keys(&self) -> Vec<Key> {
+        self.get_keys(KeyTag::Balance).unwrap_or_default()
+    }
+
+    /// Gets all keys in global state by a prefix.
+    pub fn get_keys(&self, tag: KeyTag) -> Result<Vec<Key>, S::Error> {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -1178,9 +1183,7 @@ where
 
         let reader = tracking_copy.reader();
 
-        reader
-            .keys_with_prefix(correlation_id, &[KeyTag::Balance as u8])
-            .unwrap_or_default()
+        reader.keys_with_prefix(correlation_id, &[tag as u8])
     }
 
     /// Gets a stored value from a contract's named keys.

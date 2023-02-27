@@ -319,6 +319,10 @@ where
                 error!("should not remove the system contract registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
+            Key::EraSummary => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -767,6 +771,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::EraSummary => true,
         }
     }
 
@@ -787,6 +792,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::EraSummary => false,
         }
     }
 
@@ -807,6 +813,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::EraSummary => false,
         }
     }
 
