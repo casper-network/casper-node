@@ -568,6 +568,10 @@ mod tests {
                 _ => return None,
             })
         }
+
+        fn key(&self) -> &str {
+            "NetworkMessageEstimator"
+        }
     }
 
     #[test]

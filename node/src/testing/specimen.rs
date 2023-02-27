@@ -5,13 +5,11 @@
 
 use core::convert::TryInto;
 use std::{
-    any::TypeId,
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use casper_execution_engine::core::engine_state::{
@@ -25,6 +23,7 @@ use casper_types::{
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
@@ -79,9 +78,20 @@ pub(crate) trait SizeEstimator: 'static {
         })
     }
 
+    /// Require a parameter, cast into a boolean.
+    ///
+    /// See `require_parameter` for details. Will return `false` if the stored value is `0`,
+    /// otherwise `true`.
+    ///
+    /// ## Panics
+    ///
+    /// Same as `require_parameter`.
     fn require_parameter_bool(&self, name: &'static str) -> bool {
         self.require_parameter::<i64>(name) != 0
     }
+
+    /// An identifier for this specific estimator, used for memoization.
+    fn key(&self) -> &str;
 }
 
 /// Supports returning a maximum size specimen.
@@ -359,7 +369,7 @@ impl LargestSpecimen for SemVer {
 }
 
 impl LargestSpecimen for PublicKey {
-    fn largest_specimen<E: SizeEstimator>(_estimator: &E) -> Self {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
         PublicKey::large_unique_sequence(estimator, 1)
             .into_iter()
             .next()
@@ -395,32 +405,29 @@ where
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        thread_local! {
-            static MEMOIZED: RefCell<HashMap<TypeId, Signature>> = Default::default();
-        }
+        static MEMOIZED: Lazy<Mutex<HashMap<String, Signature>>> =
+            Lazy::new(|| Mutex::new(HashMap::new()));
 
-        MEMOIZED.with(|cache| {
-            *cache
-                .try_borrow_mut()
-                .expect("cannot borrow the memoization cache")
-                .entry(TypeId::of::<E>())
-                .or_insert_with(|| {
-                    let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
-                    let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
+        *MEMOIZED
+            .lock()
+            .expect("memoized signature specimen cache disappeared")
+            .entry(estimator.key().to_owned())
+            .or_insert_with(|| {
+                let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+                let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
 
-                    largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| {
-                        match variant {
-                            SignatureDiscriminants::System => Signature::system(),
-                            SignatureDiscriminants::Ed25519 => {
-                                sign([0_u8], ed25519_sec, &ed25519_sec.into())
-                            }
-                            SignatureDiscriminants::Secp256k1 => {
-                                sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
-                            }
+                largest_variant::<Self, SignatureDiscriminants, _, _>(estimator, |variant| {
+                    match variant {
+                        SignatureDiscriminants::System => Signature::system(),
+                        SignatureDiscriminants::Ed25519 => {
+                            sign([0_u8], ed25519_sec, &ed25519_sec.into())
                         }
-                    })
+                        SignatureDiscriminants::Secp256k1 => {
+                            sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
+                        }
+                    }
                 })
-        })
+            })
     }
 }
 
