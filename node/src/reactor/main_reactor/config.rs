@@ -17,11 +17,11 @@ pub struct Config {
     pub node: NodeConfig,
     /// Config values for logging.
     pub logging: LoggingConfig,
-    /// Config values for logging.
+    /// Config values for consensus.
     pub consensus: ConsensusConfig,
-    /// Config values for logging.
-    pub network: NetworkConfig,
     /// Config values for network.
+    pub network: NetworkConfig,
+    /// Config values for the event stream server.
     pub event_stream_server: EventStreamServerConfig,
     /// Config values for the REST server.
     pub rest_server: RestServerConfig,

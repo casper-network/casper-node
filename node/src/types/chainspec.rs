@@ -70,7 +70,7 @@ pub struct Chainspec {
     #[serde(rename = "highway")]
     pub highway_config: HighwayConfig,
 
-    /// Deploy COnfig
+    /// Deploy Config.
     #[serde(rename = "deploys")]
     pub deploy_config: DeployConfig,
 

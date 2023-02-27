@@ -44,7 +44,7 @@ pub struct AccountsConfig {
 }
 
 impl AccountsConfig {
-    /// Creates a new `AccountsConfig.
+    /// Creates a new `AccountsConfig`.
     pub fn new(accounts: Vec<AccountConfig>, delegators: Vec<DelegatorConfig>) -> Self {
         Self {
             accounts,
