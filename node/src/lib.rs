@@ -197,6 +197,22 @@ mod tests {
         validators: BTreeMap<PublicKey, U512>,
     }
 
+    impl<'a> TestBlockIterator<'a> {
+        pub fn new(
+            block: Block,
+            rng: &'a mut TestRng,
+            switch_block_indices: Option<Vec<u64>>,
+            validators: BTreeMap<PublicKey, U512>,
+        ) -> Self {
+            Self {
+                block,
+                rng,
+                switch_block_indices,
+                validators,
+            }
+        }
+    }
+
     impl<'a> Iterator for TestBlockIterator<'a> {
         type Item = Block;
 

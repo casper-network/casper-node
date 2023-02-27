@@ -261,7 +261,6 @@ impl FetchItem for SyncLeap {
             .tuple_windows()
             .any(|(child, parent)| *child.parent_hash() != parent.block_hash())
         {
-            // TODO[RC]: Continue here.
             return Err(SyncLeapValidationError::TrustedAncestorsNotSorted);
         }
         let mut trusted_ancestor_iter = self.trusted_ancestor_headers.iter().rev();
@@ -361,7 +360,7 @@ mod tests {
 
     use crate::{
         components::fetcher::FetchItem,
-        tests::TestChainSpec,
+        tests::{TestBlockIterator, TestChainSpec},
         types::{
             sync_leap::SyncLeapValidationError, ActivationPoint, Block, BlockHeaderWithMetadata,
             BlockSignatures, FinalitySignature, SyncLeapValidationMetaData,
@@ -608,6 +607,58 @@ mod tests {
         assert!(matches!(
             result,
             Err(SyncLeapValidationError::TooManySwitchBlocks)
+        ));
+    }
+
+    #[test]
+    fn should_detect_unsorted_trusted_ancestors() {
+        let mut rng = TestRng::new();
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        // Test block iterator produces blocks in order, however, the `trusted_ancestor_headers` is expected to be sorted backwards (from the most recent ancestor back to the switch block). Therefore, the generated blocks should cause the `TrustedAncestorsNotSorted` error to be triggered.
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(0);
+        let block_iterator =
+            TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
+
+        let trusted_ancestor_headers: Vec<_> = block_iterator
+            .take(3)
+            .map(|block| block.take_header())
+            .collect();
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers,
+            signed_block_headers: Default::default(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::TrustedAncestorsNotSorted)
+        ));
+
+        // Single trusted ancestor header it should never trigger the `TrustedAncestorsNotSorted` error.
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(0);
+        let block_iterator =
+            TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
+
+        let trusted_ancestor_headers: Vec<_> = block_iterator
+            .take(1)
+            .map(|block| block.take_header())
+            .collect();
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers,
+            signed_block_headers: Default::default(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(!matches!(
+            result,
+            Err(SyncLeapValidationError::TrustedAncestorsNotSorted)
         ));
     }
 }
