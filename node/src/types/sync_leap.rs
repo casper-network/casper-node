@@ -261,6 +261,7 @@ impl FetchItem for SyncLeap {
             .tuple_windows()
             .any(|(child, parent)| *child.parent_hash() != parent.block_hash())
         {
+            // TODO[RC]: Continue here.
             return Err(SyncLeapValidationError::TrustedAncestorsNotSorted);
         }
         let mut trusted_ancestor_iter = self.trusted_ancestor_headers.iter().rev();
@@ -362,9 +363,8 @@ mod tests {
         components::fetcher::FetchItem,
         tests::TestChainSpec,
         types::{
-            sync_leap::SyncLeapValidationError, ActivationPoint, Block, BlockHeader,
-            BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
-            SyncLeapValidationMetaData,
+            sync_leap::SyncLeapValidationError, ActivationPoint, Block, BlockHeaderWithMetadata,
+            BlockSignatures, FinalitySignature, SyncLeapValidationMetaData,
         },
     };
 
@@ -548,6 +548,66 @@ mod tests {
         assert!(!matches!(
             result,
             Err(SyncLeapValidationError::MissingTrustedAncestors)
+        ));
+    }
+
+    #[test]
+    fn should_check_signed_block_headers_size() {
+        let mut rng = TestRng::new();
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        let max_allowed_size = validation_metadata.recent_era_count + 1;
+
+        // Max allowed size should NOT trigger the `TooManySwitchBlocks` error.
+        let generated_block_count = max_allowed_size;
+
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(0);
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers: Default::default(),
+            signed_block_headers: std::iter::repeat_with(|| {
+                let block = Block::random(&mut rng);
+                let hash = block.hash();
+                BlockHeaderWithMetadata {
+                    block_header: block.header().clone(),
+                    block_signatures: BlockSignatures::new(*hash, 0.into()),
+                }
+            })
+            .take(generated_block_count as usize)
+            .collect(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(!matches!(
+            result,
+            Err(SyncLeapValidationError::TooManySwitchBlocks)
+        ));
+
+        // Generating one more block should trigger the `TooManySwitchBlocks` error.
+        let generated_block_count = max_allowed_size + 1;
+
+        let mut block = Block::random(&mut rng);
+        block.header_mut().set_height(0);
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: block.take_header(),
+            trusted_ancestor_headers: Default::default(),
+            signed_block_headers: std::iter::repeat_with(|| {
+                let block = Block::random(&mut rng);
+                let hash = block.hash();
+                BlockHeaderWithMetadata {
+                    block_header: block.header().clone(),
+                    block_signatures: BlockSignatures::new(*hash, 0.into()),
+                }
+            })
+            .take(generated_block_count as usize)
+            .collect(),
+        };
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::TooManySwitchBlocks)
         ));
     }
 }
