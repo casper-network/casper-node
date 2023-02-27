@@ -322,7 +322,7 @@ where
     }
 }
 
-// various third party crates
+// Various third party crates.
 
 impl<L, R> LargestSpecimen for Either<L, R>
 where
