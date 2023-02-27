@@ -159,8 +159,9 @@ use crate::{
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-    GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
-    RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+    FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
+    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -171,8 +172,9 @@ use requests::{
     UpgradeWatcherRequest,
 };
 
-use self::requests::{
-    ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest,
+use self::{
+    announcements::UnexecutedBlockAnnouncement,
+    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest},
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1128,6 +1130,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_block_stored(self, block_hash: BlockHash) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsBlockStored {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested `ApprovalsHashes` from storage.
     pub(crate) async fn get_approvals_hashes_from_storage(
         self,
@@ -1513,6 +1529,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_deploy_stored(self, deploy_id: DeployId) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsDeployStored {
+                deploy_id,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Stores the given execution results for the deploys in the given block in the linear block
     /// store.
     pub(crate) async fn put_execution_results_to_storage(
@@ -1581,6 +1611,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetFinalitySignature {
+                id: Box::new(id),
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn is_finality_signature_stored(self, id: FinalitySignatureId) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::IsFinalitySignatureStored {
                 id: Box::new(id),
                 responder,
             },
@@ -1755,6 +1799,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
+            .await
+    }
+
+    /// Announces that a finalized block has been created, but it was not
+    /// executed.
+    pub(crate) async fn announce_unexecuted_block(self, block_height: u64)
+    where
+        REv: From<UnexecutedBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                UnexecutedBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
             .await
     }
 
@@ -2040,6 +2098,40 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announce that a block which wasn't previously stored on this node has been fetched and
+    /// stored.
+    pub(crate) async fn announce_fetched_new_block(self, block: Arc<Block>, peer: NodeId)
+    where
+        REv: From<FetchedNewBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                FetchedNewBlockAnnouncement { block, peer },
+                QueueKind::Fetch,
+            )
+            .await;
+    }
+
+    /// Announce that a finality signature which wasn't previously stored on this node has been
+    /// fetched and stored.
+    pub(crate) async fn announce_fetched_new_finality_signature(
+        self,
+        finality_signature: Box<FinalitySignature>,
+        peer: NodeId,
+    ) where
+        REv: From<FetchedNewFinalitySignatureAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                FetchedNewFinalitySignatureAnnouncement {
+                    finality_signature,
+                    peer,
+                },
+                QueueKind::Fetch,
+            )
+            .await;
+    }
+
     /// Get the bytes for the chainspec file and genesis_accounts
     /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
@@ -2125,6 +2217,42 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_from_block_accumulator(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<Arc<Block>>
+    where
+        REv: From<BlockAccumulatorRequest>,
+    {
+        self.make_request(
+            |responder| BlockAccumulatorRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_signature_from_block_accumulator(
+        self,
+        block_hash: BlockHash,
+        public_key: PublicKey,
+    ) -> Option<FinalitySignature>
+    where
+        REv: From<BlockAccumulatorRequest>,
+    {
+        self.make_request(
+            |responder| BlockAccumulatorRequest::GetFinalitySignature {
+                block_hash,
+                public_key,
+                responder,
+            },
+            QueueKind::Regular,
         )
         .await
     }

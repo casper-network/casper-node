@@ -78,7 +78,7 @@ static NODE_ID: Lazy<NodeId> =
 
 impl DocExample for NodeId {
     fn doc_example() -> &'static Self {
-        &*NODE_ID
+        &NODE_ID
     }
 }
 

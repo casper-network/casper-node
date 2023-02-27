@@ -2511,7 +2511,7 @@
                   "WriteWithdraw": {
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/UnbondingPurse"
+                      "$ref": "#/components/schemas/WithdrawPurse"
                     }
                   }
                 },
@@ -2610,6 +2610,22 @@
                 "properties": {
                   "Failure": {
                     "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given Unbonding to global state.",
+                "type": "object",
+                "required": [
+                  "WriteUnbonding"
+                ],
+                "properties": {
+                  "WriteUnbonding": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2949,13 +2965,15 @@
                 "minimum": 0.0
               },
               "locked_amounts": {
+                "items": {
+                  "$ref": "#/components/schemas/U512"
+                },
+                "maxItems": 14,
+                "minItems": 14,
                 "type": [
                   "array",
                   "null"
-                ],
-                "items": {
-                  "$ref": "#/components/schemas/U512"
-                }
+                ]
               }
             },
             "additionalProperties": false
@@ -2991,6 +3009,93 @@
                     "type": "null"
                   }
                 ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "WithdrawPurse": {
+            "description": "A withdraw purse, a legacy structure.",
+            "type": "object",
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
+            ],
+            "properties": {
+              "bonding_purse": {
+                "description": "Bonding Purse",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "validator_public_key": {
+                "description": "Validators public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "unbonder_public_key": {
+                "description": "Unbonders public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "era_of_creation": {
+                "description": "Era in which this unbonding request was created.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ]
+              },
+              "amount": {
+                "description": "Unbonding Amount.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "EraId": {
+            "description": "Era ID newtype.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "U128": {
+            "description": "Decimal representation of a 128-bit integer.",
+            "type": "string"
+          },
+          "U256": {
+            "description": "Decimal representation of a 256-bit integer.",
+            "type": "string"
+          },
+          "NamedKey": {
+            "description": "A named key.",
+            "type": "object",
+            "required": [
+              "key",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "description": "The name of the entry.",
+                "type": "string"
+              },
+              "key": {
+                "description": "The value of the entry: a casper `Key` type.",
+                "type": "string"
               }
             },
             "additionalProperties": false
@@ -3056,39 +3161,6 @@
                     "type": "null"
                   }
                 ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "EraId": {
-            "description": "Era ID newtype.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0.0
-          },
-          "U128": {
-            "description": "Decimal representation of a 128-bit integer.",
-            "type": "string"
-          },
-          "U256": {
-            "description": "Decimal representation of a 256-bit integer.",
-            "type": "string"
-          },
-          "NamedKey": {
-            "description": "A named key.",
-            "type": "object",
-            "required": [
-              "key",
-              "name"
-            ],
-            "properties": {
-              "name": {
-                "description": "The name of the entry.",
-                "type": "string"
-              },
-              "key": {
-                "description": "The value of the entry: a casper `Key` type.",
-                "type": "string"
               }
             },
             "additionalProperties": false
@@ -3701,60 +3773,6 @@
               "Locked",
               "Unlocked"
             ]
-          },
-          "WithdrawPurse": {
-            "description": "A withdraw purse, a legacy structure.",
-            "type": "object",
-            "required": [
-              "amount",
-              "bonding_purse",
-              "era_of_creation",
-              "unbonder_public_key",
-              "validator_public_key"
-            ],
-            "properties": {
-              "bonding_purse": {
-                "description": "Bonding Purse",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "validator_public_key": {
-                "description": "Validators public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "unbonder_public_key": {
-                "description": "Unbonders public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "era_of_creation": {
-                "description": "Era in which this unbonding request was created.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                ]
-              },
-              "amount": {
-                "description": "Unbonding Amount.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

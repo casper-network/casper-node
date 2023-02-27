@@ -41,7 +41,9 @@ pub(crate) enum SyncLeapValidationError {
     TrustedAncestorsNotSorted,
     #[error("Last trusted ancestor is not a switch block.")]
     MissingAncestorSwitchBlock,
-    #[error("Only the last trusted ancestor is allowed to be a switch block.")]
+    #[error(
+        "Only the last trusted ancestor is allowed to be a switch block or the genesis block."
+    )]
     UnexpectedAncestorSwitchBlock,
     #[error("Signed block headers present despite trusted_ancestor_only flag.")]
     UnexpectedSignedBlockHeaders,
@@ -222,7 +224,7 @@ impl FetchItem for SyncLeap {
         }
         let mut trusted_ancestor_iter = self.trusted_ancestor_headers.iter().rev();
         if let Some(last_ancestor) = trusted_ancestor_iter.next() {
-            if !last_ancestor.is_switch_block() {
+            if !last_ancestor.is_switch_block() && !last_ancestor.is_genesis() {
                 return Err(SyncLeapValidationError::MissingAncestorSwitchBlock);
             }
         }
@@ -250,7 +252,23 @@ impl FetchItem for SyncLeap {
         while let Some(hash) = verified.pop() {
             if let Some(header) = headers.remove(&hash) {
                 verified.push(*header.parent_hash());
-                if let Some(validator_weights) = header.next_era_validator_weights() {
+                if let Some(mut validator_weights) = header.next_era_validator_weights() {
+                    // If this is a switch block right before the upgrade to the current protocol
+                    // version, and if this upgrade changes the validator set, use the validator
+                    // weights from the chainspec.
+                    if header.next_block_era_id()
+                        == chainspec.protocol_config.activation_point.era_id()
+                    {
+                        if let Some(updated_weights) = chainspec
+                            .protocol_config
+                            .global_state_update
+                            .as_ref()
+                            .and_then(|update| update.validators.as_ref())
+                        {
+                            validator_weights = updated_weights
+                        }
+                    }
+
                     if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
                         for sigs in era_sigs {
                             if let Err(err) = utils::check_sufficient_block_signatures(

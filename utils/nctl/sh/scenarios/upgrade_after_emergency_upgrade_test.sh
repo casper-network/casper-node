@@ -10,17 +10,19 @@ source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 set -e
 
 #######################################
-# Runs an integration tests that performs an emergency restart on the network.
+# Runs an integration tests that performs an emergency restart on the network,
+# and then also performs a regular upgrade after.
 # It also simulates social consensus on replacing the original validators (nodes 1-5)
 # with a completely new set (nodes 6-10).
 #
 # Arguments:
 #   `timeout=XXX` timeout (in seconds) when syncing. Default=300 seconds.
 #   `version=X_Y_Z` new protocol version to upgrade to. Default=2_0_0.
+#   `version2=X_Y_Z` new protocol version to upgrade to. Default=3_0_0.
 #######################################
 function main() {
     log "------------------------------------------------------------"
-    log "Emergency upgrade test begins"
+    log "Upgrade after emergency upgrade test begins"
     log "------------------------------------------------------------"
 
     do_await_genesis_era_to_complete
@@ -52,7 +54,7 @@ function main() {
     # 13. Reset node 1 to sync from scratch.
     do_reset_node_1
     # 14. Wait until node 1 syncs back to genesis.
-    do_await_node_1_historical_sync
+    await_node_historical_sync_to_genesis '1' "$SYNC_TIMEOUT_SEC"
     # 15. Run Health Checks
     # ... restarts=16: due to nodes being stopped and started; node 1 3 times, nodes 2-5 2 times,
     # ................ node 6-10 1 time
@@ -65,7 +67,7 @@ function main() {
             ejections=0
 
     log "------------------------------------------------------------"
-    log "Emergency upgrade test ends"
+    log "Upgrade after emergency upgrade test ends"
     log "------------------------------------------------------------"
 }
 
@@ -195,24 +197,6 @@ function do_reset_node_1() {
     # use node 7 for the latest block hash
     TRUSTED_HASH=$(get_chain_latest_block_hash "7")
     do_node_start "1" "$TRUSTED_HASH"
-}
-
-function do_await_node_1_historical_sync() {
-    log_step "awaiting node 1 to do historical sync to genesis"
-    local WAIT_TIME_SEC=0
-    local LOWEST="$(get_node_lowest_available_block '1')"
-    local HIGHEST="$(get_node_highest_available_block '1')"
-    while [[ "$LOWEST" != "0" || "$HIGHEST" == "0" ]]; do
-        log "node 1 lowest available block: $LOWEST, highest available block: $HIGHEST"
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
-            log "ERROR: node 1 failed to do historical sync in ${SYNC_TIMEOUT_SEC} seconds"
-            exit 1
-        fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        sleep 1.0
-        LOWEST="$(get_node_lowest_available_block '1')"
-        HIGHEST="$(get_node_highest_available_block '1')"
-    done
 }
 
 function dispatch_native() {

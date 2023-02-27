@@ -343,7 +343,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &temp_dir.path(),
+                temp_dir.path(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _) = create_test_state(create_test_pairs);
-        let fake_hash: Digest = Digest::hash(&[1u8; 32]);
+        let fake_hash: Digest = Digest::hash([1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

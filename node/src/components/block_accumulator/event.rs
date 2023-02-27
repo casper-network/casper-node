@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use derive_more::From;
 
@@ -19,7 +22,7 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ReceivedBlock {
-        block: Box<Block>,
+        block: Arc<Block>,
         sender: NodeId,
     },
     CreatedFinalitySignature {
@@ -46,6 +49,20 @@ impl Display for Event {
                     f,
                     "block accumulator peers request for block: {}",
                     block_hash
+                )
+            }
+            Event::Request(BlockAccumulatorRequest::GetBlock { block_hash, .. }) => {
+                write!(f, "block accumulator block request for {}", block_hash)
+            }
+            Event::Request(BlockAccumulatorRequest::GetFinalitySignature {
+                block_hash,
+                public_key,
+                ..
+            }) => {
+                write!(
+                    f,
+                    "block accumulator signature request of {} for {}",
+                    public_key, block_hash
                 )
             }
             Event::RegisterPeer {

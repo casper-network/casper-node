@@ -12,6 +12,7 @@ use casper_types::{
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
+use tracing::error;
 
 use super::{
     Auction, Bid, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
@@ -230,22 +231,29 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
                                     .map(|_| ())?
                                 } else {
                                     // Move funds from bid purse to unbonding purse
-                                    provider.unbond(unbonding_purse).map_err(|_| {
+                                    provider.unbond(unbonding_purse).map_err(|err| {
+                                        error!(
+                                            "Error unbonding purse {err:?} (staked amount is zero)"
+                                        );
                                         ApiError::from(Error::TransferToUnbondingPurse)
                                     })?
                                 }
                             }
                             // Move funds from bid purse to unbonding purse
-                            Ok(None) | Err(_) => provider
-                                .unbond(unbonding_purse)
-                                .map_err(|_| ApiError::from(Error::TransferToUnbondingPurse))?,
+                            Ok(None) | Err(_) => {
+                                provider.unbond(unbonding_purse).map_err(|err| {
+                                    error!("Error unbonding purse {err:?} (unable to read bid)");
+                                    ApiError::from(Error::TransferToUnbondingPurse)
+                                })?
+                            }
                         }
                     }
                     None => {
                         // Move funds from bid purse to unbonding purse
-                        provider
-                            .unbond(unbonding_purse)
-                            .map_err(|_| ApiError::from(Error::TransferToUnbondingPurse))?
+                        provider.unbond(unbonding_purse).map_err(|err| {
+                            error!("Error unbonding purse {err:?} (new validator not provided)");
+                            ApiError::from(Error::TransferToUnbondingPurse)
+                        })?
                     }
                 };
             } else {

@@ -190,7 +190,7 @@ impl BlockSynchronizerStatus {
 
 impl DocExample for BlockSynchronizerStatus {
     fn doc_example() -> &'static Self {
-        &*BLOCK_SYNCHRONIZER_STATUS
+        &BLOCK_SYNCHRONIZER_STATUS
     }
 }
 
@@ -1010,7 +1010,7 @@ impl BlockSynchronizer {
             }
         };
         debug!(
-            ?maybe_value_or_chunk,
+            has_value_or_chunk = maybe_value_or_chunk.is_some(),
             ?maybe_peer_id,
             "execution_results_fetched"
         );
@@ -1031,6 +1031,10 @@ impl BlockSynchronizer {
                     // to disk here, when the last chunk is collected.
                     // we expect a response back, which will crank the block builder for this block
                     // to the next state.
+                    debug!(
+                        %value_or_chunk,
+                        "execution_results_fetched"
+                    );
                     match builder.register_fetched_execution_results(maybe_peer_id, *value_or_chunk)
                     {
                         Ok(Some(execution_results)) => {

@@ -570,10 +570,10 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, acquired_deploys) => {
                 maybe_block_hash = Some(*block.hash());
-                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 currently_acquiring_sigs = !is_historical
                     && acquired_deploys.needs_deploy().is_none()
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict;
+                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 None
             }
             BlockAcquisitionState::HaveGlobalState(
@@ -588,9 +588,9 @@ impl BlockAcquisitionState {
                 acquired_deploys,
             ) => {
                 maybe_block_hash = Some(*block.hash());
-                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 currently_acquiring_sigs = acquired_deploys.needs_deploy().is_none()
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict;
+                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 None
             }
             BlockAcquisitionState::HaveAllExecutionResults(
@@ -600,17 +600,17 @@ impl BlockAcquisitionState {
                 ..,
             ) => {
                 maybe_block_hash = Some(*block.hash());
-                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 currently_acquiring_sigs = !acquired_signatures.is_checkable()
                     && acquired_deploys.needs_deploy().is_none()
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict;
+                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 None
             }
             BlockAcquisitionState::HaveAllDeploys(block, acquired_signatures) => {
                 maybe_block_hash = Some(*block.hash());
-                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 currently_acquiring_sigs =
                     acquired_signatures.signature_weight() != SignatureWeight::Strict;
+                acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 None
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, acquired_signatures) => {
@@ -633,7 +633,7 @@ impl BlockAcquisitionState {
                 return Ok(None)
             }
         };
-        let ret = currently_acquiring_sigs.then(|| acceptance);
+        let ret = currently_acquiring_sigs.then_some(acceptance);
         info!(
             signature=%cloned_sig,
             ?ret,

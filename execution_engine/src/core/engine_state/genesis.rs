@@ -783,7 +783,7 @@ where
         self.tracking_copy.borrow().effect()
     }
 
-    fn create_mint(&mut self) -> Result<Key, GenesisError> {
+    fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
         let round_seigniorage_rate_uref =
             {
                 let round_seigniorage_rate_uref = self
@@ -860,7 +860,7 @@ where
         Ok(total_supply_uref.into())
     }
 
-    fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
+    fn create_handle_payment(&self) -> Result<ContractHash, Box<GenesisError>> {
         let handle_payment_payment_purse = self.create_purse(U512::zero())?;
 
         let named_keys = {
@@ -884,7 +884,7 @@ where
         Ok(handle_payment_hash)
     }
 
-    fn create_auction(&self, total_supply_key: Key) -> Result<ContractHash, GenesisError> {
+    fn create_auction(&self, total_supply_key: Key) -> Result<ContractHash, Box<GenesisError>> {
         let locked_funds_period_millis = self.exec_config.locked_funds_period_millis();
         let auction_delay: u64 = self.exec_config.auction_delay();
         let genesis_timestamp_millis: u64 = self.exec_config.genesis_timestamp_millis();
@@ -896,7 +896,8 @@ where
             return Err(GenesisError::InvalidValidatorSlots {
                 validators: genesis_validators.len(),
                 validator_slots: self.exec_config.validator_slots(),
-            });
+            }
+            .into());
         }
 
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
@@ -908,7 +909,8 @@ where
             if delegated_amount.is_zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
                     public_key: (*delegator_public_key).clone(),
-                });
+                }
+                .into());
             }
 
             let orphan_condition = genesis_validators.iter().find(|genesis_validator| {
@@ -919,7 +921,8 @@ where
                 return Err(GenesisError::OrphanedDelegator {
                     validator_public_key: (*validator_public_key).clone(),
                     delegator_public_key: (*delegator_public_key).clone(),
-                });
+                }
+                .into());
             }
         }
 
@@ -933,7 +936,7 @@ where
 
                 let staked_amount = genesis_validator.staked_amount().value();
                 if staked_amount.is_zero() {
-                    return Err(GenesisError::InvalidBondAmount { public_key });
+                    return Err(GenesisError::InvalidBondAmount { public_key }.into());
                 }
 
                 let delegation_rate = genesis_validator.delegation_rate();
@@ -941,7 +944,8 @@ where
                     return Err(GenesisError::InvalidDelegationRate {
                         public_key,
                         delegation_rate,
-                    });
+                    }
+                    .into());
                 }
                 debug_assert_ne!(public_key, PublicKey::System);
 
@@ -987,7 +991,8 @@ where
                                 return Err(GenesisError::DuplicatedDelegatorEntry {
                                     validator_public_key: (*validator_public_key).clone(),
                                     delegator_public_key: (*delegator_public_key).clone(),
-                                });
+                                }
+                                .into());
                             }
                         }
                     }
@@ -1135,7 +1140,7 @@ where
         Ok(auction_hash)
     }
 
-    fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
+    fn create_standard_payment(&self) -> Result<ContractHash, Box<GenesisError>> {
         let named_keys = NamedKeys::new();
 
         let entry_points = standard_payment::standard_payment_entry_points();
@@ -1152,7 +1157,7 @@ where
         Ok(standard_payment_hash)
     }
 
-    fn create_accounts(&self, total_supply_key: Key) -> Result<(), GenesisError> {
+    fn create_accounts(&self, total_supply_key: Key) -> Result<(), Box<GenesisError>> {
         let accounts = {
             let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().to_vec();
             let system_account = GenesisAccount::system();
@@ -1211,7 +1216,7 @@ where
         initial_seigniorage_recipients
     }
 
-    fn create_purse(&self, amount: U512) -> Result<URef, GenesisError> {
+    fn create_purse(&self, amount: U512) -> Result<URef, Box<GenesisError>> {
         let purse_addr = self.address_generator.borrow_mut().create_address();
 
         let balance_cl_value =
@@ -1285,7 +1290,7 @@ where
         &self,
         contract_name: &str,
         contract_hash: ContractHash,
-    ) -> Result<(), GenesisError> {
+    ) -> Result<(), Box<GenesisError>> {
         let partial_cl_registry = self
             .tracking_copy
             .borrow_mut()
@@ -1312,9 +1317,9 @@ where
     fn store_chainspec_registry(
         &self,
         chainspec_registry: ChainspecRegistry,
-    ) -> Result<(), GenesisError> {
+    ) -> Result<(), Box<GenesisError>> {
         if chainspec_registry.genesis_accounts_raw_hash().is_none() {
-            return Err(GenesisError::MissingChainspecRegistryEntry);
+            return Err(GenesisError::MissingChainspecRegistryEntry.into());
         }
         let cl_value_registry = CLValue::from_t(chainspec_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
@@ -1330,7 +1335,7 @@ where
     pub(crate) fn install(
         &mut self,
         chainspec_registry: ChainspecRegistry,
-    ) -> Result<(), GenesisError> {
+    ) -> Result<(), Box<GenesisError>> {
         // Create mint
         let total_supply_key = self.create_mint()?;
 

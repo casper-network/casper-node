@@ -31,7 +31,7 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: Send>(
+    async fn get_locally<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
         _id: SyncLeapIdentifier,
     ) -> Option<SyncLeap> {
@@ -62,5 +62,12 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
             }
             .boxed(),
         )
+    }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: SyncLeap,
+        _peer: NodeId,
+    ) {
     }
 }

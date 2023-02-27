@@ -63,7 +63,7 @@ impl ChunkWithProof {
     pub fn new(data: &[u8], index: u64) -> Result<Self, MerkleConstructionError> {
         Ok(if data.is_empty() {
             ChunkWithProof {
-                proof: IndexedMerkleProof::new([Digest::blake2b_hash(&[])], index)?,
+                proof: IndexedMerkleProof::new([Digest::blake2b_hash([])], index)?,
                 chunk: Bytes::new(),
             }
         } else {

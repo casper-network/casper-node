@@ -26,6 +26,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
@@ -44,7 +46,7 @@ use crate::{
         rpc_server::RpcServer,
         shutdown_trigger::{self, ShutdownTrigger},
         storage::Storage,
-        sync_leaper::SyncLeaper,
+        sync_leaper::{self, SyncLeaper},
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
@@ -52,8 +54,9 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -69,13 +72,11 @@ use crate::{
     },
     types::{
         Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, NodeId, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
 };
-#[cfg(test)]
-use crate::{testing::network::NetworkedReactor, types::NodeId};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
@@ -102,7 +103,7 @@ pub(crate) use reactor_state::ReactorState;
 ///
 ///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
 ///     linkStyle 0 fill:none,stroke:red,color:red
-///     
+///
 ///     A -->|"Execute block<br/>(genesis or upgrade)"| B
 ///
 ///     G -->|Peers| C
@@ -186,6 +187,7 @@ pub(crate) struct MainReactor {
     control_logic_default_delay: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
+    last_sync_leap_highest_block_hash: Option<BlockHash>,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -233,7 +235,6 @@ impl reactor::Reactor for MainReactor {
         let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
         let storage = Storage::new(
             &storage_config,
-            chainspec.core_config.finality_threshold_fraction,
             hard_reset_to_start_of_era,
             protocol_version,
             &chainspec.network_config.name,
@@ -390,6 +391,7 @@ impl reactor::Reactor for MainReactor {
             switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
+            last_sync_leap_highest_block_hash: Default::default(),
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -447,6 +449,42 @@ impl reactor::Reactor for MainReactor {
             }
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
                 self.handle_meta_block(effect_builder, rng, meta_block)
+            }
+            MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
+                let only_from_available_block_range = true;
+                if let Ok(Some(block_header)) = self
+                    .storage
+                    .read_block_header_by_height(block_height, only_from_available_block_range)
+                {
+                    let block_hash = block_header.block_hash();
+                    reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(block_header),
+                                header_hash: block_hash,
+                            },
+                        ),
+                    )
+                } else {
+                    // Warn logging here because this codepath of handling an
+                    // `UnexecutedBlockAnnouncement` is coming from the
+                    // contract runtime when a block with a lower height than
+                    // the next expected executable height is enqueued. This
+                    // happens after restarts when consensus is creating the
+                    // required eras and attempts to retrace its steps in the
+                    // era by enqueuing all finalized blocks starting from the
+                    // first one in that era, blocks which should have already
+                    // been executed and marked complete in storage.
+                    error!(
+                        block_height,
+                        "Finalized block enqueued for execution, but a complete \
+                        block header with the same height is not present in storage."
+                    );
+                    Effects::new()
+                }
             }
 
             // LOCAL I/O BOUND COMPONENTS
@@ -729,7 +767,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     block_accumulator::Event::ReceivedBlock {
-                        block: item,
+                        block: Arc::new(*item),
                         sender,
                     },
                 ),
@@ -737,6 +775,19 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_id,
             )) => Effects::new(),
+            MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
+                reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::ReceivedBlock {
+                            block,
+                            sender: peer,
+                        },
+                    ),
+                )
+            }
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
                 // Finality signature received via broadcast.
@@ -815,6 +866,22 @@ impl reactor::Reactor for MainReactor {
                     .register_signature(gossiped_finality_signature_id);
                 Effects::new()
             }
+            MainEvent::FinalitySignatureFetcherAnnouncement(
+                FetchedNewFinalitySignatureAnnouncement {
+                    finality_signature,
+                    peer,
+                },
+            ) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::ReceivedFinalitySignature {
+                        finality_signature,
+                        sender: peer,
+                    },
+                ),
+            ),
 
             // DEPLOYS
             MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
@@ -1105,6 +1172,37 @@ impl reactor::Reactor for MainReactor {
 }
 
 impl MainReactor {
+    fn request_leap_if_not_redundant(
+        &mut self,
+        sync_leap_identifier: SyncLeapIdentifier,
+        effect_builder: EffectBuilder<MainEvent>,
+        peers_to_ask: Vec<NodeId>,
+    ) -> Effects<MainEvent> {
+        let should_attempt_leap = self.last_sync_leap_highest_block_hash.map_or(
+            true,
+            |last_sync_leap_highest_block_hash| {
+                last_sync_leap_highest_block_hash != sync_leap_identifier.block_hash()
+            },
+        );
+        if should_attempt_leap {
+            // latch accumulator progress to allow sync-leap time to do work
+            self.block_accumulator.reset_last_progress();
+
+            effect_builder.immediately().event(move |_| {
+                MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                    sync_leap_identifier,
+                    peers_to_ask,
+                })
+            })
+        } else {
+            debug!(
+                state = %self.state,
+                block_hash = %sync_leap_identifier.block_hash(),
+                "successful sync leap for block hash already received, aborting leap attempt");
+            Effects::new()
+        }
+    }
+
     fn update_validator_weights(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -1215,6 +1313,13 @@ impl MainReactor {
                             finality_signature: Box::new(finality_signature.clone()),
                         },
                     ),
+                ));
+
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::Storage,
+                    effect_builder
+                        .put_finality_signature_to_storage(finality_signature.clone())
+                        .ignore(),
                 ));
 
                 let era_id = finality_signature.era_id;

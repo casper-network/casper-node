@@ -325,7 +325,7 @@ impl MainReactor {
             post_state_hash,
             BlockHash::default(),
             Digest::default(),
-        )?;
+        );
 
         let finalized_block = FinalizedBlock::new(
             BlockPayload::default(),
@@ -385,7 +385,7 @@ impl MainReactor {
                         post_state_hash,
                         previous_block_header.block_hash(),
                         previous_block_header.accumulated_seed(),
-                    )?;
+                    );
 
                     let finalized_block = FinalizedBlock::new(
                         BlockPayload::default(),
@@ -455,7 +455,8 @@ impl MainReactor {
                     *state_root_hash,
                     block_hash,
                     accumulated_seed,
-                )
+                );
+                Ok(())
             }
             Ok(None) => {
                 Ok(()) // noop
@@ -470,7 +471,7 @@ impl MainReactor {
         pre_state_root_hash: Digest,
         parent_hash: BlockHash,
         parent_seed: Digest,
-    ) -> Result<(), String> {
+    ) {
         // a better approach might be to have an announcement for immediate switch block
         // creation, which the contract runtime handles and sets itself into
         // the proper state to handle the unexpected block.
@@ -481,10 +482,7 @@ impl MainReactor {
             parent_hash,
             parent_seed,
         );
-        self.contract_runtime
-            .set_initial_state(initial_pre_state)
-            .map_err(|err| err.to_string())?;
-        Ok(())
+        self.contract_runtime.set_initial_state(initial_pre_state);
     }
 
     pub(super) fn update_last_progress(

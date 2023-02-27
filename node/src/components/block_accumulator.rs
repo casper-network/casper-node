@@ -21,7 +21,7 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{network::blocklist::BlocklistJustification, Component},
@@ -35,7 +35,7 @@ use crate::{
     },
     fatal,
     types::{
-        BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
+        Block, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
         ValidatorMatrix,
     },
     NodeRng,
@@ -187,7 +187,6 @@ impl BlockAccumulator {
         }
 
         if self.should_leap(block_height) {
-            debug!(%block_hash, "Leap: Block Accumulator: leap because the execution threshold is exceeded.");
             return SyncInstruction::Leap { block_hash };
         }
 
@@ -258,12 +257,13 @@ impl BlockAccumulator {
             btree_map::Entry::Vacant(entry) => entry,
         };
 
-        // The acceptor doesn't exist. Don't create it if the item's era is not provided, the local
-        // tip doesn't have an era or the item's era is older than the local tip era by more than
-        // `recent_era_interval`.
+        // The acceptor doesn't exist. Don't create it if the item's era is not
+        // provided or the item's era is older than the local tip era by more
+        // than `recent_era_interval`.
         match (maybe_era_id, self.local_tip) {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
+            (Some(_), None) => {}
             _ => {
                 // If we created the event, it's safe to create the acceptor.
                 if maybe_sender.is_some() {
@@ -557,6 +557,22 @@ impl BlockAccumulator {
             .map(|acceptor| acceptor.peers().iter().cloned().collect())
     }
 
+    fn block(&self, block_hash: &BlockHash) -> Option<Arc<Block>> {
+        self.block_acceptors
+            .get(block_hash)
+            .and_then(|acceptor| acceptor.block())
+    }
+
+    fn finality_signature(
+        &self,
+        block_hash: &BlockHash,
+        public_key: &PublicKey,
+    ) -> Option<FinalitySignature> {
+        self.block_acceptors
+            .get(block_hash)
+            .and_then(|acceptor| acceptor.finality_signature(public_key))
+    }
+
     fn is_stalled(&mut self) -> bool {
         // we expect to be receiving gossiped blocks from other nodes
         // if we haven't received any messages describing higher blocks
@@ -569,13 +585,27 @@ impl BlockAccumulator {
         self.last_progress = Timestamp::now();
     }
 
-    fn should_leap(&self, from_block_height: u64) -> bool {
+    fn should_leap(&self, block_height: u64) -> bool {
         match self.highest_usable_block_height() {
             Some(highest_usable_block_height) => {
-                let height_diff = highest_usable_block_height.saturating_sub(from_block_height);
-                height_diff > self.attempt_execution_threshold
+                let height_diff = highest_usable_block_height.saturating_sub(block_height);
+                if height_diff > self.attempt_execution_threshold {
+                    debug!(
+                        height_diff,
+                        attempt_execution_threshold = self.attempt_execution_threshold,
+                        "Leap: Block Accumulator: leap because height diff is larger than attempt execution threshold"
+                    );
+                    return true;
+                }
+                false
             }
-            None => true,
+            None => {
+                debug!(
+                    block_height,
+                    "Leap: Block Accumulator: leap because no highest usable block height"
+                );
+                true
+            }
         }
     }
 
@@ -612,7 +642,18 @@ impl BlockAccumulator {
         let now = Timestamp::now();
         let mut purged = vec![];
         let purge_interval = self.purge_interval;
+        let maybe_local_tip_height = self.local_tip.map(|local_tip| local_tip.height);
+        let attempt_execution_threshold = self.attempt_execution_threshold;
         self.block_acceptors.retain(|k, v| {
+            if let (Some(acceptor_height), Some(local_tip_height)) =
+                (v.block_height(), maybe_local_tip_height)
+            {
+                if acceptor_height >= local_tip_height.saturating_sub(attempt_execution_threshold)
+                    && acceptor_height <= local_tip_height
+                {
+                    return true;
+                }
+            }
             let expired = now.saturating_diff(v.last_progress()) > purge_interval;
             if expired {
                 purged.push(*k)
@@ -780,6 +821,17 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 block_hash,
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
+            Event::Request(BlockAccumulatorRequest::GetBlock {
+                block_hash,
+                responder,
+            }) => responder.respond(self.block(&block_hash)).ignore(),
+            Event::Request(BlockAccumulatorRequest::GetFinalitySignature {
+                block_hash,
+                public_key,
+                responder,
+            }) => responder
+                .respond(self.finality_signature(&block_hash, &public_key))
+                .ignore(),
             Event::RegisterPeer {
                 block_hash,
                 era_id,
@@ -789,7 +841,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                let meta_block = MetaBlock::new(Arc::new(*block), vec![], MetaBlockState::new());
+                let meta_block = MetaBlock::new(block, vec![], MetaBlockState::new());
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {

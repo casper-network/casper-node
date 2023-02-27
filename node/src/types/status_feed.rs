@@ -69,7 +69,7 @@ pub struct ChainspecInfo {
 
 impl DocExample for ChainspecInfo {
     fn doc_example() -> &'static Self {
-        &*CHAINSPEC_INFO
+        &CHAINSPEC_INFO
     }
 }
 
@@ -235,6 +235,6 @@ impl GetStatusResult {
 
 impl DocExample for GetStatusResult {
     fn doc_example() -> &'static Self {
-        &*GET_STATUS_RESULT
+        &GET_STATUS_RESULT
     }
 }

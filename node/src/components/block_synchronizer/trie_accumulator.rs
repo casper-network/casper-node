@@ -170,7 +170,7 @@ impl TrieAccumulator {
                     Effects::new()
                 }
                 Some(partial_chunks) => {
-                    debug!(%hash, "got a full trie");
+                    trace!(%hash, "got a full trie");
                     let unreliable_peers = partial_chunks.unreliable_peers.clone();
                     partial_chunks.respond(Ok(Response::new(trie.into_inner(), unreliable_peers)))
                 }

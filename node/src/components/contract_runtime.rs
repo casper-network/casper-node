@@ -42,7 +42,10 @@ use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
     effect::{
-        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
+        announcements::{
+            ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
+            UnexecutedBlockAnnouncement,
+        },
         incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -217,6 +220,7 @@ where
         + From<NetworkRequest<Message>>
         + From<StorageRequest>
         + From<MetaBlockAnnouncement>
+        + From<UnexecutedBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send,
 {
@@ -324,6 +328,7 @@ impl ContractRuntime {
             + From<ContractRuntimeAnnouncement>
             + From<StorageRequest>
             + From<MetaBlockAnnouncement>
+            + From<UnexecutedBlockAnnouncement>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -370,6 +375,9 @@ impl ContractRuntime {
                 trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+
+                self.try_init_system_contract_registry_cache();
+
                 let system_contract_registry = self.system_contract_registry.clone();
                 // Increment the counter to track the amount of times GetEraValidators was
                 // requested.
@@ -452,13 +460,19 @@ impl ContractRuntime {
             } => {
                 let mut effects = Effects::new();
                 let exec_queue = Arc::clone(&self.exec_queue);
-                let next_block_height = self.execution_pre_state.lock().unwrap().next_block_height;
                 let finalized_block_height = finalized_block.height();
+                let current_pre_state = self.execution_pre_state.lock().unwrap();
+                let next_block_height = current_pre_state.next_block_height;
                 match finalized_block_height.cmp(&next_block_height) {
                     Ordering::Less => {
                         debug!(
                             "ContractRuntime: finalized block({}) precedes expected next block({})",
                             finalized_block_height, next_block_height
+                        );
+                        effects.extend(
+                            effect_builder
+                                .announce_unexecuted_block(finalized_block_height)
+                                .ignore(),
                         );
                     }
                     Ordering::Equal => {
@@ -470,13 +484,14 @@ impl ContractRuntime {
                         let protocol_version = self.protocol_version;
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
-                        let execution_pre_state = Arc::clone(&self.execution_pre_state);
+                        let shared_pre_state = Arc::clone(&self.execution_pre_state);
                         effects.extend(
                             Self::execute_finalized_block_or_requeue(
                                 engine_state,
                                 metrics,
                                 exec_queue,
-                                execution_pre_state,
+                                shared_pre_state,
+                                current_pre_state.clone(),
                                 effect_builder,
                                 protocol_version,
                                 finalized_block,
@@ -662,21 +677,21 @@ impl ContractRuntime {
     ) -> Result<UpgradeSuccess, engine_state::Error> {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();
-        let result = self
+        let scratch_state = self.engine_state.get_scratch_engine_state();
+        let pre_state_hash = upgrade_config.pre_state_hash();
+        let mut result = scratch_state.commit_upgrade(CorrelationId::new(), upgrade_config)?;
+        result.post_state_hash = self
             .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config);
+            .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())?;
         self.engine_state.flush_environment()?;
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
         debug!(?result, "upgrade result");
-        result
+        Ok(result)
     }
 
-    pub(crate) fn set_initial_state(
-        &mut self,
-        sequential_block_state: ExecutionPreState,
-    ) -> Result<(), ConfigError> {
+    pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
@@ -691,28 +706,6 @@ impl ContractRuntime {
                 .exec_queue_size
                 .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
         }
-
-        // Initialize the system contract registry.
-        //
-        // This is assumed to always work. In case following query fails we assume that the node is
-        // incompatible with the network which could happen if (for example) a node operator skipped
-        // important update and did not migrate old protocol data db into the global state.
-        let state_root_hash = execution_pre_state.pre_state_root_hash;
-
-        match self
-            .engine_state
-            .get_system_contract_registry(CorrelationId::default(), state_root_hash)
-        {
-            Ok(system_contract_registry) => {
-                self.system_contract_registry = Some(system_contract_registry);
-            }
-            Err(error) => {
-                error!(%state_root_hash, %error, "unable to initialize contract runtime with a system contract registry");
-                return Err(error.into());
-            }
-        }
-
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -720,7 +713,8 @@ impl ContractRuntime {
         engine_state: Arc<EngineState<LmdbGlobalState>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
-        execution_pre_state: Arc<Mutex<ExecutionPreState>>,
+        shared_pre_state: Arc<Mutex<ExecutionPreState>>,
+        current_pre_state: ExecutionPreState,
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
@@ -735,7 +729,6 @@ impl ContractRuntime {
             + Send,
     {
         debug!("ContractRuntime: execute_finalized_block_or_requeue");
-        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
         let contract_runtime_metrics = metrics.clone();
         let BlockAndExecutionResults {
             block,
@@ -748,7 +741,7 @@ impl ContractRuntime {
                 engine_state.as_ref(),
                 Some(contract_runtime_metrics),
                 protocol_version,
-                current_execution_pre_state,
+                current_pre_state,
                 finalized_block,
                 deploys,
             )
@@ -764,7 +757,7 @@ impl ContractRuntime {
             next_block_height = new_execution_pre_state.next_block_height,
             "ContractRuntime: updating new_execution_pre_state",
         );
-        *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
+        *shared_pre_state.lock().unwrap() = new_execution_pre_state.clone();
         debug!("ContractRuntime: updated new_execution_pre_state");
 
         let current_era_id = block.header().era_id();
@@ -905,6 +898,25 @@ impl ContractRuntime {
     #[cfg(test)]
     pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
         &self.engine_state
+    }
+
+    #[inline]
+    fn try_init_system_contract_registry_cache(&mut self) {
+        // The system contract registry is stable so we can use the latest state root hash that we
+        // know from the execution pre-state to try and initialize it
+        let state_root_hash = self
+            .execution_pre_state
+            .lock()
+            .expect("ContractRuntime: execution_pre_state poisoned mutex")
+            .pre_state_root_hash;
+
+        // Try to cache system contract registry if possible.
+        if self.system_contract_registry.is_none() {
+            self.system_contract_registry = self
+                .engine_state
+                .get_system_contract_registry(CorrelationId::new(), state_root_hash)
+                .ok();
+        };
     }
 }
 

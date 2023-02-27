@@ -1049,7 +1049,7 @@ where
         self.highway.mark_faulty(vid);
     }
 
-    fn request_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
+    fn send_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
         self.highway
             .validators()
             .get_index(vid)

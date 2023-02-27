@@ -8,7 +8,6 @@ use std::{
     sync::Arc,
 };
 
-use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
@@ -92,7 +91,6 @@ fn create_sync_leap_test_chain(
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture_from_parts(
         &harness,
-        None,
         None,
         Some(chainspec.protocol_version()),
         None,
@@ -179,7 +177,6 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
@@ -200,7 +197,6 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture_from_parts(
     harness: &ComponentHarness<UnitTestEvent>,
-    fault_tolerance_fraction: Option<Ratio<u64>>,
     hard_reset_to_start_of_era: Option<EraId>,
     protocol_version: Option<ProtocolVersion>,
     network_name: Option<&str>,
@@ -210,7 +206,6 @@ fn storage_fixture_from_parts(
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
-        fault_tolerance_fraction.unwrap_or_else(|| Ratio::new(1, 3)),
         hard_reset_to_start_of_era,
         protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
         network_name.unwrap_or("test"),
@@ -232,7 +227,6 @@ fn storage_fixture_from_parts(
 fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
     Storage::new(
         cfg,
-        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         "test",
@@ -257,7 +251,6 @@ fn storage_fixture_with_hard_reset(
 ) -> Storage {
     storage_fixture_from_parts(
         harness,
-        None,
         Some(reset_era_id),
         Some(ProtocolVersion::from_parts(1, 1, 0)),
         None,
@@ -285,9 +278,13 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
 }
 
 /// Requests block header at a specific height from a storage component.
-fn get_block_header_at_height(storage: &mut Storage, height: u64) -> Option<BlockHeader> {
+fn get_block_header_at_height(
+    storage: &mut Storage,
+    height: u64,
+    only_from_available_block_range: bool,
+) -> Option<BlockHeader> {
     storage
-        .read_block_header_by_height(height)
+        .read_block_header_by_height(height, only_from_available_block_range)
         .expect("should get block")
 }
 
@@ -502,10 +499,60 @@ fn get_block_of_non_existing_block_returns_none() {
 }
 
 #[test]
+fn read_block_by_height_with_available_block_range() {
+    let mut harness = ComponentHarness::default();
+
+    // Create a random block, load and store it.
+    let block_33 = Arc::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        33,
+        ProtocolVersion::from_parts(1, 5, 0),
+        true,
+        None,
+    ));
+
+    let mut storage = storage_fixture(&harness);
+    assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0, true).is_none());
+
+    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
+    assert!(was_new);
+
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 33, false).as_ref(),
+        Some(block_33.header())
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 33, true).as_ref(),
+        Some(block_33.header())
+    );
+
+    // Create a random block as a different height, load and store it.
+    let block_14 = Arc::new(Block::random_with_specifics(
+        &mut harness.rng,
+        EraId::new(1),
+        14,
+        ProtocolVersion::from_parts(1, 5, 0),
+        false,
+        None,
+    ));
+
+    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
+    assert!(was_new);
+
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 14, false).as_ref(),
+        Some(block_14.header())
+    );
+    assert!(get_block_header_at_height(&mut storage, 14, true).is_none());
+}
+
+#[test]
 fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::default();
 
-    // Create a random blocks, load and store them.
+    // Create some random blocks, load and store them.
     let block_33 = Arc::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
@@ -535,15 +582,15 @@ fn can_retrieve_block_by_height() {
 
     // Both block at ID and highest block should return `None` initially.
     assert!(get_block_at_height(&mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert!(get_highest_complete_block(&mut harness, &mut storage).is_none());
     assert!(get_highest_complete_block_header(&mut harness, &mut storage).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
-    assert!(get_block_header_at_height(&mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut storage, 14, false).is_none());
     assert!(get_block_at_height(&mut storage, 33).is_none());
-    assert!(get_block_header_at_height(&mut storage, 33).is_none());
+    assert!(get_block_header_at_height(&mut storage, 33, false).is_none());
     assert!(get_block_at_height(&mut storage, 99).is_none());
-    assert!(get_block_header_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting 33 changes this.
     let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
@@ -558,19 +605,19 @@ fn can_retrieve_block_by_height() {
         Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert!(get_block_at_height(&mut storage, 14).is_none());
-    assert!(get_block_header_at_height(&mut storage, 14).is_none());
+    assert!(get_block_header_at_height(&mut storage, 14, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
         Some(&*block_33)
     );
     assert_eq!(
-        get_block_header_at_height(&mut storage, 33).as_ref(),
+        get_block_header_at_height(&mut storage, 33, true).as_ref(),
         Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
-    assert!(get_block_header_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 14, no change in highest.
     let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
@@ -585,13 +632,17 @@ fn can_retrieve_block_by_height() {
         Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        get_block_header_at_height(&mut storage, 14).as_ref(),
+        get_block_header_at_height(&mut storage, 14, true).as_ref(),
+        None
+    );
+    assert_eq!(
+        get_block_header_at_height(&mut storage, 14, false).as_ref(),
         Some(block_14.header())
     );
     assert_eq!(
@@ -599,11 +650,11 @@ fn can_retrieve_block_by_height() {
         Some(&*block_33)
     );
     assert_eq!(
-        get_block_header_at_height(&mut storage, 33).as_ref(),
+        get_block_header_at_height(&mut storage, 33, false).as_ref(),
         Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
-    assert!(get_block_header_at_height(&mut storage, 99).is_none());
+    assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 99, changes highest.
     let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
@@ -620,13 +671,13 @@ fn can_retrieve_block_by_height() {
         Some(block_99.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
-    assert!(get_block_header_at_height(&mut storage, 0).is_none());
+    assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        get_block_header_at_height(&mut storage, 14).as_ref(),
+        get_block_header_at_height(&mut storage, 14, false).as_ref(),
         Some(block_14.header())
     );
     assert_eq!(
@@ -634,7 +685,7 @@ fn can_retrieve_block_by_height() {
         Some(&*block_33)
     );
     assert_eq!(
-        get_block_header_at_height(&mut storage, 33).as_ref(),
+        get_block_header_at_height(&mut storage, 33, false).as_ref(),
         Some(block_33.header())
     );
     assert_eq!(
@@ -642,7 +693,7 @@ fn can_retrieve_block_by_height() {
         Some(&*block_99)
     );
     assert_eq!(
-        get_block_header_at_height(&mut storage, 99).as_ref(),
+        get_block_header_at_height(&mut storage, 99, false).as_ref(),
         Some(block_99.header())
     );
 }
@@ -1233,7 +1284,6 @@ fn should_create_subdir_named_after_network() {
     let network_name = "test";
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
-        Ratio::new(1, 3),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
         network_name,
@@ -1402,25 +1452,18 @@ fn should_get_trusted_ancestor_headers() {
 fn should_get_signed_block_headers() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
-    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
             .get_header_with_metadata_of_highest_complete_block(&mut txn)
             .unwrap()
             .unwrap();
-        let previous_switch_block_header = storage
-            .get_block_by_height(&mut txn, previous_switch_block as u64)
-            .unwrap()
-            .unwrap()
-            .header()
-            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1430,19 +1473,19 @@ fn should_get_signed_block_headers() {
     };
 
     assert!(
-        get_results(12, 10).is_empty(),
+        get_results(12).is_empty(),
         "should return empty set if asked for a most recent signed block"
     );
-    assert_eq!(get_results(5, 4), &[7, 10, 12]);
-    assert_eq!(get_results(2, 1), &[4, 7, 10, 12]);
-    assert_eq!(get_results(1, 0), &[4, 7, 10, 12]);
+    assert_eq!(get_results(5), &[7, 10, 12]);
+    assert_eq!(get_results(2), &[4, 7, 10, 12]);
+    assert_eq!(get_results(1), &[4, 7, 10, 12]);
     assert_eq!(
-        get_results(10, 7),
+        get_results(10),
         &[12],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(7, 4),
+        get_results(7),
         &[10, 12],
         "should not include switch block that was directly requested"
     );
@@ -1452,7 +1495,7 @@ fn should_get_signed_block_headers() {
 fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_block() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[12], false, None);
 
-    let get_results = |requested_height: usize, previous_switch_block: usize| -> Vec<u64> {
+    let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
@@ -1460,18 +1503,11 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .unwrap()
             .unwrap();
 
-        let previous_switch_block_header = storage
-            .get_block_by_height(&mut txn, previous_switch_block as u64)
-            .unwrap()
-            .unwrap()
-            .header()
-            .clone();
         storage
             .get_signed_block_headers(
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
-                previous_switch_block_header,
             )
             .unwrap()
             .unwrap()
@@ -1481,19 +1517,19 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
     };
 
     assert!(
-        get_results(11, 10).is_empty(),
+        get_results(11).is_empty(),
         "should return empty set if asked for a most recent signed block",
     );
-    assert_eq!(get_results(5, 4), &[7, 10, 11]);
-    assert_eq!(get_results(2, 1), &[4, 7, 10, 11]);
-    assert_eq!(get_results(1, 0), &[4, 7, 10, 11]);
+    assert_eq!(get_results(5), &[7, 10, 11]);
+    assert_eq!(get_results(2), &[4, 7, 10, 11]);
+    assert_eq!(get_results(1), &[4, 7, 10, 11]);
     assert_eq!(
-        get_results(10, 7),
+        get_results(10),
         &[11],
         "should return only tip if asked for a most recent switch block"
     );
     assert_eq!(
-        get_results(7, 4),
+        get_results(7),
         &[10, 11],
         "should not include switch block that was directly requested"
     );

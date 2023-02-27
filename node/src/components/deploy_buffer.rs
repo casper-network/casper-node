@@ -600,7 +600,7 @@ where
                     responder,
                 }) => responder.respond(self.appendable_block(timestamp)).ignore(),
                 Event::BlockFinalized(finalized_block) => {
-                    self.register_block_finalized(&*finalized_block);
+                    self.register_block_finalized(&finalized_block);
                     Effects::new()
                 }
                 Event::Block(block) => {

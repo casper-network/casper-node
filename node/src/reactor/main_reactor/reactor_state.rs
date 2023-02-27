@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// flowchart TD
+///     %%{init: { 'flowchart': {'diagramPadding':100} }}%%
 ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
 ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
 ///     

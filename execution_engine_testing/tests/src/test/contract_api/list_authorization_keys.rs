@@ -21,13 +21,13 @@ const CONTRACT_LIST_AUTHORIZATION_KEYS: &str = "list_authorization_keys.wasm";
 const ARG_EXPECTED_AUTHORIZATION_KEYS: &str = "expected_authorization_keys";
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([234u8; 32]).unwrap());
 static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SECRET_KEY));
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PUBLIC_KEY.to_account_hash());
 
 static ACCOUNT_2_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::secp256k1_from_bytes(&[243u8; 32]).unwrap());
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([243u8; 32]).unwrap());
 static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());

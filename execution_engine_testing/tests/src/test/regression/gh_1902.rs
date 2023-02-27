@@ -29,7 +29,7 @@ static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 
 fn setup() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {
         mint::ARG_TARGET => *ACCOUNT_1_ADDR,

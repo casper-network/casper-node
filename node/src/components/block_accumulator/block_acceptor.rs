@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -12,8 +15,8 @@ use crate::{
         fetcher::{EmptyValidationMetadata, FetchItem},
     },
     types::{
-        BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock, NodeId,
-        SignatureWeight,
+        Block, BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock,
+        NodeId, SignatureWeight,
     },
 };
 
@@ -58,6 +61,18 @@ impl BlockAcceptor {
 
     pub(super) fn peers(&self) -> &BTreeSet<NodeId> {
         &self.peers
+    }
+
+    pub(super) fn block(&self) -> Option<Arc<Block>> {
+        self.meta_block
+            .as_ref()
+            .map(|meta_block| Arc::clone(&meta_block.block))
+    }
+
+    pub(super) fn finality_signature(&self, public_key: &PublicKey) -> Option<FinalitySignature> {
+        self.signatures
+            .get(public_key)
+            .map(|(finality_signature, _peer)| finality_signature.clone())
     }
 
     pub(super) fn register_peer(&mut self, peer: NodeId) {

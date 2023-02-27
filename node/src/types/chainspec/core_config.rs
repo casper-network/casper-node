@@ -14,6 +14,7 @@ use serde::{
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS,
     TimeDiff,
 };
 use tracing::{error, warn};
@@ -92,6 +93,16 @@ impl CoreConfig {
             );
             return false;
         }
+
+        if self.vesting_schedule_period > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
+            error!(
+                vesting_schedule_millis = self.vesting_schedule_period.millis(),
+                max_millis = VESTING_SCHEDULE_LENGTH_MILLIS,
+                "vesting schedule period too long",
+            );
+            return false;
+        }
+
         true
     }
 }
