@@ -554,7 +554,11 @@ mod tests {
 
         let serialized = serialize_net_message(&specimen);
 
-        assert_eq!(serialized.len(), 0);
+        // Print the largest specimen.
+        println!("{:?}", specimen);
+
+        // Currently assume a limit of 10 MB.
+        assert_eq!(serialized.len(), 1024 * 1024 * 10);
     }
 
     /// Version 1.0.0 network level message.
