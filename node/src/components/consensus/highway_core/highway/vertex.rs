@@ -146,12 +146,12 @@ mod specimen_support {
     };
     use crate::{
         components::consensus::ClContext,
+        memoize,
         testing::specimen::{
             btree_set_distinct_from_prop, largest_variant, vec_prop_specimen, LargestSpecimen,
             SizeEstimator,
         },
     };
-    use std::{any::TypeId, cell::RefCell, collections::HashMap};
 
     impl LargestSpecimen for Vertex<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
@@ -242,20 +242,11 @@ mod specimen_support {
 
     impl LargestSpecimen for HashedWireUnit<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            thread_local! {
-                static MEMOIZED: RefCell<HashMap<TypeId, HashedWireUnit<ClContext>>> = Default::default();
-            }
-
-            MEMOIZED.with(|cache| {
-                cache
-                    .try_borrow_mut()
-                    .expect("cannot borrow the memoization cache")
-                    .entry(TypeId::of::<E>())
-                    .or_insert_with(|| HashedWireUnit {
-                        hash: LargestSpecimen::largest_specimen(estimator),
-                        wire_unit: LargestSpecimen::largest_specimen(estimator),
-                    })
-                    .clone()
+            memoize!(HashedWireUnit<ClContext>, estimator, {
+                HashedWireUnit {
+                    hash: LargestSpecimen::largest_specimen(estimator),
+                    wire_unit: LargestSpecimen::largest_specimen(estimator),
+                }
             })
         }
     }

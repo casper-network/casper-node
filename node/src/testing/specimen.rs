@@ -5,11 +5,11 @@
 
 use core::convert::TryInto;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use casper_execution_engine::core::engine_state::{
@@ -23,7 +23,6 @@ use casper_types::{
     SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
-use once_cell::sync::Lazy;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
@@ -404,15 +403,18 @@ where
 }
 
 /// Memoize a value using a local static variable.
+#[macro_export]
 macro_rules! memoize {
     ($ty:ty, $estimator:expr, $blk:block) => {{
-        static MEMOIZED: Lazy<Mutex<HashMap<String, $ty>>> =
-            Lazy::new(|| Mutex::new(HashMap::new()));
-        *MEMOIZED
+        static MEMOIZED: once_cell::sync::Lazy<
+            std::sync::Mutex<std::collections::HashMap<String, $ty>>,
+        > = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        MEMOIZED
             .lock()
             .expect("memoization cache disappeared")
             .entry($estimator.key().to_owned())
             .or_insert_with(|| $blk)
+            .clone()
     }};
 }
 
