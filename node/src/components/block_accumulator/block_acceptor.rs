@@ -129,7 +129,22 @@ impl BlockAcceptor {
         &mut self,
         finality_signature: FinalitySignature,
         peer: Option<NodeId>,
+        validator_slots: u32,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
+        use std::collections::btree_map::Entry;
+
+        let verify_signatures_not_full = |len: usize, finality_signature: &FinalitySignature| {
+            if len == validator_slots as usize {
+                Err(AcceptorError::TooManySignatures {
+                    peer,
+                    finality_signature: finality_signature.clone(),
+                    validator_slots,
+                })
+            } else {
+                Ok(())
+            }
+        };
+
         if self.block_hash != finality_signature.block_hash {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash,
@@ -160,10 +175,14 @@ impl BlockAcceptor {
             if let Some(node_id) = peer {
                 self.register_peer(node_id);
             }
-            self.signatures
-                .entry(finality_signature.public_key.clone())
-                .and_modify(|(_, senders)| senders.extend(peer))
-                .or_insert_with(|| (finality_signature, peer.into_iter().collect()));
+            let signatures_len = self.signatures.len();
+            match self.signatures.entry(finality_signature.public_key.clone()) {
+                Entry::Occupied(mut entry) => entry.get_mut().1.extend(peer),
+                Entry::Vacant(entry) => {
+                    verify_signatures_not_full(signatures_len, &finality_signature)?;
+                    entry.insert((finality_signature, peer.into_iter().collect()));
+                }
+            }
             return Ok(None);
         }
 
@@ -195,10 +214,14 @@ impl BlockAcceptor {
         }
         let is_new = !self.signatures.contains_key(&finality_signature.public_key);
 
-        self.signatures
-            .entry(finality_signature.public_key.clone())
-            .and_modify(|(_, senders)| senders.extend(peer))
-            .or_insert_with(|| (finality_signature.clone(), peer.into_iter().collect()));
+        let signatures_len = self.signatures.len();
+        match self.signatures.entry(finality_signature.public_key.clone()) {
+            Entry::Occupied(mut entry) => entry.get_mut().1.extend(peer),
+            Entry::Vacant(entry) => {
+                verify_signatures_not_full(signatures_len, &finality_signature)?;
+                entry.insert((finality_signature.clone(), peer.into_iter().collect()));
+            }
+        }
 
         if had_sufficient_finality && is_new {
             // we received this finality signature after putting the block & earlier signatures

@@ -9,7 +9,10 @@ use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::components::{block_accumulator, fetcher::Tag};
+use crate::{
+    components::{block_accumulator, fetcher::Tag},
+    types::FinalitySignature,
+};
 
 /// Reasons why a peer was blocked.
 #[derive(DataSize, Debug, Serialize)]
@@ -55,6 +58,11 @@ pub(crate) enum BlocklistJustification {
     MissingChainspecHash,
     /// Peer is considered dishonest.
     DishonestPeer,
+    /// Peer sent too many finality signatures.
+    SentTooManyFinalitySignatures {
+        sent: FinalitySignature,
+        max_allowed: u32,
+    },
 }
 
 impl Display for BlocklistJustification {
@@ -99,6 +107,10 @@ impl Display for BlocklistJustification {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)
             }
             BlocklistJustification::DishonestPeer => f.write_str("dishonest peer"),
+            BlocklistJustification::SentTooManyFinalitySignatures {
+                sent,
+                max_allowed,
+            } => write!(f, "Peer sent too many finality signatures: {sent} got sent, but only {max_allowed} were allowed"),
         }
     }
 }

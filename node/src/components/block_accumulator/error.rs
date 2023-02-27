@@ -1,8 +1,19 @@
 use thiserror::Error;
+use tracing::{error, warn};
 
 use casper_types::{crypto, EraId};
 
-use crate::types::{BlockHash, BlockValidationError, MetaBlockMergeError, NodeId};
+use crate::{
+    components::network::blocklist::BlocklistJustification,
+    effect::{
+        announcements::{FatalAnnouncement, PeerBehaviorAnnouncement},
+        EffectBuilder, EffectExt, Effects,
+    },
+    fatal,
+    types::{BlockHash, BlockValidationError, FinalitySignature, MetaBlockMergeError, NodeId},
+};
+
+use super::event::Event;
 
 #[derive(Error, Debug)]
 pub(crate) enum InvalidGossipError {
@@ -61,4 +72,84 @@ pub(crate) enum Error {
     BogusValidator(Bogusness),
     #[error(transparent)]
     MetaBlockMerge(#[from] MetaBlockMergeError),
+    #[error("tried to insert a signature past the bounds")]
+    TooManySignatures {
+        peer: Option<NodeId>,
+        finality_signature: FinalitySignature,
+        validator_slots: u32,
+    },
+}
+
+impl Error {
+    pub fn effects<REv>(self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
+    where
+        REv: From<PeerBehaviorAnnouncement> + From<FatalAnnouncement> + Send,
+    {
+        let error = self;
+        match error {
+            Error::InvalidGossip(ref gossip_error) => {
+                warn!(%gossip_error, "received invalid block");
+                effect_builder
+                    .announce_block_peer_with_justification(
+                        gossip_error.peer(),
+                        BlocklistJustification::SentBadBlock { error },
+                    )
+                    .ignore()
+            }
+            Error::EraMismatch {
+                peer,
+                block_hash,
+                expected,
+                actual,
+            } => {
+                warn!(
+                    "era mismatch from {} for {}; expected: {} and actual: {}",
+                    peer, block_hash, expected, actual
+                );
+                effect_builder
+                    .announce_block_peer_with_justification(
+                        peer,
+                        BlocklistJustification::SentBadBlock { error },
+                    )
+                    .ignore()
+            }
+            ref error @ Error::BlockHashMismatch { .. } => {
+                error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                Effects::new()
+            }
+            ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
+                error!(%error, "should not have sufficient finality without block");
+                Effects::new()
+            }
+            Error::InvalidConfiguration => fatal!(
+                effect_builder,
+                "node has an invalid configuration, shutting down"
+            )
+            .ignore(),
+            Error::BogusValidator(_) => {
+                error!(%error, "unexpected detection of bogus validator, this is a bug");
+                Effects::new()
+            }
+            Error::MetaBlockMerge(error) => {
+                error!(%error, "failed to merge meta blocks, this is a bug");
+                Effects::new()
+            }
+            Error::TooManySignatures {
+                peer,
+                finality_signature,
+                validator_slots,
+            } => match peer {
+                Some(peer) => effect_builder
+                    .announce_block_peer_with_justification(
+                        peer,
+                        BlocklistJustification::SentTooManyFinalitySignatures {
+                            sent: finality_signature,
+                            max_allowed: validator_slots,
+                        },
+                    )
+                    .ignore(),
+                None => Default::default(),
+            },
+        }
+    }
 }

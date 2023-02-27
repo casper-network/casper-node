@@ -330,6 +330,7 @@ impl reactor::Reactor for MainReactor {
 
         let block_accumulator = BlockAccumulator::new(
             config.block_accumulator,
+            chainspec.clone(),
             validator_matrix.clone(),
             chainspec.core_config.unbonding_delay,
             chainspec.core_config.minimum_block_time,
