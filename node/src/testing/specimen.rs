@@ -44,7 +44,7 @@ use crate::{
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
 
 /// Given a specific type instance, estimates its serialized size.
-pub(crate) trait SizeEstimator: 'static {
+pub(crate) trait SizeEstimator {
     /// Estimate the serialized size of a value.
     fn estimate<T: Serialize>(&self, val: &T) -> usize;
 

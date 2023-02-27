@@ -511,19 +511,19 @@ mod tests {
 
     /// An estimator that uses the serialized network representation as a measure of size.
     #[derive(Clone, Debug)]
-    pub(crate) struct NetworkMessageEstimator {
+    pub(crate) struct NetworkMessageEstimator<'a> {
         /// The chainspec to retrieve estimation values from.
-        chainspec: Arc<Chainspec>,
+        chainspec: &'a Chainspec,
     }
 
-    impl NetworkMessageEstimator {
+    impl<'a> NetworkMessageEstimator<'a> {
         /// Creates a new network message estimator.
-        pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
+        pub(crate) fn new(chainspec: &'a Chainspec) -> Self {
             Self { chainspec }
         }
     }
 
-    impl SizeEstimator for NetworkMessageEstimator {
+    impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
         fn estimate<T: Serialize>(&self, val: &T) -> usize {
             serialize_net_message(&val).len()
         }
@@ -579,8 +579,7 @@ mod tests {
         let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
             Loadable::from_resources("production");
 
-        let maximum_net_message_size = chainspec.network_config.maximum_net_message_size;
-        let estimator = NetworkMessageEstimator::new(Arc::new(chainspec));
+        let estimator = NetworkMessageEstimator::new(&chainspec);
 
         // Note: In theory, this check could be moved into chainspec validation.
         let specimen = Message::<protocol::Message>::largest_specimen(&estimator);
@@ -592,7 +591,7 @@ mod tests {
         println!("size: {}", serialized.len());
 
         // Ensure it is not larger than the allowed limit.
-        assert!(serialized.len() as u32 <= maximum_net_message_size);
+        assert!(serialized.len() as u32 <= chainspec.network_config.maximum_net_message_size);
     }
 
     /// Version 1.0.0 network level message.
