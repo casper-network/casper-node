@@ -4121,10 +4121,20 @@
             "description": "The first era to which the associated protocol version applies.",
             "anyOf": [
               {
-                "$ref": "#/components/schemas/EraId"
+                "description": "Era id.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ]
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "description": "Genesis timestamp.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                ]
               }
             ]
           },

@@ -14,6 +14,7 @@ use casper_types::{testing::TestRng, SecretKey, U512};
 
 use super::ValidatorConfig;
 
+/// Configuration of an individial account in accounts.toml
 #[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountConfig {
     pub(super) public_key: PublicKey,
@@ -22,6 +23,7 @@ pub struct AccountConfig {
 }
 
 impl AccountConfig {
+    /// Creates a new `AccountConfig`.
     pub fn new(public_key: PublicKey, balance: Motes, validator: Option<ValidatorConfig>) -> Self {
         Self {
             public_key,
@@ -30,14 +32,17 @@ impl AccountConfig {
         }
     }
 
+    /// Public key.
     pub fn public_key(&self) -> PublicKey {
         self.public_key.clone()
     }
 
+    /// Balance.
     pub fn balance(&self) -> Motes {
         self.balance
     }
 
+    /// Bonded amount.
     pub fn bonded_amount(&self) -> Motes {
         match self.validator {
             Some(validator_config) => validator_config.bonded_amount(),
@@ -45,6 +50,7 @@ impl AccountConfig {
         }
     }
 
+    /// Is this a genesis validator?
     pub fn is_genesis_validator(&self) -> bool {
         self.validator.is_some()
     }

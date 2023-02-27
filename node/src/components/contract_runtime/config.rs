@@ -18,23 +18,24 @@ pub struct Config {
     /// Defaults to 805,306,368,000 == 750 GiB.
     ///
     /// The size should be a multiple of the OS page size.
-    max_global_state_size: Option<usize>,
+    pub max_global_state_size: Option<usize>,
     /// The maximum number of readers to use for the global state store.
     ///
     /// Defaults to 512.
-    max_readers: Option<u32>,
+    pub max_readers: Option<u32>,
     /// The limit of depth of recursive global state queries.
     ///
     /// Defaults to 5.
-    max_query_depth: Option<u64>,
+    pub max_query_depth: Option<u64>,
     /// Enable synchronizing to disk only after each block is written.
     ///
     /// Defaults to `false`.
-    enable_manual_sync: Option<bool>,
+    pub enable_manual_sync: Option<bool>,
 }
 
 impl Config {
-    pub(crate) fn max_global_state_size(&self) -> usize {
+    /// Max global state size in bytes.
+    pub fn max_global_state_size_or_default(&self) -> usize {
         let value = self
             .max_global_state_size
             .unwrap_or(DEFAULT_MAX_GLOBAL_STATE_SIZE);
@@ -42,15 +43,18 @@ impl Config {
         value
     }
 
-    pub(crate) fn max_readers(&self) -> u32 {
+    /// Max lmdb readers.
+    pub fn max_readers_or_default(&self) -> u32 {
         self.max_readers.unwrap_or(DEFAULT_MAX_READERS)
     }
 
-    pub(crate) fn max_query_depth(&self) -> u64 {
+    /// Max query depth.
+    pub fn max_query_depth_or_default(&self) -> u64 {
         self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH)
     }
 
-    pub(crate) fn manual_sync_enabled(&self) -> bool {
+    /// Is manual sync enabled.
+    pub fn manual_sync_enabled_or_default(&self) -> bool {
         self.enable_manual_sync
             .unwrap_or(DEFAULT_MANUAL_SYNC_ENABLED)
     }

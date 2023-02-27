@@ -17,6 +17,7 @@ use casper_types::{
     Motes, TimeDiff, U512,
 };
 
+/// Configuration values associated with deploys.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]

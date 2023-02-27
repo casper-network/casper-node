@@ -225,7 +225,7 @@ impl BlockSynchronizer {
             validator_matrix,
             forward: None,
             historical: None,
-            global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches() as usize),
+            global_sync: GlobalStateSynchronizer::new(config.max_parallel_trie_fetches as usize),
             metrics: Metrics::new(registry)?,
         })
     }
@@ -286,7 +286,7 @@ impl BlockSynchronizer {
             should_fetch_execution_state,
             requires_strict_finality,
             self.max_simultaneous_peers,
-            self.config.peer_refresh_interval(),
+            self.config.peer_refresh_interval,
         );
         if should_fetch_execution_state {
             self.historical.replace(builder);
@@ -333,7 +333,7 @@ impl BlockSynchronizer {
                         peers,
                         should_fetch_execution_state,
                         self.max_simultaneous_peers,
-                        self.config.peer_refresh_interval(),
+                        self.config.peer_refresh_interval,
                     );
                     apply_sigs(&mut builder, maybe_sigs);
                     if should_fetch_execution_state {
@@ -517,7 +517,7 @@ impl BlockSynchronizer {
     where
         REv: ReactorEvent + From<FetcherRequest<Block>> + From<BlockCompleteConfirmationRequest>,
     {
-        let need_next_interval = self.config.need_next_interval().into();
+        let need_next_interval = self.config.need_next_interval.into();
         let mut results = Effects::new();
         let max_simultaneous_peers = self.max_simultaneous_peers as usize;
         let mut builder_needs_next = |builder: &mut BlockBuilder| {
@@ -1192,7 +1192,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         );
                         // start dishonest peer management on initialization
                         effect_builder
-                            .set_timeout(self.config.disconnect_dishonest_peers_interval().into())
+                            .set_timeout(self.config.disconnect_dishonest_peers_interval.into())
                             .event(move |_| {
                                 Event::Request(BlockSynchronizerRequest::DishonestPeers)
                             })
@@ -1259,9 +1259,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         self.flush_dishonest_peers();
                         effects.extend(
                             effect_builder
-                                .set_timeout(
-                                    self.config.disconnect_dishonest_peers_interval().into(),
-                                )
+                                .set_timeout(self.config.disconnect_dishonest_peers_interval.into())
                                 .event(move |_| {
                                     Event::Request(BlockSynchronizerRequest::DishonestPeers)
                                 }),
