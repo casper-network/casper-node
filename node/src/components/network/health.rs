@@ -13,6 +13,8 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::utils::specimen::{LargestSpecimen, SizeEstimator};
+
 /// Connection health information.
 ///
 /// All data related to the ping/pong functionality used to verify a peer's networking liveness.
@@ -255,6 +257,12 @@ pub(crate) enum HealthCheckOutcome {
     GiveUp,
 }
 
+impl LargestSpecimen for Nonce {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        Self(LargestSpecimen::largest_specimen(estimator))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, time::Duration};
@@ -265,14 +273,8 @@ mod tests {
     use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig, Nonce};
     use crate::{
         components::network::health::TaggedTimestamp, testing::test_clock::TestClock,
-        types::NodeRng, utils::specimen::LargestSpecimen,
+        types::NodeRng,
     };
-
-    impl LargestSpecimen for Nonce {
-        fn largest_specimen<E: crate::utils::specimen::SizeEstimator>(estimator: &E) -> Self {
-            Self(LargestSpecimen::largest_specimen(estimator))
-        }
-    }
 
     impl HealthConfig {
         pub(crate) fn test_config() -> Self {

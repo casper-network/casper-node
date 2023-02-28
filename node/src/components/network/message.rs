@@ -426,7 +426,6 @@ pub struct EstimatorWeights {
     pub trie_responses: u32,
 }
 
-#[cfg(test)]
 mod specimen_support {
     use std::iter;
 
@@ -574,7 +573,7 @@ mod tests {
     use tokio_serde::{Deserializer, Serializer};
 
     use crate::{
-        components::network::{message_pack_format::MessagePackFormat, BincodeFormat},
+        components::network::message_pack_format::MessagePackFormat,
         protocol,
         types::{Chainspec, ChainspecRawBytes},
         utils::specimen::LargestSpecimen,
