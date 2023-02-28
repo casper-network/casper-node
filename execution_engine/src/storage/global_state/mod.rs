@@ -32,6 +32,8 @@ use crate::{
     },
 };
 
+use super::trie_store::operations::DeleteResult;
+
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
     /// An error which occurs when reading state
@@ -124,6 +126,14 @@ pub trait StateProvider {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error>;
+
+    /// Delete key from the global state.
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<DeleteResult, Self::Error>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.
