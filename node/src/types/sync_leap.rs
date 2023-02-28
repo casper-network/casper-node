@@ -350,7 +350,7 @@ impl FetchItem for SyncLeap {
 mod tests {
     use std::iter;
 
-    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey};
+    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Signature};
     use itertools::Itertools;
     use num_rational::Ratio;
 
@@ -891,5 +891,57 @@ mod tests {
             result,
             Err(SyncLeapValidationError::IncompleteProof)
         ));
+    }
+
+    #[test]
+    fn should_fail_when_signature_fails_crypto_verification() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
+        let mut sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        let mut signed_block_header = sync_leap.signed_block_headers.pop().unwrap();
+
+        // Remove one correct proof.
+        let proof = signed_block_header
+            .block_signatures
+            .proofs
+            .pop_last()
+            .unwrap();
+        let validator_public_key = proof.0;
+
+        // Create unverifiable signature (`Signature::System`).
+        let finality_signature = FinalitySignature::new(
+            signed_block_header.block_header.block_hash(),
+            signed_block_header.block_header.era_id(),
+            Signature::System,
+            validator_public_key.clone(),
+        );
+
+        // Sneak it into the sync leap.
+        signed_block_header
+            .block_signatures
+            .proofs
+            .insert(validator_public_key, finality_signature.signature);
+        sync_leap.signed_block_headers.push(signed_block_header);
+
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(result, Err(SyncLeapValidationError::Crypto(_))));
     }
 }
