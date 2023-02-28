@@ -620,7 +620,10 @@ mod tests {
         let mut rng = TestRng::new();
         let validation_metadata = test_sync_leap_validation_metadata();
 
-        // Test block iterator produces blocks in order, however, the `trusted_ancestor_headers` is expected to be sorted backwards (from the most recent ancestor back to the switch block). Therefore, the generated blocks should cause the `TrustedAncestorsNotSorted` error to be triggered.
+        // Test block iterator produces blocks in order, however, the `trusted_ancestor_headers` is
+        // expected to be sorted backwards (from the most recent ancestor back to the switch block).
+        // Therefore, the generated blocks should cause the `TrustedAncestorsNotSorted` error to be
+        // triggered.
         let mut block = Block::random(&mut rng);
         block.header_mut().set_height(0);
         let block_iterator =
@@ -643,7 +646,8 @@ mod tests {
             Err(SyncLeapValidationError::TrustedAncestorsNotSorted)
         ));
 
-        // Single trusted ancestor header it should never trigger the `TrustedAncestorsNotSorted` error.
+        // Single trusted ancestor header it should never trigger the `TrustedAncestorsNotSorted`
+        // error.
         let mut block = Block::random(&mut rng);
         block.header_mut().set_height(0);
         let block_iterator =
@@ -711,7 +715,8 @@ mod tests {
 
         let mut rng = TestRng::new();
 
-        // Intentionally include two consecutive switch blocks (3, 2) in the `trusted_ancestor_headers`, which should trigger the error.
+        // Intentionally include two consecutive switch blocks (3, 2) in the
+        // `trusted_ancestor_headers`, which should trigger the error.
         let trusted_ancestor_headers = [4, 3, 2];
 
         let query = 5;
@@ -792,7 +797,12 @@ mod tests {
         let result = sync_leap.validate(&validation_metadata);
         assert!(
             matches!(result, Err(SyncLeapValidationError::HeadersNotSufficientlySigned(inner))
-             if matches!(&inner, BlockSignatureError::InsufficientWeightForFinality{ trusted_validator_weights: _, block_signatures: _, signature_weight, total_validator_weight:_, fault_tolerance_fraction:_ } if signature_weight == &Some(Box::new(0.into()))))
+             if matches!(&inner, BlockSignatureError::InsufficientWeightForFinality{
+                trusted_validator_weights: _,
+                block_signatures: _,
+                signature_weight,
+                total_validator_weight:_,
+                fault_tolerance_fraction:_ } if signature_weight == &Some(Box::new(0.into()))))
         );
     }
 }
