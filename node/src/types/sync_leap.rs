@@ -288,11 +288,12 @@ impl FetchItem for SyncLeap {
                 .push(&signed_header.block_signatures);
         }
 
-        let mut verified: Vec<BlockHash> = vec![self.trusted_block_header.block_hash()];
+        let mut headers_with_sufficient_finality: Vec<BlockHash> =
+            vec![self.trusted_block_header.block_hash()];
 
-        while let Some(hash) = verified.pop() {
+        while let Some(hash) = headers_with_sufficient_finality.pop() {
             if let Some(header) = headers.remove(&hash) {
-                verified.push(*header.parent_hash());
+                headers_with_sufficient_finality.push(*header.parent_hash());
                 if let Some(mut validator_weights) = header.next_era_validator_weights() {
                     // If this is a switch block right before the upgrade to the current protocol
                     // version, and if this upgrade changes the validator set, use the validator
@@ -318,8 +319,7 @@ impl FetchItem for SyncLeap {
                                     err,
                                 ));
                             }
-                            sigs.verify().map_err(SyncLeapValidationError::Crypto)?;
-                            verified.push(sigs.block_hash);
+                            headers_with_sufficient_finality.push(sigs.block_hash);
                         }
                     }
                 }
@@ -335,11 +335,18 @@ impl FetchItem for SyncLeap {
             return Err(SyncLeapValidationError::IncompleteProof);
         }
 
-        // defer cryptographic verification until last to avoid unnecessary computation
         for signed_header in &self.signed_block_headers {
             signed_header
                 .validate()
                 .map_err(SyncLeapValidationError::BlockWithMetadata)?;
+        }
+
+        // defer cryptographic verification until last to avoid unnecessary computation
+        for signed_header in &self.signed_block_headers {
+            signed_header
+                .block_signatures
+                .verify()
+                .map_err(SyncLeapValidationError::Crypto)?;
         }
 
         Ok(())
