@@ -1,25 +1,35 @@
 use super::*;
-use crate::storage::{transaction_source::Writable, trie_store::operations::DeleteResult};
+use crate::storage::trie_store::operations::DeleteResult;
 
-fn checked_delete<K, V, T, S, E>(
+fn checked_delete<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
-    txn: &mut T,
+    environment: &'a R,
     store: &S,
     root: &Digest,
     key_to_delete: &K,
 ) -> Result<DeleteResult, E>
 where
-    K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
+    R: TransactionSource<'a, Handle = S::Handle>,
+    K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + std::fmt::Debug,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    S::Error: From<R::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
-    let delete_result =
-        operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete)?;
+    let delete_result = operations::delete::<K, V, R, S, E>(
+        correlation_id,
+        environment,
+        store,
+        root,
+        key_to_delete,
+    )?;
     if let DeleteResult::Deleted(new_root) = delete_result {
-        operations::check_integrity::<K, V, T, S, E>(correlation_id, txn, store, vec![new_root])?;
+        operations::check_integrity::<_, _, _, _, E>(
+            correlation_id,
+            environment,
+            store,
+            &[new_root],
+        )?;
     }
     Ok(delete_result)
 }
@@ -45,12 +55,14 @@ mod partial_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
-        // The assert below only works with partial tries
-        assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
+        {
+            let txn = environment.create_read_txn()?;
+            // The assert below only works with partial tries
+            assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
+        }
         let root_after_delete = match checked_delete::<K, V, _, _, E>(
             correlation_id,
-            &mut txn,
+            environment,
             store,
             root,
             key_to_delete,
@@ -60,6 +72,7 @@ mod partial_tries {
             DeleteResult::RootNotFound => panic!("root should be found"),
         };
         assert_eq!(root_after_delete, *expected_root_after_delete);
+        let txn = environment.create_read_txn()?;
         for HashedTrie { hash, trie } in expected_tries_after_delete {
             assert_eq!(store.get(&txn, hash)?, Some(trie.clone()));
         }
@@ -125,9 +138,14 @@ mod partial_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
-        match checked_delete::<K, V, _, _, E>(correlation_id, &mut txn, store, root, key_to_delete)?
-        {
+        // let mut txn = environment.create_read_write_txn()?;
+        match checked_delete::<K, V, _, _, E>(
+            correlation_id,
+            environment,
+            store,
+            root,
+            key_to_delete,
+        )? {
             DeleteResult::Deleted(_) => panic!("should not delete"),
             DeleteResult::DoesNotExist => Ok(()),
             DeleteResult::RootNotFound => panic!("root should be found"),
@@ -200,7 +218,7 @@ mod full_tries {
         shared::newtypes::CorrelationId,
         storage::{
             error,
-            transaction_source::TransactionSource,
+            transaction_source::{Transaction, TransactionSource},
             trie_store::{
                 operations::{
                     delete,
@@ -231,10 +249,11 @@ mod full_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs {
+            let mut txn = environment.create_read_write_txn()?;
+
             if let WriteResult::Written(new_root) = write::<K, V, _, _, E>(
                 correlation_id,
                 &mut txn,
@@ -247,12 +266,14 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
+
+            txn.commit()?;
         }
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
         for (key, _value) in pairs.iter().rev() {
             if let DeleteResult::Deleted(new_root) =
-                delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &current_root, key)?
+                delete::<K, V, _, _, E>(correlation_id, environment, store, &current_root, key)?
             {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
@@ -329,10 +350,10 @@ mod full_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
         let mut expected_root = *root;
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs_to_insert.iter() {
+            let mut txn = environment.create_read_write_txn()?;
             if let WriteResult::Written(new_root) =
                 write::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key, value)?
             {
@@ -340,9 +361,12 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
+            txn.commit()?;
         }
+
         for key in keys_to_delete.iter() {
-            match delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key)? {
+            match delete::<K, V, _, _, E>(correlation_id, environment, store, &expected_root, key)?
+            {
                 DeleteResult::Deleted(new_root) => {
                     expected_root = new_root;
                 }
@@ -360,6 +384,7 @@ mod full_tries {
 
         let mut actual_root = *root;
         for (key, value) in pairs_to_insert_less_deleted.iter() {
+            let mut txn = environment.create_read_write_txn()?;
             if let WriteResult::Written(new_root) =
                 write::<K, V, _, _, E>(correlation_id, &mut txn, store, &actual_root, key, value)?
             {
@@ -367,6 +392,7 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
+            txn.commit()?;
         }
 
         assert_eq!(expected_root, actual_root, "Expected did not match actual");

@@ -49,6 +49,7 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
+use self::upgrade::migrations::{self, MigrationResult};
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -445,7 +446,8 @@ where
         let execution_effect = tracking_copy.borrow().effect();
 
         // commit
-        let post_state_hash = self
+
+        let mut post_state_hash = self
             .state
             .commit(
                 correlation_id,
@@ -453,6 +455,87 @@ where
                 execution_effect.transforms.to_owned(),
             )
             .map_err(Into::into)?;
+
+        // // Perform global state migrations that require state.
+
+        // {
+        //     let keys = tracking_copy
+        //         .borrow_mut()
+        //         .get_keys(correlation_id, &KeyTag::EraInfo)
+        //         .map_err(|_| {
+        //             Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(
+        //                 upgrade::migrations::Error::UnableToRetriveEraInfoKeys,
+        //             ))
+        //         })?;
+
+        //     let keys_vec = Vec::from_iter(keys);
+
+        //     let last_era_info = match keys_vec.last() {
+        //         Some(last_era_info) => tracking_copy
+        //             .borrow_mut()
+        //             .get(correlation_id, last_era_info)
+        //             .map_err(|_| {
+        //                 Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(
+        //                     upgrade::migrations::Error::UnableToRetrieveLastEraInfo,
+        //                 ))
+        //             })?,
+        //         None => None,
+        //     };
+
+        //     // let last_era_info = tracking_copy.borrow_mut().get(correlation_id, keys.last)
+
+        //     match self
+        //         .state
+        //         .delete_keys(correlation_id, post_state_hash, &keys_vec)
+        //         .map_err(|_| {
+        //             Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(
+        //                 upgrade::migrations::Error::UnableToRetriveEraInfoKeys,
+        //             ))
+        //         })? {
+        //         DeleteResult::Deleted(new_post_state_hash) => {
+        //             // dbg!(new_post_state_hash);
+        //             post_state_hash = new_post_state_hash;
+        //         }
+        //         DeleteResult::DoesNotExist => {
+        //             return Err(Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(
+        //                 upgrade::migrations::Error::KeyDoesNotExists,
+        //             )))
+        //         }
+        //         DeleteResult::RootNotFound => {
+        //             return Err(Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(
+        //                 upgrade::migrations::Error::RootNotFound,
+        //             )))
+        //         }
+        //     }
+
+        //     if let Some(last_era_info) = last_era_info {
+        //         let mut tracking_copy = match self.tracking_copy(post_state_hash)? {
+        //             Some(tracking_copy) => tracking_copy,
+        //             None => return Err(Error::RootNotFound(post_state_hash)),
+        //         };
+
+        //         tracking_copy.force_write(Key::EraSummary, last_era_info);
+
+        //         let new_post_state_hash = self
+        //             .state
+        //             .commit(
+        //                 correlation_id,
+        //                 post_state_hash,
+        //                 tracking_copy.effect().transforms,
+        //             )
+        //             .map_err(Into::into)?;
+
+        //         post_state_hash = new_post_state_hash;
+        //     }
+        // }
+
+        let MigrationResult {
+            keys_to_delete: _,
+            era_summary: _,
+            post_state_hash: post_migration_state_hash,
+        } = migrations::purge_era_info(&self.state, post_state_hash)
+            .map_err(|error| Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(error)))?;
+        post_state_hash = post_migration_state_hash;
 
         // return result and effects
         Ok(UpgradeSuccess {

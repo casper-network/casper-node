@@ -16,7 +16,7 @@ use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 use crate::{
     shared::newtypes::CorrelationId,
     storage::{
-        transaction_source::{Readable, Writable},
+        transaction_source::{Readable, Transaction, TransactionSource, Writable},
         trie::{
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
             Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
@@ -323,36 +323,40 @@ where
 }
 
 #[cfg(test)]
-pub fn check_integrity<K, V, T, S, E>(
+pub fn check_integrity<'a, K, V, R, S, E>(
     _correlation_id: CorrelationId,
-    txn: &T,
+    environment: &'a R,
     store: &S,
-    trie_keys_to_visit: Vec<Digest>,
+    trie_keys_to_visit: &[Digest],
 ) -> Result<(), E>
 where
-    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
-    V: ToBytes + FromBytes + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
+    R: TransactionSource<'a, Handle = S::Handle>,
+    K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
+    V: ToBytes + FromBytes + Clone + std::fmt::Debug,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    S::Error: From<R::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
-    for state_root in &trie_keys_to_visit {
-        match store.get(txn, state_root)? {
+    let txn = environment.create_read_txn()?;
+    for state_root in trie_keys_to_visit {
+        match store.get(&txn, state_root)? {
             Some(Trie::Node { .. }) => {}
-            _ => panic!("Should have a pointer block node as state root"),
+            other => panic!(
+                "Should have a pointer block node as state root but received {:?} instead",
+                other
+            ),
         }
     }
     let mut trie_keys_to_visit: Vec<(Vec<u8>, Digest)> = trie_keys_to_visit
-        .into_iter()
-        .map(|blake2b_hash| (Vec::new(), blake2b_hash))
+        .iter()
+        .map(|blake2b_hash| (Vec::new(), *blake2b_hash))
         .collect();
     let mut visited = HashSet::new();
     while let Some((mut path, trie_key)) = trie_keys_to_visit.pop() {
         if !visited.insert(trie_key) {
             continue;
         }
-        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
+        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(&txn, &trie_key)?;
         if let Some(trie_value) = &maybe_retrieved_trie {
             let hash_of_trie_value = {
                 let node_bytes = trie_value.to_bytes()?;
@@ -512,30 +516,31 @@ pub enum DeleteResult {
     RootNotFound,
 }
 
-#[allow(unused)]
-fn delete<K, V, T, S, E>(
+/// Delete provided key from a global state so it is not reachable from a resulting state root hash.
+pub fn delete<'a, K, V, R, S, E>(
     correlation_id: CorrelationId,
-    txn: &mut T,
+    environment: &'a R,
     store: &S,
     root: &Digest,
     key_to_delete: &K,
 ) -> Result<DeleteResult, E>
 where
+    R: TransactionSource<'a, Handle = S::Handle>,
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    S::Error: From<R::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
-    let root_trie = match store.get(txn, root)? {
+    let mut txn = environment.create_read_write_txn()?;
+    let root_trie = match store.get(&txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
     let TrieScan { tip, mut parents } =
-        scan::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
+        scan::<_, _, _, _, E>(correlation_id, &txn, store, &key_bytes, &root_trie)?;
 
     // Check that tip is a leaf
     match tip {
@@ -626,7 +631,7 @@ where
                         // Elsewhere we maintain the invariant that all trie keys have corresponding
                         // trie values.
                         let sibling_trie = store
-                            .get(txn, &sibling_trie_key)?
+                            .get(&txn, &sibling_trie_key)?
                             .expect("should have sibling");
                         match sibling_trie {
                             Trie::Leaf { .. } => {
@@ -713,13 +718,16 @@ where
         }
     }
     for (hash, element) in new_elements.iter() {
-        store.put(txn, hash, element)?;
+        store.put(&mut txn, hash, element)?;
     }
     // The hash of the final trie in the new elements is the new root
     let new_root = new_elements
         .pop()
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
+
+    txn.commit()?;
+
     Ok(DeleteResult::Deleted(new_root))
 }
 
