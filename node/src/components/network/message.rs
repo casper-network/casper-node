@@ -576,30 +576,19 @@ mod tests {
         components::network::message_pack_format::MessagePackFormat,
         protocol,
         types::{Chainspec, ChainspecRawBytes},
-        utils::specimen::LargestSpecimen,
         utils::Loadable,
     };
 
     use super::*;
 
     #[test]
-    fn serialized_message_does_not_exceed_maximum_size() {
+    fn bundled_production_chainspec_is_valid() {
         let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
             Loadable::from_resources("production");
 
-        let estimator = NetworkMessageEstimator::new(&chainspec);
-
-        // Note: In theory, this check could be moved into chainspec validation.
-        let specimen = Message::<protocol::Message>::largest_specimen(&estimator);
-
-        let serialized = serialize_net_message(&specimen);
-
-        // Print the largest specimen.
-        println!("{:?}", specimen);
-        println!("size: {}", serialized.len());
-
-        // Ensure it is not larger than the allowed limit.
-        assert!(serialized.len() as u32 <= chainspec.network_config.maximum_net_message_size);
+        // This check includes a sanity check of the message size, which is why it is included in
+        // this module.
+        assert!(chainspec.is_valid());
     }
 
     /// Version 1.0.0 network level message.
