@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
     sync::Arc,
 };
 
@@ -131,19 +132,26 @@ impl BlockAcceptor {
         peer: Option<NodeId>,
         validator_slots: u32,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
-        use std::collections::btree_map::Entry;
+        /// Returns an error if the peer has sent too many finality signatures.
+        fn check_signatures_from_peer_bound(
+            limit: u32,
+            peer: NodeId,
+            signatures: &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
+        ) -> Result<(), AcceptorError> {
+            let signatures_for_peer = signatures
+                .values()
+                .filter(|(_fin_sig, nodes)| nodes.contains(&peer))
+                .count();
+            let in_bound = u32::try_from(signatures_for_peer)
+                .map(|signatures_for_peer| signatures_for_peer < limit)
+                .unwrap_or(false);
 
-        let verify_signatures_not_full = |len: usize, finality_signature: &FinalitySignature| {
-            if len == validator_slots as usize {
-                Err(AcceptorError::TooManySignatures {
-                    peer,
-                    finality_signature: finality_signature.clone(),
-                    validator_slots,
-                })
-            } else {
+            if in_bound {
                 Ok(())
+            } else {
+                Err(AcceptorError::TooManySignatures { peer, limit })
             }
-        };
+        }
 
         if self.block_hash != finality_signature.block_hash {
             return Err(AcceptorError::BlockHashMismatch {
@@ -174,15 +182,12 @@ impl BlockAcceptor {
         if false == had_sufficient_finality {
             if let Some(node_id) = peer {
                 self.register_peer(node_id);
+                check_signatures_from_peer_bound(validator_slots, node_id, &self.signatures)?;
             }
-            let signatures_len = self.signatures.len();
-            match self.signatures.entry(finality_signature.public_key.clone()) {
-                Entry::Occupied(mut entry) => entry.get_mut().1.extend(peer),
-                Entry::Vacant(entry) => {
-                    verify_signatures_not_full(signatures_len, &finality_signature)?;
-                    entry.insert((finality_signature, peer.into_iter().collect()));
-                }
-            }
+            self.signatures
+                .entry(finality_signature.public_key.clone())
+                .and_modify(|(_, senders)| senders.extend(peer))
+                .or_insert_with(|| (finality_signature, peer.into_iter().collect()));
             return Ok(None);
         }
 
@@ -211,17 +216,14 @@ impl BlockAcceptor {
 
         if let Some(node_id) = peer {
             self.register_peer(node_id);
+            check_signatures_from_peer_bound(validator_slots, node_id, &self.signatures)?;
         }
         let is_new = !self.signatures.contains_key(&finality_signature.public_key);
 
-        let signatures_len = self.signatures.len();
-        match self.signatures.entry(finality_signature.public_key.clone()) {
-            Entry::Occupied(mut entry) => entry.get_mut().1.extend(peer),
-            Entry::Vacant(entry) => {
-                verify_signatures_not_full(signatures_len, &finality_signature)?;
-                entry.insert((finality_signature.clone(), peer.into_iter().collect()));
-            }
-        }
+        self.signatures
+            .entry(finality_signature.public_key.clone())
+            .and_modify(|(_, senders)| senders.extend(peer))
+            .or_insert_with(|| (finality_signature.clone(), peer.into_iter().collect()));
 
         if had_sufficient_finality && is_new {
             // we received this finality signature after putting the block & earlier signatures

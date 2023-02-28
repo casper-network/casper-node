@@ -10,7 +10,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{BlockHash, BlockValidationError, FinalitySignature, MetaBlockMergeError, NodeId},
+    types::{BlockHash, BlockValidationError, MetaBlockMergeError, NodeId},
 };
 
 use super::event::Event;
@@ -73,11 +73,7 @@ pub(crate) enum Error {
     #[error(transparent)]
     MetaBlockMerge(#[from] MetaBlockMergeError),
     #[error("tried to insert a signature past the bounds")]
-    TooManySignatures {
-        peer: Option<NodeId>,
-        finality_signature: FinalitySignature,
-        validator_slots: u32,
-    },
+    TooManySignatures { peer: NodeId, limit: u32 },
 }
 
 impl Error {
@@ -134,22 +130,12 @@ impl Error {
                 error!(%error, "failed to merge meta blocks, this is a bug");
                 Effects::new()
             }
-            Error::TooManySignatures {
-                peer,
-                finality_signature,
-                validator_slots,
-            } => match peer {
-                Some(peer) => effect_builder
-                    .announce_block_peer_with_justification(
-                        peer,
-                        BlocklistJustification::SentTooManyFinalitySignatures {
-                            sent: finality_signature,
-                            max_allowed: validator_slots,
-                        },
-                    )
-                    .ignore(),
-                None => Default::default(),
-            },
+            Error::TooManySignatures { peer, limit } => effect_builder
+                .announce_block_peer_with_justification(
+                    peer,
+                    BlocklistJustification::SentTooManyFinalitySignatures { max_allowed: limit },
+                )
+                .ignore(),
         }
     }
 }

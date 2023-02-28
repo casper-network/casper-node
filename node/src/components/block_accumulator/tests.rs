@@ -785,8 +785,38 @@ fn acceptor_should_correctly_bound_the_signatures() {
         FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
     assert!(matches!(
         acceptor.register_finality_signature(fin_sig, Some(first_peer), validator_slots),
-        Err(Error::TooManySignatures { peer: Some(_), .. }),
+        Err(Error::TooManySignatures { .. }),
     ));
+}
+
+#[test]
+fn acceptor_signatures_bound_should_not_be_triggered_if_peers_are_different() {
+    let mut rng = TestRng::new();
+    let validator_slots = 3;
+
+    // Create a block and an acceptor for it.
+    let block = Arc::new(Block::random(&mut rng));
+    let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
+    let first_peer = NodeId::random(&mut rng);
+    let second_peer = NodeId::random(&mut rng);
+
+    // Fill the signatures map:
+    for fin_sig in (0..validator_slots)
+        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into()))
+    {
+        assert!(acceptor
+            .register_finality_signature(fin_sig, Some(first_peer), validator_slots)
+            .unwrap()
+            .is_none());
+    }
+
+    // This should pass, because it is another peer:
+    let fin_sig =
+        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+    assert!(acceptor
+        .register_finality_signature(fin_sig, Some(second_peer), validator_slots)
+        .unwrap()
+        .is_none());
 }
 
 #[test]
