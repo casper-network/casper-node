@@ -523,4 +523,12 @@ mod tests {
         // With equal hashes
         assert_eq!(chainspec.hash(), chainspec_unordered.hash());
     }
+
+    #[test]
+    fn bundled_production_chainspec_is_valid() {
+        let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
+            Loadable::from_resources("production");
+
+        assert!(chainspec.is_valid());
+    }
 }

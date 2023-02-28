@@ -572,24 +572,9 @@ mod tests {
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
     use tokio_serde::{Deserializer, Serializer};
 
-    use crate::{
-        components::network::message_pack_format::MessagePackFormat,
-        protocol,
-        types::{Chainspec, ChainspecRawBytes},
-        utils::Loadable,
-    };
+    use crate::{components::network::message_pack_format::MessagePackFormat, protocol};
 
     use super::*;
-
-    #[test]
-    fn bundled_production_chainspec_is_valid() {
-        let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
-            Loadable::from_resources("production");
-
-        // This check includes a sanity check of the message size, which is why it is included in
-        // this module.
-        assert!(chainspec.is_valid());
-    }
 
     /// Version 1.0.0 network level message.
     ///
