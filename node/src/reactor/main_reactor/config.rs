@@ -1,5 +1,5 @@
 use datasize::DataSize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,

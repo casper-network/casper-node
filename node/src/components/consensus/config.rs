@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use datasize::DataSize;
-use serde::Deserialize;
+use serde::{ Serialize, Deserialize };
 
 use casper_types::{PublicKey, SecretKey};
 
@@ -18,7 +18,7 @@ use crate::{
 const DEFAULT_MAX_EXECUTION_DELAY: u64 = 3;
 
 /// Consensus configuration.
-#[derive(DataSize, Debug, Deserialize, Clone)]
+#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

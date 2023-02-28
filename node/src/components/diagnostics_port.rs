@@ -40,7 +40,7 @@ use util::ShowUnixAddr;
 const COMPONENT_NAME: &str = "diagnostics_port";
 
 /// Diagnostics port configuration.
-#[derive(Clone, DataSize, Debug, Deserialize)]
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub struct Config {
     /// Whether or not the diagnostics port is enabled.
     pub enabled: bool,
