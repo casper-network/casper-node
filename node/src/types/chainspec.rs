@@ -80,7 +80,7 @@ impl Chainspec {
     pub(crate) fn is_valid(&self) -> bool {
         // Ensure the size of the largest message generated under these chainspec settings does not
         // exceed the configured message size limit.
-        let estimator = NetworkMessageEstimator::new(&self);
+        let estimator = NetworkMessageEstimator::new(self);
         let serialized = generate_largest_message(&estimator);
 
         if serialized.len() > self.network_config.maximum_net_message_size as usize {

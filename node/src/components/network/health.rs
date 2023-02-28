@@ -270,7 +270,7 @@ mod tests {
     use assert_matches::assert_matches;
     use rand::Rng;
 
-    use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig, Nonce};
+    use super::{ConnectionHealth, HealthCheckOutcome, HealthConfig};
     use crate::{
         components::network::health::TaggedTimestamp, testing::test_clock::TestClock,
         types::NodeRng,
