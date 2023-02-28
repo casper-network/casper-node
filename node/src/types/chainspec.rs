@@ -77,7 +77,9 @@ pub struct Chainspec {
 
 impl Chainspec {
     /// Returns `false` and logs errors if the values set in the config don't make sense.
+    #[tracing::instrument(ret, level = "info", skip(self), fields(hash=%self.hash()))]
     pub(crate) fn is_valid(&self) -> bool {
+        info!("begin chainspec validation");
         // Ensure the size of the largest message generated under these chainspec settings does not
         // exceed the configured message size limit.
         let estimator = NetworkMessageEstimator::new(self);
@@ -294,7 +296,7 @@ mod tests {
     use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, TimeDiff, Timestamp, U512};
 
     use super::*;
-    use crate::utils::RESOURCES_PATH;
+    use crate::{testing::init_logging, utils::RESOURCES_PATH};
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
@@ -526,6 +528,8 @@ mod tests {
 
     #[test]
     fn bundled_production_chainspec_is_valid() {
+        init_logging();
+
         let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
             Loadable::from_resources("production");
 
