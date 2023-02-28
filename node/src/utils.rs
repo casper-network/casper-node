@@ -39,7 +39,7 @@ use tracing::{error, warn};
 use crate::types::NodeId;
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
 pub(crate) use display_error::display_error;
-pub(crate) use external::External;
+pub use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
