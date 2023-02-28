@@ -19,7 +19,7 @@ use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
 use serde::Serialize;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use casper_execution_engine::{
     core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
