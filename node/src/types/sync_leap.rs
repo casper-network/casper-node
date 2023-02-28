@@ -805,4 +805,51 @@ mod tests {
                 fault_tolerance_fraction:_ } if signature_weight == &Some(Box::new(0.into()))))
         );
     }
+
+    #[test]
+    fn should_detect_orphaned_headers() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+        let validation_metadata = test_sync_leap_validation_metadata();
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
+        let mut sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        // Add single orphaned block. Signatures are cloned from a legit block to avoid bailing on
+        // the signature validation check.
+        let orphaned_block = Block::random(&mut rng);
+        let orphaned_block_with_metadata = BlockHeaderWithMetadata {
+            block_header: orphaned_block.header().clone(),
+            block_signatures: sync_leap
+                .signed_block_headers
+                .iter()
+                .next()
+                .unwrap()
+                .block_signatures
+                .clone(),
+        };
+        sync_leap
+            .signed_block_headers
+            .push(orphaned_block_with_metadata);
+
+        let result = sync_leap.validate(&validation_metadata);
+        assert!(matches!(
+            result,
+            Err(SyncLeapValidationError::IncompleteProof)
+        ));
+    }
 }
