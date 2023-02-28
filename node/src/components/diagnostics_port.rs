@@ -41,13 +41,13 @@ const COMPONENT_NAME: &str = "diagnostics_port";
 
 /// Diagnostics port configuration.
 #[derive(Clone, DataSize, Debug, Deserialize)]
-pub(crate) struct Config {
+pub struct Config {
     /// Whether or not the diagnostics port is enabled.
-    enabled: bool,
+    pub enabled: bool,
     /// Path to listen on.
-    socket_path: PathBuf,
+    pub socket_path: PathBuf,
     /// `umask` to apply before creating the socket.
-    socket_umask: u16,
+    pub socket_umask: u16,
 }
 
 impl Default for Config {
