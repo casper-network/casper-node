@@ -315,7 +315,7 @@ impl BlockSynchronizer {
             }
         }
 
-        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        let (block_header, maybe_sigs) = sync_leap.highest_block_header_and_signatures();
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))
                 if builder.block_hash() == block_header.block_hash() =>

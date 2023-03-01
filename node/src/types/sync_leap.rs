@@ -154,7 +154,9 @@ impl SyncLeap {
             .unwrap_or_else(|| self.trusted_block_header.height())
     }
 
-    pub(crate) fn highest_block_header(&self) -> (&BlockHeader, Option<&BlockSignatures>) {
+    pub(crate) fn highest_block_header_and_signatures(
+        &self,
+    ) -> (&BlockHeader, Option<&BlockSignatures>) {
         let header = self
             .headers()
             .max_by_key(|header| header.height())
@@ -170,7 +172,7 @@ impl SyncLeap {
     }
 
     pub(crate) fn highest_block_hash(&self) -> BlockHash {
-        self.highest_block_header().0.block_hash()
+        self.highest_block_header_and_signatures().0.block_hash()
     }
 
     pub(crate) fn headers(&self) -> impl Iterator<Item = &BlockHeader> {
@@ -1189,5 +1191,178 @@ mod tests {
         .map(|block| block.hash().clone())
         .collect();
         assert_eq!(expected_headers, actual_headers);
+    }
+
+    #[test]
+    fn should_return_highest_block_header_from_trusted_block() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
+        // it contains to generate SyncLeap structures as required for the test, because we know the
+        // heights of the blocks in the test chain as well as their sigs.
+        let highest_block = sync_leap
+            .signed_block_headers
+            .last()
+            .unwrap()
+            .block_header
+            .clone();
+        let lowest_blocks: Vec<_> = sync_leap
+            .trusted_ancestor_headers
+            .iter()
+            .cloned()
+            .take(2)
+            .collect();
+        let middle_blocks: Vec<_> = sync_leap
+            .signed_block_headers
+            .iter()
+            .cloned()
+            .take(2)
+            .collect();
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: highest_block.clone(),
+            trusted_ancestor_headers: lowest_blocks,
+            signed_block_headers: middle_blocks,
+        };
+        assert_eq!(
+            sync_leap
+                .highest_block_header_and_signatures()
+                .0
+                .block_hash(),
+            highest_block.block_hash()
+        );
+    }
+
+    #[test]
+    fn should_return_highest_block_header_from_trusted_ancestors() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
+        // it contains to generate SyncLeap structures as required for the test, because we know the
+        // heights of the blocks in the test chain as well as their sigs.
+        let highest_block = sync_leap
+            .signed_block_headers
+            .last()
+            .unwrap()
+            .block_header
+            .clone();
+        let lowest_blocks: Vec<_> = sync_leap
+            .trusted_ancestor_headers
+            .iter()
+            .cloned()
+            .take(2)
+            .collect();
+        let middle_blocks: Vec<_> = sync_leap
+            .signed_block_headers
+            .iter()
+            .cloned()
+            .take(2)
+            .collect();
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: lowest_blocks.first().unwrap().clone(),
+            trusted_ancestor_headers: vec![highest_block.clone()],
+            signed_block_headers: middle_blocks,
+        };
+        assert_eq!(
+            sync_leap
+                .highest_block_header_and_signatures()
+                .0
+                .block_hash(),
+            highest_block.block_hash()
+        );
+    }
+
+    #[test]
+    fn should_return_highest_block_header_from_signed_block_headers() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
+        let sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
+        // it contains to generate SyncLeap structures as required for the test, because we know the
+        // heights of the blocks in the test chain as well as their sigs.
+        let highest_block = sync_leap.signed_block_headers.last().unwrap().clone();
+        let lowest_blocks: Vec<_> = sync_leap
+            .trusted_ancestor_headers
+            .iter()
+            .cloned()
+            .take(2)
+            .collect();
+        let middle_blocks: Vec<_> = sync_leap
+            .signed_block_headers
+            .iter()
+            .cloned()
+            .take(2)
+            .map(|block_header_with_metadata| block_header_with_metadata.block_header)
+            .collect();
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: lowest_blocks.first().unwrap().clone(),
+            trusted_ancestor_headers: middle_blocks,
+            signed_block_headers: vec![highest_block.clone()],
+        };
+        assert_eq!(
+            sync_leap
+                .highest_block_header_and_signatures()
+                .0
+                .block_hash(),
+            highest_block.block_header.block_hash()
+        );
     }
 }
