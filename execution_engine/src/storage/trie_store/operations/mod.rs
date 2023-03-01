@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+use itertools::Either;
 use tracing::{error, warn};
 
 use casper_hashing::Digest;
@@ -521,6 +522,127 @@ where
     }
 }
 
+struct TrieScanRaw<K, V> {
+    tip: Either<Bytes, Trie<K, V>>,
+    parents: Parents<K, V>,
+    steps: usize,
+}
+
+impl<K, V> TrieScanRaw<K, V> {
+    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>, steps: usize) -> Self {
+        TrieScanRaw {
+            tip,
+            parents,
+            steps,
+        }
+    }
+}
+
+/// Just like scan, however we don't parse the tip.
+///
+fn scan_raw<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &T,
+    store: &S,
+    key_bytes: &[u8],
+    root: &Trie<K, V>,
+) -> Result<TrieScanRaw<K, V>, E>
+where
+    K: ToBytes + FromBytes + Clone,
+    V: ToBytes + FromBytes + Clone,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let path = key_bytes;
+
+    let mut current_trie = root.to_owned();
+    let mut current = Bytes::from(root.to_bytes()?);
+    let mut depth: usize = 0;
+    let mut acc: Parents<K, V> = Vec::new();
+
+    let mut steps = 0usize;
+    loop {
+        steps += 1;
+        current_trie = if current.first() == Some(&0) {
+            return Ok(TrieScanRaw::new(Either::Left(current), acc, steps));
+        } else {
+            let (deserialized, _) = Trie::<K, V>::from_bytes(&current)?;
+            deserialized
+        };
+        match current_trie {
+            leaf @ Trie::Leaf { .. } => {
+                // since we are checking if this is a leaf and skipping, we do not expect to ever hit this.
+                unreachable!()
+            }
+            Trie::Node { pointer_block } => {
+                let index = {
+                    assert!(depth < path.len(), "depth must be < {}", path.len());
+                    path[depth]
+                };
+                let maybe_pointer: Option<Pointer> = {
+                    let index: usize = index.into();
+                    assert!(index < RADIX, "index must be < {}", RADIX);
+                    pointer_block[index]
+                };
+                let pointer = match maybe_pointer {
+                    Some(pointer) => pointer,
+                    None => {
+                        return Ok(TrieScanRaw::new(
+                            Either::Right(Trie::Node { pointer_block }),
+                            acc,
+                            steps,
+                        ));
+                    }
+                };
+                match store.get_raw(txn, pointer.hash())? {
+                    Some(next) => {
+                        current = next;
+                        depth += 1;
+                        acc.push((index, Trie::Node { pointer_block }))
+                    }
+                    None => {
+                        panic!(
+                            "No trie value at key: {:?} (reading from path: {:?})",
+                            pointer.hash(),
+                            path
+                        );
+                    }
+                }
+            }
+            Trie::Extension { affix, pointer } => {
+                let sub_path = &path[depth..depth + affix.len()];
+                if sub_path != affix.as_slice() {
+                    return Ok(TrieScanRaw::new(
+                        Either::Right(Trie::Extension { affix, pointer }),
+                        acc,
+                        steps,
+                    ));
+                }
+                match store.get_raw(txn, pointer.hash())? {
+                    Some(next) => {
+                        let index = {
+                            assert!(depth < path.len(), "depth must be < {}", path.len());
+                            path[depth]
+                        };
+                        current = next;
+                        depth += affix.len();
+                        acc.push((index, Trie::Extension { affix, pointer }))
+                    }
+                    None => {
+                        panic!(
+                            "No trie value at key: {:?} (reading from path: {:?})",
+                            pointer.hash(),
+                            path
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DeleteResult {
     Deleted(Digest),
@@ -775,15 +897,15 @@ where
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
-    let TrieScan {
+    let TrieScanRaw {
         tip,
         mut parents,
         steps,
-    } = scan::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
+    } = scan_raw::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
 
     // Check that tip is a leaf
     match tip {
-        Trie::Leaf { key, .. } if key == *key_to_delete => {}
+        Either::Left(_) => {}
         _ => return Ok(DeleteResult::DoesNotExist),
     }
 
