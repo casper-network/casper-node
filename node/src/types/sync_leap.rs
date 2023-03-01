@@ -1237,6 +1237,9 @@ mod tests {
             .take(2)
             .collect();
 
+        let highest_block_height = highest_block.height();
+        let highest_block_hash = highest_block.block_hash();
+
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: highest_block.clone(),
@@ -1250,6 +1253,8 @@ mod tests {
                 .block_hash(),
             highest_block.block_hash()
         );
+        assert_eq!(sync_leap.highest_block_hash(), highest_block_hash);
+        assert_eq!(sync_leap.highest_block_height(), highest_block_height);
     }
 
     #[test]
@@ -1296,6 +1301,9 @@ mod tests {
             .take(2)
             .collect();
 
+        let highest_block_height = highest_block.height();
+        let highest_block_hash = highest_block.block_hash();
+
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: lowest_blocks.first().unwrap().clone(),
@@ -1307,8 +1315,10 @@ mod tests {
                 .highest_block_header_and_signatures()
                 .0
                 .block_hash(),
-            highest_block.block_hash()
+            highest_block_hash
         );
+        assert_eq!(sync_leap.highest_block_hash(), highest_block_hash);
+        assert_eq!(sync_leap.highest_block_height(), highest_block_height);
     }
 
     #[test]
@@ -1351,6 +1361,9 @@ mod tests {
             .map(|block_header_with_metadata| block_header_with_metadata.block_header)
             .collect();
 
+        let highest_block_height = highest_block.block_header.height();
+        let highest_block_hash = highest_block.block_header.block_hash();
+
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: lowest_blocks.first().unwrap().clone(),
@@ -1364,6 +1377,8 @@ mod tests {
                 .block_hash(),
             highest_block.block_header.block_hash()
         );
+        assert_eq!(sync_leap.highest_block_hash(), highest_block_hash);
+        assert_eq!(sync_leap.highest_block_height(), highest_block_height);
     }
 
     #[test]
