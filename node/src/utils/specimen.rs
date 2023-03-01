@@ -399,8 +399,14 @@ where
                 Secp256k1,
             }
             largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, |variant| {
-                let mut seed_bytes = [0u8; 32];
-                seed_bytes[0..8].copy_from_slice(&(seed as u64).to_be_bytes());
+                // We take advantange of two things here:
+                //
+                // 1. The required seed bytes for Ed25519 and Secp256k1 are both the same length of
+                //    32 bytes.
+                // 2. While Secp256k1 does not allow the most trivial seed bytes of 0x00..0001, a
+                //    a hash function output seems to satisfay it, and our current hashing scheme
+                //    also output 32 bytes.
+                let seed_bytes = Digest::hash(seed.to_be_bytes()).value();
 
                 match variant {
                     PublicKeyDiscriminants::System => PublicKey::system(),
