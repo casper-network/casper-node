@@ -298,6 +298,10 @@ impl FetchItem for SyncLeap {
                     // If this is a switch block right before the upgrade to the current protocol
                     // version, and if this upgrade changes the validator set, use the validator
                     // weights from the chainspec.
+
+                    dbg!(&header.next_block_era_id());
+                    dbg!(&validation_metadata.activation_point.era_id());
+
                     if header.next_block_era_id() == validation_metadata.activation_point.era_id() {
                         if let Some(updated_weights) = validation_metadata
                             .global_state_update
@@ -307,6 +311,8 @@ impl FetchItem for SyncLeap {
                             validator_weights = updated_weights
                         }
                     }
+
+                    dbg!(&validator_weights);
 
                     if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
                         for sigs in era_sigs {
@@ -355,7 +361,13 @@ impl FetchItem for SyncLeap {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
+    // The `FetchItem::<SyncLeap>::validate()` function can potentially return the
+    // `SyncLeapValidationError::BlockWithMetadata` error as a result of calling
+    // `BlockHeaderWithMetadata::validate()`, but in practice this will always be detected earlier
+    // as an `SyncLeapValidationError::IncompleteProof` error. Hence, there is no explicit test for
+    // `SyncLeapValidationError::BlockWithMetadata`.
+
+    use std::{collections::BTreeMap, iter};
 
     use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Signature};
     use itertools::Itertools;
@@ -365,8 +377,9 @@ mod tests {
         components::fetcher::FetchItem,
         tests::{TestBlockIterator, TestChainSpec},
         types::{
-            sync_leap::SyncLeapValidationError, ActivationPoint, Block, BlockHeaderWithMetadata,
-            BlockSignatures, FinalitySignature, SyncLeapValidationMetaData,
+            chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError, ActivationPoint,
+            Block, BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
+            SyncLeapValidationMetaData,
         },
         utils::BlockSignatureError,
     };
@@ -950,5 +963,83 @@ mod tests {
 
         let result = sync_leap.validate(&validation_metadata);
         assert!(matches!(result, Err(SyncLeapValidationError::Crypto(_))));
+    }
+
+    #[test]
+    fn should_use_correct_validator_weights_on_upgrade() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+
+        let mut rng = TestRng::new();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+
+        const INDEX_OF_THE_LAST_SWITCH_BLOCK: usize = 1;
+        let signed_block_headers = [6, 9, 11];
+
+        let add_proofs = true;
+        let mut sync_leap = make_test_sync_leap(
+            &mut rng,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        // Setup upgrade after the last switch block.
+        let upgrade_block = sync_leap
+            .signed_block_headers
+            .get(INDEX_OF_THE_LAST_SWITCH_BLOCK)
+            .unwrap();
+        let upgrade_era = upgrade_block.block_header.era_id().successor();
+        let activation_point = ActivationPoint::EraId(upgrade_era);
+
+        // Set up validator change.
+        let new_validators: BTreeMap<_, _> =
+            iter::repeat_with(|| crypto::generate_ed25519_keypair())
+                .take(2)
+                .map(|(_, public_key)| (public_key.clone(), 10.into())) // TODO[RC]: No magic numbers
+                .collect();
+        let global_state_update = GlobalStateUpdate {
+            validators: Some(new_validators.clone()),
+            entries: Default::default(),
+        };
+
+        let unbonding_delay = 7;
+        let auction_delay = 1;
+        let finality_threshold_fraction = Ratio::new(1, 3);
+        let validation_metadata = SyncLeapValidationMetaData::new(
+            unbonding_delay - auction_delay, // As per `CoreConfig::recent_era_count()`.
+            activation_point,
+            Some(global_state_update),
+            finality_threshold_fraction,
+        );
+
+        let result = sync_leap.validate(&validation_metadata);
+
+        // By asserting on the `HeadersNotSufficientlySigned` error (with bogus validators set to
+        // the original validators from the chain) we can prove that the validators smuggled in the
+        // validation metadata were actually used in the verification process.
+        let expected_bogus_validators: Vec<_> = sync_leap
+            .signed_block_headers
+            .last()
+            .unwrap()
+            .block_signatures
+            .proofs
+            .iter()
+            .map(|(public_key, _)| public_key.clone())
+            .collect();
+        assert!(
+            matches!(result, Err(SyncLeapValidationError::HeadersNotSufficientlySigned(inner))
+             if matches!(&inner, BlockSignatureError::BogusValidators{
+                trusted_validator_weights: _,
+                block_signatures: _,
+                bogus_validators
+            } if bogus_validators == &expected_bogus_validators))
+        );
     }
 }
