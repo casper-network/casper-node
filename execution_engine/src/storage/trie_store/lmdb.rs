@@ -203,6 +203,7 @@ impl ScratchTrieStore {
         let store = self.store;
         let cache = &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
 
+        dbg!(cache.len());
         let (is_root_dirty, root_trie) = cache
             .get(&state_root)
             .ok_or(CommitError::TrieNotFoundInCache(state_root))?;
@@ -214,6 +215,7 @@ impl ScratchTrieStore {
 
         let mut txn = env.create_read_write_txn()?;
         let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_children())];
+        let mut put_count = 0usize;
 
         while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
             if let Some(descendant) = descendants_iterator.next() {
@@ -226,10 +228,13 @@ impl ScratchTrieStore {
             } else {
                 // We can write this node since it has no children, or they were already written.
                 store.put(&mut txn, &digest, current_trie)?;
+                put_count += 1;
             }
         }
 
         txn.commit()?;
+
+        dbg!(put_count);
         Ok(())
     }
 }

@@ -26,7 +26,11 @@ where
     let root = store
         .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
-    let TrieScan { mut tip, parents } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
+    let TrieScan {
+        mut tip,
+        parents,
+        steps,
+    } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
         correlation_id,
         &txn,
         store,

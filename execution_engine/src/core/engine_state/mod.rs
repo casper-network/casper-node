@@ -529,13 +529,13 @@ where
         //     }
         // }
 
-        let MigrationResult {
-            keys_to_delete: _,
-            era_summary: _,
-            post_state_hash: post_migration_state_hash,
-        } = migrations::purge_era_info(&self.state, post_state_hash)
-            .map_err(|error| Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(error)))?;
-        post_state_hash = post_migration_state_hash;
+        // let MigrationResult {
+        //     keys_to_delete: _,
+        //     era_summary: _,
+        //     post_state_hash: post_migration_state_hash,
+        // } = migrations::purge_era_info(&self.state, post_state_hash)
+        //     .map_err(|error| Error::ProtocolUpgrade(ProtocolUpgradeError::Migration(error)))?;
+        // post_state_hash = post_migration_state_hash;
 
         // return result and effects
         Ok(UpgradeSuccess {

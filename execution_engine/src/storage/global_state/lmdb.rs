@@ -1,7 +1,8 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc, time::Instant};
 
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
+use itertools::Itertools;
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -17,8 +18,8 @@ use crate::{
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                delete, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof,
-                DeleteResult, ReadResult,
+                delete, delete_without_scratch, keys_with_prefix, missing_trie_keys, put_trie,
+                read, read_with_proof, DeleteResult, ReadResult,
             },
         },
     },
@@ -192,7 +193,10 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         let mut ret = Vec::new();
         for result in keys_iter {
             match result {
-                Ok(key) => ret.push(key),
+                Ok(key) => {
+                    println!("Found {}", key);
+                    ret.push(key)
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -293,24 +297,58 @@ impl StateProvider for LmdbGlobalState {
         mut state_root_hash: Digest,
         keys: &[Key],
     ) -> Result<DeleteResult, Self::Error> {
-        let scratch = self.get_scratch_store();
-
-        for key in keys {
-            match delete::<Key, StoredValue, _, _, Self::Error>(
+        let mut txn = self.environment.create_read_write_txn()?;
+        for (i, key) in keys.iter().enumerate() {
+            let start = Instant::now();
+            match delete_without_scratch::<
+                Key,
+                StoredValue,
+                lmdb::RwTransaction,
+                LmdbTrieStore,
+                Self::Error,
+            >(
                 correlation_id,
-                &scratch,
-                &scratch,
+                &mut txn,
+                &self.trie_store,
+                // &scratch,
+                // &scratch,
                 &state_root_hash,
                 key,
             )? {
                 DeleteResult::Deleted(root) => {
+                    println!("{}/{} time {:?}", i + 1, keys.len(), start.elapsed());
+
                     state_root_hash = root;
                 }
                 other => return Ok(other),
             }
         }
 
-        scratch.write_root_to_db(state_root_hash)?;
+        txn.commit()?;
+        // for key_chunks in &keys.iter().enumerate().chunks(5) {
+        //     // let keys_to_delete: Vec<Key> = key_chunks.into_iter().collect();
+
+        //     let scratch = self.get_scratch_store();
+
+        //     for (i, key) in key_chunks {
+        //         println!("{}/{}", i + 1, total);
+
+        //         match delete::<Key, StoredValue, _, _, Self::Error>(
+        //             correlation_id,
+        //             &scratch,
+        //             &scratch,
+        //             &state_root_hash,
+        //             key,
+        //         )? {
+        //             DeleteResult::Deleted(root) => {
+        //                 state_root_hash = root;
+        //             }
+        //             other => return Ok(other),
+        //         }
+        //     }
+
+        //     scratch.write_root_to_db(state_root_hash)?;
+        // }
         Ok(DeleteResult::Deleted(state_root_hash))
     }
 }
