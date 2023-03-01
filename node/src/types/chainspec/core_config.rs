@@ -40,6 +40,9 @@ pub struct CoreConfig {
     #[data_size(skip)]
     pub finality_threshold_fraction: Ratio<u64>,
 
+    /// Which finality is required for legacy blocks.
+    pub legacy_required_finality: LegacyRequiredFinality,
+
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
@@ -137,6 +140,7 @@ impl CoreConfig {
         let minimum_block_time = TimeDiff::from_seconds(rng.gen_range(1..60));
         let validator_slots = rng.gen_range(1..10_000);
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
+        let legacy_required_finality = rng.gen();
         let auction_delay = rng.gen_range(1..5);
         let locked_funds_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
         let vesting_schedule_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
@@ -158,6 +162,7 @@ impl CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            legacy_required_finality,
             auction_delay,
             locked_funds_period,
             vesting_schedule_period,
@@ -181,6 +186,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.minimum_block_time.to_bytes()?);
         buffer.extend(self.validator_slots.to_bytes()?);
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
+        buffer.extend(self.legacy_required_finality.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
         buffer.extend(self.vesting_schedule_period.to_bytes()?);
@@ -222,6 +228,7 @@ impl FromBytes for CoreConfig {
         let (minimum_block_time, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_slots, remainder) = u32::from_bytes(remainder)?;
         let (finality_threshold_fraction, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (legacy_required_finality, remainder) = LegacyRequiredFinality::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (vesting_schedule_period, remainder) = TimeDiff::from_bytes(remainder)?;
@@ -239,6 +246,7 @@ impl FromBytes for CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            legacy_required_finality,
             auction_delay,
             locked_funds_period,
             vesting_schedule_period,
@@ -323,6 +331,81 @@ impl Distribution<ConsensusProtocolName> for Standard {
             ConsensusProtocolName::Highway
         } else {
             ConsensusProtocolName::Zug
+        }
+    }
+}
+
+#[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
+pub(crate) enum LegacyRequiredFinality {
+    Strict,
+    Weak,
+    Any,
+}
+
+impl Serialize for LegacyRequiredFinality {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            LegacyRequiredFinality::Strict => "Strict",
+            LegacyRequiredFinality::Weak => "Weak",
+            LegacyRequiredFinality::Any => "Any",
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LegacyRequiredFinality {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match String::deserialize(deserializer)?.to_lowercase().as_str() {
+            "strict" => Ok(LegacyRequiredFinality::Strict),
+            "weak" => Ok(LegacyRequiredFinality::Weak),
+            "any" => Ok(LegacyRequiredFinality::Any),
+            _ => Err(DeError::custom("unknown legacy required finality")),
+        }
+    }
+}
+
+const LEGACY_REQUIRED_FINALITY_STRICT_TAG: u8 = 0;
+const LEGACY_REQUIRED_FINALITY_WEAK_TAG: u8 = 1;
+const LEGACY_REQUIRED_FINALITY_ANY_TAG: u8 = 2;
+
+impl ToBytes for LegacyRequiredFinality {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let tag = match self {
+            LegacyRequiredFinality::Strict => LEGACY_REQUIRED_FINALITY_STRICT_TAG,
+            LegacyRequiredFinality::Weak => LEGACY_REQUIRED_FINALITY_WEAK_TAG,
+            LegacyRequiredFinality::Any => LEGACY_REQUIRED_FINALITY_ANY_TAG,
+        };
+        Ok(vec![tag])
+    }
+
+    fn serialized_length(&self) -> usize {
+        1
+    }
+}
+
+impl FromBytes for LegacyRequiredFinality {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            LEGACY_REQUIRED_FINALITY_STRICT_TAG => Ok((LegacyRequiredFinality::Strict, remainder)),
+            LEGACY_REQUIRED_FINALITY_WEAK_TAG => Ok((LegacyRequiredFinality::Weak, remainder)),
+            LEGACY_REQUIRED_FINALITY_ANY_TAG => Ok((LegacyRequiredFinality::Any, remainder)),
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Distribution<LegacyRequiredFinality> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LegacyRequiredFinality {
+        match rng.gen_range(0..3) {
+            0 => LegacyRequiredFinality::Strict,
+            1 => LegacyRequiredFinality::Weak,
+            2 => LegacyRequiredFinality::Any,
+            _not_in_range => unreachable!(),
         }
     }
 }
