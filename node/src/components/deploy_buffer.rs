@@ -39,6 +39,7 @@ use crate::{
         Approval, Block, BlockHeader, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals,
         DeployId, FinalizedBlock,
     },
+    utils::DisplayIter,
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -216,13 +217,12 @@ impl DeployBuffer {
         REv: From<Event> + From<DeployBufferAnnouncement> + Send,
     {
         let now = Timestamp::now();
-        let (buffer, freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
+        let (buffer, mut freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
             .into_iter()
             .partition(|(_, (expiry_time, _))| *expiry_time >= now);
 
-        let freed_count = freed.len();
-        if freed_count > 0 {
-            info!("DeployBuffer: expiring {} deploys", freed_count);
+        if !freed.is_empty() {
+            info!("DeployBuffer: purging {} deploy(s)", freed.len());
         }
 
         // clear expired deploy from all holds, then clear any entries that have no items remaining
@@ -231,9 +231,23 @@ impl DeployBuffer {
         });
         self.hold.retain(|_, remaining| !remaining.is_empty());
 
+        // retain all those in `dead` which are not in `freed`, at the same time reducing `freed` to
+        // only those entries not also in `dead` - i.e. deploys which expired without being included
+        // in a block
         self.dead
-            .retain(|deploy_hash| !freed.contains_key(deploy_hash));
+            .retain(|deploy_hash| freed.remove(deploy_hash).is_none());
         self.buffer = buffer;
+
+        if !freed.is_empty() {
+            info!(
+                "DeployBuffer: expiring without executing {} deploy(s)",
+                freed.len()
+            );
+            debug!(
+                "DeployBuffer: expiring without executing {}",
+                DisplayIter::new(freed.keys())
+            );
+        }
 
         let mut effects = effect_builder
             .announce_expired_deploys(freed.keys().cloned().collect())

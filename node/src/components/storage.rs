@@ -2672,23 +2672,23 @@ pub struct Config {
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_block_store_size: usize,
+    pub max_block_store_size: usize,
     /// The maximum size of the database to use for the deploy store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_deploy_store_size: usize,
+    pub max_deploy_store_size: usize,
     /// The maximum size of the database to use for the deploy metadata store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_deploy_metadata_store_size: usize,
+    pub max_deploy_metadata_store_size: usize,
     /// The maximum size of the database to use for the component state store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_state_store_size: usize,
+    pub max_state_store_size: usize,
     /// Whether or not memory deduplication is enabled.
-    enable_mem_deduplication: bool,
+    pub enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
-    mem_pool_prune_interval: u16,
+    pub mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {

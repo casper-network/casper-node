@@ -138,12 +138,12 @@ impl BlockAccumulator {
     ) -> Result<Self, prometheus::Error> {
         Ok(Self {
             validator_matrix,
-            attempt_execution_threshold: config.attempt_execution_threshold(),
-            dead_air_interval: config.dead_air_interval(),
+            attempt_execution_threshold: config.attempt_execution_threshold,
+            dead_air_interval: config.dead_air_interval,
             block_acceptors: Default::default(),
             block_children: Default::default(),
             last_progress: Timestamp::now(),
-            purge_interval: config.purge_interval(),
+            purge_interval: config.purge_interval,
             local_tip: None,
             recent_era_interval,
             peer_block_timestamps: Default::default(),

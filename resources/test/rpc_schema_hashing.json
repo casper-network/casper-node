@@ -780,6 +780,7 @@
                 "last_progress",
                 "peers",
                 "reactor_state",
+                "starting_state_root_hash",
                 "uptime"
               ],
               "properties": {
@@ -801,14 +802,7 @@
                 },
                 "starting_state_root_hash": {
                   "description": "The state root hash of the lowest block in the available block range.",
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/Digest"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Digest"
                 },
                 "last_added_block_info": {
                   "description": "The minimal info of the last block from the linear chain.",
@@ -894,7 +888,7 @@
                   "api_version": "1.4.8",
                   "build_version": "1.0.0-xxxxxxxxx@DEBUG",
                   "chainspec_name": "casper-example",
-                  "starting_state_root_hash": null,
+                  "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "last_added_block_info": {
                     "hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                     "timestamp": "2020-11-17T00:39:24.072Z",
@@ -2965,15 +2959,15 @@
                 "minimum": 0.0
               },
               "locked_amounts": {
+                "type": [
+                  "array",
+                  "null"
+                ],
                 "items": {
                   "$ref": "#/components/schemas/U512"
                 },
                 "maxItems": 14,
-                "minItems": 14,
-                "type": [
-                  "array",
-                  "null"
-                ]
+                "minItems": 14
               }
             },
             "additionalProperties": false
@@ -4127,10 +4121,20 @@
             "description": "The first era to which the associated protocol version applies.",
             "anyOf": [
               {
-                "$ref": "#/components/schemas/EraId"
+                "description": "Era id.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ]
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "description": "Genesis timestamp.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                ]
               }
             ]
           },

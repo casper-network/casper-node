@@ -13,6 +13,7 @@ use casper_types::{
 #[cfg(test)]
 use casper_types::{testing::TestRng, U512};
 
+/// Validator account configuration.
 #[derive(PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
 pub struct ValidatorConfig {
     bonded_amount: Motes,
@@ -21,6 +22,7 @@ pub struct ValidatorConfig {
 }
 
 impl ValidatorConfig {
+    /// Creates a new `ValidatorConfig`.
     pub fn new(bonded_amount: Motes, delegation_rate: DelegationRate) -> Self {
         Self {
             bonded_amount,
@@ -28,10 +30,12 @@ impl ValidatorConfig {
         }
     }
 
+    /// Delegation rate.
     pub fn delegation_rate(&self) -> DelegationRate {
         self.delegation_rate
     }
 
+    /// Bonded amount.
     pub fn bonded_amount(&self) -> Motes {
         self.bonded_amount
     }
