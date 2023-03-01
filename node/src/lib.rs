@@ -149,7 +149,7 @@ mod tests {
         block: Block,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
-        validators: &'a [(SecretKey, PublicKey)],
+        validators: &'a [(SecretKey, PublicKey, Option<U512>)], // TODO[RC]: ValidatorSpec?
     }
 
     impl<'a> TestChainSpec<'a> {
@@ -158,7 +158,7 @@ mod tests {
 
             // TODO[RC]: Merge these into "SwitchBlockSpec"
             switch_block_indices: Option<Vec<u64>>,
-            validators: &'a [(SecretKey, PublicKey)],
+            validators: &'a [(SecretKey, PublicKey, Option<U512>)],
         ) -> Self {
             let block = Block::random(test_rng);
             Self {
@@ -171,23 +171,25 @@ mod tests {
 
         pub(crate) fn iter(&mut self) -> TestBlockIterator {
             let block_height = self.block.height();
-            TestBlockIterator {
-                block: self.block.clone(),
-                rng: self.rng,
-                switch_block_indices: self.switch_block_indices.clone().map(
-                    |switch_block_indices| {
+
+            TestBlockIterator::new(
+                self.block.clone(),
+                self.rng,
+                self.switch_block_indices
+                    .clone()
+                    .map(|switch_block_indices| {
                         switch_block_indices
                             .iter()
                             .map(|index| index + block_height)
                             .collect()
-                    },
-                ),
-                validators: self
-                    .validators
+                    }),
+                self.validators
                     .iter()
-                    .map(|(_, public_key)| (public_key.clone(), 100.into())) // TODO[RC]: No magic numbers
+                    .map(|(_, public_key, weight)| {
+                        (public_key.clone(), weight.unwrap_or(100.into()))
+                    }) // TODO[RC]: No magic numbers
                     .collect(),
-            }
+            )
         }
     }
 
@@ -195,7 +197,8 @@ mod tests {
         block: Block,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
-        validators: BTreeMap<PublicKey, U512>,
+        validators: Vec<(PublicKey, U512)>,
+        next_validator_index: usize,
     }
 
     impl<'a> TestBlockIterator<'a> {
@@ -203,13 +206,14 @@ mod tests {
             block: Block,
             rng: &'a mut TestRng,
             switch_block_indices: Option<Vec<u64>>,
-            validators: BTreeMap<PublicKey, U512>,
+            validators: Vec<(PublicKey, U512)>,
         ) -> Self {
             Self {
                 block,
                 rng,
                 switch_block_indices,
                 validators,
+                next_validator_index: 0,
             }
         }
     }
@@ -238,6 +242,21 @@ mod tests {
                     }
                     None => (false, false, None),
                 };
+
+            let validators = if let Some(validators) = validators {
+                let first_validator = validators.get(self.next_validator_index).unwrap();
+                let second_validator = validators.get(self.next_validator_index + 1).unwrap();
+                let mut validators_for_block = BTreeMap::new();
+                validators_for_block.insert(first_validator.0.clone(), first_validator.1);
+                validators_for_block.insert(second_validator.0.clone(), second_validator.1);
+                self.next_validator_index += 2;
+                if self.next_validator_index >= self.validators.len() {
+                    self.next_validator_index = 0;
+                }
+                Some(validators_for_block)
+            } else {
+                None
+            };
 
             let next = Block::new(
                 *self.block.hash(),

@@ -264,7 +264,7 @@ impl Debug for ValidatorMatrix {
     }
 }
 
-#[derive(DataSize, Debug, Serialize, Default, Clone)]
+#[derive(DataSize, Debug, Eq, PartialEq, Serialize, Default, Clone)]
 pub(crate) struct EraValidatorWeights {
     era_id: EraId,
     validator_weights: BTreeMap<PublicKey, U512>,

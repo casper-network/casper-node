@@ -374,7 +374,7 @@ mod tests {
         iter,
     };
 
-    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Signature};
+    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Signature, U512};
     use itertools::Itertools;
     use num_rational::Ratio;
 
@@ -383,8 +383,8 @@ mod tests {
         tests::{TestBlockIterator, TestChainSpec},
         types::{
             chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError, ActivationPoint,
-            Block, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
-            SyncLeapValidationMetaData,
+            Block, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights,
+            FinalitySignature, SyncLeapValidationMetaData,
         },
         utils::BlockSignatureError,
     };
@@ -423,7 +423,7 @@ mod tests {
     fn make_signed_block_header_from_height(
         height: usize,
         test_chain: &[Block],
-        validators: &[(SecretKey, PublicKey)],
+        validators: &[(SecretKey, PublicKey, Option<U512>)],
         add_proofs: bool,
     ) -> BlockHeaderWithMetadata {
         let header = test_chain.get(height).unwrap().header().clone();
@@ -432,13 +432,13 @@ mod tests {
 
     fn make_signed_block_header_from_header(
         block_header: &BlockHeader,
-        validators: &[(SecretKey, PublicKey)],
+        validators: &[(SecretKey, PublicKey, Option<U512>)],
         add_proofs: bool,
     ) -> BlockHeaderWithMetadata {
         let hash = block_header.block_hash();
         let era_id = block_header.era_id();
         let mut block_signatures = BlockSignatures::new(hash, era_id);
-        validators.iter().for_each(|(secret_key, public_key)| {
+        validators.iter().for_each(|(secret_key, public_key, _)| {
             let finality_signature =
                 FinalitySignature::create(hash, era_id, &secret_key, public_key.clone());
             if add_proofs {
@@ -452,21 +452,20 @@ mod tests {
         }
     }
 
-    fn make_test_sync_leap(
+    // Each generated era gets two validators pulled from the provided `validators` set.
+    fn make_test_sync_leap_with_validators(
         rng: &mut TestRng,
+        validators: &[(SecretKey, PublicKey, Option<U512>)], // TODO[RC]: iterator
         switch_blocks: &[u64],
         query: usize,
         trusted_ancestor_headers: &[usize],
         signed_block_headers: &[usize],
         add_proofs: bool,
     ) -> SyncLeap {
-        let validators: Vec<_> = iter::repeat_with(|| crypto::generate_ed25519_keypair())
-            .take(2)
-            .collect();
         let mut test_chain_spec = TestChainSpec::new(
             rng,
             Some(switch_blocks.iter().copied().collect()),
-            &validators,
+            validators,
         );
         let test_chain: Vec<_> = test_chain_spec.iter().take(12).collect();
 
@@ -480,7 +479,7 @@ mod tests {
         let signed_block_headers: Vec<_> = signed_block_headers
             .iter()
             .map(|height| {
-                make_signed_block_header_from_height(*height, &test_chain, &validators, add_proofs)
+                make_signed_block_header_from_height(*height, &test_chain, validators, add_proofs)
             })
             .collect();
 
@@ -490,6 +489,37 @@ mod tests {
             trusted_ancestor_headers,
             signed_block_headers,
         }
+    }
+
+    fn make_test_sync_leap(
+        rng: &mut TestRng,
+        switch_blocks: &[u64],
+        query: usize,
+        trusted_ancestor_headers: &[usize],
+        signed_block_headers: &[usize],
+        add_proofs: bool,
+    ) -> SyncLeap {
+        const DEFAULT_VALIDATOR_WEIGHT: u32 = 100;
+
+        let validators: Vec<_> = iter::repeat_with(|| crypto::generate_ed25519_keypair())
+            .take(2)
+            .map(|(secret_key, public_key)| {
+                (
+                    secret_key,
+                    public_key,
+                    Some(DEFAULT_VALIDATOR_WEIGHT.into()),
+                )
+            })
+            .collect();
+        make_test_sync_leap_with_validators(
+            rng,
+            &validators,
+            switch_blocks,
+            query,
+            trusted_ancestor_headers,
+            signed_block_headers,
+            add_proofs,
+        )
     }
 
     fn test_sync_leap_validation_metadata() -> SyncLeapValidationMetaData {
@@ -1430,7 +1460,7 @@ mod tests {
     }
 
     #[test]
-    fn should_return_sigs_when_highest_block_is_not_signed() {
+    fn should_not_return_sigs_when_highest_block_is_not_signed() {
         // Chain
         // 0   1   2   3   4   5   6   7   8   9   10   11
         // S           S           S           S
@@ -1474,5 +1504,112 @@ mod tests {
             signed_block_headers: middle_blocks,
         };
         assert!(sync_leap.highest_block_header_and_signatures().1.is_none());
+    }
+
+    #[test]
+    fn should_return_era_validator_weights() {
+        // Chain
+        // 0   1   2   3   4   5   6   7   8   9   10   11
+        // S           S           S           S
+        let switch_blocks = [0, 3, 6, 9];
+
+        let mut rng = TestRng::new();
+
+        // Test block iterator will pull 2 validators for each created block. Indices 0 and 1 are used for validators for the trusted ancestor headers.
+        const FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET: usize = 2;
+        let validators: Vec<_> = (1..100)
+            .map(|weight| {
+                let (secret_key, public_key) = crypto::generate_ed25519_keypair();
+                (secret_key, public_key, Some(U512::from(weight)))
+            })
+            .collect();
+
+        let query = 5;
+        let trusted_ancestor_headers = [4, 3];
+        let signed_block_headers = [6, 9, 11];
+        let add_proofs = true;
+        let sync_leap = make_test_sync_leap_with_validators(
+            &mut rng,
+            &validators,
+            &switch_blocks,
+            query,
+            &trusted_ancestor_headers,
+            &signed_block_headers,
+            add_proofs,
+        );
+
+        let fault_tolerance_fraction = Ratio::new_raw(1, 3);
+
+        let mut switch_block_iter = sync_leap.signed_block_headers.iter();
+        let first_switch_block = switch_block_iter.next().unwrap().clone();
+        let validator_1 = validators
+            .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 0)
+            .unwrap();
+        let validator_2 = validators
+            .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 1)
+            .unwrap();
+        dbg!(&validator_1);
+        let first_era_validator_weights = EraValidatorWeights::new(
+            first_switch_block.block_header.era_id(),
+            [validator_1, validator_2]
+                .iter()
+                .map(|(_, public_key, weight)| (public_key.clone(), weight.unwrap()))
+                .collect(),
+            fault_tolerance_fraction,
+        );
+        dbg!(&first_era_validator_weights);
+
+        let second_switch_block = switch_block_iter.next().unwrap().clone();
+        let validator_1 = validators
+            .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 2)
+            .unwrap();
+        let validator_2 = validators
+            .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 3)
+            .unwrap();
+        dbg!(&validator_1);
+        let second_era_validator_weights = EraValidatorWeights::new(
+            second_switch_block.block_header.era_id(),
+            [validator_1, validator_2]
+                .iter()
+                .map(|(_, public_key, weight)| (public_key.clone(), weight.unwrap()))
+                .collect(),
+            fault_tolerance_fraction,
+        );
+
+        dbg!(&second_era_validator_weights);
+
+        let third_switch_block = switch_block_iter.next().unwrap().clone();
+        let validator_1 = validators
+            .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 4)
+            .unwrap();
+        let validator_2 = validators
+            .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 5)
+            .unwrap();
+        dbg!(&validator_1);
+        let third_era_validator_weights = EraValidatorWeights::new(
+            third_switch_block.block_header.era_id(),
+            [validator_1, validator_2]
+                .iter()
+                .map(|(_, public_key, weight)| (public_key.clone(), weight.unwrap()))
+                .collect(),
+            fault_tolerance_fraction,
+        );
+
+        dbg!(&third_era_validator_weights);
+
+        let result: Vec<_> = sync_leap
+            .era_validator_weights(fault_tolerance_fraction)
+            .collect();
+
+        dbg!(&result);
+
+        assert_eq!(
+            result,
+            vec![
+                first_era_validator_weights,
+                second_era_validator_weights,
+                third_era_validator_weights
+            ]
+        )
     }
 }

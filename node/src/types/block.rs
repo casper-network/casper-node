@@ -1208,18 +1208,12 @@ impl BlockSignatures {
         public_key: PublicKey,
         signature: Signature,
     ) -> Option<Signature> {
-        dbg!(&public_key);
-        dbg!(&signature);
         self.proofs.insert(public_key, signature)
     }
 
     /// Verify the signatures contained within.
     pub(crate) fn verify(&self) -> Result<(), crypto::Error> {
         for (public_key, signature) in self.proofs.iter() {
-            dbg!(&self.block_hash);
-            dbg!(&self.era_id);
-            dbg!(&public_key);
-            dbg!(&signature);
             let signature = FinalitySignature {
                 block_hash: self.block_hash,
                 era_id: self.era_id,
