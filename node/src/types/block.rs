@@ -1452,14 +1452,25 @@ impl Block {
         Block::random_with_deploys(rng, None)
     }
 
-    /// Generates a random switch block..
+    /// Generates a random switch block.
     #[cfg(any(feature = "testing", test))]
     pub fn random_switch_block(rng: &mut TestRng) -> Self {
         use self::tests::random_era_report;
 
         let mut block = Block::random(rng);
-        let x = BTreeMap::<PublicKey, U512>::new();
-        block.header.era_end = Some(EraEnd::new(random_era_report(rng), x));
+        let next_era_validator_weights = BTreeMap::<PublicKey, U512>::new();
+        block.header.era_end = Some(EraEnd::new(
+            random_era_report(rng),
+            next_era_validator_weights,
+        ));
+        block
+    }
+
+    /// Generates a random non-switch block.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_non_switch_block(rng: &mut TestRng) -> Self {
+        let mut block = Block::random(rng);
+        block.header.era_end = None;
         block
     }
 

@@ -367,7 +367,10 @@ mod tests {
     // as an `SyncLeapValidationError::IncompleteProof` error. Hence, there is no explicit test for
     // `SyncLeapValidationError::BlockWithMetadata`.
 
-    use std::{collections::BTreeMap, iter};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        iter,
+    };
 
     use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Signature};
     use itertools::Itertools;
@@ -378,7 +381,7 @@ mod tests {
         tests::{TestBlockIterator, TestChainSpec},
         types::{
             chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError, ActivationPoint,
-            Block, BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
+            Block, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, FinalitySignature,
             SyncLeapValidationMetaData,
         },
         utils::BlockSignatureError,
@@ -415,15 +418,23 @@ mod tests {
         );
     }
 
-    fn make_signed_block_header(
+    fn make_signed_block_header_from_height(
         height: usize,
         test_chain: &[Block],
         validators: &[(SecretKey, PublicKey)],
         add_proofs: bool,
     ) -> BlockHeaderWithMetadata {
         let header = test_chain.get(height).unwrap().header().clone();
-        let hash = header.block_hash();
-        let era_id = header.era_id();
+        make_signed_block_header_from_header(&header, validators, add_proofs)
+    }
+
+    fn make_signed_block_header_from_header(
+        block_header: &BlockHeader,
+        validators: &[(SecretKey, PublicKey)],
+        add_proofs: bool,
+    ) -> BlockHeaderWithMetadata {
+        let hash = block_header.block_hash();
+        let era_id = block_header.era_id();
         let mut block_signatures = BlockSignatures::new(hash, era_id);
         validators.iter().for_each(|(secret_key, public_key)| {
             let finality_signature =
@@ -434,7 +445,7 @@ mod tests {
         });
 
         BlockHeaderWithMetadata {
-            block_header: header,
+            block_header: block_header.clone(),
             block_signatures,
         }
     }
@@ -466,7 +477,9 @@ mod tests {
 
         let signed_block_headers: Vec<_> = signed_block_headers
             .iter()
-            .map(|height| make_signed_block_header(*height, &test_chain, &validators, add_proofs))
+            .map(|height| {
+                make_signed_block_header_from_height(*height, &test_chain, &validators, add_proofs)
+            })
             .collect();
 
         SyncLeap {
@@ -981,7 +994,7 @@ mod tests {
         let signed_block_headers = [6, 9, 11];
 
         let add_proofs = true;
-        let mut sync_leap = make_test_sync_leap(
+        let sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
@@ -1041,5 +1054,140 @@ mod tests {
                 bogus_validators
             } if bogus_validators == &expected_bogus_validators))
         );
+    }
+
+    #[test]
+    fn should_return_headers() {
+        let mut rng = TestRng::new();
+
+        let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let trusted_ancestor_1 = Block::random_switch_block(&mut rng);
+        let trusted_ancestor_2 = Block::random_non_switch_block(&mut rng);
+        let trusted_ancestor_3 = Block::random_non_switch_block(&mut rng);
+
+        let signed_block_1 = Block::random_switch_block(&mut rng);
+        let signed_block_2 = Block::random_switch_block(&mut rng);
+        let signed_block_3 = Block::random_non_switch_block(&mut rng);
+        let signed_block_header_with_metadata_1 =
+            make_signed_block_header_from_header(signed_block_1.header(), &[], false);
+        let signed_block_header_with_metadata_2 =
+            make_signed_block_header_from_header(signed_block_2.header(), &[], false);
+        let signed_block_header_with_metadata_3 =
+            make_signed_block_header_from_header(signed_block_3.header(), &[], false);
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: trusted_block.header().clone(),
+            trusted_ancestor_headers: vec![
+                trusted_ancestor_1.header().clone(),
+                trusted_ancestor_2.header().clone(),
+                trusted_ancestor_3.header().clone(),
+            ],
+            signed_block_headers: vec![
+                signed_block_header_with_metadata_1,
+                signed_block_header_with_metadata_2,
+                signed_block_header_with_metadata_3,
+            ],
+        };
+
+        let actual_headers: BTreeSet<_> = sync_leap
+            .headers()
+            .map(|header| header.block_hash())
+            .collect();
+        let expected_headers: BTreeSet<_> = [
+            trusted_block,
+            trusted_ancestor_1,
+            trusted_ancestor_2,
+            trusted_ancestor_3,
+            signed_block_1,
+            signed_block_2,
+            signed_block_3,
+        ]
+        .iter()
+        .map(|block| block.hash().clone())
+        .collect();
+        assert_eq!(expected_headers, actual_headers);
+    }
+
+    #[test]
+    fn should_return_switch_block_headers() {
+        let mut rng = TestRng::new();
+
+        let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let trusted_ancestor_1 = Block::random_switch_block(&mut rng);
+        let trusted_ancestor_2 = Block::random_non_switch_block(&mut rng);
+        let trusted_ancestor_3 = Block::random_non_switch_block(&mut rng);
+
+        let signed_block_1 = Block::random_switch_block(&mut rng);
+        let signed_block_2 = Block::random_switch_block(&mut rng);
+        let signed_block_3 = Block::random_non_switch_block(&mut rng);
+        let signed_block_header_with_metadata_1 =
+            make_signed_block_header_from_header(signed_block_1.header(), &[], false);
+        let signed_block_header_with_metadata_2 =
+            make_signed_block_header_from_header(signed_block_2.header(), &[], false);
+        let signed_block_header_with_metadata_3 =
+            make_signed_block_header_from_header(signed_block_3.header(), &[], false);
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: trusted_block.header().clone(),
+            trusted_ancestor_headers: vec![
+                trusted_ancestor_1.header().clone(),
+                trusted_ancestor_2.header().clone(),
+                trusted_ancestor_3.header().clone(),
+            ],
+            signed_block_headers: vec![
+                signed_block_header_with_metadata_1.clone(),
+                signed_block_header_with_metadata_2.clone(),
+                signed_block_header_with_metadata_3.clone(),
+            ],
+        };
+
+        let actual_headers: BTreeSet<_> = sync_leap
+            .switch_blocks_headers()
+            .map(|header| header.block_hash())
+            .collect();
+        let expected_headers: BTreeSet<_> = [
+            trusted_ancestor_1.clone(),
+            signed_block_1.clone(),
+            signed_block_2.clone(),
+        ]
+        .iter()
+        .map(|block| block.hash().clone())
+        .collect();
+        assert_eq!(expected_headers, actual_headers);
+
+        // Also test when the trusted block is a switch block.
+        let trusted_block = Block::random_switch_block(&mut rng);
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: trusted_block.header().clone(),
+            trusted_ancestor_headers: vec![
+                trusted_ancestor_1.header().clone(),
+                trusted_ancestor_2.header().clone(),
+                trusted_ancestor_3.header().clone(),
+            ],
+            signed_block_headers: vec![
+                signed_block_header_with_metadata_1,
+                signed_block_header_with_metadata_2,
+                signed_block_header_with_metadata_3,
+            ],
+        };
+        let actual_headers: BTreeSet<_> = sync_leap
+            .switch_blocks_headers()
+            .map(|header| header.block_hash())
+            .collect();
+        let expected_headers: BTreeSet<_> = [
+            trusted_block,
+            trusted_ancestor_1,
+            signed_block_1,
+            signed_block_2,
+        ]
+        .iter()
+        .map(|block| block.hash().clone())
+        .collect();
+        assert_eq!(expected_headers, actual_headers);
     }
 }
