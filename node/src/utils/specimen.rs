@@ -20,11 +20,11 @@ use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
     AsymmetricType, ContractHash, ContractPackageHash, EraId, ProtocolVersion, RuntimeArgs,
-    SecretKey, SemVer, SignatureDiscriminants, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
+    SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
 use serde::Serialize;
-use strum::IntoEnumIterator;
+use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     components::{
@@ -418,6 +418,15 @@ macro_rules! memoize {
 
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        // Note: We do not use strum generated discriminator enums for the signature, as we do not
+        //       want to make `strum` a direct dependency of `casper-types`, to keep its size down.
+        #[derive(Debug, Copy, Clone, EnumIter)]
+        enum SignatureDiscriminants {
+            System,
+            Ed25519,
+            Secp256k1,
+        }
+
         memoize!(Signature, estimator, {
             let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
             let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
