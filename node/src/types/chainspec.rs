@@ -53,6 +53,9 @@ use crate::{
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_FILENAME: &str = "chainspec.toml";
 
+// Additional overhead accounted for (eg. lower level networking packet encapsulation).
+const CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN: usize = 256;
+
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
 #[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
@@ -96,7 +99,9 @@ impl Chainspec {
         let estimator = NetworkMessageEstimator::new(self);
         let serialized = generate_largest_message(&estimator);
 
-        if serialized.len() > self.network_config.maximum_net_message_size as usize {
+        if serialized.len() + CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN
+            > self.network_config.maximum_net_message_size as usize
+        {
             warn!(calculated_length=serialized.len(), configured_maximum=self.network_config.maximum_net_message_size,
                 "config value [network][maximum_net_message_size] is too small to accomodate the maximum message size",
             );
