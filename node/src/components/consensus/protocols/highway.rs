@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
-
 pub(crate) mod config;
 mod participation;
 mod round_success_meter;
@@ -17,8 +15,6 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
-use strum::EnumDiscriminants;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
@@ -652,26 +648,46 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-#[strum_discriminants(derive(strum::EnumIter))]
-pub(crate) enum HighwayMessage<C>
-where
-    C: Context,
-{
-    NewVertex(Vertex<C>),
-    // A dependency request. u64 is a random UUID identifying the request.
-    RequestDependency(u64, Dependency<C>),
-    RequestDependencyByHeight {
-        uuid: u64,
-        vid: ValidatorIndex,
-        unit_seq_number: u64,
-    },
-    LatestStateRequest(IndexPanorama),
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::{
+        highway_core::{
+            highway::{Dependency, Vertex},
+            state::IndexPanorama,
+        },
+        traits::Context,
+        utils::ValidatorIndex,
+    };
+
+    #[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum HighwayMessage<C>
+    where
+        C: Context,
+    {
+        NewVertex(Vertex<C>),
+        // A dependency request. u64 is a random UUID identifying the request.
+        RequestDependency(u64, Dependency<C>),
+        RequestDependencyByHeight {
+            uuid: u64,
+            vid: ValidatorIndex,
+            unit_seq_number: u64,
+        },
+        LatestStateRequest(IndexPanorama),
+    }
 }
+pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
 
 mod specimen_support {
     use crate::{

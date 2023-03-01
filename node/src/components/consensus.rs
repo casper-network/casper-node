@@ -1,7 +1,6 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 #![warn(clippy::integer_arithmetic)]
-#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
 
 mod cl_context;
 mod config;
@@ -29,10 +28,9 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use strum::EnumDiscriminants;
 use tracing::{info, trace};
 
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::Component,
@@ -71,16 +69,45 @@ pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
 
-/// A message to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
-pub(crate) enum EraMessage<C>
-where
-    C: Context,
-{
-    Zug(Box<protocols::zug::Message<C>>),
-    Highway(Box<HighwayMessage<C>>),
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use casper_types::{EraId, PublicKey};
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use super::{protocols, traits::Context, ClContext, HighwayMessage};
+
+    /// A message to be handled by the consensus protocol instance in a particular era.
+    #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, EnumDiscriminants)]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum EraMessage<C>
+    where
+        C: Context,
+    {
+        Zug(Box<protocols::zug::Message<C>>),
+        Highway(Box<HighwayMessage<C>>),
+    }
+
+    #[derive(DataSize, Clone, Serialize, Deserialize, EnumDiscriminants)]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum ConsensusMessage {
+        /// A protocol message, to be handled by the instance in the specified era.
+        Protocol {
+            era_id: EraId,
+            payload: EraMessage<ClContext>,
+        },
+        /// A request for evidence against the specified validator, from any era that is still bonded
+        /// in `era_id`.
+        EvidenceRequest { era_id: EraId, pub_key: PublicKey },
+    }
 }
+pub(crate) use relaxed::{
+    ConsensusMessage, ConsensusMessageDiscriminants, EraMessage, EraMessageDiscriminants,
+};
 
 impl<C: Context> EraMessage<C> {
     /// Returns the message for the Zug protocol, or an error if it is for a different protocol.
@@ -129,19 +156,6 @@ impl<C: Context> EraRequest<C> {
             EraRequest::Zug(msg) => Ok(msg),
         }
     }
-}
-
-#[derive(DataSize, Clone, Serialize, Deserialize, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
-pub(crate) enum ConsensusMessage {
-    /// A protocol message, to be handled by the instance in the specified era.
-    Protocol {
-        era_id: EraId,
-        payload: EraMessage<ClContext>,
-    },
-    /// A request for evidence against the specified validator, from any era that is still bonded
-    /// in `era_id`.
-    EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
 /// A protocol request message, to be handled by the instance in the specified era.

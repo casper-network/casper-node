@@ -1,17 +1,13 @@
-#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
-
 use std::{collections::BTreeSet, fmt::Debug};
 
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::Timestamp;
-use strum::EnumDiscriminants;
 
 use crate::components::consensus::{
     highway_core::{
         endorsement::SignedEndorsement,
-        evidence::Evidence,
         highway::{PingError, VertexError},
         state::Panorama,
     },
@@ -19,59 +15,79 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, Validators},
 };
 
-/// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-#[derive(
-    DataSize,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    EnumDiscriminants,
-)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-#[strum_discriminants(derive(strum::EnumIter))]
-pub(crate) enum Dependency<C>
-where
-    C: Context,
-{
-    Unit(C::Hash),
-    Evidence(ValidatorIndex),
-    Endorsement(C::Hash),
-    Ping(ValidatorIndex, Timestamp),
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use casper_types::Timestamp;
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::{
+        highway_core::evidence::Evidence, traits::Context, utils::ValidatorIndex,
+    };
+
+    use super::{Endorsements, Ping, SignedWireUnit};
+
+    /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
+    #[derive(
+        DataSize,
+        Clone,
+        Debug,
+        Eq,
+        PartialEq,
+        PartialOrd,
+        Ord,
+        Hash,
+        Serialize,
+        Deserialize,
+        EnumDiscriminants,
+    )]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum Dependency<C>
+    where
+        C: Context,
+    {
+        Unit(C::Hash),
+        Evidence(ValidatorIndex),
+        Endorsement(C::Hash),
+        Ping(ValidatorIndex, Timestamp),
+    }
+
+    /// An element of the protocol state, that might depend on other elements.
+    ///
+    /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
+    #[derive(
+        DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants,
+    )]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum Vertex<C>
+    where
+        C: Context,
+    {
+        Unit(SignedWireUnit<C>),
+        Evidence(Evidence<C>),
+        Endorsements(Endorsements<C>),
+        Ping(Ping<C>),
+    }
 }
+pub(crate) use relaxed::{Dependency, DependencyDiscriminants, Vertex, VertexDiscriminants};
 
 impl<C: Context> Dependency<C> {
     /// Returns whether this identifies a unit, as opposed to other types of vertices.
     pub(crate) fn is_unit(&self) -> bool {
         matches!(self, Dependency::Unit(_))
     }
-}
-
-/// An element of the protocol state, that might depend on other elements.
-///
-/// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-#[strum_discriminants(derive(strum::EnumIter))]
-pub(crate) enum Vertex<C>
-where
-    C: Context,
-{
-    Unit(SignedWireUnit<C>),
-    Evidence(Evidence<C>),
-    Endorsements(Endorsements<C>),
-    Ping(Ping<C>),
 }
 
 impl<C: Context> Vertex<C> {

@@ -1,7 +1,5 @@
 //! A network message type used for communication between nodes
 
-#![cfg_attr(test, allow(clippy::integer_arithmetic))] // Allowed because of strum::EnumIter derive
-
 use std::{
     fmt::{self, Display, Formatter},
     sync::Arc,
