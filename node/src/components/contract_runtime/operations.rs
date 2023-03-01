@@ -52,6 +52,7 @@ pub fn execute_finalized_block(
         parent_hash,
         parent_seed,
         next_block_height: _,
+        era_id: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =

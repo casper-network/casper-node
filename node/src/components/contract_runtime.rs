@@ -24,7 +24,8 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        GetEraValidatorsRequest, QueryRequest, QueryResult, SystemContractRegistry, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -33,7 +34,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::ProtocolVersion;
+use casper_types::{EraId, Key, ProtocolVersion};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -93,6 +94,9 @@ pub struct ExecutionPreState {
     /// The accumulated seed for the pseudo-random number generator to be incorporated into the
     /// next `Block`, where additional entropy will be introduced.
     parent_seed: Digest,
+
+    /// Era id of the block to be executed.
+    era_id: EraId,
 }
 
 impl ExecutionPreState {
@@ -101,12 +105,14 @@ impl ExecutionPreState {
         pre_state_root_hash: Digest,
         parent_hash: BlockHash,
         parent_seed: Digest,
+        era_id: EraId,
     ) -> Self {
         ExecutionPreState {
             next_block_height,
             pre_state_root_hash,
             parent_hash,
             parent_seed,
+            era_id,
         }
     }
 
@@ -123,6 +129,7 @@ impl From<&BlockHeader> for ExecutionPreState {
             next_block_height: block_header.height() + 1,
             parent_hash: block_header.hash(),
             parent_seed: block_header.accumulated_seed(),
+            era_id: block_header.era_id(),
         }
     }
 }
@@ -132,6 +139,7 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
+    lowest_era_to_delete: Option<EraId>,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -332,6 +340,15 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+
+                // chainspec.max_era_infos_per_block
+                let delete_era_infos: Option<(u64, u64)> =
+                    self.lowest_era_to_delete.map(|lowest| -> (u64, u64) {
+                        (lowest.into(), 100.max(execution_pre_state.era_id.into()))
+                    });
+
+                // chainspec variable for deletion of era_infos
+
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -429,6 +446,7 @@ impl ContractRuntime {
             next_block_height: 0,
             parent_hash: Default::default(),
             parent_seed: Default::default(),
+            era_id: EraId::from(0),
         }));
 
         let environment = Arc::new(LmdbEnvironment::new(
@@ -462,6 +480,7 @@ impl ContractRuntime {
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
+            lowest_era_to_delete: None,
             execution_pre_state,
             engine_state,
             metrics,
@@ -526,16 +545,21 @@ impl ContractRuntime {
         &mut self,
         sequential_block_state: ExecutionPreState,
     ) -> Result<(), ConfigError> {
-        let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
-        *execution_pre_state = sequential_block_state;
+        let (state_root_hash, era_id) = {
+            let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
+            *execution_pre_state = sequential_block_state;
+            let state_root_hash = execution_pre_state.pre_state_root_hash;
+            (state_root_hash, execution_pre_state.era_id)
+        };
+
+        // mark EraInfo objects as next to delete in the following blocks.
+        self.search_for_extraneous_era_infos_to_delete(state_root_hash, 0, era_id.into())?;
 
         // Initialize the system contract registry.
         //
         // This is assumed to always work. In case following query fails we assume that the node is
         // incompatible with the network which could happen if (for example) a node operator skipped
         // important update and did not migrate old protocol data db into the global state.
-        let state_root_hash = execution_pre_state.pre_state_root_hash;
-
         match self
             .engine_state
             .get_system_contract_registry(CorrelationId::default(), state_root_hash)
@@ -549,6 +573,32 @@ impl ContractRuntime {
             }
         }
 
+        Ok(())
+    }
+
+    // Store lowest era_info object present and set up to delete it at the next block execution.
+    fn search_for_extraneous_era_infos_to_delete(
+        &mut self,
+        state_root_hash: Digest,
+        low_era_id: u64,
+        high_era_id: u64,
+    ) -> Result<(), engine_state::Error> {
+        for era_id in low_era_id..high_era_id {
+            let era_id = EraId::from(era_id);
+            match self.engine_state.run_query(
+                CorrelationId::new(),
+                QueryRequest::new(state_root_hash, Key::EraInfo(era_id), vec![]),
+            )? {
+                QueryResult::Success { .. } => {
+                    info!(%era_id, "found lowest era info object in need of deletion");
+                    self.lowest_era_to_delete = Some(era_id);
+                    break;
+                }
+                _ => {
+                    todo!("handle other variants...")
+                }
+            }
+        }
         Ok(())
     }
 

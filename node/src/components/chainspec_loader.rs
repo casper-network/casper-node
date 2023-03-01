@@ -328,12 +328,14 @@ impl ChainspecLoader {
                 self.initial_state_root_hash(),
                 BlockHash::new(Digest::from([0u8; Digest::LENGTH])),
                 Digest::from([0u8; Digest::LENGTH]),
+                EraId::from(0),
             ),
             Some(block) => ExecutionPreState::new(
                 block.height() + 1,
                 self.initial_state_root_hash(),
                 *block.hash(),
                 block.header().accumulated_seed(),
+                block.header().era_id(),
             ),
         }
     }
