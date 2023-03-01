@@ -5,11 +5,11 @@
 
 use core::convert::TryInto;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use casper_execution_engine::core::engine_state::{
@@ -23,6 +23,7 @@ use casper_types::{
     SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -380,14 +381,53 @@ impl<E> LargeUniqueSequence<E> for PublicKey
 where
     E: SizeEstimator,
 {
-    fn large_unique_sequence(_estimator: &E, _count: usize) -> BTreeSet<Self> {
-        // TODO: Actually generate largest public key.
+    fn large_unique_sequence(estimator: &E, count: usize) -> BTreeSet<Self> {
+        static MEMOIZED: Lazy<Mutex<HashMap<String, Vec<PublicKey>>>> =
+            Lazy::new(|| Mutex::new(HashMap::new()));
 
-        let mut set = BTreeSet::new();
+        let mut guard = MEMOIZED.lock().expect("memoization cache disappeared");
 
-        set.insert(PublicKey::system());
+        let data_vec = guard.entry(estimator.key().to_owned()).or_default();
 
-        set
+        /// Generates a secret key from a fixed, numbered seed.
+        fn generate_key<E: SizeEstimator>(estimator: &E, seed: usize) -> PublicKey {
+            // Like `Signature`, we do not wish to pollute the types crate here.
+            #[derive(Copy, Clone, Debug, EnumIter)]
+            enum PublicKeyDiscriminants {
+                System,
+                Ed25519,
+                Secp256k1,
+            }
+            largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, |variant| {
+                let mut seed_bytes = [0u8; 32];
+                seed_bytes[0..8].copy_from_slice(&(seed as u64).to_be_bytes());
+
+                match variant {
+                    PublicKeyDiscriminants::System => PublicKey::system(),
+                    PublicKeyDiscriminants::Ed25519 => {
+                        let ed25519_sec = SecretKey::ed25519_from_bytes(seed_bytes)
+                            .expect("unable to create ed25519 key from seed bytes");
+                        PublicKey::from(&ed25519_sec)
+                    }
+                    PublicKeyDiscriminants::Secp256k1 => {
+                        let secp256k1_sec = SecretKey::secp256k1_from_bytes(seed_bytes)
+                            .expect("unable to create secp256k1 key from seed bytes");
+                        PublicKey::from(&secp256k1_sec)
+                    }
+                }
+            })
+        }
+
+        while data_vec.len() < count {
+            let seed = data_vec.len();
+            data_vec.push(generate_key(estimator, seed));
+        }
+
+        debug_assert!(data_vec.len() >= count);
+        let output_set: BTreeSet<Self> = data_vec[..count].iter().cloned().collect();
+        debug_assert_eq!(output_set.len(), count);
+
+        output_set
     }
 }
 
@@ -403,17 +443,22 @@ where
 /// Memoize a value using a local static variable.
 #[macro_export]
 macro_rules! memoize {
-    ($ty:ty, $estimator:expr, $blk:block) => {{
-        static MEMOIZED: once_cell::sync::Lazy<
-            std::sync::Mutex<std::collections::HashMap<String, $ty>>,
-        > = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-        MEMOIZED
-            .lock()
-            .expect("memoization cache disappeared")
-            .entry($estimator.key().to_owned())
-            .or_insert_with(|| $blk)
-            .clone()
-    }};
+    ($ty:ty, $estimator:expr, $blk:block) => {
+        #[allow(unused_qualifications)]
+        {
+            static MEMOIZED: ::once_cell::sync::Lazy<
+                ::std::sync::Mutex<std::collections::HashMap<String, $ty>>,
+            > = ::once_cell::sync::Lazy::new(|| {
+                ::std::sync::Mutex::new(::std::collections::HashMap::new())
+            });
+            MEMOIZED
+                .lock()
+                .expect("memoization cache disappeared")
+                .entry($estimator.key().to_owned())
+                .or_insert_with(|| $blk)
+                .clone()
+        }
+    };
 }
 
 impl LargestSpecimen for Signature {
@@ -428,17 +473,19 @@ impl LargestSpecimen for Signature {
         }
 
         memoize!(Signature, estimator, {
-            let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
-            let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
-
             largest_variant::<Self, SignatureDiscriminants, _, _>(
                 estimator,
                 |variant| match variant {
                     SignatureDiscriminants::System => Signature::system(),
                     SignatureDiscriminants::Ed25519 => {
+                        let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+
                         sign([0_u8], ed25519_sec, &ed25519_sec.into())
                     }
                     SignatureDiscriminants::Secp256k1 => {
+                        let secp256k1_sec =
+                            &SecretKey::generate_secp256k1().expect("a correct secret");
+
                         sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
                     }
                 },
