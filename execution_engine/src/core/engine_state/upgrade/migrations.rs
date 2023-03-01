@@ -109,7 +109,7 @@ where
         .checkout(state_root_hash)
         .map_err(|error| Error::Exec(error.into()))?
     {
-        Some(tracking_copy) => Rc::new(RefCell::new(TrackingCopy::new(tracking_coxpy))),
+        Some(tracking_copy) => Rc::new(RefCell::new(TrackingCopy::new(tracking_copy))),
         None => return Err(Error::RootNotFound),
     };
 
