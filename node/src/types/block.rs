@@ -843,6 +843,7 @@ impl BlockHeader {
     /// Returns the era ID in which the next block would be created (that is, this block's era ID,
     /// or its successor if this is a switch block).
     pub fn next_block_era_id(&self) -> EraId {
+        dbg!(&self.era_id);
         if self.era_end.is_some() {
             self.era_id.successor()
         } else {
@@ -856,8 +857,15 @@ impl BlockHeader {
     }
 
     /// Sets the height of this block.
+    #[cfg(any(feature = "testing", test))]
     pub(crate) fn set_height(&mut self, height: u64) {
         self.height = height;
+    }
+
+    /// Sets the era of this block.
+    #[cfg(any(feature = "testing", test))]
+    pub(crate) fn set_era(&mut self, era: EraId) {
+        self.era_id = era;
     }
 
     /// Returns the protocol version of the network from when this block was created.

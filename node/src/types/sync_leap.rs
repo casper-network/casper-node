@@ -374,7 +374,7 @@ mod tests {
         iter,
     };
 
-    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Signature, U512};
+    use casper_types::{crypto, testing::TestRng, EraId, PublicKey, SecretKey, Signature, U512};
     use itertools::Itertools;
     use num_rational::Ratio;
 
@@ -1507,7 +1507,7 @@ mod tests {
     }
 
     #[test]
-    fn should_return_era_validator_weights() {
+    fn should_return_era_validator_weights_for_correct_sync_leap() {
         // Chain
         // 0   1   2   3   4   5   6   7   8   9   10   11
         // S           S           S           S
@@ -1515,7 +1515,8 @@ mod tests {
 
         let mut rng = TestRng::new();
 
-        // Test block iterator will pull 2 validators for each created block. Indices 0 and 1 are used for validators for the trusted ancestor headers.
+        // Test block iterator will pull 2 validators for each created block. Indices 0 and 1 are
+        // used for validators for the trusted ancestor headers.
         const FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET: usize = 2;
         let validators: Vec<_> = (1..100)
             .map(|weight| {
@@ -1610,6 +1611,160 @@ mod tests {
                 second_era_validator_weights,
                 third_era_validator_weights
             ]
+        )
+    }
+
+    #[test]
+    fn era_validator_weights_without_genesis_without_switch_block_preceding_immediate_switch_block()
+    {
+        let mut rng = TestRng::new();
+
+        let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let (
+            signed_block_header_with_metadata_1,
+            signed_block_header_with_metadata_2,
+            signed_block_header_with_metadata_3,
+        ) = make_three_switch_blocks_at_era_and_height(rng, (1, 10), (2, 20), (3, 30));
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: trusted_block.header().clone(),
+            trusted_ancestor_headers: vec![],
+            signed_block_headers: vec![
+                signed_block_header_with_metadata_1,
+                signed_block_header_with_metadata_2,
+                signed_block_header_with_metadata_3,
+            ],
+        };
+
+        let fault_tolerance_fraction = Ratio::new_raw(1, 3);
+
+        // Assert only if correct eras are selected, since the the
+        // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
+        // actual weight validation.
+
+        let actual_eras: BTreeSet<u64> = sync_leap
+            .era_validator_weights(fault_tolerance_fraction)
+            .map(|era_validator_weights| era_validator_weights.era_id().into())
+            .collect();
+        let mut expected_eras: BTreeSet<u64> = BTreeSet::new();
+        // Expect successors of the eras of switch blocks.
+        expected_eras.extend([2, 3, 4]);
+        assert_eq!(expected_eras, actual_eras);
+    }
+
+    #[test]
+    fn era_validator_weights_without_genesis_with_switch_block_preceding_immediate_switch_block() {
+        let mut rng = TestRng::new();
+
+        let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let (
+            signed_block_header_with_metadata_1,
+            signed_block_header_with_metadata_2,
+            signed_block_header_with_metadata_3,
+        ) = make_three_switch_blocks_at_era_and_height(rng, (1, 10), (2, 20), (3, 21));
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: trusted_block.header().clone(),
+            trusted_ancestor_headers: vec![],
+            signed_block_headers: vec![
+                signed_block_header_with_metadata_1,
+                signed_block_header_with_metadata_2,
+                signed_block_header_with_metadata_3,
+            ],
+        };
+
+        let fault_tolerance_fraction = Ratio::new_raw(1, 3);
+
+        // Assert only if correct eras are selected, since the the
+        // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
+        // actual weight validation.
+
+        let actual_eras: BTreeSet<u64> = sync_leap
+            .era_validator_weights(fault_tolerance_fraction)
+            .map(|era_validator_weights| era_validator_weights.era_id().into())
+            .collect();
+        let mut expected_eras: BTreeSet<u64> = BTreeSet::new();
+
+        // Block #1 (era=1, height=10)
+        // Block #2 (era=2, height=20) - block preceding immediate switch block
+        // Block #3 (era=3, height=21) - immediate switch block.
+        // Expect the successor of block #2 to be not present.
+        expected_eras.extend([2, 4]);
+        assert_eq!(expected_eras, actual_eras);
+    }
+
+    #[test]
+    fn era_validator_weights_with_genesis_without_switch_block_preceding_immediate_switch_block() {
+        let mut rng = TestRng::new();
+
+        let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let (
+            signed_block_header_with_metadata_1,
+            signed_block_header_with_metadata_2,
+            signed_block_header_with_metadata_3,
+        ) = make_three_switch_blocks_at_era_and_height(rng, (0, 0), (2, 20), (3, 30));
+
+        let sync_leap = SyncLeap {
+            trusted_ancestor_only: false,
+            trusted_block_header: trusted_block.header().clone(),
+            trusted_ancestor_headers: vec![],
+            signed_block_headers: vec![
+                signed_block_header_with_metadata_1,
+                signed_block_header_with_metadata_2,
+                signed_block_header_with_metadata_3,
+            ],
+        };
+
+        let fault_tolerance_fraction = Ratio::new_raw(1, 3);
+
+        // Assert only if correct eras are selected, since the the
+        // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
+        // actual weight validation.
+
+        let actual_eras: BTreeSet<u64> = sync_leap
+            .era_validator_weights(fault_tolerance_fraction)
+            .map(|era_validator_weights| era_validator_weights.era_id().into())
+            .collect();
+        let mut expected_eras: BTreeSet<u64> = BTreeSet::new();
+        // Expect genesis era id and its successor as well as the successors of the eras of non-genesis switch blocks.
+        expected_eras.extend([0, 1, 3, 4]);
+        assert_eq!(expected_eras, actual_eras);
+    }
+
+    fn make_three_switch_blocks_at_era_and_height(
+        mut rng: TestRng,
+        (era_1, height_1): (u64, u64),
+        (era_2, height_2): (u64, u64),
+        (era_3, height_3): (u64, u64),
+    ) -> (
+        BlockHeaderWithMetadata,
+        BlockHeaderWithMetadata,
+        BlockHeaderWithMetadata,
+    ) {
+        let mut signed_block_1 = Block::random_switch_block(&mut rng);
+        signed_block_1.header_mut().set_height(height_1);
+        signed_block_1.header_mut().set_era(era_1.into());
+        let mut signed_block_2 = Block::random_switch_block(&mut rng);
+        signed_block_2.header_mut().set_height(height_2);
+        signed_block_2.header_mut().set_era(era_2.into());
+        let mut signed_block_3 = Block::random_switch_block(&mut rng);
+        signed_block_3.header_mut().set_height(height_3);
+        signed_block_3.header_mut().set_era(era_3.into());
+        let signed_block_header_with_metadata_1 =
+            make_signed_block_header_from_header(signed_block_1.header(), &[], false);
+        let signed_block_header_with_metadata_2 =
+            make_signed_block_header_from_header(signed_block_2.header(), &[], false);
+        let signed_block_header_with_metadata_3 =
+            make_signed_block_header_from_header(signed_block_3.header(), &[], false);
+        (
+            signed_block_header_with_metadata_1,
+            signed_block_header_with_metadata_2,
+            signed_block_header_with_metadata_3,
         )
     }
 }
