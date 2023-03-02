@@ -21,6 +21,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+use rand::Rng as _;
+
 #[derive(DataSize, Debug)]
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
@@ -132,27 +135,6 @@ impl BlockAcceptor {
         peer: Option<NodeId>,
         validator_slots: u32,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
-        /// Returns an error if the peer has sent too many finality signatures.
-        fn check_signatures_from_peer_bound(
-            limit: u32,
-            peer: NodeId,
-            signatures: &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
-        ) -> Result<(), AcceptorError> {
-            let signatures_for_peer = signatures
-                .values()
-                .filter(|(_fin_sig, nodes)| nodes.contains(&peer))
-                .count();
-            let in_bound = u32::try_from(signatures_for_peer)
-                .map(|signatures_for_peer| signatures_for_peer < limit)
-                .unwrap_or(false);
-
-            if in_bound {
-                Ok(())
-            } else {
-                Err(AcceptorError::TooManySignatures { peer, limit })
-            }
-        }
-
         if self.block_hash != finality_signature.block_hash {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash,
@@ -440,6 +422,26 @@ impl BlockAcceptor {
     }
 }
 
+/// Returns an error if the peer has sent too many finality signatures.
+fn check_signatures_from_peer_bound(
+    limit: u32,
+    peer: NodeId,
+    signatures: &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
+) -> Result<(), AcceptorError> {
+    let signatures_for_peer = signatures
+        .values()
+        .filter(|(_fin_sig, nodes)| nodes.contains(&peer))
+        .count();
+    let in_bound = u32::try_from(signatures_for_peer)
+        .map_or(false, |signatures_for_peer| signatures_for_peer < limit);
+
+    if in_bound {
+        Ok(())
+    } else {
+        Err(AcceptorError::TooManySignatures { peer, limit })
+    }
+}
+
 #[cfg(test)]
 impl BlockAcceptor {
     pub(super) fn executed(&self) -> bool {
@@ -477,4 +479,70 @@ impl BlockAcceptor {
     ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
         &mut self.signatures
     }
+}
+
+#[cfg(test)]
+fn random_finality_signature(rng: &mut casper_types::testing::TestRng) -> FinalitySignature {
+    FinalitySignature::random_for_block(BlockHash::random(rng), rng.gen())
+}
+
+#[test]
+fn check_signatures_from_peer_bound_works() {
+    let rng = &mut casper_types::testing::TestRng::new();
+    let max_signatures = 3;
+    let peer_to_check = NodeId::random(rng);
+
+    let mut signatures = BTreeMap::new();
+    // Insert only the peer to check:
+    signatures.insert(
+        PublicKey::random(rng),
+        (random_finality_signature(rng), {
+            let mut nodes = BTreeSet::new();
+            nodes.insert(peer_to_check);
+            nodes
+        }),
+    );
+    // Insert an unrelated peer:
+    signatures.insert(
+        PublicKey::random(rng),
+        (random_finality_signature(rng), {
+            let mut nodes = BTreeSet::new();
+            nodes.insert(NodeId::random(rng));
+            nodes
+        }),
+    );
+    // Insert both the peer to check and an unrelated one:
+    signatures.insert(
+        PublicKey::random(rng),
+        (random_finality_signature(rng), {
+            let mut nodes = BTreeSet::new();
+            nodes.insert(NodeId::random(rng));
+            nodes.insert(peer_to_check);
+            nodes
+        }),
+    );
+
+    // The peer has send only 2 signatures, so adding a new signature should pass:
+    assert!(matches!(
+        check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
+        Ok(())
+    ));
+
+    // Let's insert once again both the peer to check and an unrelated one:
+    signatures.insert(
+        PublicKey::random(rng),
+        (random_finality_signature(rng), {
+            let mut nodes = BTreeSet::new();
+            nodes.insert(NodeId::random(rng));
+            nodes.insert(peer_to_check);
+            nodes
+        }),
+    );
+
+    // Now this should fail:
+    assert!(matches!(
+        check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
+        Err(AcceptorError::TooManySignatures { peer, limit })
+            if peer == peer_to_check && limit == max_signatures
+    ));
 }

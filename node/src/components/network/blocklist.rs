@@ -101,9 +101,10 @@ impl Display for BlocklistJustification {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)
             }
             BlocklistJustification::DishonestPeer => f.write_str("dishonest peer"),
-            BlocklistJustification::SentTooManyFinalitySignatures {
-                max_allowed,
-            } => write!(f, "Peer sent too many finality signatures: maximum {max_allowed} signatures are allowed"),
+            BlocklistJustification::SentTooManyFinalitySignatures { max_allowed } => write!(
+                f,
+                "sent too many finality signatures: maximum {max_allowed} signatures are allowed"
+            ),
         }
     }
 }

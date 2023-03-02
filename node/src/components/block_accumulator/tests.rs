@@ -153,7 +153,7 @@ impl Reactor for MockReactor {
         _network_identity: NetworkIdentity,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
@@ -163,11 +163,11 @@ impl Reactor for MockReactor {
 
         let block_accumulator = BlockAccumulator::new(
             block_accumulator_config,
-            chainspec_mock(rng),
             validator_matrix.clone(),
             RECENT_ERA_INTERVAL,
             block_time,
             registry,
+            VALIDATOR_SLOTS,
         )
         .unwrap();
 
@@ -277,11 +277,11 @@ fn upsert_acceptor() {
     let metrics_registry = Registry::new();
     let mut accumulator = BlockAccumulator::new(
         config,
-        chainspec_mock(&mut rng),
         validator_matrix,
         recent_era_interval,
         block_time,
         &metrics_registry,
+        VALIDATOR_SLOTS,
     )
     .unwrap();
 
@@ -828,11 +828,11 @@ fn accumulator_highest_usable_block_height() {
     let block_time = block_accumulator_config.purge_interval() / 2;
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
-        chainspec_mock(&mut rng),
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
         &Registry::default(),
+        VALIDATOR_SLOTS,
     )
     .unwrap();
 
@@ -954,11 +954,11 @@ fn accumulator_should_leap() {
     let attempt_execution_threshold = block_accumulator_config.attempt_execution_threshold();
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
-        chainspec_mock(&mut rng),
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
         &Registry::default(),
+        VALIDATOR_SLOTS,
     )
     .unwrap();
 
@@ -1033,11 +1033,11 @@ fn accumulator_purge() {
     let time_before_insertion = Timestamp::now();
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
-        chainspec_mock(&mut rng),
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
         &Registry::default(),
+        VALIDATOR_SLOTS,
     )
     .unwrap();
     block_accumulator.register_local_tip(0, 0.into());
@@ -1745,8 +1745,4 @@ async fn block_accumulator_reactor_flow() {
             .block_acceptors
             .contains_key(old_era_block.hash()));
     }
-}
-
-fn chainspec_mock(rng: &mut TestRng) -> Arc<Chainspec> {
-    Arc::new(Chainspec::random(rng))
 }
