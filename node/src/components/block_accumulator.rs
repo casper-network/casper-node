@@ -133,10 +133,11 @@ impl BlockAccumulator {
     }
 
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
+        let unset_local_tip = self.local_tip.is_none(); // first time thru, leap
         if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
             self.register_local_tip(block_height, era_id);
         }
-        if self.should_leap(self.maybe_block_height(&sync_identifier)) {
+        if unset_local_tip || self.should_leap(self.maybe_block_height(&sync_identifier)) {
             return SyncInstruction::Leap {
                 block_hash: sync_identifier.block_hash(),
             };
