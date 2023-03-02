@@ -329,7 +329,7 @@ impl StateProvider for ScratchGlobalState {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
@@ -344,12 +344,12 @@ mod tests {
     };
 
     #[derive(Debug, Clone)]
-    struct TestPair {
-        key: Key,
-        value: StoredValue,
+    pub(crate) struct TestPair {
+        pub key: Key,
+        pub value: StoredValue,
     }
 
-    fn create_test_pairs() -> [TestPair; 2] {
+    pub(crate) fn create_test_pairs() -> [TestPair; 2] {
         [
             TestPair {
                 key: Key::Account(AccountHash::new([1_u8; 32])),
@@ -362,7 +362,7 @@ mod tests {
         ]
     }
 
-    fn create_test_pairs_updated() -> [TestPair; 3] {
+    pub(crate) fn create_test_pairs_updated() -> [TestPair; 3] {
         [
             TestPair {
                 key: Key::Account(AccountHash::new([1u8; 32])),
@@ -379,7 +379,7 @@ mod tests {
         ]
     }
 
-    fn create_test_transforms() -> AdditiveMap<Key, Transform> {
+    pub(crate) fn create_test_transforms() -> AdditiveMap<Key, Transform> {
         let mut transforms = AdditiveMap::new();
         transforms.insert(
             Key::Account(AccountHash::new([3u8; 32])),
@@ -396,17 +396,17 @@ mod tests {
         transforms
     }
 
-    struct TestState {
+    pub(crate) struct TestState {
         state: LmdbGlobalState,
         root_hash: Digest,
     }
 
-    fn create_test_state() -> TestState {
+    pub(crate) fn create_test_state() -> TestState {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &temp_dir.path(),
+                temp_dir.path(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,

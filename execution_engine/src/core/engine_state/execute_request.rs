@@ -56,7 +56,7 @@ impl Default for ExecuteRequest {
             SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
         let proposer = PublicKey::from(&proposer_secret_key);
         Self {
-            parent_state_hash: Digest::hash(&[]),
+            parent_state_hash: Digest::hash([]),
             block_time: 0,
             deploys: vec![],
             protocol_version: Default::default(),

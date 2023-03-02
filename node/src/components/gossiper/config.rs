@@ -18,18 +18,21 @@ pub(super) const MAX_SATURATION_LIMIT_PERCENT: u8 = 99;
 pub(super) const DEFAULT_FINISHED_ENTRY_DURATION: &str = "60sec";
 const DEFAULT_GOSSIP_REQUEST_TIMEOUT: &str = "10sec";
 const DEFAULT_GET_REMAINDER_TIMEOUT: &str = "60sec";
+const DEFAULT_VALIDATE_AND_STORE_TIMEOUT: &str = "60sec";
 #[cfg(test)]
 const SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION: &str = "2sec";
 #[cfg(test)]
 const SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT: &str = "1sec";
 #[cfg(test)]
 const SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT: &str = "1sec";
+#[cfg(test)]
+const SMALL_TIMEOUTS_VALIDATE_AND_STORE_TIMEOUT: &str = "1sec";
 
 /// Configuration options for gossiping.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Target number of peers to infect with a given piece of data.
-    infection_target: u8,
+    pub infection_target: u8,
     /// The saturation limit as a percentage, with a maximum value of 99.  Used as a termination
     /// condition.
     ///
@@ -37,19 +40,22 @@ pub struct Config {
     /// don't manage to newly infect 3 peers.  We will stop gossiping once we know of more than 15
     /// holders excluding us since 80% saturation would imply 3 new infections in 15 peers.
     #[serde(deserialize_with = "deserialize_saturation_limit_percent")]
-    saturation_limit_percent: u8,
+    pub saturation_limit_percent: u8,
     /// The maximum duration in seconds for which to keep finished entries.
     ///
     /// The longer they are retained, the lower the likelihood of re-gossiping a piece of data.
     /// However, the longer they are retained, the larger the list of finished entries can grow.
-    finished_entry_duration: TimeDiff,
+    pub finished_entry_duration: TimeDiff,
     /// The timeout duration in seconds for a single gossip request, i.e. for a single gossip
     /// message sent from this node, it will be considered timed out if the expected response from
     /// that peer is not received within this specified duration.
-    gossip_request_timeout: TimeDiff,
+    pub gossip_request_timeout: TimeDiff,
     /// The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered
     /// data from a peer which gossiped information about that data to this node.
-    get_remainder_timeout: TimeDiff,
+    pub get_remainder_timeout: TimeDiff,
+    /// The timeout duration for a newly-received, gossiped item to be validated and stored by
+    /// another component before the gossiper abandons waiting to gossip the item onwards.
+    pub validate_and_store_timeout: TimeDiff,
 }
 
 impl Config {
@@ -60,6 +66,7 @@ impl Config {
         finished_entry_duration: TimeDiff,
         gossip_request_timeout: TimeDiff,
         get_remainder_timeout: TimeDiff,
+        validate_and_store_timeout: TimeDiff,
     ) -> Result<Self, Error> {
         if saturation_limit_percent > MAX_SATURATION_LIMIT_PERCENT {
             return Err(Error::InvalidSaturationLimit);
@@ -70,6 +77,7 @@ impl Config {
             finished_entry_duration,
             gossip_request_timeout,
             get_remainder_timeout,
+            validate_and_store_timeout,
         })
     }
 
@@ -82,6 +90,10 @@ impl Config {
                 .unwrap(),
             get_remainder_timeout: TimeDiff::from_str(SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT)
                 .unwrap(),
+            validate_and_store_timeout: TimeDiff::from_str(
+                SMALL_TIMEOUTS_VALIDATE_AND_STORE_TIMEOUT,
+            )
+            .unwrap(),
             ..Default::default()
         }
     }
@@ -105,6 +117,10 @@ impl Config {
     pub(crate) fn get_remainder_timeout(&self) -> TimeDiff {
         self.get_remainder_timeout
     }
+
+    pub(crate) fn validate_and_store_timeout(&self) -> TimeDiff {
+        self.validate_and_store_timeout
+    }
 }
 
 impl Default for Config {
@@ -115,6 +131,8 @@ impl Default for Config {
             finished_entry_duration: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION).unwrap(),
             gossip_request_timeout: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT).unwrap(),
             get_remainder_timeout: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
+            validate_and_store_timeout: TimeDiff::from_str(DEFAULT_VALIDATE_AND_STORE_TIMEOUT)
+                .unwrap(),
         }
     }
 }
@@ -152,6 +170,8 @@ mod tests {
             finished_entry_duration: TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION).unwrap(),
             gossip_request_timeout: TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT).unwrap(),
             get_remainder_timeout: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
+            validate_and_store_timeout: TimeDiff::from_str(DEFAULT_VALIDATE_AND_STORE_TIMEOUT)
+                .unwrap(),
         };
 
         // Parsing should fail.
@@ -165,6 +185,7 @@ mod tests {
             TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION).unwrap(),
             TimeDiff::from_str(DEFAULT_GOSSIP_REQUEST_TIMEOUT).unwrap(),
             TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
+            TimeDiff::from_str(DEFAULT_VALIDATE_AND_STORE_TIMEOUT).unwrap()
         )
         .is_err())
     }

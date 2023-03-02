@@ -7,6 +7,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -20,12 +21,13 @@ use crate::{
         consensus::{ClContext, ProposedBlock},
         deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
+        fetcher::FetchItem,
         gossiper::GossipItem,
         network::blocklist::BlocklistJustification,
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
+    types::{Block, Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
 
@@ -126,6 +128,19 @@ impl Display for MetaBlockAnnouncement {
             "announcement for meta block {} at height {}",
             self.0.block.hash(),
             self.0.block.height(),
+        )
+    }
+}
+
+#[derive(DataSize, Serialize, Debug)]
+pub(crate) struct UnexecutedBlockAnnouncement(pub(crate) u64);
+
+impl Display for UnexecutedBlockAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "announcement for unexecuted finalized block at height {}",
+            self.0,
         )
     }
 }
@@ -404,5 +419,41 @@ impl Display for BlockAccumulatorAnnouncement {
                 )
             }
         }
+    }
+}
+
+/// A block which wasn't previously stored on this node has been fetched and stored.
+#[derive(Debug, Serialize)]
+pub(crate) struct FetchedNewBlockAnnouncement {
+    pub(crate) block: Arc<Block>,
+    pub(crate) peer: NodeId,
+}
+
+impl Display for FetchedNewBlockAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "new block {} fetched from {}",
+            self.block.fetch_id(),
+            self.peer
+        )
+    }
+}
+
+/// A finality signature which wasn't previously stored on this node has been fetched and stored.
+#[derive(Debug, Serialize)]
+pub(crate) struct FetchedNewFinalitySignatureAnnouncement {
+    pub(crate) finality_signature: Box<FinalitySignature>,
+    pub(crate) peer: NodeId,
+}
+
+impl Display for FetchedNewFinalitySignatureAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "new finality signature {} fetched from {}",
+            self.finality_signature.fetch_id(),
+            self.peer
+        )
     }
 }

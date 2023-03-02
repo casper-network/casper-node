@@ -3,7 +3,7 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1 running at current mainnet commit.
+# 1. Start network from pre-built stage.
 # 2. Execute some deploys to populate global state a little
 # 3. Upgrade all running nodes to v2
 # 4. Assert v2 nodes run & the chain advances (new blocks are generated)
@@ -300,6 +300,12 @@ function _step_08()
         else
             log "HASH MATCH :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
         fi
+    done
+
+    log "Waiting for all nodes to sync to genesis"
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        await_node_historical_sync_to_genesis "$NODE_ID" "300"
     done
 }
 

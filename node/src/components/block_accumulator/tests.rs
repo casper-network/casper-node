@@ -158,7 +158,7 @@ impl Reactor for MockReactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
         let block_accumulator_config = Config::default();
-        let block_time = block_accumulator_config.purge_interval() / 2;
+        let block_time = block_accumulator_config.purge_interval / 2;
 
         let block_accumulator = BlockAccumulator::new(
             block_accumulator_config,
@@ -171,7 +171,6 @@ impl Reactor for MockReactor {
 
         let storage = Storage::new(
             &storage_withdir,
-            Ratio::new(1, 3),
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
@@ -272,7 +271,7 @@ fn upsert_acceptor() {
     let era0 = EraId::from(0);
     let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let recent_era_interval = 1;
-    let block_time = config.purge_interval() / 2;
+    let block_time = config.purge_interval / 2;
     let metrics_registry = Registry::new();
     let mut accumulator = BlockAccumulator::new(
         config,
@@ -283,10 +282,21 @@ fn upsert_acceptor() {
     )
     .unwrap();
 
+    let random_block_hash = BlockHash::random(&mut rng);
+    accumulator.upsert_acceptor(random_block_hash, Some(era0), Some(*ALICE_NODE_ID));
+    assert!(accumulator
+        .block_acceptors
+        .remove(&random_block_hash)
+        .is_some());
+    assert!(accumulator
+        .peer_block_timestamps
+        .remove(&ALICE_NODE_ID)
+        .is_some());
+
     accumulator.register_local_tip(0, EraId::new(0));
 
     let max_block_count =
-        PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval() / block_time) as usize);
+        PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval / block_time) as usize);
 
     for _ in 0..max_block_count {
         accumulator.upsert_acceptor(
@@ -322,7 +332,7 @@ fn upsert_acceptor() {
         .contains(&ALICE_NODE_ID));
 
     // Modify the timestamp of the acceptor we just added to be too old.
-    let purge_interval = config.purge_interval() * 2;
+    let purge_interval = config.purge_interval * 2;
     let purged_hash = {
         let (hash, timestamp) = accumulator
             .peer_block_timestamps
@@ -746,7 +756,7 @@ fn accumulator_highest_usable_block_height() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let block_accumulator_config = Config::default();
     let recent_era_interval = 1;
-    let block_time = block_accumulator_config.purge_interval() / 2;
+    let block_time = block_accumulator_config.purge_interval / 2;
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
         validator_matrix.clone(),
@@ -870,8 +880,8 @@ fn accumulator_should_leap() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let block_accumulator_config = Config::default();
     let recent_era_interval = 1;
-    let block_time = block_accumulator_config.purge_interval() / 2;
-    let attempt_execution_threshold = block_accumulator_config.attempt_execution_threshold();
+    let block_time = block_accumulator_config.purge_interval / 2;
+    let attempt_execution_threshold = block_accumulator_config.attempt_execution_threshold;
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
         validator_matrix.clone(),
@@ -945,8 +955,8 @@ fn accumulator_purge() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let block_accumulator_config = Config::default();
     let recent_era_interval = 1;
-    let block_time = block_accumulator_config.purge_interval() / 2;
-    let purge_interval = block_accumulator_config.purge_interval();
+    let block_time = block_accumulator_config.purge_interval / 2;
+    let purge_interval = block_accumulator_config.purge_interval;
     let time_before_insertion = Timestamp::now();
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
@@ -1109,6 +1119,126 @@ fn accumulator_purge() {
     assert!(!block_accumulator
         .peer_block_timestamps
         .contains_key(&peer_2));
+
+    // Create a block just in range of block 3 to not qualify for a purge.
+    let in_range_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() - block_accumulator.attempt_execution_threshold,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let in_range_block_sig = FinalitySignature::create(
+        *in_range_block.hash(),
+        in_range_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the in range block with sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *in_range_block.hash(),
+            Some(in_range_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(in_range_block.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(in_range_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(in_range_block_sig, Some(peer_1))
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Create a block just out of range of block 3 to qualify for a purge.
+    let out_of_range_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() - block_accumulator.attempt_execution_threshold - 1,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let out_of_range_block_sig = FinalitySignature::create(
+        *out_of_range_block.hash(),
+        out_of_range_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the out of range block with sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *out_of_range_block.hash(),
+            Some(out_of_range_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(out_of_range_block.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(out_of_range_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(out_of_range_block_sig, Some(peer_1))
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Make sure the local tip along with its recent parents never get purged.
+    {
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+        // Make block 3 the local tip.
+        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
+            block_3.header().height(),
+            block_3.header().era_id(),
+        ));
+        // Change the timestamps to old ones so that all blocks would normally
+        // get purged.
+        let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
+        for (_, acceptor) in block_accumulator.block_acceptors.iter_mut() {
+            acceptor.set_last_progress(last_progress);
+        }
+        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+            for (_, timestamp) in timestamps.iter_mut() {
+                *timestamp = last_progress;
+            }
+        }
+        // Do the purge.
+        block_accumulator.purge();
+        // As block 3 is the local tip, it should not have been purged.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(block_3.hash()));
+        // Neither should the block in `attempt_execution_threshold` range.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(in_range_block.hash()));
+        // But the block out of `attempt_execution_threshold` range should
+        // have been purged.
+        assert!(!block_accumulator
+            .block_acceptors
+            .contains_key(out_of_range_block.hash()));
+
+        // Now replace the local tip with something else (in this case we'll
+        // have no local tip) so that previously created blocks no longer have
+        // purge immunity.
+        block_accumulator.local_tip.take();
+        // Do the purge.
+        block_accumulator.purge();
+        // Block 3 is no longer the local tip, and given that it's old, the
+        // blocks should have been purged.
+        assert!(block_accumulator.block_acceptors.is_empty());
+    }
 }
 
 fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {
@@ -1228,7 +1358,7 @@ async fn block_accumulator_reactor_flow() {
         runner
             .process_injected_effects(|effect_builder| {
                 let event = super::Event::ReceivedBlock {
-                    block: Box::new(block_1.clone()),
+                    block: Arc::new(block_1.clone()),
                     sender: peer_2,
                 };
                 effect_builder
@@ -1268,7 +1398,7 @@ async fn block_accumulator_reactor_flow() {
 
         let block_accumulator = &mut reactor.block_accumulator;
         let event = super::Event::ReceivedBlock {
-            block: Box::new(block_2.clone()),
+            block: Arc::new(block_2.clone()),
             sender: peer_2,
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
@@ -1470,7 +1600,7 @@ async fn block_accumulator_reactor_flow() {
 
         let block_accumulator = &mut reactor.block_accumulator;
         let event = super::Event::ReceivedBlock {
-            block: Box::new(older_block.clone()),
+            block: Arc::new(older_block.clone()),
             sender: peer_1,
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);

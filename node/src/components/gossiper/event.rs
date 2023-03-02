@@ -40,12 +40,21 @@ pub(crate) enum Event<T: GossipItem> {
     /// An incoming gossip network message.
     #[from]
     Incoming(GossiperIncoming<T>),
-    /// The result of the gossiper getting an item from storage. If the result is `Ok`, the item
+    /// The timeout for waiting for a different component to validate and store the item has
+    /// elapsed and we should check that `ItemReceived` has been called by now.
+    CheckItemReceivedTimeout { item_id: T::Id },
+    /// The result of the gossiper checking if an item exists in storage.
+    IsStoredResult {
+        item_id: T::Id,
+        sender: NodeId,
+        result: bool,
+    },
+    /// The result of the gossiper getting an item from storage. If the result is `Some`, the item
     /// should be sent to the requesting peer.
     GetFromStorageResult {
         item_id: T::Id,
         requester: NodeId,
-        result: Box<Result<T, String>>,
+        maybe_item: Option<T>,
     },
 }
 
@@ -85,13 +94,29 @@ impl<T: GossipItem> Display for Event<T> {
             Event::Incoming(incoming) => {
                 write!(formatter, "incoming: {}", incoming)
             }
-            Event::GetFromStorageResult {
-                item_id, result, ..
+            Event::CheckItemReceivedTimeout { item_id } => {
+                write!(formatter, "check item received timeout for {}", item_id,)
+            }
+            Event::IsStoredResult {
+                item_id,
+                sender,
+                result,
             } => {
-                if result.is_ok() {
-                    write!(formatter, "got {} from holder component", item_id)
+                write!(
+                    formatter,
+                    "{} is stored for gossip message from {}: {}",
+                    item_id, sender, result
+                )
+            }
+            Event::GetFromStorageResult {
+                item_id,
+                maybe_item,
+                ..
+            } => {
+                if maybe_item.is_some() {
+                    write!(formatter, "got {} from storage", item_id)
                 } else {
-                    write!(formatter, "failed to get {} from holder component", item_id)
+                    write!(formatter, "failed to get {} from storage", item_id)
                 }
             }
         }

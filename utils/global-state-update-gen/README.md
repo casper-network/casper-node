@@ -27,6 +27,10 @@ The config file should be a TOML file, which can contain the following values:
 # *must* be listed before all [[accounts]] and [[transfers]] entries
 only_listed_validators = false
 
+# can be true or false, optional, false if not present; more detailed description below
+# *must* be listed before all [[accounts]] and [[transfers]] entries
+slash_instead_of_unbonding = false
+
 # multiple [[accounts]] definitions are possible
 [[accounts]]
 public_key = "..." # the public key of the account owner
@@ -57,6 +61,8 @@ For every such definition, if the `balance` key is present, the balance of the a
 Updating the validator properties (stake, delegators) behaves differently based on the value of `only_listed_validators`. If it is false, the existing list of validators is treated as a base, and validator properties are modified based on the entries in the config. If the `validator` key is present, the stake and delegators are set to the configured values. If it is not present, the pre-existing properties are left untouched.
 
 If `only_listed_validators` is true, pre-existing validators are discarded, and only the accounts with non-zero stakes configured in the config file will be validators after the update. This option exists to match the behavior of the legacy `change-validators` subcommand and to cater to some use cases in testing.
+
+If `slash_instead_of_unbonding` is true, pre-existing validators which are being discarded and their delegators have their staked amounts slashed rather than unbonded.
 
 So, for example, if the network has 100 validators and we want to only change the stake of a single one:
 - with `only_listed_validators` set to false, we need only a single `[[accounts]]` entry for the validator we want to change,
@@ -96,7 +102,7 @@ balance = "BALANCE"
 bonded_amount = "STAKE"
 ```
 
-The command as a whole works just like a config file with only `[[accounts]]` entries and `only_listed_validators` set to `true`.
+The command as a whole works just like a config file with only `[[accounts]]` entries, `only_listed_validators` set to `true` and `slash_instead_of_unbonding` set to `false` or omitted.
 
 #### `balances`
 

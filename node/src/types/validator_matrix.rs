@@ -10,6 +10,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
+use tracing::debug;
 
 use casper_types::{EraId, PublicKey, SecretKey, U512};
 
@@ -17,7 +18,7 @@ use super::{BlockHeader, FinalitySignature};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 
-#[derive(Eq, PartialEq, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, DataSize)]
 pub(crate) enum SignatureWeight {
     /// Too few signatures to make any guarantees about the block's finality.
     Insufficient,
@@ -90,6 +91,28 @@ impl ValidatorMatrix {
             secret_signing_key,
             auction_delay: 2,
         }
+    }
+
+    // When the chain starts, the validator weights will be the same until the unbonding delay is
+    // elapsed. This allows us to possibly infer the weights of other eras if the era registered is
+    // within the unbonding delay.
+    // Currently we only infer the validator weights for era 0 from the set registered for era 1.
+    // This is needed for the case where we want to sync leap to a block in era 0 of a pre 1.5.0
+    // network for which we cant get the validator weights from a switch block.
+    pub(crate) fn register_era_validator_weights_and_infer_era_0(
+        &mut self,
+        validators: EraValidatorWeights,
+    ) -> bool {
+        let was_present = self.register_era_validator_weights(validators.clone());
+        if validators.era_id() == EraId::from(1) {
+            self.register_era_validator_weights(EraValidatorWeights::new(
+                EraId::from(0),
+                validators.validator_weights,
+                validators.finality_threshold_fraction,
+            ));
+            debug!("Validator Matrix: Inferred validator weights for Era 0 from weights in Era 1");
+        }
+        was_present
     }
 
     pub(crate) fn register_era_validator_weights(
@@ -222,6 +245,10 @@ impl ValidatorMatrix {
 
     fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
         self.inner.read().unwrap()
+    }
+
+    pub(crate) fn eras(&self) -> Vec<EraId> {
+        self.read_inner().keys().copied().collect_vec()
     }
 }
 

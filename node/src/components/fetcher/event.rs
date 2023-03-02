@@ -17,7 +17,7 @@ pub(crate) enum Event<T: FetchItem> {
     Fetch(FetcherRequest<T>),
     /// The result of the `Fetcher` getting a item from the storage component.  If the
     /// result is `None`, the item should be requested from the peer.
-    GetFromStorageResult {
+    GetLocallyResult {
         id: T::Id,
         peer: NodeId,
         validation_metadata: T::ValidationMetadata,
@@ -93,7 +93,7 @@ impl<T: FetchItem> Display for Event<T> {
             Event::Fetch(FetcherRequest { id, .. }) => {
                 write!(formatter, "request to fetch item at hash {}", id)
             }
-            Event::GetFromStorageResult { id, maybe_item, .. } => {
+            Event::GetLocallyResult { id, maybe_item, .. } => {
                 if maybe_item.is_some() {
                     write!(formatter, "got {} from storage", id)
                 } else {

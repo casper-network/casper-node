@@ -86,7 +86,7 @@ fn should_exec_non_stored_code() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
-                &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
                 runtime_args! {
                     ARG_TARGET => account_1_account_hash,
                     ARG_AMOUNT => U512::from(transferred_amount)
@@ -167,7 +167,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
     let exec_request_stored_payment = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
+            .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
                 stored_payment_contract_hash.into(),
                 "electric-boogaloo",
@@ -230,7 +230,7 @@ fn should_exec_stored_code_by_hash() {
             let deploy = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(
-                    &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                    format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
                 )
                 .with_stored_versioned_payment_contract_by_hash(
@@ -300,7 +300,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
-                &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
             )
             .with_stored_versioned_payment_contract_by_hash(
@@ -373,7 +373,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
             let deploy = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(
-                    &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                    format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
                 )
                 .with_stored_versioned_payment_contract_by_hash(
@@ -466,7 +466,7 @@ fn should_exec_stored_code_by_named_hash() {
             let deploy = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(
-                    &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                    format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
                 )
                 .with_stored_versioned_payment_contract_by_name(
@@ -566,7 +566,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let exec_request_stored_payment = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
+            .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_named_key(
                 STORED_PAYMENT_CONTRACT_HASH_NAME,
                 PAY_ENTRYPOINT,
@@ -649,7 +649,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let exec_request_stored_payment = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
+            .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
                 stored_payment_contract_hash.into(),
                 PAY_ENTRYPOINT,

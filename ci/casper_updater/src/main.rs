@@ -20,7 +20,6 @@
     clippy::all
 )]
 #![forbid(
-    const_err,
     arithmetic_overflow,
     invalid_type_param_default,
     macro_expanded_macro_exports_accessed_by_absolute_paths,
@@ -232,39 +231,39 @@ fn get_args() -> Args {
 }
 
 fn main() {
-    let types = Package::cargo("types", &*regex_data::types::DEPENDENT_FILES);
+    let types = Package::cargo("types", &regex_data::types::DEPENDENT_FILES);
     types.update();
 
-    let hashing = Package::cargo("hashing", &*regex_data::hashing::DEPENDENT_FILES);
+    let hashing = Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES);
     hashing.update();
 
     let execution_engine = Package::cargo(
         "execution_engine",
-        &*regex_data::execution_engine::DEPENDENT_FILES,
+        &regex_data::execution_engine::DEPENDENT_FILES,
     );
     execution_engine.update();
 
-    let json_rpc = Package::cargo("json_rpc", &*regex_data::json_rpc::DEPENDENT_FILES);
+    let json_rpc = Package::cargo("json_rpc", &regex_data::json_rpc::DEPENDENT_FILES);
     json_rpc.update();
 
-    let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
+    let node = Package::cargo("node", &regex_data::node::DEPENDENT_FILES);
     node.update();
 
     let smart_contracts_contract = Package::cargo(
         "smart_contracts/contract",
-        &*regex_data::smart_contracts_contract::DEPENDENT_FILES,
+        &regex_data::smart_contracts_contract::DEPENDENT_FILES,
     );
     smart_contracts_contract.update();
 
     let smart_contracts_contract_as = Package::assembly_script(
         "smart_contracts/contract_as",
-        &*regex_data::smart_contracts_contract_as::DEPENDENT_FILES,
+        &regex_data::smart_contracts_contract_as::DEPENDENT_FILES,
     );
     smart_contracts_contract_as.update();
 
     let execution_engine_testing_test_support = Package::cargo(
         "execution_engine_testing/test_support",
-        &*regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
+        &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
     );
     execution_engine_testing_test_support.update();
 

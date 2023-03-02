@@ -230,16 +230,16 @@ impl<C: Context + 'static> Synchronizer<C> {
     // Every pending vertex is counted once, even if it has multiple senders.
     fn vertices_to_be_added_later_len(&self) -> u64 {
         self.vertices_to_be_added_later
-            .iter()
-            .map(|(_, pv)| pv.len())
+            .values()
+            .map(|pv| pv.len())
             .sum()
     }
 
     // Returns number of elements in `vertex_deps` queue.
     fn vertices_awaiting_deps_len(&self) -> u64 {
         self.vertices_awaiting_deps
-            .iter()
-            .map(|(_, pv)| pv.len())
+            .values()
+            .map(|pv| pv.len())
             .sum()
     }
 

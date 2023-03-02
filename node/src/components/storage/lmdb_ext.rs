@@ -92,6 +92,10 @@ pub(super) trait TransactionExt {
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
 
+    /// Returns `true` if the given key has an entry in the given database.
+    fn value_exists<K: AsRef<[u8]>>(&mut self, db: Database, key: &K)
+        -> Result<bool, LmdbExtError>;
+
     /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
     /// serialization.
     fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
@@ -145,6 +149,19 @@ where
             // Deserialization failures are likely due to storage corruption.
             Ok(raw) => deserialize_internal(raw),
             Err(lmdb::Error::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    #[inline]
+    fn value_exists<K: AsRef<[u8]>>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError> {
+        match self.get(db, key) {
+            Ok(_raw) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
             Err(err) => Err(err.into()),
         }
     }

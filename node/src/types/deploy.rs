@@ -86,7 +86,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     };
     let session = ExecutableDeployItem::Transfer { args: session_args };
     let serialized_body = serialize_body(&payment, &session);
-    let body_hash = Digest::hash(&serialized_body);
+    let body_hash = Digest::hash(serialized_body);
 
     let secret_key = SecretKey::doc_example();
     let header = DeployHeader::new(
@@ -99,7 +99,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
         String::from("casper-example"),
     );
     let serialized_header = serialize_header(&header);
-    let hash = DeployHash::new(Digest::hash(&serialized_header));
+    let hash = DeployHash::new(Digest::hash(serialized_header));
 
     let mut approvals = BTreeSet::new();
     let approval = Approval::create(&hash, secret_key);
@@ -144,7 +144,7 @@ impl Deploy {
         account: Option<PublicKey>,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
-        let body_hash = Digest::hash(&serialized_body);
+        let body_hash = Digest::hash(serialized_body);
 
         let account = account.unwrap_or_else(|| PublicKey::from(secret_key));
 
@@ -160,7 +160,7 @@ impl Deploy {
             chain_name,
         );
         let serialized_header = serialize_header(&header);
-        let hash = DeployHash::new(Digest::hash(&serialized_header));
+        let hash = DeployHash::new(Digest::hash(serialized_header));
 
         let mut deploy = Deploy {
             hash,
@@ -263,19 +263,19 @@ impl Deploy {
 
     /// Returns `Ok` if this block's body hashes to the value of `body_hash` in the header, and if
     /// this block's header hashes to the value claimed as the block hash.  Otherwise returns `Err`.
-    pub(crate) fn has_valid_hash(&self) -> Result<(), DeployConfigurationFailure> {
+    pub(crate) fn has_valid_hash(&self) -> Result<(), Box<DeployConfigurationFailure>> {
         let serialized_body = serialize_body(&self.payment, &self.session);
-        let body_hash = Digest::hash(&serialized_body);
+        let body_hash = Digest::hash(serialized_body);
         if body_hash != *self.header.body_hash() {
             warn!(?self, ?body_hash, "invalid deploy body hash");
-            return Err(DeployConfigurationFailure::InvalidBodyHash);
+            return Err(DeployConfigurationFailure::InvalidBodyHash.into());
         }
 
         let serialized_header = serialize_header(&self.header);
-        let hash = DeployHash::new(Digest::hash(&serialized_header));
+        let hash = DeployHash::new(Digest::hash(serialized_header));
         if hash != self.hash {
             warn!(?self, ?hash, "invalid deploy hash");
-            return Err(DeployConfigurationFailure::InvalidDeployHash);
+            return Err(DeployConfigurationFailure::InvalidDeployHash.into());
         }
         Ok(())
     }
@@ -285,13 +285,17 @@ impl Deploy {
     ///   * the body hash is correct (should be the hash of the body), and
     ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
+    #[allow(clippy::result_large_err)]
     pub fn is_valid(&self) -> Result<(), DeployConfigurationFailure> {
-        self.is_valid.get_or_init(|| validate_deploy(self)).clone()
+        self.is_valid
+            .get_or_init(|| validate_deploy(self).map_err(|err| *err))
+            .clone()
     }
 
     /// Returns true if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with,
+    #[allow(clippy::result_large_err)]
     pub fn is_config_compliant(
         &self,
         chain_name: &str,
@@ -602,7 +606,7 @@ impl Display for Deploy {
 
 impl DocExample for Deploy {
     fn doc_example() -> &'static Self {
-        &*DEPLOY
+        &DEPLOY
     }
 }
 
@@ -646,21 +650,22 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 
 /// Computationally expensive validity check for a given deploy instance, including
 /// asymmetric_key signing verification.
-fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
+fn validate_deploy(deploy: &Deploy) -> Result<(), Box<DeployConfigurationFailure>> {
     if deploy.approvals.is_empty() {
         warn!(?deploy, "deploy has no approvals");
-        return Err(DeployConfigurationFailure::EmptyApprovals);
+        return Err(DeployConfigurationFailure::EmptyApprovals.into());
     }
 
     deploy.has_valid_hash()?;
 
     for (index, approval) in deploy.approvals.iter().enumerate() {
-        if let Err(error) = crypto::verify(&deploy.hash, approval.signature(), approval.signer()) {
+        if let Err(error) = crypto::verify(deploy.hash, approval.signature(), approval.signer()) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
             return Err(DeployConfigurationFailure::InvalidApproval {
                 index,
                 error_msg: error.to_string(),
-            });
+            }
+            .into());
         }
     }
 

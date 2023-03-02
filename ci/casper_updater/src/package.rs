@@ -42,11 +42,11 @@ impl PackageConsts for CargoPackage {
     const MANIFEST: &'static str = "Cargo.toml";
 
     fn name_regex() -> &'static Regex {
-        &*MANIFEST_NAME_REGEX
+        &MANIFEST_NAME_REGEX
     }
 
     fn version_regex() -> &'static Regex {
-        &*MANIFEST_VERSION_REGEX
+        &MANIFEST_VERSION_REGEX
     }
 }
 
@@ -56,11 +56,11 @@ impl PackageConsts for AssemblyScriptPackage {
     const MANIFEST: &'static str = "package.json";
 
     fn name_regex() -> &'static Regex {
-        &*PACKAGE_JSON_NAME_REGEX
+        &PACKAGE_JSON_NAME_REGEX
     }
 
     fn version_regex() -> &'static Regex {
-        &*PACKAGE_JSON_VERSION_REGEX
+        &PACKAGE_JSON_VERSION_REGEX
     }
 }
 

@@ -373,7 +373,7 @@ pub fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
     let mut ret = Vec::with_capacity(key_count);
     for _ in 0..key_count {
         let bytes: [u8; SecretKey::ED25519_LENGTH] = rand::random();
-        let secret_key = SecretKey::ed25519_from_bytes(&bytes).unwrap();
+        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
         ret.push(public_key);
     }

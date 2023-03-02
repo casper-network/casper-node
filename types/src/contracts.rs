@@ -1027,7 +1027,7 @@ impl EntryPoints {
 
     /// Takes all entry points.
     pub fn take_entry_points(self) -> Vec<EntryPoint> {
-        self.0.into_iter().map(|(_name, value)| value).collect()
+        self.0.into_values().collect()
     }
 
     /// Returns the length of the entry points

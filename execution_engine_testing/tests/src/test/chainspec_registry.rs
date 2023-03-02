@@ -31,8 +31,8 @@ fn should_commit_chainspec_registry_during_genesis() {
     let mut rng = rand::thread_rng();
     let chainspec_bytes = rng.gen::<[u8; 32]>();
     let genesis_account = rng.gen::<[u8; 32]>();
-    let chainspec_bytes_hash = Digest::hash(&chainspec_bytes);
-    let genesis_account_hash = Digest::hash(&genesis_account);
+    let chainspec_bytes_hash = Digest::hash(chainspec_bytes);
+    let genesis_account_hash = Digest::hash(genesis_account);
 
     let chainspec_registry =
         ChainspecRegistry::new_with_genesis(&chainspec_bytes, &genesis_account);
@@ -108,13 +108,13 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
 
     let chainspec_bytes = rng.gen::<[u8; 32]>();
     let global_state_bytes = rng.gen::<[u8; 32]>();
-    let chainspec_bytes_hash = Digest::hash(&chainspec_bytes);
-    let global_state_bytes_hash = Digest::hash(&global_state_bytes);
+    let chainspec_bytes_hash = Digest::hash(chainspec_bytes);
+    let global_state_bytes_hash = Digest::hash(global_state_bytes);
 
     let upgraded_chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
         &chainspec_bytes,
         cfg.with_global_state_bytes
-            .then(|| global_state_bytes.as_slice()),
+            .then_some(global_state_bytes.as_slice()),
     );
 
     let mut upgrade_request = {

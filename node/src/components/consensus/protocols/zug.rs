@@ -1327,7 +1327,6 @@ impl<C: Context + 'static> Zug<C> {
                             | ProtocolOutcome::CreatedGossipMessage(_)
                             | ProtocolOutcome::CreatedTargetedMessage(_, _)
                             | ProtocolOutcome::CreatedMessageToRandomPeer(_)
-                            | ProtocolOutcome::CreatedTargetedRequest(_, _)
                             | ProtocolOutcome::CreatedRequestToRandomPeer(_)
                             | ProtocolOutcome::ScheduleTimer(_, _)
                             | ProtocolOutcome::QueueAction(_)
@@ -2185,16 +2184,20 @@ where
         }
     }
 
-    fn request_evidence(&self, peer: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
-        if let Some(v_idx) = self.validators.get_index(vid) {
-            // Send the peer a sync message, so they will send us evidence we are missing.
-            let round_id = self.current_round;
-            let payload = self.create_sync_request(v_idx, round_id).into();
-            vec![ProtocolOutcome::CreatedTargetedRequest(payload, peer)]
-        } else {
-            error!(?vid, "unknown validator ID");
-            vec![]
-        }
+    fn send_evidence(&self, peer: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
+        self.validators
+            .get_index(vid)
+            .and_then(|idx| self.faults.get(&idx))
+            .map(|fault| match fault {
+                Fault::Direct(msg, content, sign) => {
+                    vec![ProtocolOutcome::CreatedTargetedMessage(
+                        Message::Evidence(msg.clone(), content.clone(), *sign).into(),
+                        peer,
+                    )]
+                }
+                _ => vec![],
+            })
+            .unwrap_or_default()
     }
 
     fn set_paused(&mut self, paused: bool, now: Timestamp) -> ProtocolOutcomes<C> {

@@ -14,7 +14,7 @@ use casper_execution_engine::core::engine_state;
 use casper_hashing::Digest;
 use casper_types::Timestamp;
 
-use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent};
+use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent, TrieAccumulatorResponse};
 use crate::{
     components::Component,
     effect::{
@@ -26,6 +26,7 @@ use crate::{
     },
     reactor,
     types::{BlockHash, NodeId, TrieOrChunk},
+    utils::DisplayIter,
     NodeRng,
 };
 
@@ -33,12 +34,35 @@ const COMPONENT_NAME: &str = "global_state_synchronizer";
 
 #[derive(Debug, Clone, Error)]
 pub(crate) enum Error {
-    #[error(transparent)]
-    TrieAccumulator(TrieAccumulatorError),
-    #[error("ContractRuntime failed to put a trie into global state: {0}")]
-    PutTrie(engine_state::Error),
+    #[error("trie accumulator encountered an error while fetching a trie; unreliable peers {}", DisplayIter::new(.0))]
+    TrieAccumulator(Vec<NodeId>),
+    #[error("ContractRuntime failed to put a trie into global state: {0}; unreliable peers {}", DisplayIter::new(.1))]
+    PutTrie(engine_state::Error, Vec<NodeId>),
     #[error("no peers available to ask for a trie: {0}")]
     NoPeersAvailable(Digest),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Response {
+    hash: Digest,
+    unreliable_peers: Vec<NodeId>,
+}
+
+impl Response {
+    pub(crate) fn new(hash: Digest, unreliable_peers: Vec<NodeId>) -> Self {
+        Self {
+            hash,
+            unreliable_peers,
+        }
+    }
+
+    pub(crate) fn hash(&self) -> &Digest {
+        &self.hash
+    }
+
+    pub(crate) fn unreliable_peers(self) -> Vec<NodeId> {
+        self.unreliable_peers
+    }
 }
 
 #[derive(Debug, From, Serialize)]
@@ -47,7 +71,7 @@ pub(crate) enum Event {
     Request(SyncGlobalStateRequest),
     FetchedTrie {
         trie_hash: Digest,
-        trie_accumulator_result: Result<Box<TrieRaw>, TrieAccumulatorError>,
+        trie_accumulator_result: Result<TrieAccumulatorResponse, TrieAccumulatorError>,
     },
     PutTrieResult {
         trie_hash: Digest,
@@ -64,7 +88,8 @@ pub(crate) enum Event {
 struct RequestState {
     block_hashes: HashSet<BlockHash>,
     peers: HashSet<NodeId>,
-    responders: Vec<Responder<Result<Digest, Error>>>,
+    responders: Vec<Responder<Result<Response, Error>>>,
+    unreliable_peers: HashSet<NodeId>,
 }
 
 impl RequestState {
@@ -75,6 +100,7 @@ impl RequestState {
             block_hashes,
             peers: request.peers,
             responders: vec![request.responder],
+            unreliable_peers: HashSet::new(),
         }
     }
 
@@ -89,7 +115,7 @@ impl RequestState {
     }
 
     /// Consumes this request state and sends the response on all responders.
-    fn respond(self, response: Result<Digest, Error>) -> Effects<Event> {
+    fn respond(self, response: Result<Response, Error>) -> Effects<Event> {
         self.responders
             .into_iter()
             .flat_map(|responder| responder.respond(response.clone()).ignore())
@@ -209,6 +235,11 @@ impl GlobalStateSynchronizer {
         self.last_progress
     }
 
+    /// Returns whether we are already processing a request for the given hash.
+    pub(super) fn has_global_state_request(&self, global_state_hash: &Digest) -> bool {
+        self.request_states.contains_key(global_state_hash)
+    }
+
     fn handle_request<REv>(
         &mut self,
         request: SyncGlobalStateRequest,
@@ -285,7 +316,7 @@ impl GlobalStateSynchronizer {
     fn handle_fetched_trie<REv>(
         &mut self,
         trie_hash: Digest,
-        trie_accumulator_result: Result<Box<TrieRaw>, TrieAccumulatorError>,
+        trie_accumulator_result: Result<TrieAccumulatorResponse, TrieAccumulatorError>,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
     where
@@ -302,12 +333,37 @@ impl GlobalStateSynchronizer {
         };
 
         let trie_raw = match trie_accumulator_result {
-            Ok(trie_raw) => trie_raw,
+            Ok(response) => {
+                for root_hash in request_root_hashes.iter() {
+                    if let Some(request_state) = self.request_states.get_mut(root_hash) {
+                        request_state
+                            .unreliable_peers
+                            .extend(response.unreliable_peers());
+                    }
+                }
+                response.trie()
+            }
             Err(error) => {
                 debug!(%error, "error fetching a trie");
                 let mut effects = Effects::new();
                 effects.extend(request_root_hashes.into_iter().flat_map(|root_hash| {
-                    self.cancel_request(root_hash, Error::TrieAccumulator(error.clone()))
+                    if let Some(request_state) = self.request_states.get_mut(&root_hash) {
+                        match &error {
+                            TrieAccumulatorError::Absent(_, _, unreliable_peers)
+                            | TrieAccumulatorError::PeersExhausted(_, unreliable_peers) => {
+                                request_state.unreliable_peers.extend(unreliable_peers);
+                            }
+                            TrieAccumulatorError::NoPeers(_) => {
+                                // Trie accumulator did not have any peers to download from
+                                // so the request will be canceled with no peers to report
+                            }
+                        }
+                        let unreliable_peers =
+                            request_state.unreliable_peers.iter().copied().collect();
+                        self.cancel_request(root_hash, Error::TrieAccumulator(unreliable_peers))
+                    } else {
+                        Effects::new()
+                    }
                 }));
                 // continue fetching other requests if any
                 effects.extend(self.parallel_fetch(effect_builder));
@@ -336,7 +392,10 @@ impl GlobalStateSynchronizer {
 
     fn finish_request(&mut self, trie_hash: Digest) -> Effects<Event> {
         match self.request_states.remove(&trie_hash) {
-            Some(request_state) => request_state.respond(Ok(trie_hash)),
+            Some(request_state) => {
+                let unreliable_peers = request_state.unreliable_peers.iter().copied().collect();
+                request_state.respond(Ok(Response::new(trie_hash, unreliable_peers)))
+            }
             None => Effects::new(),
         }
     }
@@ -378,7 +437,14 @@ impl GlobalStateSynchronizer {
             Err(error) => {
                 warn!(%trie_hash, %error, "couldn't put trie into global state");
                 for root_hash in request_root_hashes {
-                    effects.extend(self.cancel_request(root_hash, Error::PutTrie(error.clone())));
+                    if let Some(request_state) = self.request_states.get_mut(&root_hash) {
+                        let unreliable_peers =
+                            request_state.unreliable_peers.iter().copied().collect();
+                        effects.extend(self.cancel_request(
+                            root_hash,
+                            Error::PutTrie(error.clone(), unreliable_peers),
+                        ));
+                    }
                 }
             }
         }
@@ -400,9 +466,15 @@ impl GlobalStateSynchronizer {
             trie_awaiting.trie_written(written_trie);
         }
 
-        let (ready_tries, still_incomplete) = std::mem::take(&mut self.tries_awaiting_children)
-            .into_iter()
-            .partition(|(_, trie_awaiting)| trie_awaiting.ready_to_be_written());
+        let (ready_tries, still_incomplete): (BTreeMap<_, _>, BTreeMap<_, _>) =
+            std::mem::take(&mut self.tries_awaiting_children)
+                .into_iter()
+                .partition(|(_, trie_awaiting)| trie_awaiting.ready_to_be_written());
+        debug!(
+            ready_tries = ready_tries.len(),
+            still_incomplete = still_incomplete.len(),
+            "handle_trie_written"
+        );
         self.tries_awaiting_children = still_incomplete;
 
         let mut effects: Effects<Event> = ready_tries

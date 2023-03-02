@@ -301,7 +301,7 @@ impl core::ops::Index<core::ops::Range<usize>> for PointerBlock {
 
     #[inline]
     fn index(&self, index: core::ops::Range<usize>) -> &[PointerBlockValue] {
-        let &PointerBlock(ref dat) = self;
+        let PointerBlock(dat) = self;
         &dat[index]
     }
 }
@@ -311,7 +311,7 @@ impl core::ops::Index<core::ops::RangeTo<usize>> for PointerBlock {
 
     #[inline]
     fn index(&self, index: core::ops::RangeTo<usize>) -> &[PointerBlockValue] {
-        let &PointerBlock(ref dat) = self;
+        let PointerBlock(dat) = self;
         &dat[index]
     }
 }
@@ -321,7 +321,7 @@ impl core::ops::Index<core::ops::RangeFrom<usize>> for PointerBlock {
 
     #[inline]
     fn index(&self, index: core::ops::RangeFrom<usize>) -> &[PointerBlockValue] {
-        let &PointerBlock(ref dat) = self;
+        let PointerBlock(dat) = self;
         &dat[index]
     }
 }
@@ -331,7 +331,7 @@ impl core::ops::Index<core::ops::RangeFull> for PointerBlock {
 
     #[inline]
     fn index(&self, index: core::ops::RangeFull) -> &[PointerBlockValue] {
-        let &PointerBlock(ref dat) = self;
+        let PointerBlock(dat) = self;
         &dat[index]
     }
 }
@@ -599,6 +599,6 @@ pub(crate) mod operations {
             pointer_block: Default::default(),
         };
         let root_bytes: Vec<u8> = root.to_bytes()?;
-        Ok((Digest::hash(&root_bytes), root))
+        Ok((Digest::hash(root_bytes), root))
     }
 }

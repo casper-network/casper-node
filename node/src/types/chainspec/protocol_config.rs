@@ -18,18 +18,20 @@ use casper_types::{
 use super::{ActivationPoint, GlobalStateUpdate};
 use crate::types::BlockHeader;
 
+/// Configuration values associated with the protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {
+    /// Protocol version.
     #[data_size(skip)]
-    pub(crate) version: ProtocolVersion,
+    pub version: ProtocolVersion,
     /// Whether we need to clear latest blocks back to the switch block just before the activation
     /// point or not.
-    pub(crate) hard_reset: bool,
+    pub hard_reset: bool,
     /// This protocol config applies starting at the era specified in the activation point.
-    pub(crate) activation_point: ActivationPoint,
+    pub activation_point: ActivationPoint,
     /// Any arbitrary updates we might want to make to the global state at the start of the era
     /// specified in the activation point.
-    pub(crate) global_state_update: Option<GlobalStateUpdate>,
+    pub global_state_update: Option<GlobalStateUpdate>,
 }
 
 impl ProtocolConfig {
@@ -52,7 +54,7 @@ impl ProtocolConfig {
 
     /// Returns whether the block header belongs to the last block before the upgrade to the
     /// current protocol version.
-    pub(crate) fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {
+    pub fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {
         block_header.protocol_version() < self.version
             && block_header.is_switch_block()
             && ActivationPoint::EraId(block_header.next_block_era_id()) == self.activation_point

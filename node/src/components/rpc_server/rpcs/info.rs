@@ -77,7 +77,7 @@ fn finalized_approvals_default() -> bool {
 
 impl DocExample for GetDeployParams {
     fn doc_example() -> &'static Self {
-        &*GET_DEPLOY_PARAMS
+        &GET_DEPLOY_PARAMS
     }
 }
 
@@ -110,7 +110,7 @@ pub struct GetDeployResult {
 
 impl DocExample for GetDeployResult {
     fn doc_example() -> &'static Self {
-        &*GET_DEPLOY_RESULT
+        &GET_DEPLOY_RESULT
     }
 }
 
@@ -190,7 +190,7 @@ pub struct GetPeersResult {
 
 impl DocExample for GetPeersResult {
     fn doc_example() -> &'static Self {
-        &*GET_PEERS_RESULT
+        &GET_PEERS_RESULT
     }
 }
 
@@ -326,7 +326,7 @@ impl GetValidatorChangesResult {
 
 impl DocExample for GetValidatorChangesResult {
     fn doc_example() -> &'static Self {
-        &*GET_VALIDATOR_CHANGES_RESULT
+        &GET_VALIDATOR_CHANGES_RESULT
     }
 }
 
@@ -369,7 +369,7 @@ impl GetChainspecResult {
 
 impl DocExample for GetChainspecResult {
     fn doc_example() -> &'static Self {
-        &*GET_CHAINSPEC_RESULT
+        &GET_CHAINSPEC_RESULT
     }
 }
 

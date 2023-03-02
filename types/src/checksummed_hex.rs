@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn should_decode_empty_input() {
         let input = String::new();
-        let actual = decode(&input).unwrap();
+        let actual = decode(input).unwrap();
         assert!(actual.is_empty());
     }
 
@@ -163,14 +163,14 @@ mod tests {
         assert!(decode("A1a2").is_err());
 
         let large_encoded = format!("A1{}", small_encoded);
-        assert!(decode(&large_encoded).is_ok());
+        assert!(decode(large_encoded).is_ok());
     }
 
     #[proptest]
     fn hex_roundtrip(input: Vec<u8>) {
         prop_assert_eq!(
             input.clone(),
-            decode(&encode_iter(&input).collect::<String>()).expect("Failed to decode input.")
+            decode(encode_iter(&input).collect::<String>()).expect("Failed to decode input.")
         );
     }
 
@@ -219,7 +219,7 @@ mod tests {
     #[proptest]
     fn hex_roundtrip_sanity(input: Vec<u8>) {
         prop_assert!(matches!(
-            decode(&encode_iter(&input).collect::<String>()),
+            decode(encode_iter(&input).collect::<String>()),
             Ok(_)
         ))
     }
@@ -227,18 +227,18 @@ mod tests {
     #[proptest]
     fn is_same_case_uppercase(input: String) {
         let input = input.to_uppercase();
-        prop_assert!(string_is_same_case(&input));
+        prop_assert!(string_is_same_case(input));
     }
 
     #[proptest]
     fn is_same_case_lowercase(input: String) {
         let input = input.to_lowercase();
-        prop_assert!(string_is_same_case(&input));
+        prop_assert!(string_is_same_case(input));
     }
 
     #[proptest]
     fn is_not_same_case(input: String) {
         let input = format!("aA{}", input);
-        prop_assert!(!string_is_same_case(&input));
+        prop_assert!(!string_is_same_case(input));
     }
 }

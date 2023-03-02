@@ -94,7 +94,7 @@ impl IndexedMerkleProof {
                 }
             })
             .tree_fold1(|x, y| match (x, y) {
-                (Hash(hash_x), Hash(hash_y)) => Hash(Digest::hash_pair(&hash_x, &hash_y)),
+                (Hash(hash_x), Hash(hash_y)) => Hash(Digest::hash_pair(hash_x, hash_y)),
                 (Hash(hash), Proof(mut proof)) | (Proof(mut proof), Hash(hash)) => {
                     proof.push(hash);
                     Proof(proof)
@@ -156,9 +156,9 @@ impl IndexedMerkleProof {
                 // Compute the raw Merkle root by hashing the proof from leaf hash up.
                 hashes.fold(leaf_hash, |acc, hash| {
                     let digest = if (path & 1) == 1 {
-                        Digest::hash_pair(hash, &acc)
+                        Digest::hash_pair(hash, acc)
                     } else {
-                        Digest::hash_pair(&acc, hash)
+                        Digest::hash_pair(acc, hash)
                     };
                     path >>= 1;
                     digest
@@ -382,11 +382,11 @@ mod tests {
             let last = proof.len() - 1;
             if index < half {
                 let left = compute_raw_root_from_proof(index, half, &proof[..last]);
-                Digest::hash_pair(&left, &proof[last])
+                Digest::hash_pair(left, proof[last])
             } else {
                 let right =
                     compute_raw_root_from_proof(index - half, leaf_count - half, &proof[..last]);
-                Digest::hash_pair(&proof[last], &right)
+                Digest::hash_pair(proof[last], right)
             }
         }
 

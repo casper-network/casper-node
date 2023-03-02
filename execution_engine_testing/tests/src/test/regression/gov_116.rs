@@ -35,11 +35,11 @@ const DELEGATION_RATE: DelegationRate = 0;
 /// run_auction call.
 const VESTING_WEEKS: [u64; 3] = [
     // Passes the vesting schedule (aka initial lockup + schedule length)
-    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64,
+    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS,
     // One week after
-    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64 + WEEK_MILLIS,
+    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS + WEEK_MILLIS,
     // Two weeks after
-    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64 + (2 * WEEK_MILLIS),
+    VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS + (2 * WEEK_MILLIS),
 ];
 
 static GENESIS_VALIDATOR_PUBLIC_KEYS: Lazy<BTreeSet<PublicKey>> = Lazy::new(|| {
@@ -286,10 +286,7 @@ fn should_retain_genesis_validator_slot_protection() {
     assert_eq!(next_validator_set_3, GENESIS_VALIDATOR_PUBLIC_KEYS.clone());
 
     // After 13 weeks ~ 91 days lowest stake validator is dropped and replaced with higher bid
-    builder.run_auction(
-        VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS as u64,
-        Vec::new(),
-    );
+    builder.run_auction(VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS, Vec::new());
 
     let era_validators_4: EraValidators = builder.get_era_validators();
     let (last_era_4, weights_4) = era_validators_4.iter().last().unwrap();
