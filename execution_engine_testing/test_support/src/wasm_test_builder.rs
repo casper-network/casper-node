@@ -24,6 +24,7 @@ use casper_execution_engine::{
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
+            migrate::{MigrateConfig, MigrateSuccess},
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
@@ -99,6 +100,7 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
+    migrate_results: Vec<Result<MigrateSuccess, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
@@ -137,6 +139,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             engine_state: Rc::clone(&self.engine_state),
             exec_results: self.exec_results.clone(),
             upgrade_results: self.upgrade_results.clone(),
+            migrate_results: self.migrate_results.clone(),
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
@@ -159,9 +162,10 @@ impl InMemoryWasmTestBuilder {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
+            engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            engine_state: Rc::new(engine_state),
+            migrate_results: Vec::new(),
             genesis_hash: maybe_post_state_hash,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
@@ -236,14 +240,15 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            migrate_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
+            scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
-            scratch_engine_state: None,
         }
     }
 
@@ -335,6 +340,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            migrate_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
@@ -713,6 +719,30 @@ where
         }
 
         self.upgrade_results.push(result);
+        self
+    }
+
+    pub fn commit_migrate(&mut self, migrate_config: MigrateConfig) -> &mut Self {
+        let result = self.engine_state.commit_migrate(migrate_config);
+        if let Ok(MigrateSuccess { post_state_hash }) = result {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        self.migrate_results.push(result);
+        self
+    }
+
+    /// Expects migrate success.
+    pub fn expect_migrate_success(&mut self) -> &mut Self {
+        // Check first result, as only first result is interesting for a simple test
+        let result = self
+            .migrate_results
+            .last()
+            .expect("Expected to be called after a system migrate.")
+            .as_ref();
+
+        result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
+
         self
     }
 

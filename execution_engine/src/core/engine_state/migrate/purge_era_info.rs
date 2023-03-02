@@ -10,7 +10,7 @@ use std::{
 
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, KeyTag, StoredValue};
-use num::One;
+use num::{Num, One};
 use thiserror::Error;
 
 use crate::{
@@ -29,25 +29,14 @@ struct BinarySearchResult<T> {
     high: T,
 }
 
-fn bisect<
-    T: Copy
-        + fmt::Debug
-        + PartialEq
-        + PartialOrd
-        + Sub<Output = T>
-        + Add<Output = T>
-        + Div<Output = T>
-        + Shr<usize, Output = T>
-        + One,
-    E,
->(
+fn bisect<T: Copy + fmt::Debug + Num + PartialOrd + Shr<usize, Output = T>, E>(
     mut low: T,
-    mut high: T,
+    upper_bound: T,
     mut lookup: impl FnMut(T) -> Result<Ordering, E>,
 ) -> Result<BinarySearchResult<T>, E> {
+    let mut high = upper_bound;
     let mut steps = 0;
     while low <= high {
-        dbg!(low, high);
         steps += 1;
         let mid = ((high - low) >> 1usize) + low;
         let mid_index = mid;
@@ -86,26 +75,30 @@ pub enum Error {
     KeyDoesNotExists,
 }
 
-pub struct MigrationResult {
+pub struct PurgeEraInfoResult {
     pub keys_to_delete: Vec<Key>,
     pub era_summary: Option<StoredValue>,
     pub post_state_hash: Digest,
 }
+
+const ERAS_TO_DELETE_PER_STEP: usize = 5; // TODO: Chainspec
+const LOWER_BOUND_ERA: u64 = 0;
 
 /// Purges [`Key::EraInfo`] keys from the tip of the store and writes only single key with the
 /// latest era into a stable key [`Key::EraSummary`].
 pub fn purge_era_info<S>(
     state: &S,
     mut state_root_hash: Digest,
-    // largest_era_id: u64,
-) -> Result<MigrationResult, Error>
+    upper_bound_era: u64,
+    batch_size: usize,
+) -> Result<PurgeEraInfoResult, Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error> + fmt::Debug,
+    S::Error: Into<execution::Error>,
 {
     let correlation_id = CorrelationId::new();
 
-    let mut tracking_copy = match state
+    let tracking_copy = match state
         .checkout(state_root_hash)
         .map_err(|error| Error::Exec(error.into()))?
     {
@@ -114,39 +107,53 @@ where
     };
 
     let start = Instant::now();
-    println!("Looking for largest era...");
-
-    const FIRST_ERA: u64 = 0;
-    const LARGEST_ERA: u64 = 10000;
 
     let tc = Rc::clone(&tracking_copy);
 
-    let result = bisect(FIRST_ERA, LARGEST_ERA, move |idx| {
+    let result = bisect(LOWER_BOUND_ERA, upper_bound_era, move |idx| {
         match tc
             .borrow_mut()
             .get(correlation_id, &Key::EraInfo(EraId::new(idx)))
         {
-            Ok(Some(_)) => Ok(Ordering::Less),
-            Ok(None) => Ok(Ordering::Greater),
+            Ok(Some(era_id)) => {
+                if idx == 0 {
+                    // No eras were removed yet. This is the first migration.
+                    Ok(Ordering::Equal)
+                } else {
+                    Ok(Ordering::Greater)
+                }
+            }
+            Ok(None) => Ok(Ordering::Less),
             Err(error) => Err(error),
         }
     })
     .map_err(|error| Error::Exec(error.into()))?;
-
+    dbg!(&result);
     println!(
-        "Found largest era {} with {} queries in {:?}",
-        result.high,
+        "Found smallest era {} with {} queries in {:?}",
+        result.low,
         result.steps,
         start.elapsed()
     );
 
-    let keys_to_delete: Vec<Key> = (0..result.high)
+    // Determine state (i.e. start, or continue)
+
+    if result.low == 0 {
+        // TODO
+        // Lower bound starts with era id == 0, which means this is the first migration step.
+        // Now find highest era info in range, then copy it over to Key::EraSummary
+        // todo!();
+    }
+
+    let keys_to_delete: Vec<Key> = (result.low..result.low + batch_size as u64)
         .map(|era_id| Key::EraInfo(EraId::new(era_id)))
         .collect();
 
+    dbg!(&keys_to_delete);
+
     if keys_to_delete.is_empty() {
         // Don't do any work if not keys are present in the global state.
-        return Ok(MigrationResult {
+        return Ok(PurgeEraInfoResult {
             keys_to_delete: Vec::new(),
             era_summary: None,
             post_state_hash: state_root_hash,
@@ -202,7 +209,7 @@ where
         state_root_hash = new_state_root_hash;
     }
 
-    Ok(MigrationResult {
+    Ok(PurgeEraInfoResult {
         keys_to_delete,
         era_summary: last_era_info,
         post_state_hash: state_root_hash,
@@ -212,6 +219,50 @@ where
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
+
+    #[test]
+    fn should_find_lower_bound() {
+        // const LARGEST_ERA_ID: usize = 6059;
+
+        const LOWEST_ERA_ID: usize = 0;
+        const HIGHEST_ERA_ID: usize = u64::MAX as usize;
+
+        let mut eras = Vec::new();
+        eras.push(Some(0)); // 0
+        eras.push(Some(1)); // 1
+        eras.push(Some(2)); // 2
+                            // 3
+
+        let result = super::bisect(0, eras.len() - 1, |idx| find_lower_bound(&eras, idx));
+        dbg!(&result);
+        assert_eq!(result.as_ref().unwrap().low, 0);
+
+        eras[0] = None;
+
+        let result = super::bisect(0, eras.len() - 1, |idx| find_lower_bound(&eras, idx));
+        dbg!(&result);
+        assert_eq!(result.as_ref().unwrap().low, 1);
+
+        eras[1] = None;
+
+        let result = super::bisect(0, eras.len() - 1, |idx| find_lower_bound(&eras, idx));
+        dbg!(&result);
+        assert_eq!(result.as_ref().unwrap().low, 2);
+    }
+
+    fn find_lower_bound(eras: &[Option<i32>], idx: usize) -> Result<Ordering, ()> {
+        match eras.get(idx).unwrap() {
+            Some(val) => {
+                if *val == 0 {
+                    Ok(Ordering::Equal)
+                } else {
+                    // Found something, means that idx is too low.
+                    Ok(Ordering::Greater)
+                }
+            }
+            None => Ok(Ordering::Less),
+        }
+    }
 
     #[test]
     fn should_run_bisect_on_partially_filled_map() {
@@ -273,7 +324,5 @@ mod tests {
         });
 
         assert!(result.is_err());
-
-        // assert_eq!(result.unwrap().high, 1);
     }
 }

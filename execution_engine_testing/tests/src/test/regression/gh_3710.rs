@@ -7,7 +7,11 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{self, RewardItem},
+        engine_state::{
+            self,
+            migrate::{MigrateAction, MigrateConfig},
+            RewardItem,
+        },
         execution,
     },
     storage::global_state::{CommitProvider, StateProvider},
@@ -26,9 +30,88 @@ const FIXTURE_N_ERAS: usize = 10;
 const GH_3710_FIXTURE: &str = "gh_3710";
 const DEFAULT_REWARD_VALUE: u64 = 1_000_000;
 
+// #[ignore]
+// #[test]
+// fn gh_3710_should_delete_era_infos_at_upgrade_point() {
+//     let (mut builder, lmdb_fixture_state, _temp_dir) =
+//         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
+
+//     let auction_delay: u64 = lmdb_fixture_state
+//         .genesis_request
+//         .get("ee_config")
+//         .expect("should have ee_config")
+//         .get("auction_delay")
+//         .expect("should have auction delay")
+//         .as_i64()
+//         .expect("auction delay should be integer")
+//         .try_into()
+//         .expect("auction delay should be positive");
+
+//     let last_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
+//     let pre_upgrade_state_root_hash = builder.get_post_state_hash();
+
+//     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+//     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+//     let new_protocol_version = ProtocolVersion::from_parts(
+//         current_protocol_version.value().major,
+//         current_protocol_version.value().minor,
+//         current_protocol_version.value().patch + 1,
+//     );
+
+//     let era_info_keys_before_upgrade = builder
+//         .get_keys(KeyTag::EraInfo)
+//         .expect("should return all the era info keys");
+
+//     let mut upgrade_request = {
+//         UpgradeRequestBuilder::new()
+//             .with_current_protocol_version(previous_protocol_version)
+//             .with_new_protocol_version(new_protocol_version)
+//             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+//             .build()
+//     };
+
+//     builder
+//         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+//         .expect_upgrade_success();
+
+//     let upgrade_result = builder.get_upgrade_result(0).expect("result");
+
+//     let upgrade_success = upgrade_result.as_ref().expect("success");
+//     assert_eq!(
+//         upgrade_success.post_state_hash,
+//         builder.get_post_state_hash(),
+//         "sanity check"
+//     );
+
+//     let era_info_keys_after_upgrade = builder
+//         .get_keys(KeyTag::EraInfo)
+//         .expect("should return all the era info keys");
+//     assert_eq!(
+//         era_info_keys_before_upgrade.len(),
+//         auction_delay as usize + 1 + FIXTURE_N_ERAS,
+//     );
+//     assert_eq!(era_info_keys_after_upgrade, Vec::new());
+
+//     let last_era_info_value = builder
+//         .query(
+//             Some(pre_upgrade_state_root_hash),
+//             Key::EraInfo(last_era_info),
+//             &[],
+//         )
+//         .expect("should query pre-upgrade stored value");
+
+//     let era_summary = builder
+//         .query(None, Key::EraSummary, &[])
+//         .expect("should query stable key after the upgrade");
+
+//     assert_eq!(last_era_info_value, era_summary);
+// }
+
 #[ignore]
 #[test]
-fn gh_3710_should_delete_era_infos_at_upgrade_point() {
+fn gh_3710_should_delete_eras_on_each_migration_step() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
@@ -44,65 +127,99 @@ fn gh_3710_should_delete_era_infos_at_upgrade_point() {
         .expect("auction delay should be positive");
 
     let last_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
-    let pre_upgrade_state_root_hash = builder.get_post_state_hash();
 
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let new_protocol_version = ProtocolVersion::from_parts(
-        current_protocol_version.value().major,
-        current_protocol_version.value().minor,
-        current_protocol_version.value().patch + 1,
-    );
-
-    let era_info_keys_before_upgrade = builder
+    let era_info_before_migration = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
 
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(previous_protocol_version)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .build()
+    assert_eq!(
+        era_info_before_migration.last(),
+        Some(&Key::EraInfo(last_era_info))
+    );
+
+    let current_root_hash = builder.get_post_state_hash();
+
+    const BATCH_SIZE: usize = 5;
+
+    // Migrate step 1
+
+    let action = MigrateAction::PurgeEraInfo {
+        batch_size: BATCH_SIZE,
+        current_era_id: FIXTURE_N_ERAS as u64 + 1,
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
-        .expect_upgrade_success();
+        .commit_migrate(MigrateConfig {
+            state_root_hash: current_root_hash,
+            actions: vec![action],
+        })
+        .expect_migrate_success();
 
-    let upgrade_result = builder.get_upgrade_result(0).expect("result");
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
 
-    let upgrade_success = upgrade_result.as_ref().expect("success");
-    assert_eq!(
-        upgrade_success.post_state_hash,
-        builder.get_post_state_hash(),
-        "sanity check"
-    );
-
-    let era_info_keys_after_upgrade = builder
+    let era_info_after_migration = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
+
     assert_eq!(
-        era_info_keys_before_upgrade.len(),
-        auction_delay as usize + 1 + FIXTURE_N_ERAS,
+        era_info_after_migration.first(),
+        Some(&Key::EraInfo(EraId::new(BATCH_SIZE as u64))),
     );
-    assert_eq!(era_info_keys_after_upgrade, Vec::new());
 
-    let last_era_info_value = builder
-        .query(
-            Some(pre_upgrade_state_root_hash),
-            Key::EraInfo(last_era_info),
-            &[],
-        )
-        .expect("should query pre-upgrade stored value");
+    // todo ensure there's Key::EraSummary with highest era id key since we removed eras 0..batch_size
 
-    let era_summary = builder
-        .query(None, Key::EraSummary, &[])
-        .expect("should query stable key after the upgrade");
+    // Migrate step 2
 
-    assert_eq!(last_era_info_value, era_summary);
+    let current_root_hash = builder.get_post_state_hash();
+
+    let action = MigrateAction::PurgeEraInfo {
+        batch_size: BATCH_SIZE,
+        current_era_id: FIXTURE_N_ERAS as u64 + 1,
+    };
+
+    builder
+        .commit_migrate(MigrateConfig {
+            state_root_hash: current_root_hash,
+            actions: vec![action],
+        })
+        .expect_migrate_success();
+
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(
+        era_info_after_migration.first(),
+        Some(&Key::EraInfo(EraId::new(
+            BATCH_SIZE as u64 + BATCH_SIZE as u64
+        ))),
+    );
+
+    // Migrate step 3
+
+    let current_root_hash = builder.get_post_state_hash();
+
+    let action = MigrateAction::PurgeEraInfo {
+        batch_size: BATCH_SIZE,
+        current_era_id: FIXTURE_N_ERAS as u64 + 1,
+    };
+
+    builder
+        .commit_migrate(MigrateConfig {
+            state_root_hash: current_root_hash,
+            actions: vec![action],
+        })
+        .expect_migrate_success();
+
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(era_info_after_migration.first(), None,);
 }
 
 #[ignore]

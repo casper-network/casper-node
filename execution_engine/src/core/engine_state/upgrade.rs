@@ -1,7 +1,4 @@
 //! Support for applying upgrades on the execution engine.
-#[doc(hidden)]
-pub mod migrations;
-
 use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
@@ -161,9 +158,6 @@ pub enum ProtocolUpgradeError {
     /// Failed to create system contract registry.
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
-    /// Failed to migrate global state.
-    #[error("Failed to perform global state migration: {0}")]
-    Migration(migrations::Error),
 }
 
 impl From<bytesrepr::Error> for ProtocolUpgradeError {

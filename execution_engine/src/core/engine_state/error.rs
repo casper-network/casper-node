@@ -15,6 +15,8 @@ use crate::{
     storage::{self, error::db::DbError, global_state::CommitError},
 };
 
+use super::migrate::MigrateError;
+
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]
 pub enum Error {
@@ -81,6 +83,8 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    #[error("Migrate error: {0}")]
+    MigrateError(#[from] MigrateError),
 }
 
 impl Error {

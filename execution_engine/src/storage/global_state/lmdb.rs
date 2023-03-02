@@ -193,10 +193,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         let mut ret = Vec::new();
         for result in keys_iter {
             match result {
-                Ok(key) => {
-                    println!("Found {}", key);
-                    ret.push(key)
-                }
+                Ok(key) => ret.push(key),
                 Err(error) => return Err(error),
             }
         }
@@ -300,6 +297,7 @@ impl StateProvider for LmdbGlobalState {
         let mut txn = self.environment.create_read_write_txn()?;
         for (i, key) in keys.iter().enumerate() {
             let start = Instant::now();
+            // NOTE:
             match delete_without_scratch::<
                 Key,
                 StoredValue,

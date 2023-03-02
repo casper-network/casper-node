@@ -676,6 +676,7 @@ where
 
     let start = Instant::now();
 
+    // TODO: scan_raw
     let TrieScan {
         tip,
         mut parents,
