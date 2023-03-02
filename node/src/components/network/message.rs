@@ -548,6 +548,23 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
             "max_transfers_per_block" => {
                 self.chainspec.deploy_config.block_max_transfer_count as i64
             }
+            "average_approvals_per_deploy_in_block" => {
+                let max_total_deploys = (self.chainspec.deploy_config.block_max_deploy_count
+                    + self.chainspec.deploy_config.block_max_transfer_count)
+                    as i64;
+
+                // Note: The +1 is to overestimate, as depending on the serialization format chosen,
+                //       spreading out the approvals can be increase or decrease the size. For
+                //       example, in a length-prefixed encoding, putting them all in one may result
+                //       in a smaller size if variable size integer encoding it used. In a format
+                //       using separators without trailing separators (e.g. commas in JSON),
+                //       spreading out will reduce the total number of bytes.
+                ((self.chainspec.deploy_config.block_max_approval_count as i64 + max_total_deploys
+                    - 1)
+                    / max_total_deploys)
+                    .max(0)
+                    + 1
+            }
             "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
             // `RADIX` from EE.
             "max_pointer_per_node" => 255,

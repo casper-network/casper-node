@@ -593,9 +593,27 @@ impl LargestSpecimen for Digest {
 
 impl LargestSpecimen for BlockPayload {
     fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        // We cannot just use the standard largest speciment for `DeployHashWithApprovals`, as this
+        // would cause a quadratic increase in deploys. Instead, we generate one large deploy that
+        // contains the number of approvals if they are spread out across the block.
+
+        let large_deploy = Deploy::largest_specimen(estimator).with_approvals(
+            btree_set_distinct_from_prop(estimator, "average_approvals_per_deploy_in_block"),
+        );
+        let large_deploy_hash_with_approvals = DeployHashWithApprovals::from(&large_deploy);
+
+        let deploys = vec![
+            large_deploy_hash_with_approvals.clone();
+            estimator.require_parameter::<usize>("max_deploys_per_block")
+        ];
+        let transfers = vec![
+            large_deploy_hash_with_approvals;
+            estimator.require_parameter::<usize>("max_transfers_per_block")
+        ];
+
         BlockPayload::new(
-            vec_prop_specimen(estimator, "max_deploys_per_block"),
-            vec_prop_specimen(estimator, "max_transfers_per_block"),
+            deploys,
+            transfers,
             vec_prop_specimen(estimator, "max_accusations_per_block"),
             LargestSpecimen::largest_specimen(estimator),
         )
