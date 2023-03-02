@@ -30,9 +30,9 @@ mod relaxed {
 
     use super::{SignedMessage, SyncResponse};
 
-    /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
-    /// which are somewhat decoupled from the rest of the protocol. These messages, along with the
-    /// instance and round ID, are signed by the active validators.
+    /// The content of a message in the main protocol, as opposed to the proposal, and to sync
+    /// messages, which are somewhat decoupled from the rest of the protocol. These messages,
+    /// along with the instance and round ID, are signed by the active validators.
     #[derive(
         Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize, EnumDiscriminants,
     )]
@@ -46,16 +46,16 @@ mod relaxed {
         C: Context,
     {
         /// By signing the echo of a proposal hash a validator affirms that this is the first (and
-        /// usually only) proposal by the round leader that they have received. A quorum of echoes is a
-        /// requirement for a proposal to become accepted.
+        /// usually only) proposal by the round leader that they have received. A quorum of echoes
+        /// is a requirement for a proposal to become accepted.
         Echo(C::Hash),
-        /// By signing a `true` vote a validator confirms that they have accepted a proposal in this
-        /// round before the timeout. If there is a quorum of `true` votes, the proposal becomes
-        /// finalized, together with its ancestors.
+        /// By signing a `true` vote a validator confirms that they have accepted a proposal in
+        /// this round before the timeout. If there is a quorum of `true` votes, the
+        /// proposal becomes finalized, together with its ancestors.
         ///
         /// A `false` vote means they timed out waiting for a proposal to get accepted. A quorum of
-        /// `false` votes allows the next round's leader to make a proposal without waiting for this
-        /// round's.
+        /// `false` votes allows the next round's leader to make a proposal without waiting for
+        /// this round's.
         Vote(bool),
     }
 
@@ -72,10 +72,10 @@ mod relaxed {
     {
         /// Signatures, proposals and evidence the requester was missing.
         SyncResponse(SyncResponse<C>),
-        /// A proposal for a new block. This does not contain any signature; instead, the proposer is
-        /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
-        /// receive unless they either have a signed echo by the proposer and the proposer has not
-        /// double-signed, or they have a quorum of echoes.
+        /// A proposal for a new block. This does not contain any signature; instead, the proposer
+        /// is expected to sign an echo with the proposal hash. Validators will drop any
+        /// proposal they receive unless they either have a signed echo by the proposer and
+        /// the proposer has not double-signed, or they have a quorum of echoes.
         Proposal {
             round_id: RoundId,
             instance_id: C::InstanceId,

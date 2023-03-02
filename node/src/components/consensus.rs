@@ -63,8 +63,7 @@ pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
-pub(crate) use protocols::highway::max_rounds_per_era;
-pub(crate) use protocols::highway::HighwayMessage;
+pub(crate) use protocols::highway::{max_rounds_per_era, HighwayMessage};
 pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
@@ -100,8 +99,8 @@ mod relaxed {
             era_id: EraId,
             payload: EraMessage<ClContext>,
         },
-        /// A request for evidence against the specified validator, from any era that is still bonded
-        /// in `era_id`.
+        /// A request for evidence against the specified validator, from any era that is still
+        /// bonded in `era_id`.
         EvidenceRequest { era_id: EraId, pub_key: PublicKey },
     }
 }

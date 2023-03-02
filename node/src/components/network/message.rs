@@ -20,8 +20,10 @@ use crate::{
     effect::EffectBuilder,
     protocol,
     types::{Chainspec, NodeId},
-    utils::opt_display::OptDisplay,
-    utils::specimen::{LargestSpecimen, SizeEstimator},
+    utils::{
+        opt_display::OptDisplay,
+        specimen::{LargestSpecimen, SizeEstimator},
+    },
 };
 
 use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
