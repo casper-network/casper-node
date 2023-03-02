@@ -127,14 +127,20 @@ pub(crate) fn new_rng() -> NodeRng {
     NodeRng::new()
 }
 
-// TODO[RC]: Move to a separate file?
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeMap, iter};
 
-    use casper_types::{testing::TestRng, PublicKey, SecretKey, Timestamp, U512};
+    use casper_types::{crypto, testing::TestRng, PublicKey, SecretKey, Timestamp, U512};
 
     use crate::types::{Block, FinalizedBlock};
+
+    pub(crate) struct ValidatorSpec {
+        pub(crate) secret_key: SecretKey,
+        pub(crate) public_key: PublicKey,
+        // If `None`, weight will be chosen randomly.
+        pub(crate) weight: Option<U512>,
+    }
 
     // Utility struct that can be turned into an iterator that generates
     // continuous and descending blocks (i.e. blocks that have consecutive height
@@ -144,21 +150,19 @@ mod tests {
     // Additionally, this struct allows to generate switch blocks at a specific location in the
     // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
     // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
-    // the `validators` parameter using the default weight.
+    // the `validators` parameter using the weight, if specified.
     pub(crate) struct TestChainSpec<'a> {
         block: Block,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
-        validators: &'a [(SecretKey, PublicKey, Option<U512>)], // TODO[RC]: ValidatorSpec?
+        validators: &'a [ValidatorSpec],
     }
 
     impl<'a> TestChainSpec<'a> {
         pub(crate) fn new(
             test_rng: &'a mut TestRng,
-
-            // TODO[RC]: Merge these into "SwitchBlockSpec"
             switch_block_indices: Option<Vec<u64>>,
-            validators: &'a [(SecretKey, PublicKey, Option<U512>)],
+            validators: &'a [ValidatorSpec],
         ) -> Self {
             let block = Block::random(test_rng);
             Self {
@@ -171,6 +175,8 @@ mod tests {
 
         pub(crate) fn iter(&mut self) -> TestBlockIterator {
             let block_height = self.block.height();
+
+            const DEFAULT_VALIDATOR_WEIGHT: u64 = 100;
 
             TestBlockIterator::new(
                 self.block.clone(),
@@ -185,9 +191,18 @@ mod tests {
                     }),
                 self.validators
                     .iter()
-                    .map(|(_, public_key, weight)| {
-                        (public_key.clone(), weight.unwrap_or(100.into()))
-                    }) // TODO[RC]: No magic numbers
+                    .map(
+                        |ValidatorSpec {
+                             secret_key: _,
+                             public_key,
+                             weight,
+                         }| {
+                            (
+                                public_key.clone(),
+                                weight.unwrap_or(DEFAULT_VALIDATOR_WEIGHT.into()),
+                            )
+                        },
+                    )
                     .collect(),
             )
         }
@@ -246,10 +261,14 @@ mod tests {
             let validators = if let Some(validators) = validators {
                 let first_validator = validators.get(self.next_validator_index).unwrap();
                 let second_validator = validators.get(self.next_validator_index + 1).unwrap();
+
+                // Put two validators in each switch block.
                 let mut validators_for_block = BTreeMap::new();
                 validators_for_block.insert(first_validator.0.clone(), first_validator.1);
                 validators_for_block.insert(second_validator.0.clone(), second_validator.1);
                 self.next_validator_index += 2;
+
+                // If we're out of validators, do round robin on the provided list.
                 if self.next_validator_index >= self.validators.len() {
                     self.next_validator_index = 0;
                 }
@@ -263,7 +282,7 @@ mod tests {
                 self.block.header().accumulated_seed(),
                 *self.block.header().state_root_hash(),
                 FinalizedBlock::random_with_specifics(
-                    &mut self.rng,
+                    self.rng,
                     if is_successor_of_switch_block {
                         self.block.header().era_id().successor()
                     } else {
@@ -308,8 +327,18 @@ mod tests {
     fn test_block_iter_creates_switch_blocks() {
         let switch_block_indices = vec![0, 10, 76];
 
+        let validators: Vec<_> = iter::repeat_with(crypto::generate_ed25519_keypair)
+            .take(2)
+            .map(|(secret_key, public_key)| ValidatorSpec {
+                secret_key,
+                public_key,
+                weight: None,
+            })
+            .collect();
+
         let mut rng = TestRng::new();
-        let mut test_block = TestChainSpec::new(&mut rng, Some(switch_block_indices.clone()), &[]);
+        let mut test_block =
+            TestChainSpec::new(&mut rng, Some(switch_block_indices.clone()), &validators);
         let block_batch: Vec<_> = test_block.iter().take(100).collect();
 
         let base_height = block_batch.first().expect("should have block").height();

@@ -525,8 +525,6 @@ impl FinalizedBlock {
     ) -> Self {
         use std::iter;
 
-        use crate::types::block::tests::random_era_report;
-
         let mut deploys = deploys_iter
             .into_iter()
             .map(DeployHashWithApprovals::from)
@@ -843,7 +841,6 @@ impl BlockHeader {
     /// Returns the era ID in which the next block would be created (that is, this block's era ID,
     /// or its successor if this is a switch block).
     pub fn next_block_era_id(&self) -> EraId {
-        dbg!(&self.era_id);
         if self.era_end.is_some() {
             self.era_id.successor()
         } else {
@@ -858,13 +855,13 @@ impl BlockHeader {
 
     /// Sets the height of this block.
     #[cfg(any(feature = "testing", test))]
-    pub(crate) fn set_height(&mut self, height: u64) {
+    pub fn set_height(&mut self, height: u64) {
         self.height = height;
     }
 
     /// Sets the era of this block.
     #[cfg(any(feature = "testing", test))]
-    pub(crate) fn set_era(&mut self, era: EraId) {
+    pub fn set_era(&mut self, era: EraId) {
         self.era_id = era;
     }
 
@@ -1457,8 +1454,6 @@ impl Block {
     /// Generates a random switch block.
     #[cfg(any(feature = "testing", test))]
     pub fn random_switch_block(rng: &mut TestRng) -> Self {
-        use self::tests::random_era_report;
-
         let mut block = Block::random(rng);
         let next_era_validator_weights = BTreeMap::<PublicKey, U512>::new();
         block.header.era_end = Some(EraEnd::new(
@@ -2411,65 +2406,11 @@ pub(crate) fn compute_approvals_checksum(
 
 #[cfg(test)]
 mod tests {
-    use std::{iter, rc::Rc};
+    use std::rc::Rc;
 
     use casper_types::{bytesrepr, testing::TestRng};
 
     use super::*;
-
-    struct TestBlockBuilder {
-        switch: bool,
-        parent_hash: Option<BlockHash>,
-    }
-
-    impl TestBlockBuilder {
-        fn with_switch(mut self) -> Self {
-            self.switch = true;
-            self
-        }
-
-        fn with_parent_hash(mut self, parent_hash: BlockHash) -> TestBlockBuilder {
-            self.parent_hash = Some(parent_hash);
-            self
-        }
-
-        fn build(self, rng: &mut TestRng) -> Block {
-            let mut block = if self.switch {
-                Block::random_switch_block(rng)
-            } else {
-                Block::random(rng)
-            };
-
-            block
-        }
-    }
-
-    #[cfg(any(feature = "testing", test))]
-    pub(crate) fn random_era_report(rng: &mut TestRng) -> EraReport {
-        let equivocators_count = rng.gen_range(0..5);
-        let rewards_count = rng.gen_range(0..5);
-        let inactive_count = rng.gen_range(0..5);
-        EraReport {
-            equivocators: iter::repeat_with(|| {
-                PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
-            })
-            .take(equivocators_count)
-            .collect(),
-            rewards: iter::repeat_with(|| {
-                let pub_key =
-                    PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
-                let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
-                (pub_key, reward)
-            })
-            .take(rewards_count)
-            .collect(),
-            inactive_validators: iter::repeat_with(|| {
-                PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
-            })
-            .take(inactive_count)
-            .collect(),
-        }
-    }
 
     #[test]
     fn json_block_roundtrip() {
@@ -2598,5 +2539,34 @@ mod tests {
         };
         // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.is_verified().is_err());
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+pub fn random_era_report(rng: &mut TestRng) -> EraReport {
+    use std::iter;
+
+    let equivocators_count = rng.gen_range(0..5);
+    let rewards_count = rng.gen_range(0..5);
+    let inactive_count = rng.gen_range(0..5);
+    EraReport {
+        equivocators: iter::repeat_with(|| {
+            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
+        })
+        .take(equivocators_count)
+        .collect(),
+        rewards: iter::repeat_with(|| {
+            let pub_key =
+                PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
+            let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
+            (pub_key, reward)
+        })
+        .take(rewards_count)
+        .collect(),
+        inactive_validators: iter::repeat_with(|| {
+            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
+        })
+        .take(inactive_count)
+        .collect(),
     }
 }
