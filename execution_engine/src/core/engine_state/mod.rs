@@ -476,12 +476,12 @@ where
             match action {
                 migrate::MigrateAction::PurgeEraInfo {
                     batch_size: eras_per_block,
-                    current_era_id: upper_bound,
+                    current_era_id,
                 } => {
                     let success = migrate::purge_era_info::purge_era_info(
                         &self.state,
                         migration_config.state_root_hash,
-                        upper_bound,
+                        current_era_id,
                         eras_per_block,
                     )
                     .map_err(|error| Error::MigrateError(MigrateError::PurgeEraInfo(error)))?;

@@ -722,6 +722,7 @@ where
         self
     }
 
+    /// Commit a migration.
     pub fn commit_migrate(&mut self, migrate_config: MigrateConfig) -> &mut Self {
         let result = self.engine_state.commit_migrate(migrate_config);
         if let Ok(MigrateSuccess { post_state_hash }) = result {

@@ -149,10 +149,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     };
 
     builder
-        .commit_migrate(MigrateConfig {
-            state_root_hash: current_root_hash,
-            actions: vec![action],
-        })
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -178,10 +175,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     };
 
     builder
-        .commit_migrate(MigrateConfig {
-            state_root_hash: current_root_hash,
-            actions: vec![action],
-        })
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -207,10 +201,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     };
 
     builder
-        .commit_migrate(MigrateConfig {
-            state_root_hash: current_root_hash,
-            actions: vec![action],
-        })
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());

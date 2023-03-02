@@ -58,26 +58,42 @@ fn bisect<T: Copy + fmt::Debug + Num + PartialOrd + Shr<usize, Output = T>, E>(
     Ok(BinarySearchResult { steps, low, high })
 }
 
+/// Errors that can occur while purging era info objects from global state.
 #[derive(Clone, Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// Execution Engine error.
     #[error("exec error: {0}")]
     Exec(execution::Error),
+
+    /// Unable to retrieve key.
     #[error("unable to retreive era info keys")]
     UnableToRetriveEraInfoKeys(execution::Error),
+
+    /// Unable to delete era info keys.
     #[error("unable to delete era info key")]
     UnableToDeleteEraInfoKeys(execution::Error),
+
+    /// Unable to retrieve last era info.
     #[error("unable to retrieve last era info")]
     UnableToRetrieveLastEraInfo(execution::Error),
+
+    /// Root not found.
     #[error("root not found")]
     RootNotFound,
-    #[error("key does not exists")]
-    KeyDoesNotExists,
+
+    /// Key does not exist.
+    #[error("key does not exist")]
+    KeyDoesNotExist,
 }
 
+/// Result of purging eras migration.
 pub struct PurgeEraInfoResult {
-    pub keys_to_delete: Vec<Key>,
+    /// Keys that were deleted.
+    pub keys_deleted: Vec<Key>,
+    /// New era summary generated.
     pub era_summary: Option<StoredValue>,
+    /// Post state hash.
     pub post_state_hash: Digest,
 }
 
@@ -145,7 +161,8 @@ where
         // todo!();
     }
 
-    let keys_to_delete: Vec<Key> = (result.low..result.low + batch_size as u64)
+    let max_bound = (result.low + batch_size as u64).min(upper_bound_era);
+    let keys_to_delete: Vec<Key> = (result.low..max_bound)
         .map(|era_id| Key::EraInfo(EraId::new(era_id)))
         .collect();
 
@@ -154,7 +171,7 @@ where
     if keys_to_delete.is_empty() {
         // Don't do any work if not keys are present in the global state.
         return Ok(PurgeEraInfoResult {
-            keys_to_delete: Vec::new(),
+            keys_deleted: Vec::new(),
             era_summary: None,
             post_state_hash: state_root_hash,
         });
@@ -177,7 +194,7 @@ where
         DeleteResult::Deleted(new_post_state_hash) => {
             state_root_hash = new_post_state_hash;
         }
-        DeleteResult::DoesNotExist => return Err(Error::KeyDoesNotExists),
+        DeleteResult::DoesNotExist => return Err(Error::KeyDoesNotExist),
         DeleteResult::RootNotFound => return Err(Error::RootNotFound),
     }
 
@@ -188,32 +205,47 @@ where
     );
 
     if let Some(last_era_info) = last_era_info.as_ref() {
-        let mut tracking_copy = match state
-            .checkout(state_root_hash)
-            .map_err(|error| Error::Exec(error.into()))?
-        {
-            Some(tracking_copy) => TrackingCopy::new(tracking_copy),
-            None => return Err(Error::RootNotFound),
-        };
-
-        tracking_copy.force_write(Key::EraSummary, last_era_info.clone());
-
-        let new_state_root_hash = state
-            .commit(
-                correlation_id,
-                state_root_hash,
-                tracking_copy.effect().transforms,
-            )
-            .map_err(|error| Error::Exec(error.into()))?;
-
-        state_root_hash = new_state_root_hash;
+        write_era_info_summary_to_stable_key(
+            state,
+            state_root_hash,
+            last_era_info,
+            correlation_id,
+        )?;
     }
 
     Ok(PurgeEraInfoResult {
-        keys_to_delete,
+        keys_deleted: keys_to_delete,
         era_summary: last_era_info,
         post_state_hash: state_root_hash,
     })
+}
+
+fn write_era_info_summary_to_stable_key<S>(
+    state: &S,
+    state_root_hash: Digest,
+    last_era_info: &StoredValue,
+    correlation_id: CorrelationId,
+) -> Result<Digest, Error>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let mut tracking_copy = match state
+        .checkout(state_root_hash)
+        .map_err(|error| Error::Exec(error.into()))?
+    {
+        Some(tracking_copy) => TrackingCopy::new(tracking_copy),
+        None => return Err(Error::RootNotFound),
+    };
+    tracking_copy.force_write(Key::EraSummary, last_era_info.clone());
+    let new_state_root_hash = state
+        .commit(
+            correlation_id,
+            state_root_hash,
+            tracking_copy.effect().transforms,
+        )
+        .map_err(|error| Error::Exec(error.into()))?;
+    Ok(new_state_root_hash)
 }
 
 #[cfg(test)]
