@@ -46,8 +46,8 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
-    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
+    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use self::migrate::{MigrateConfig, MigrateError, MigrateSuccess};
@@ -448,7 +448,7 @@ where
 
         // commit
 
-        let mut post_state_hash = self
+        let post_state_hash = self
             .state
             .commit(
                 correlation_id,
@@ -471,7 +471,7 @@ where
     /// Returns [`MigrateSuccess`].
     pub fn commit_migrate(&self, migration_config: MigrateConfig) -> Result<MigrateSuccess, Error> {
         let mut state_root_hash = migration_config.state_root_hash;
-
+        let mut actions_taken = vec![];
         for action in migration_config.actions {
             match action {
                 migrate::MigrateAction::PurgeEraInfo {
@@ -486,14 +486,23 @@ where
                     )
                     .map_err(|error| Error::MigrateError(MigrateError::PurgeEraInfo(error)))?;
 
-                    state_root_hash = success.post_state_hash;
+                    state_root_hash = success.post_state_hash();
+                    actions_taken.push(success);
+                }
+                migrate::MigrateAction::WriteStableEraInfo { era_id } => {
+                    let success = migrate::stable_era_info::write_era_info_summary_to_stable_key(
+                        &self.state,
+                        CorrelationId::new(),
+                        migration_config.state_root_hash,
+                        era_id,
+                    )
+                    .map_err(|error| Error::MigrateError(MigrateError::WriteStableKey(error)))?;
+                    state_root_hash = success.post_state_hash();
+                    actions_taken.push(success);
                 }
             }
         }
-
-        Ok(MigrateSuccess {
-            post_state_hash: state_root_hash,
-        })
+        Ok(MigrateSuccess::new(state_root_hash, actions_taken))
     }
 
     /// Creates a new tracking copy instance.

@@ -83,6 +83,8 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+
+    /// An error occurred during migration.
     #[error("Migrate error: {0}")]
     MigrateError(#[from] MigrateError),
 }

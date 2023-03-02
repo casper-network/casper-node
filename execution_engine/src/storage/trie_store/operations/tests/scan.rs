@@ -29,7 +29,7 @@ where
     let TrieScan {
         mut tip,
         parents,
-        steps,
+        steps: _,
     } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
         correlation_id,
         &txn,

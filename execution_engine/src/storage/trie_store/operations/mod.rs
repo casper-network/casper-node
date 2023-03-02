@@ -557,7 +557,7 @@ where
 {
     let path = key_bytes;
 
-    let mut current_trie = root.to_owned();
+    let mut current_trie;
     let mut current = Bytes::from(root.to_bytes()?);
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
@@ -572,7 +572,7 @@ where
             deserialized
         };
         match current_trie {
-            leaf @ Trie::Leaf { .. } => {
+            _leaf @ Trie::Leaf { .. } => {
                 // since we are checking if this is a leaf and skipping, we do not expect to ever hit this.
                 unreachable!()
             }
@@ -901,7 +901,7 @@ where
     let TrieScanRaw {
         tip,
         mut parents,
-        steps,
+        steps: _,
     } = scan_raw::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
 
     // Check that tip is a leaf
@@ -1364,7 +1364,7 @@ where
             let TrieScan {
                 tip,
                 parents,
-                steps,
+                steps: _,
             } = scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf

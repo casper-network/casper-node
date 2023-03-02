@@ -1,16 +1,10 @@
-use std::{
-    cell::RefCell,
-    cmp::Ordering,
-    fmt,
-    iter::FromIterator,
-    ops::{Add, Div, Shr, Sub},
-    rc::Rc,
-    time::Instant,
-};
+//! Module containing the purge-era-info migration.
+
+use std::{cell::RefCell, cmp::Ordering, fmt, ops::Shr, rc::Rc, time::Instant};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, KeyTag, StoredValue};
-use num::{Num, One};
+use casper_types::{EraId, Key};
+use num::Num;
 use thiserror::Error;
 
 use crate::{
@@ -21,6 +15,8 @@ use crate::{
         trie_store::operations::DeleteResult,
     },
 };
+
+use super::ActionSuccess;
 
 #[derive(Debug)]
 struct BinarySearchResult<T> {
@@ -74,10 +70,6 @@ pub enum Error {
     #[error("unable to delete era info key")]
     UnableToDeleteEraInfoKeys(execution::Error),
 
-    /// Unable to retrieve last era info.
-    #[error("unable to retrieve last era info")]
-    UnableToRetrieveLastEraInfo(execution::Error),
-
     /// Root not found.
     #[error("root not found")]
     RootNotFound,
@@ -88,16 +80,12 @@ pub enum Error {
 }
 
 /// Result of purging eras migration.
-pub struct PurgeEraInfoResult {
+#[derive(Debug, Clone)]
+pub struct PurgedEraInfo {
     /// Keys that were deleted.
     pub keys_deleted: Vec<Key>,
-    /// New era summary generated.
-    pub era_summary: Option<StoredValue>,
-    /// Post state hash.
-    pub post_state_hash: Digest,
 }
 
-const ERAS_TO_DELETE_PER_STEP: usize = 5; // TODO: Chainspec
 const LOWER_BOUND_ERA: u64 = 0;
 
 /// Purges [`Key::EraInfo`] keys from the tip of the store and writes only single key with the
@@ -107,7 +95,7 @@ pub fn purge_era_info<S>(
     mut state_root_hash: Digest,
     upper_bound_era: u64,
     batch_size: usize,
-) -> Result<PurgeEraInfoResult, Error>
+) -> Result<ActionSuccess, Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -131,7 +119,7 @@ where
             .borrow_mut()
             .get(correlation_id, &Key::EraInfo(EraId::new(idx)))
         {
-            Ok(Some(era_id)) => {
+            Ok(Some(_era_id)) => {
                 if idx == 0 {
                     // No eras were removed yet. This is the first migration.
                     Ok(Ordering::Equal)
@@ -145,6 +133,7 @@ where
     })
     .map_err(|error| Error::Exec(error.into()))?;
     dbg!(&result);
+
     println!(
         "Found smallest era {} with {} queries in {:?}",
         result.low,
@@ -152,16 +141,8 @@ where
         start.elapsed()
     );
 
-    // Determine state (i.e. start, or continue)
-
-    if result.low == 0 {
-        // TODO
-        // Lower bound starts with era id == 0, which means this is the first migration step.
-        // Now find highest era info in range, then copy it over to Key::EraSummary
-        // todo!();
-    }
-
-    let max_bound = (result.low + batch_size as u64).min(upper_bound_era);
+    // our upper (exclusive) bound should be whichever is lower => low + batch_size or upper_bound_era + 1
+    let max_bound = (result.low + batch_size as u64).min(upper_bound_era + 1);
     let keys_to_delete: Vec<Key> = (result.low..max_bound)
         .map(|era_id| Key::EraInfo(EraId::new(era_id)))
         .collect();
@@ -170,20 +151,13 @@ where
 
     if keys_to_delete.is_empty() {
         // Don't do any work if not keys are present in the global state.
-        return Ok(PurgeEraInfoResult {
-            keys_deleted: Vec::new(),
-            era_summary: None,
+        return Ok(ActionSuccess::PurgeEraInfo {
             post_state_hash: state_root_hash,
+            action_result: PurgedEraInfo {
+                keys_deleted: vec![],
+            },
         });
     }
-
-    let last_era_info = match keys_to_delete.last() {
-        Some(last_era_info) => tracking_copy
-            .borrow_mut()
-            .get(correlation_id, last_era_info)
-            .map_err(|error| Error::UnableToRetrieveLastEraInfo(error.into()))?,
-        None => None,
-    };
 
     println!("Deleting {} keys...", keys_to_delete.len());
 
@@ -204,48 +178,12 @@ where
         start.elapsed()
     );
 
-    if let Some(last_era_info) = last_era_info.as_ref() {
-        write_era_info_summary_to_stable_key(
-            state,
-            state_root_hash,
-            last_era_info,
-            correlation_id,
-        )?;
-    }
-
-    Ok(PurgeEraInfoResult {
-        keys_deleted: keys_to_delete,
-        era_summary: last_era_info,
+    Ok(ActionSuccess::PurgeEraInfo {
         post_state_hash: state_root_hash,
+        action_result: PurgedEraInfo {
+            keys_deleted: keys_to_delete,
+        },
     })
-}
-
-fn write_era_info_summary_to_stable_key<S>(
-    state: &S,
-    state_root_hash: Digest,
-    last_era_info: &StoredValue,
-    correlation_id: CorrelationId,
-) -> Result<Digest, Error>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    let mut tracking_copy = match state
-        .checkout(state_root_hash)
-        .map_err(|error| Error::Exec(error.into()))?
-    {
-        Some(tracking_copy) => TrackingCopy::new(tracking_copy),
-        None => return Err(Error::RootNotFound),
-    };
-    tracking_copy.force_write(Key::EraSummary, last_era_info.clone());
-    let new_state_root_hash = state
-        .commit(
-            correlation_id,
-            state_root_hash,
-            tracking_copy.effect().transforms,
-        )
-        .map_err(|error| Error::Exec(error.into()))?;
-    Ok(new_state_root_hash)
 }
 
 #[cfg(test)]
@@ -340,7 +278,7 @@ mod tests {
 
         let result = super::bisect(0, u64::MAX, |idx| {
             match eras.get(idx as usize) {
-                Some(Some(val)) => {
+                Some(Some(_val)) => {
                     // Found something, means that idx is too low.
                     Ok(Ordering::Less)
                 }

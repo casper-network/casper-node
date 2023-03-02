@@ -2,7 +2,6 @@ use std::{collections::HashMap, ops::Deref, sync::Arc, time::Instant};
 
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
-use itertools::Itertools;
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -18,8 +17,8 @@ use crate::{
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                delete, delete_without_scratch, keys_with_prefix, missing_trie_keys, put_trie,
-                read, read_with_proof, DeleteResult, ReadResult,
+                delete_without_scratch, keys_with_prefix, missing_trie_keys, put_trie, read,
+                read_with_proof, DeleteResult, ReadResult,
             },
         },
     },

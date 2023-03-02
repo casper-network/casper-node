@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
+use casper_execution_engine::core::engine_state::QueryResult;
 use casper_hashing::Digest;
 use casper_types::{Key, ProtocolVersion, Transfer};
 
@@ -426,19 +427,37 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
             };
 
             let state_root_hash = block.state_root_hash().to_owned();
-            let base_key = Key::EraInfo(era_id);
-            let path = Vec::new();
-            let query_result = effect_builder
+
+            let base_key = Key::EraSummary;
+
+            let mut query_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryGlobalState {
                         state_root_hash,
                         base_key,
-                        path,
+                        path: vec![],
                         responder,
                     },
                     QueueKind::Api,
                 )
                 .await;
+
+            // If a coherent Key::Summary is not found, we should look in Key::EraInfo(era_id).
+            // In release 1.4.14 we migrate the EraInfo(current_era_id) to the stable key: Key::EraSummary.
+            if let Ok(QueryResult::ValueNotFound(_)) = query_result.as_ref() {
+                let base_key = Key::EraInfo(era_id);
+                query_result = effect_builder
+                    .make_request(
+                        |responder| RpcRequest::QueryGlobalState {
+                            state_root_hash,
+                            base_key,
+                            path: vec![],
+                            responder,
+                        },
+                        QueueKind::Api,
+                    )
+                    .await;
+            }
 
             let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
                 Ok(tuple) => tuple,

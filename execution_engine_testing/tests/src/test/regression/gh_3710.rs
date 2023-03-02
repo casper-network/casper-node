@@ -126,7 +126,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
         .try_into()
         .expect("auction delay should be positive");
 
-    let last_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
+    let last_era_id = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
 
     let era_info_before_migration = builder
         .get_keys(KeyTag::EraInfo)
@@ -134,7 +134,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
 
     assert_eq!(
         era_info_before_migration.last(),
-        Some(&Key::EraInfo(last_era_info))
+        Some(&Key::EraInfo(last_era_id))
     );
 
     let current_root_hash = builder.get_post_state_hash();
@@ -143,10 +143,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
 
     // Migrate step 1
 
-    let action = MigrateAction::PurgeEraInfo {
-        batch_size: BATCH_SIZE,
-        current_era_id: FIXTURE_N_ERAS as u64 + 1,
-    };
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, FIXTURE_N_ERAS as u64 + 1);
 
     builder
         .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
@@ -168,11 +165,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     // Migrate step 2
 
     let current_root_hash = builder.get_post_state_hash();
-
-    let action = MigrateAction::PurgeEraInfo {
-        batch_size: BATCH_SIZE,
-        current_era_id: FIXTURE_N_ERAS as u64 + 1,
-    };
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, FIXTURE_N_ERAS as u64 + 1);
 
     builder
         .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
@@ -194,15 +187,12 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     // Migrate step 3
 
     let current_root_hash = builder.get_post_state_hash();
-
-    let action = MigrateAction::PurgeEraInfo {
-        batch_size: BATCH_SIZE,
-        current_era_id: FIXTURE_N_ERAS as u64 + 1,
-    };
-
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, FIXTURE_N_ERAS as u64 + 1);
     builder
         .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
         .expect_migrate_success();
+
+    println!("migrate results {:#?}", builder.get_migrate_results());
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
 
@@ -211,6 +201,51 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
         .expect("should return all the era info keys");
 
     assert_eq!(era_info_after_migration.first(), None,);
+}
+
+#[ignore]
+#[test]
+fn gh_3710_should_write_stable_era_info_key() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
+
+    let auction_delay: u64 = lmdb_fixture_state
+        .genesis_request
+        .get("ee_config")
+        .expect("should have ee_config")
+        .get("auction_delay")
+        .expect("should have auction delay")
+        .as_i64()
+        .expect("auction delay should be integer")
+        .try_into()
+        .expect("auction delay should be positive");
+
+    let last_era_id = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
+
+    let era_info_before_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(
+        era_info_before_migration.last(),
+        Some(&Key::EraInfo(last_era_id))
+    );
+
+    let current_root_hash = builder.get_post_state_hash();
+    let action = MigrateAction::write_stable_era_info(last_era_id);
+    builder
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .expect_migrate_success();
+    let era_summary_after_migration = builder
+        .get_keys(KeyTag::EraSummary)
+        .expect("should return the current era summary");
+
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    assert!(matches!(
+        era_summary_after_migration.first(),
+        Some(Key::EraSummary { .. })
+    ))
 }
 
 #[ignore]
