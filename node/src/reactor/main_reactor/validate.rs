@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
@@ -26,7 +26,7 @@ impl MainReactor {
     ) -> ValidateInstruction {
         let queue_depth = self.contract_runtime.queue_depth();
         if self.contract_runtime.queue_depth() > 0 {
-            debug!("Validate: should_validate queue_depth {}", queue_depth);
+            warn!("Validate: should_validate queue_depth {}", queue_depth);
             return ValidateInstruction::KeepUp;
         }
         if self.switch_block.is_none() {
