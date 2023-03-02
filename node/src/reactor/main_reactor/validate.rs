@@ -25,9 +25,12 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> ValidateInstruction {
         let queue_depth = self.contract_runtime.queue_depth();
-        if self.contract_runtime.queue_depth() > 0 {
+        if queue_depth > 0 {
             warn!("Validate: should_validate queue_depth {}", queue_depth);
-            return ValidateInstruction::KeepUp;
+            return ValidateInstruction::CheckLater(
+                "allow time for contract runtime execution to occur".to_string(),
+                self.control_logic_default_delay.into(),
+            );
         }
         if self.switch_block.is_none() {
             // validate status is only checked at switch blocks
