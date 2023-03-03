@@ -79,12 +79,7 @@ impl MigrateSuccess {
 #[derive(Debug, Clone)]
 pub enum ActionSuccess {
     /// Action for purging era info objects.
-    PurgeEraInfo {
-        /// Post state hash.
-        post_state_hash: Digest,
-        /// Action result.
-        action_result: PurgedEraInfo,
-    },
+    PurgeEraInfo(PurgedEraInfo),
     /// Action for writing stable key for era summary, used once from EraInfo(id) -> EraSummary.
     WroteStableKey {
         /// Post state hash.
@@ -96,10 +91,10 @@ impl ActionSuccess {
     /// Post state hash from success.
     pub fn post_state_hash(&self) -> Digest {
         match self {
-            ActionSuccess::PurgeEraInfo {
+            ActionSuccess::PurgeEraInfo(PurgedEraInfo {
                 post_state_hash, ..
-            }
-            | ActionSuccess::WroteStableKey { post_state_hash } => *post_state_hash,
+            }) => *post_state_hash,
+            ActionSuccess::WroteStableKey { post_state_hash } => *post_state_hash,
         }
     }
 }

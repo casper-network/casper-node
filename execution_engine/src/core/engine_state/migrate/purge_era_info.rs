@@ -17,8 +17,6 @@ use crate::{
     },
 };
 
-use super::ActionSuccess;
-
 /// Binary search an element in a range with added support of a predicate returning a [`Result`].
 ///
 /// Binary searches a range `lower_bound..upper_bound` for a given element.
@@ -115,20 +113,21 @@ pub enum Error {
 /// Result of purging eras migration.
 #[derive(Debug, Clone)]
 pub struct PurgedEraInfo {
+    /// Resulting state root hash after completed migration.
+    pub post_state_hash: Digest,
     /// Keys that were deleted.
     pub keys_deleted: Vec<Key>,
 }
 
 const LOWER_BOUND_ERA: u64 = 0;
 
-/// Purges [`Key::EraInfo`] keys from the tip of the store and writes only single key with the
-/// latest era into a stable key [`Key::EraSummary`].
+/// Purges exactly `batch_size` of [`Key::EraInfo`] keys from the tip of the store.
 pub fn purge_era_info<S>(
     state: &S,
     mut state_root_hash: Digest,
     upper_bound_era_id: u64,
     batch_size: usize,
-) -> Result<ActionSuccess, Error>
+) -> Result<PurgedEraInfo, Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -165,11 +164,6 @@ where
     })
     .map_err(|error| Error::Exec(error.into()))?;
 
-    println!(
-        "Found first era to delete {} in {} steps",
-        lower_bound_era_id, lower_bound_era_id_steps,
-    );
-
     let max_bound = (lower_bound_era_id + batch_size as u64).min(upper_bound_era_id + 1);
 
     let keys_to_delete: Vec<Key> = (lower_bound_era_id..max_bound)
@@ -178,19 +172,11 @@ where
 
     if keys_to_delete.is_empty() {
         // Don't do any work if the range of eras is empty.
-        return Ok(ActionSuccess::PurgeEraInfo {
+        return Ok(PurgedEraInfo {
             post_state_hash: state_root_hash,
-            action_result: PurgedEraInfo {
-                keys_deleted: vec![],
-            },
+            keys_deleted: vec![],
         });
     }
-
-    println!(
-        "Deleting {} keys... {:?}",
-        keys_to_delete.len(),
-        &keys_to_delete
-    );
 
     match state
         .delete_keys(correlation_id, state_root_hash, &keys_to_delete)
@@ -209,11 +195,9 @@ where
         start.elapsed()
     );
 
-    Ok(ActionSuccess::PurgeEraInfo {
+    Ok(PurgedEraInfo {
         post_state_hash: state_root_hash,
-        action_result: PurgedEraInfo {
-            keys_deleted: keys_to_delete,
-        },
+        keys_deleted: keys_to_delete,
     })
 }
 

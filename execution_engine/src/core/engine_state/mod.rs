@@ -50,7 +50,7 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use self::migrate::{MigrateConfig, MigrateError, MigrateSuccess};
+use self::migrate::{ActionSuccess, MigrateConfig, MigrateError, MigrateSuccess};
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -471,7 +471,7 @@ where
     /// Returns [`MigrateSuccess`].
     pub fn commit_migrate(&self, migration_config: MigrateConfig) -> Result<MigrateSuccess, Error> {
         let mut state_root_hash = migration_config.state_root_hash;
-        let mut actions_taken = vec![];
+        let mut actions_taken = Vec::new();
         for action in migration_config.actions {
             match action {
                 migrate::MigrateAction::PurgeEraInfo {
@@ -486,8 +486,8 @@ where
                     )
                     .map_err(|error| Error::MigrateError(MigrateError::PurgeEraInfo(error)))?;
 
-                    state_root_hash = success.post_state_hash();
-                    actions_taken.push(success);
+                    state_root_hash = success.post_state_hash;
+                    actions_taken.push(ActionSuccess::PurgeEraInfo(success));
                 }
                 migrate::MigrateAction::WriteStableEraInfo { era_id } => {
                     let success = migrate::stable_era_info::write_era_info_summary_to_stable_key(
