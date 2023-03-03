@@ -59,21 +59,17 @@ impl Cache {
             .map(|box_any| box_any.downcast_ref::<T>().expect("cache corrupted"))
     }
 
-    /// Retrieves a memoized instance, or inserts it if absent.
-    pub(crate) fn get_or_set<T: Any, F: FnOnce() -> T>(&mut self, gen: F) -> &T {
-        let storage = self.get_raw::<T>();
-
-        if !storage.is_empty() {
-            return storage[0].downcast_ref::<T>().expect("cache corrupted");
+    /// Sets the memoized instance if not already set.
+    ///
+    /// Returns a reference to the memoized instance. Note that this may be an instance other than
+    /// the passed in `item`, if the cache entry was not empty before/
+    pub(crate) fn set<T: Any>(&mut self, item: T) -> &T {
+        let items = self.get_raw::<T>();
+        if items.is_empty() {
+            let boxed_item: Box<dyn Any> = Box::new(item);
+            items.push(boxed_item);
         }
-
-        let item: Box<dyn Any> = Box::new(gen());
-        storage.push(item);
-        let stored = storage
-            .first()
-            .expect("did not expect vec have 0 items after push");
-
-        stored.downcast_ref::<T>().expect("cache corrupted")
+        self.get::<T>().expect("should not be empty")
     }
 
     /// Get or insert the vector storing item instances.
@@ -951,8 +947,6 @@ pub(crate) fn estimator_max_rounds_per_era(estimator: &impl SizeEstimator) -> us
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     use super::Cache;
 
     #[test]
@@ -962,33 +956,20 @@ mod tests {
         assert!(cache.get::<u32>().is_none());
         assert!(cache.get::<String>().is_none());
 
-        cache.get_or_set::<u32, _>(|| 1234);
+        cache.set::<u32>(1234);
         assert_eq!(cache.get::<u32>(), Some(&1234));
 
-        cache.get_or_set::<String, _>(|| "a string is not copy".to_owned());
+        cache.set::<String>("a string is not copy".to_owned());
         assert_eq!(
             cache.get::<String>().map(String::as_str),
             Some("a string is not copy")
         );
         assert_eq!(cache.get::<u32>(), Some(&1234));
-    }
 
-    #[test]
-    fn memoization_calls_gen_only_once() {
-        let mut cache = Cache::default();
-        let counter = AtomicUsize::default();
-
-        let gen = || {
-            let value = counter.fetch_add(1, Ordering::Relaxed);
-            value
-        };
-
-        assert!(cache.get::<usize>().is_none());
-        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
-        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
-        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
-        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
-
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
+        cache.set::<String>("this should not overwrite".to_owned());
+        assert_eq!(
+            cache.get::<String>().map(String::as_str),
+            Some("a string is not copy")
+        );
     }
 }
