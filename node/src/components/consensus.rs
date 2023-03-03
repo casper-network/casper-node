@@ -383,7 +383,7 @@ impl<REv> ReactorEventT for REv where
 }
 
 mod specimen_support {
-    use crate::utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator};
 
     use super::{
         ClContext, ConsensusMessage, ConsensusMessageDiscriminants, ConsensusRequestMessage,
@@ -391,17 +391,17 @@ mod specimen_support {
     };
 
     impl LargestSpecimen for ConsensusMessage {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, ConsensusMessageDiscriminants, _, _>(estimator, |variant| {
                 match variant {
                     ConsensusMessageDiscriminants::Protocol => ConsensusMessage::Protocol {
-                        era_id: LargestSpecimen::largest_specimen(estimator),
-                        payload: LargestSpecimen::largest_specimen(estimator),
+                        era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                        payload: LargestSpecimen::largest_specimen(estimator, cache),
                     },
                     ConsensusMessageDiscriminants::EvidenceRequest => {
                         ConsensusMessage::EvidenceRequest {
-                            era_id: LargestSpecimen::largest_specimen(estimator),
-                            pub_key: LargestSpecimen::largest_specimen(estimator),
+                            era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                            pub_key: LargestSpecimen::largest_specimen(estimator, cache),
                         }
                     }
                 }
@@ -410,29 +410,29 @@ mod specimen_support {
     }
 
     impl LargestSpecimen for ConsensusRequestMessage {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             ConsensusRequestMessage {
-                era_id: LargestSpecimen::largest_specimen(estimator),
-                payload: LargestSpecimen::largest_specimen(estimator),
+                era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                payload: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
 
     impl LargestSpecimen for EraRequest<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            EraRequest::Zug(LargestSpecimen::largest_specimen(estimator))
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            EraRequest::Zug(LargestSpecimen::largest_specimen(estimator, cache))
         }
     }
 
     impl LargestSpecimen for EraMessage<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, EraMessageDiscriminants, _, _>(estimator, |variant| {
                 match variant {
                     EraMessageDiscriminants::Zug => {
-                        EraMessage::Zug(LargestSpecimen::largest_specimen(estimator))
+                        EraMessage::Zug(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                     EraMessageDiscriminants::Highway => {
-                        EraMessage::Highway(LargestSpecimen::largest_specimen(estimator))
+                        EraMessage::Highway(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                 }
             })

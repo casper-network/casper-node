@@ -174,50 +174,50 @@ mod specimen_support {
         components::consensus::ClContext,
         memoize,
         utils::specimen::{
-            btree_set_distinct_from_prop, largest_variant, vec_prop_specimen, LargestSpecimen,
-            SizeEstimator,
+            btree_set_distinct_from_prop, largest_variant, vec_prop_specimen, Cache,
+            LargestSpecimen, SizeEstimator,
         },
     };
 
     impl LargestSpecimen for Vertex<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, VertexDiscriminants, _, _>(estimator, |variant| match variant {
                 VertexDiscriminants::Unit => {
-                    Vertex::Unit(LargestSpecimen::largest_specimen(estimator))
+                    Vertex::Unit(LargestSpecimen::largest_specimen(estimator, cache))
                 }
                 VertexDiscriminants::Evidence => {
-                    Vertex::Evidence(LargestSpecimen::largest_specimen(estimator))
+                    Vertex::Evidence(LargestSpecimen::largest_specimen(estimator, cache))
                 }
                 VertexDiscriminants::Endorsements => {
                     if !estimator.require_parameter_bool("endorsements_disabled") {
-                        Vertex::Endorsements(LargestSpecimen::largest_specimen(estimator))
+                        Vertex::Endorsements(LargestSpecimen::largest_specimen(estimator, cache))
                     } else {
-                        Vertex::Ping(LargestSpecimen::largest_specimen(estimator))
+                        Vertex::Ping(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                 }
                 VertexDiscriminants::Ping => {
-                    Vertex::Ping(LargestSpecimen::largest_specimen(estimator))
+                    Vertex::Ping(LargestSpecimen::largest_specimen(estimator, cache))
                 }
             })
         }
     }
 
     impl LargestSpecimen for Dependency<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, DependencyDiscriminants, _, _>(estimator, |variant| {
                 match variant {
                     DependencyDiscriminants::Unit => {
-                        Dependency::Unit(LargestSpecimen::largest_specimen(estimator))
+                        Dependency::Unit(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                     DependencyDiscriminants::Evidence => {
-                        Dependency::Evidence(LargestSpecimen::largest_specimen(estimator))
+                        Dependency::Evidence(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                     DependencyDiscriminants::Endorsement => {
-                        Dependency::Endorsement(LargestSpecimen::largest_specimen(estimator))
+                        Dependency::Endorsement(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                     DependencyDiscriminants::Ping => Dependency::Ping(
-                        LargestSpecimen::largest_specimen(estimator),
-                        LargestSpecimen::largest_specimen(estimator),
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                        LargestSpecimen::largest_specimen(estimator, cache),
                     ),
                 }
             })
@@ -225,20 +225,20 @@ mod specimen_support {
     }
 
     impl LargestSpecimen for SignedWireUnit<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             SignedWireUnit {
-                hashed_wire_unit: LargestSpecimen::largest_specimen(estimator),
-                signature: LargestSpecimen::largest_specimen(estimator),
+                hashed_wire_unit: LargestSpecimen::largest_specimen(estimator, cache),
+                signature: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
 
     impl LargestSpecimen for Endorsements<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             Endorsements {
-                unit: LargestSpecimen::largest_specimen(estimator),
+                unit: LargestSpecimen::largest_specimen(estimator, cache),
                 endorsers: if !estimator.require_parameter_bool("endorsements_disabled") {
-                    vec_prop_specimen(estimator, "validator_count")
+                    vec_prop_specimen(estimator, "validator_count", cache)
                 } else {
                     Vec::new()
                 },
@@ -247,47 +247,47 @@ mod specimen_support {
     }
 
     impl LargestSpecimen for SignedEndorsement<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             SignedEndorsement::new(
-                LargestSpecimen::largest_specimen(estimator),
-                LargestSpecimen::largest_specimen(estimator),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
             )
         }
     }
 
     impl LargestSpecimen for Ping<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             Ping {
-                creator: LargestSpecimen::largest_specimen(estimator),
-                timestamp: LargestSpecimen::largest_specimen(estimator),
-                instance_id: LargestSpecimen::largest_specimen(estimator),
-                signature: LargestSpecimen::largest_specimen(estimator),
+                creator: LargestSpecimen::largest_specimen(estimator, cache),
+                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
+                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                signature: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
 
     impl LargestSpecimen for HashedWireUnit<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             memoize!(HashedWireUnit<ClContext>, estimator, {
                 HashedWireUnit {
-                    hash: LargestSpecimen::largest_specimen(estimator),
-                    wire_unit: LargestSpecimen::largest_specimen(estimator),
+                    hash: LargestSpecimen::largest_specimen(estimator, cache),
+                    wire_unit: LargestSpecimen::largest_specimen(estimator, cache),
                 }
             })
         }
     }
 
     impl LargestSpecimen for WireUnit<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             WireUnit {
-                panorama: LargestSpecimen::largest_specimen(estimator),
-                creator: LargestSpecimen::largest_specimen(estimator),
-                instance_id: LargestSpecimen::largest_specimen(estimator),
-                value: LargestSpecimen::largest_specimen(estimator),
-                seq_number: LargestSpecimen::largest_specimen(estimator),
-                timestamp: LargestSpecimen::largest_specimen(estimator),
-                round_exp: LargestSpecimen::largest_specimen(estimator),
-                endorsed: btree_set_distinct_from_prop(estimator, "validator_count"),
+                panorama: LargestSpecimen::largest_specimen(estimator, cache),
+                creator: LargestSpecimen::largest_specimen(estimator, cache),
+                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                value: LargestSpecimen::largest_specimen(estimator, cache),
+                seq_number: LargestSpecimen::largest_specimen(estimator, cache),
+                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
+                round_exp: LargestSpecimen::largest_specimen(estimator, cache),
+                endorsed: btree_set_distinct_from_prop(estimator, "validator_count", cache),
             }
         }
     }

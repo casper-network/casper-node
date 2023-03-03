@@ -22,7 +22,7 @@ use crate::{
     types::{Chainspec, NodeId},
     utils::{
         opt_display::OptDisplay,
-        specimen::{LargestSpecimen, SizeEstimator},
+        specimen::{Cache, LargestSpecimen, SizeEstimator},
     },
 };
 
@@ -434,7 +434,7 @@ mod specimen_support {
     use serde::Serialize;
 
     use crate::utils::specimen::{
-        largest_variant, LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT,
+        largest_variant, Cache, LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT,
     };
 
     use super::{ConsensusCertificate, Message, MessageDiscriminants};
@@ -443,7 +443,7 @@ mod specimen_support {
     where
         P: Serialize + LargestSpecimen,
     {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             let largest_network_name = estimator.require_parameter("network_name_limit");
 
             largest_variant::<Self, MessageDiscriminants, _, _>(
@@ -453,20 +453,20 @@ mod specimen_support {
                         network_name: iter::repeat(HIGHEST_UNICODE_CODEPOINT)
                             .take(largest_network_name)
                             .collect(),
-                        public_addr: LargestSpecimen::largest_specimen(estimator),
-                        protocol_version: LargestSpecimen::largest_specimen(estimator),
-                        consensus_certificate: LargestSpecimen::largest_specimen(estimator),
-                        is_syncing: LargestSpecimen::largest_specimen(estimator),
-                        chainspec_hash: LargestSpecimen::largest_specimen(estimator),
+                        public_addr: LargestSpecimen::largest_specimen(estimator, cache),
+                        protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
+                        consensus_certificate: LargestSpecimen::largest_specimen(estimator, cache),
+                        is_syncing: LargestSpecimen::largest_specimen(estimator, cache),
+                        chainspec_hash: LargestSpecimen::largest_specimen(estimator, cache),
                     },
                     MessageDiscriminants::Ping => Message::Ping {
-                        nonce: LargestSpecimen::largest_specimen(estimator),
+                        nonce: LargestSpecimen::largest_specimen(estimator, cache),
                     },
                     MessageDiscriminants::Pong => Message::Pong {
-                        nonce: LargestSpecimen::largest_specimen(estimator),
+                        nonce: LargestSpecimen::largest_specimen(estimator, cache),
                     },
                     MessageDiscriminants::Payload => {
-                        Message::Payload(LargestSpecimen::largest_specimen(estimator))
+                        Message::Payload(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                 },
             )
@@ -474,10 +474,10 @@ mod specimen_support {
     }
 
     impl LargestSpecimen for ConsensusCertificate {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             ConsensusCertificate {
-                public_key: LargestSpecimen::largest_specimen(estimator),
-                signature: LargestSpecimen::largest_specimen(estimator),
+                public_key: LargestSpecimen::largest_specimen(estimator, cache),
+                signature: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
@@ -510,8 +510,11 @@ where
 }
 
 /// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message<E: SizeEstimator>(estimator: &E) -> Vec<u8> {
-    let specimen = Message::<protocol::Message>::largest_specimen(estimator);
+pub(crate) fn generate_largest_message<E: SizeEstimator>(
+    estimator: &E,
+    cache: &mut Cache,
+) -> Vec<u8> {
+    let specimen = Message::<protocol::Message>::largest_specimen(estimator, cache);
     serialize_net_message(&specimen)
 }
 

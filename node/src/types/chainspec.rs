@@ -47,7 +47,7 @@ pub use self::{
 };
 use crate::{
     components::network::{generate_largest_message, NetworkMessageEstimator},
-    utils::Loadable,
+    utils::{specimen::Cache, Loadable},
 };
 
 /// The name of the chainspec file on disk.
@@ -97,7 +97,8 @@ impl Chainspec {
         // Ensure the size of the largest message generated under these chainspec settings does not
         // exceed the configured message size limit.
         let estimator = NetworkMessageEstimator::new(self);
-        let serialized = generate_largest_message(&estimator);
+        let mut cache = Cache::default();
+        let serialized = generate_largest_message(&estimator, &mut cache);
 
         if serialized.len() + CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN
             > self.network_config.maximum_net_message_size as usize

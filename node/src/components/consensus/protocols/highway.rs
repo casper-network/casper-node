@@ -692,34 +692,34 @@ pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
 mod specimen_support {
     use crate::{
         components::consensus::ClContext,
-        utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
     };
 
     use super::{HighwayMessage, HighwayMessageDiscriminants};
 
     impl LargestSpecimen for HighwayMessage<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
                 match variant {
-                    HighwayMessageDiscriminants::NewVertex => {
-                        HighwayMessage::NewVertex(LargestSpecimen::largest_specimen(estimator))
-                    }
+                    HighwayMessageDiscriminants::NewVertex => HighwayMessage::NewVertex(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
                     HighwayMessageDiscriminants::RequestDependency => {
                         HighwayMessage::RequestDependency(
-                            LargestSpecimen::largest_specimen(estimator),
-                            LargestSpecimen::largest_specimen(estimator),
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                            LargestSpecimen::largest_specimen(estimator, cache),
                         )
                     }
                     HighwayMessageDiscriminants::RequestDependencyByHeight => {
                         HighwayMessage::RequestDependencyByHeight {
-                            uuid: LargestSpecimen::largest_specimen(estimator),
-                            vid: LargestSpecimen::largest_specimen(estimator),
-                            unit_seq_number: LargestSpecimen::largest_specimen(estimator),
+                            uuid: LargestSpecimen::largest_specimen(estimator, cache),
+                            vid: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit_seq_number: LargestSpecimen::largest_specimen(estimator, cache),
                         }
                     }
                     HighwayMessageDiscriminants::LatestStateRequest => {
                         HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
-                            estimator,
+                            estimator, cache,
                         ))
                     }
                 }

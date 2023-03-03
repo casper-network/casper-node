@@ -173,7 +173,7 @@ mod specimen_support {
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
         utils::specimen::{
-            largest_variant, vec_of_largest_specimen, vec_prop_specimen, LargestSpecimen,
+            largest_variant, vec_of_largest_specimen, vec_prop_specimen, Cache, LargestSpecimen,
             SizeEstimator,
         },
     };
@@ -189,13 +189,16 @@ mod specimen_support {
     use std::collections::BTreeMap;
 
     impl LargestSpecimen for ApprovalsHashes {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             let data = {
                 let mut map = BTreeMap::new();
-                map.insert(APPROVALS_CHECKSUM_NAME, Digest::largest_specimen(estimator));
+                map.insert(
+                    APPROVALS_CHECKSUM_NAME,
+                    Digest::largest_specimen(estimator, cache),
+                );
                 map.insert(
                     EXECUTION_RESULTS_CHECKSUM_NAME,
-                    Digest::largest_specimen(estimator),
+                    Digest::largest_specimen(estimator, cache),
                 );
                 map
             };
@@ -203,11 +206,11 @@ mod specimen_support {
                 Key::ChecksumRegistry,
                 StoredValue::CLValue(CLValue::from_t(data).expect("a correct cl value")),
                 // 2^64/2^13 = 2^51, so 51 items:
-                vec_of_largest_specimen(estimator, 51).into(),
+                vec_of_largest_specimen(estimator, 51, cache).into(),
             );
             ApprovalsHashes {
-                block_hash: LargestSpecimen::largest_specimen(estimator),
-                approvals_hashes: vec_prop_specimen(estimator, "approvals_hashes"),
+                block_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                approvals_hashes: vec_prop_specimen(estimator, "approvals_hashes", cache),
                 merkle_proof_approvals,
                 is_verified: OnceCell::with_value(Ok(())), // Not serialized, so we do not care
             }
@@ -215,7 +218,7 @@ mod specimen_support {
     }
 
     impl LargestSpecimen for TrieMerkleProofStep {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             #[derive(strum::EnumIter)]
             enum TrieMerkleProofStepDiscriminants {
                 Node,
@@ -228,7 +231,9 @@ mod specimen_support {
                     indexed_pointers_with_hole: vec![
                         (
                             u8::MAX,
-                            Pointer::LeafPointer(LargestSpecimen::largest_specimen(estimator))
+                            Pointer::LeafPointer(LargestSpecimen::largest_specimen(
+                                estimator, cache
+                            ))
                         );
                         estimator
                             .require_parameter("max_pointer_per_node")

@@ -107,13 +107,13 @@ impl FromBytes for DeployHash {
 }
 
 mod specimen_support {
-    use crate::utils::specimen::{LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
 
     use super::DeployHash;
 
     impl LargestSpecimen for DeployHash {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            DeployHash::new(LargestSpecimen::largest_specimen(estimator))
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            DeployHash::new(LargestSpecimen::largest_specimen(estimator, cache))
         }
     }
 }

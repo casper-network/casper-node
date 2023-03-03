@@ -39,7 +39,7 @@ where
 }
 
 mod specimen_support {
-    use crate::utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator};
     use serde::Serialize;
 
     use super::{FetchResponse, FetchResponseDiscriminants};
@@ -47,18 +47,18 @@ mod specimen_support {
     impl<T: Serialize + LargestSpecimen, Id: Serialize + LargestSpecimen> LargestSpecimen
         for FetchResponse<T, Id>
     {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, FetchResponseDiscriminants, _, _>(estimator, |variant| {
                 match variant {
                     FetchResponseDiscriminants::Fetched => {
-                        FetchResponse::Fetched(LargestSpecimen::largest_specimen(estimator))
+                        FetchResponse::Fetched(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                     FetchResponseDiscriminants::NotFound => {
-                        FetchResponse::NotFound(LargestSpecimen::largest_specimen(estimator))
+                        FetchResponse::NotFound(LargestSpecimen::largest_specimen(estimator, cache))
                     }
-                    FetchResponseDiscriminants::NotProvided => {
-                        FetchResponse::NotProvided(LargestSpecimen::largest_specimen(estimator))
-                    }
+                    FetchResponseDiscriminants::NotProvided => FetchResponse::NotProvided(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
                 }
             })
         }

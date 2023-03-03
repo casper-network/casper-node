@@ -256,18 +256,18 @@ mod specimen_support {
     use crate::{
         components::consensus::ClContext,
         memoize,
-        utils::specimen::{largest_variant, LargestSpecimen, SizeEstimator},
+        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
     };
 
     use super::{Observation, ObservationDiscriminants};
 
     impl LargestSpecimen for Observation<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             memoize!(Observation<ClContext>, estimator, {
                 largest_variant(estimator, |variant| match variant {
                     ObservationDiscriminants::None => Observation::None,
                     ObservationDiscriminants::Correct => {
-                        Observation::Correct(LargestSpecimen::largest_specimen(estimator))
+                        Observation::Correct(LargestSpecimen::largest_specimen(estimator, cache))
                     }
                     ObservationDiscriminants::Faulty => Observation::Faulty,
                 })

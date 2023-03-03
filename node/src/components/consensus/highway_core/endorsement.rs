@@ -52,16 +52,16 @@ impl<C: Context> Endorsement<C> {
 mod specimen_support {
     use crate::{
         components::consensus::ClContext,
-        utils::specimen::{LargestSpecimen, SizeEstimator},
+        utils::specimen::{Cache, LargestSpecimen, SizeEstimator},
     };
 
     use super::Endorsement;
 
     impl LargestSpecimen for Endorsement<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             Endorsement {
-                unit: LargestSpecimen::largest_specimen(estimator),
-                creator: LargestSpecimen::largest_specimen(estimator),
+                unit: LargestSpecimen::largest_specimen(estimator, cache),
+                creator: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }

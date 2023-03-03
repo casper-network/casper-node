@@ -183,7 +183,7 @@ mod specimen_support {
     use crate::{
         components::consensus::ClContext,
         utils::specimen::{
-            estimator_max_rounds_per_era, largest_variant, vec_of_largest_specimen,
+            estimator_max_rounds_per_era, largest_variant, vec_of_largest_specimen, Cache,
             LargestSpecimen, SizeEstimator,
         },
     };
@@ -191,29 +191,30 @@ mod specimen_support {
     use super::{Evidence, EvidenceDiscriminants};
 
     impl LargestSpecimen for Evidence<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             largest_variant::<Self, EvidenceDiscriminants, _, _>(estimator, |variant| match variant
             {
                 EvidenceDiscriminants::Equivocation => Evidence::Equivocation(
-                    LargestSpecimen::largest_specimen(estimator),
-                    LargestSpecimen::largest_specimen(estimator),
+                    LargestSpecimen::largest_specimen(estimator, cache),
+                    LargestSpecimen::largest_specimen(estimator, cache),
                 ),
                 EvidenceDiscriminants::Endorsements => {
                     if !estimator.require_parameter_bool("endorsements_disabled") {
                         Evidence::Endorsements {
-                            endorsement1: LargestSpecimen::largest_specimen(estimator),
-                            unit1: LargestSpecimen::largest_specimen(estimator),
-                            endorsement2: LargestSpecimen::largest_specimen(estimator),
-                            unit2: LargestSpecimen::largest_specimen(estimator),
+                            endorsement1: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit1: LargestSpecimen::largest_specimen(estimator, cache),
+                            endorsement2: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit2: LargestSpecimen::largest_specimen(estimator, cache),
                             swimlane2: vec_of_largest_specimen(
                                 estimator,
                                 estimator_max_rounds_per_era(estimator),
+                                cache,
                             ),
                         }
                     } else {
                         Evidence::Equivocation(
-                            LargestSpecimen::largest_specimen(estimator),
-                            LargestSpecimen::largest_specimen(estimator),
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                            LargestSpecimen::largest_specimen(estimator, cache),
                         )
                     }
                 }

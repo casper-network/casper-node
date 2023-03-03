@@ -85,13 +85,13 @@ mod tests {
 }
 
 mod specimen_support {
-    use crate::utils::specimen::{LargestSpecimen, SizeEstimator};
+    use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
 
     use super::LegacyDeploy;
 
     impl LargestSpecimen for LegacyDeploy {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-            LegacyDeploy(LargestSpecimen::largest_specimen(estimator))
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            LegacyDeploy(LargestSpecimen::largest_specimen(estimator, cache))
         }
     }
 }

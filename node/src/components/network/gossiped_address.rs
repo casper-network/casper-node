@@ -57,13 +57,13 @@ impl From<GossipedAddress> for SocketAddr {
 }
 
 mod specimen_support {
-    use crate::utils::specimen::LargestSpecimen;
+    use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
 
     use super::GossipedAddress;
 
     impl LargestSpecimen for GossipedAddress {
-        fn largest_specimen<E: crate::utils::specimen::SizeEstimator>(estimator: &E) -> Self {
-            GossipedAddress::new(LargestSpecimen::largest_specimen(estimator))
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            GossipedAddress::new(LargestSpecimen::largest_specimen(estimator, cache))
         }
     }
 }

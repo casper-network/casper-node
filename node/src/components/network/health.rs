@@ -13,7 +13,7 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::specimen::{LargestSpecimen, SizeEstimator};
+use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
 
 /// Connection health information.
 ///
@@ -258,8 +258,8 @@ pub(crate) enum HealthCheckOutcome {
 }
 
 impl LargestSpecimen for Nonce {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E) -> Self {
-        Self(LargestSpecimen::largest_specimen(estimator))
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        Self(LargestSpecimen::largest_specimen(estimator, cache))
     }
 }
 
