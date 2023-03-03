@@ -5,6 +5,7 @@
 
 use core::convert::TryInto;
 use std::{
+    any::{Any, TypeId},
     collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
     iter::FromIterator,
@@ -42,6 +43,44 @@ use crate::{
 
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
+
+/// A cache used for memoization, typically on a single estimator.
+#[derive(Debug, Default)]
+pub(crate) struct Cache {
+    /// A map of items that have been hashed. Indexed by type.
+    items: HashMap<TypeId, Vec<Box<dyn Any>>>,
+}
+
+impl Cache {
+    /// Retrieves a potentially memoized instance.
+    pub(crate) fn get<T: Any>(&mut self) -> Option<&T> {
+        self.get_raw::<T>()
+            .get(0)
+            .map(|box_any| box_any.downcast_ref::<T>().expect("cache corrupted"))
+    }
+
+    /// Retrieves a memoized instance, or inserts it if absent.
+    pub(crate) fn get_or_set<T: Any, F: FnOnce() -> T>(&mut self, gen: F) -> &T {
+        let storage = self.get_raw::<T>();
+
+        if !storage.is_empty() {
+            return storage[0].downcast_ref::<T>().expect("cache corrupted");
+        }
+
+        let item: Box<dyn Any> = Box::new(gen());
+        storage.push(item);
+        let stored = storage
+            .first()
+            .expect("did not expect vec have 0 items after push");
+
+        stored.downcast_ref::<T>().expect("cache corrupted")
+    }
+
+    /// Get or insert the vector storing item instances.
+    fn get_raw<T: Any>(&mut self) -> &mut Vec<Box<dyn Any>> {
+        self.items.entry(TypeId::of::<T>()).or_default()
+    }
+}
 
 /// Given a specific type instance, estimates its serialized size.
 pub(crate) trait SizeEstimator {
@@ -890,4 +929,48 @@ pub(crate) fn estimator_max_rounds_per_era(estimator: &impl SizeEstimator) -> us
     max_rounds_per_era(minimum_era_height, era_duration_ms, minimum_round_length_ms)
         .try_into()
         .expect("to be a valid `usize`")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::Cache;
+
+    #[test]
+    fn memoization_cache_simple() {
+        let mut cache = Cache::default();
+
+        assert!(cache.get::<u32>().is_none());
+        assert!(cache.get::<String>().is_none());
+
+        cache.get_or_set::<u32, _>(|| 1234);
+        assert_eq!(cache.get::<u32>(), Some(&1234));
+
+        cache.get_or_set::<String, _>(|| "a string is not copy".to_owned());
+        assert_eq!(
+            cache.get::<String>().map(String::as_str),
+            Some("a string is not copy")
+        );
+        assert_eq!(cache.get::<u32>(), Some(&1234));
+    }
+
+    #[test]
+    fn memoization_calls_gen_only_once() {
+        let mut cache = Cache::default();
+        let counter = AtomicUsize::default();
+
+        let gen = || {
+            let value = counter.fetch_add(1, Ordering::Relaxed);
+            value
+        };
+
+        assert!(cache.get::<usize>().is_none());
+        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
+        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
+        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
+        assert_eq!(cache.get_or_set::<usize, _>(&gen), &0);
+
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
 }
