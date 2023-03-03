@@ -500,25 +500,22 @@ impl LargestSpecimen for Signature {
             Secp256k1,
         }
 
-        cache
-            .set(largest_variant::<Self, SignatureDiscriminants, _, _>(
-                estimator,
-                |variant| match variant {
-                    SignatureDiscriminants::System => Signature::system(),
-                    SignatureDiscriminants::Ed25519 => {
-                        let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
+        *cache.set(largest_variant::<Self, SignatureDiscriminants, _, _>(
+            estimator,
+            |variant| match variant {
+                SignatureDiscriminants::System => Signature::system(),
+                SignatureDiscriminants::Ed25519 => {
+                    let ed25519_sec = &SecretKey::generate_ed25519().expect("a correct secret");
 
-                        sign([0_u8], ed25519_sec, &ed25519_sec.into())
-                    }
-                    SignatureDiscriminants::Secp256k1 => {
-                        let secp256k1_sec =
-                            &SecretKey::generate_secp256k1().expect("a correct secret");
+                    sign([0_u8], ed25519_sec, &ed25519_sec.into())
+                }
+                SignatureDiscriminants::Secp256k1 => {
+                    let secp256k1_sec = &SecretKey::generate_secp256k1().expect("a correct secret");
 
-                        sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
-                    }
-                },
-            ))
-            .clone()
+                    sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
+                }
+            },
+        ))
     }
 }
 
