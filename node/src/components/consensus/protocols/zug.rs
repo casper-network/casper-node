@@ -2255,7 +2255,6 @@ mod specimen_support {
 
     use crate::{
         components::consensus::{utils::ValidatorIndex, ClContext},
-        memoize,
         utils::specimen::{
             btree_map_distinct_from_prop, btree_set_distinct_from_prop, largest_variant,
             vec_prop_specimen, Cache, LargeUniqueSequence, LargestSpecimen, SizeEstimator,
@@ -2379,18 +2378,21 @@ mod specimen_support {
 
     impl LargestSpecimen for Content<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            memoize!(Content<ClContext>, estimator, {
-                largest_variant::<Self, ContentDiscriminants, _, _>(estimator, |variant| {
-                    match variant {
-                        ContentDiscriminants::Echo => {
-                            Content::Echo(LargestSpecimen::largest_specimen(estimator, cache))
-                        }
-                        ContentDiscriminants::Vote => {
-                            Content::Vote(LargestSpecimen::largest_specimen(estimator, cache))
-                        }
+            if let Some(item) = cache.get::<Self>() {
+                return item.clone();
+            }
+
+            let item = largest_variant::<Self, ContentDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    ContentDiscriminants::Echo => {
+                        Content::Echo(LargestSpecimen::largest_specimen(estimator, cache))
                     }
-                })
-            })
+                    ContentDiscriminants::Vote => {
+                        Content::Vote(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                }
+            });
+            cache.set(item).clone()
         }
     }
 }

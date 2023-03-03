@@ -172,7 +172,6 @@ mod specimen_support {
     };
     use crate::{
         components::consensus::ClContext,
-        memoize,
         utils::specimen::{
             btree_set_distinct_from_prop, largest_variant, vec_prop_specimen, Cache,
             LargestSpecimen, SizeEstimator,
@@ -268,12 +267,13 @@ mod specimen_support {
 
     impl LargestSpecimen for HashedWireUnit<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            memoize!(HashedWireUnit<ClContext>, estimator, {
-                HashedWireUnit {
-                    hash: LargestSpecimen::largest_specimen(estimator, cache),
-                    wire_unit: LargestSpecimen::largest_specimen(estimator, cache),
-                }
-            })
+            if let Some(item) = cache.get::<Self>() {
+                return item.clone();
+            }
+
+            let hash = LargestSpecimen::largest_specimen(estimator, cache);
+            let wire_unit = LargestSpecimen::largest_specimen(estimator, cache);
+            cache.set(HashedWireUnit { hash, wire_unit }).clone()
         }
     }
 

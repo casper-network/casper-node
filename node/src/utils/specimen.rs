@@ -489,29 +489,12 @@ where
     }
 }
 
-/// Memoize a value using a local static variable.
-#[macro_export]
-macro_rules! memoize {
-    ($ty:ty, $estimator:expr, $blk:block) => {
-        #[allow(unused_qualifications)]
-        {
-            static MEMOIZED: ::once_cell::sync::Lazy<
-                ::std::sync::Mutex<std::collections::HashMap<String, $ty>>,
-            > = ::once_cell::sync::Lazy::new(|| {
-                ::std::sync::Mutex::new(::std::collections::HashMap::new())
-            });
-            MEMOIZED
-                .lock()
-                .expect("memoization cache disappeared")
-                .entry($estimator.key().to_owned())
-                .or_insert_with(|| $blk)
-                .clone()
-        }
-    };
-}
-
 impl LargestSpecimen for Signature {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E, _cache: &mut Cache) -> Self {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        if let Some(item) = cache.get::<Self>() {
+            return item.clone();
+        }
+
         // Note: We do not use strum generated discriminator enums for the signature, as we do not
         //       want to make `strum` a direct dependency of `casper-types`, to keep its size down.
         #[derive(Debug, Copy, Clone, EnumIter)]
@@ -521,8 +504,8 @@ impl LargestSpecimen for Signature {
             Secp256k1,
         }
 
-        memoize!(Signature, estimator, {
-            largest_variant::<Self, SignatureDiscriminants, _, _>(
+        cache
+            .set(largest_variant::<Self, SignatureDiscriminants, _, _>(
                 estimator,
                 |variant| match variant {
                     SignatureDiscriminants::System => Signature::system(),
@@ -538,8 +521,8 @@ impl LargestSpecimen for Signature {
                         sign([0_u8], secp256k1_sec, &secp256k1_sec.into())
                     }
                 },
-            )
-        })
+            ))
+            .clone()
     }
 }
 

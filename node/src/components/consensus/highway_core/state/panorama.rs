@@ -255,7 +255,6 @@ impl<C: Context> Panorama<C> {
 mod specimen_support {
     use crate::{
         components::consensus::ClContext,
-        memoize,
         utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
     };
 
@@ -263,15 +262,18 @@ mod specimen_support {
 
     impl LargestSpecimen for Observation<ClContext> {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            memoize!(Observation<ClContext>, estimator, {
-                largest_variant(estimator, |variant| match variant {
+            if let Some(item) = cache.get::<Self>() {
+                return item.clone();
+            }
+
+            let correct = LargestSpecimen::largest_specimen(estimator, cache);
+            cache
+                .set(largest_variant(estimator, |variant| match variant {
                     ObservationDiscriminants::None => Observation::None,
-                    ObservationDiscriminants::Correct => {
-                        Observation::Correct(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
+                    ObservationDiscriminants::Correct => Observation::Correct(correct),
                     ObservationDiscriminants::Faulty => Observation::Faulty,
-                })
-            })
+                }))
+                .clone()
         }
     }
 }
