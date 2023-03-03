@@ -14,6 +14,7 @@ use crate::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::EraValidatorsRequest,
+        storage::HighestOrphanedBlockResult,
         sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{
@@ -608,7 +609,7 @@ impl MainReactor {
             block_synchronizer_progress,
             BlockSynchronizerProgress::Syncing(_, _, _)
         ) {
-            debug!("historical: sync_back_instruction: still syncing");
+            debug!("historical: still syncing");
             return Ok(Some(SyncBackInstruction::Syncing));
         }
         // in this flow there is no significant difference between Idle & Synced, as unlike in
@@ -617,7 +618,7 @@ impl MainReactor {
         // note: for a synced historical block we have header, body, global state, any execution
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
         match self.storage.get_highest_orphaned_block_header() {
-            Some(block_header) => {
+            HighestOrphanedBlockResult::Orphan(block_header) => {
                 if block_header.is_genesis() {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }
@@ -666,19 +667,17 @@ impl MainReactor {
                     }
                     Ok(None) => {
                         debug!(%parent_hash, "historical: did not find block header in storage");
-                        let era_id = if block_header.era_id() == EraId::from(0) {
-                            // if the block is in era 0 its parent can only be in era 0
-                            EraId::from(0)
-                        } else {
-                            // we do not have the parent header and thus don't know what era
-                            // the parent block is in (it could be the same era or the previous
-                            // era). we assume the worst case and ask
-                            // for the earlier era's proof;
-                            // subtracting 1 here is safe since the case where era id is 0 is
-                            // handled above
-                            block_header.era_id().saturating_sub(1)
+                        let era_id = match block_header.era_id().predecessor() {
+                            None => EraId::from(0),
+                            Some(predecessor) => {
+                                // we do not have the parent header and thus don't know what era
+                                // the parent block is in (it could be the same era or the previous
+                                // era). we assume the worst case and ask for the earlier era's proof;
+                                // subtracting 1 here is safe since the case where era id is 0 is
+                                // handled above
+                                predecessor
+                            }
                         };
-
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: *parent_hash,
                             maybe_parent_metadata: None,
@@ -688,9 +687,22 @@ impl MainReactor {
                     Err(err) => Err(err.to_string()),
                 }
             }
-            None => {
-                debug!("historical: did not find any orphaned block headers");
-                Ok(None)
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => {
+                if block_height == 0 {
+                    Ok(Some(SyncBackInstruction::GenesisSynced))
+                } else {
+                    Err(format!(
+                        "historical: storage is missing block height index entry {}",
+                        block_height
+                    ))
+                }
+            }
+            HighestOrphanedBlockResult::MissingHeader(block_hash) => Err(format!(
+                "historical: storage is missing block header for {}",
+                block_hash
+            )),
+            HighestOrphanedBlockResult::MissingHighestSequence => {
+                Err("historical: storage is missing highest block sequence".to_string())
             }
         }
     }
