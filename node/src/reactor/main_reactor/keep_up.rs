@@ -672,8 +672,9 @@ impl MainReactor {
                             Some(predecessor) => {
                                 // we do not have the parent header and thus don't know what era
                                 // the parent block is in (it could be the same era or the previous
-                                // era). we assume the worst case and ask for the earlier era's proof;
-                                // subtracting 1 here is safe since the case where era id is 0 is
+                                // era). we assume the worst case and ask for the earlier era's
+                                // proof; subtracting 1 here is safe
+                                // since the case where era id is 0 is
                                 // handled above
                                 predecessor
                             }
