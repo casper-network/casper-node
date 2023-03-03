@@ -577,10 +577,6 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
             _ => return None,
         })
     }
-
-    fn key(&self) -> &str {
-        "NetworkMessageEstimator"
-    }
 }
 
 #[cfg(test)]

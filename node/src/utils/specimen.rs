@@ -10,7 +10,7 @@ use std::{
     convert::TryFrom,
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use casper_execution_engine::core::engine_state::{
@@ -24,7 +24,6 @@ use casper_types::{
     SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
-use once_cell::sync::Lazy;
 use serde::Serialize;
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -54,7 +53,7 @@ pub(crate) struct Cache {
 impl Cache {
     /// Retrieves a potentially memoized instance.
     pub(crate) fn get<T: Any>(&mut self) -> Option<&T> {
-        self.get_raw::<T>()
+        self.get_all::<T>()
             .get(0)
             .map(|box_any| box_any.downcast_ref::<T>().expect("cache corrupted"))
     }
@@ -64,7 +63,7 @@ impl Cache {
     /// Returns a reference to the memoized instance. Note that this may be an instance other than
     /// the passed in `item`, if the cache entry was not empty before/
     pub(crate) fn set<T: Any>(&mut self, item: T) -> &T {
-        let items = self.get_raw::<T>();
+        let items = self.get_all::<T>();
         if items.is_empty() {
             let boxed_item: Box<dyn Any> = Box::new(item);
             items.push(boxed_item);
@@ -73,7 +72,7 @@ impl Cache {
     }
 
     /// Get or insert the vector storing item instances.
-    fn get_raw<T: Any>(&mut self) -> &mut Vec<Box<dyn Any>> {
+    fn get_all<T: Any>(&mut self) -> &mut Vec<Box<dyn Any>> {
         self.items.entry(TypeId::of::<T>()).or_default()
     }
 }
@@ -123,9 +122,6 @@ pub(crate) trait SizeEstimator {
     fn require_parameter_bool(&self, name: &'static str) -> bool {
         self.require_parameter::<i64>(name) != 0
     }
-
-    /// An identifier for this specific estimator, used for memoization.
-    fn key(&self) -> &str;
 }
 
 /// Supports returning a maximum size specimen.
@@ -424,13 +420,8 @@ impl<E> LargeUniqueSequence<E> for PublicKey
 where
     E: SizeEstimator,
 {
-    fn large_unique_sequence(estimator: &E, count: usize, _cache: &mut Cache) -> BTreeSet<Self> {
-        static MEMOIZED: Lazy<Mutex<HashMap<String, Vec<PublicKey>>>> =
-            Lazy::new(|| Mutex::new(HashMap::new()));
-
-        let mut guard = MEMOIZED.lock().expect("memoization cache disappeared");
-
-        let data_vec = guard.entry(estimator.key().to_owned()).or_default();
+    fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
+        let data_vec = cache.get_all::<Self>();
 
         /// Generates a secret key from a fixed, numbered seed.
         fn generate_key<E: SizeEstimator>(estimator: &E, seed: usize) -> PublicKey {
@@ -469,11 +460,16 @@ where
 
         while data_vec.len() < count {
             let seed = data_vec.len();
-            data_vec.push(generate_key(estimator, seed));
+            let key = generate_key(estimator, seed);
+            data_vec.push(Box::new(key));
         }
 
         debug_assert!(data_vec.len() >= count);
-        let output_set: BTreeSet<Self> = data_vec[..count].iter().cloned().collect();
+        let output_set: BTreeSet<Self> = data_vec[..count]
+            .iter()
+            .map(|item| item.downcast_ref::<Self>().expect("cache corrupted"))
+            .cloned()
+            .collect();
         debug_assert_eq!(output_set.len(), count);
 
         output_set
