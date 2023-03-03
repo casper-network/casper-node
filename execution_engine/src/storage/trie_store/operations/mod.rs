@@ -6,7 +6,6 @@ use std::{
     collections::{HashSet, VecDeque},
     convert::TryInto,
     mem,
-    time::Instant,
 };
 
 use itertools::Either;
@@ -414,16 +413,11 @@ where
 struct TrieScan<K, V> {
     tip: Trie<K, V>,
     parents: Parents<K, V>,
-    steps: usize,
 }
 
 impl<K, V> TrieScan<K, V> {
-    fn new(tip: Trie<K, V>, parents: Parents<K, V>, steps: usize) -> Self {
-        TrieScan {
-            tip,
-            parents,
-            steps,
-        }
+    fn new(tip: Trie<K, V>, parents: Parents<K, V>) -> Self {
+        TrieScan { tip, parents }
     }
 }
 
@@ -452,12 +446,10 @@ where
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
-    let mut steps = 0usize;
     loop {
-        steps += 1;
         match current {
             leaf @ Trie::Leaf { .. } => {
-                return Ok(TrieScan::new(leaf, acc, steps));
+                return Ok(TrieScan::new(leaf, acc));
             }
             Trie::Node { pointer_block } => {
                 let index = {
@@ -472,7 +464,7 @@ where
                 let pointer = match maybe_pointer {
                     Some(pointer) => pointer,
                     None => {
-                        return Ok(TrieScan::new(Trie::Node { pointer_block }, acc, steps));
+                        return Ok(TrieScan::new(Trie::Node { pointer_block }, acc));
                     }
                 };
                 match store.get(txn, pointer.hash())? {
@@ -493,11 +485,7 @@ where
             Trie::Extension { affix, pointer } => {
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
-                    return Ok(TrieScan::new(
-                        Trie::Extension { affix, pointer },
-                        acc,
-                        steps,
-                    ));
+                    return Ok(TrieScan::new(Trie::Extension { affix, pointer }, acc));
                 }
                 match store.get(txn, pointer.hash())? {
                     Some(next) => {
@@ -525,21 +513,15 @@ where
 struct TrieScanRaw<K, V> {
     tip: Either<Bytes, Trie<K, V>>,
     parents: Parents<K, V>,
-    steps: usize,
 }
 
 impl<K, V> TrieScanRaw<K, V> {
-    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>, steps: usize) -> Self {
-        TrieScanRaw {
-            tip,
-            parents,
-            steps,
-        }
+    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>) -> Self {
+        TrieScanRaw { tip, parents }
     }
 }
 
 /// Just like scan, however we don't parse the tip.
-///
 fn scan_raw<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
@@ -562,18 +544,17 @@ where
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
-    let mut steps = 0usize;
     loop {
-        steps += 1;
         current_trie = if current.first() == Some(&0) {
-            return Ok(TrieScanRaw::new(Either::Left(current), acc, steps));
+            return Ok(TrieScanRaw::new(Either::Left(current), acc));
         } else {
             let (deserialized, _) = Trie::<K, V>::from_bytes(&current)?;
             deserialized
         };
         match current_trie {
             _leaf @ Trie::Leaf { .. } => {
-                // since we are checking if this is a leaf and skipping, we do not expect to ever hit this.
+                // since we are checking if this is a leaf and skipping, we do not expect to ever
+                // hit this.
                 unreachable!()
             }
             Trie::Node { pointer_block } => {
@@ -592,7 +573,6 @@ where
                         return Ok(TrieScanRaw::new(
                             Either::Right(Trie::Node { pointer_block }),
                             acc,
-                            steps,
                         ));
                     }
                 };
@@ -617,7 +597,6 @@ where
                     return Ok(TrieScanRaw::new(
                         Either::Right(Trie::Extension { affix, pointer }),
                         acc,
-                        steps,
                     ));
                 }
                 match store.get_raw(txn, pointer.hash())? {
@@ -674,17 +653,9 @@ where
 
     let key_bytes = key_to_delete.to_bytes()?;
 
-    let start = Instant::now();
-
     // TODO: scan_raw
-    let TrieScan {
-        tip,
-        mut parents,
-        steps,
-    } = scan::<_, _, _, _, E>(correlation_id, &txn, store, &key_bytes, &root_trie)?;
-
-    eprintln!("scan took {:?} in {} steps", start.elapsed(), steps);
-    // dbg!(parents.len());
+    let TrieScan { tip, mut parents } =
+        scan::<_, _, _, _, E>(correlation_id, &txn, store, &key_bytes, &root_trie)?;
 
     // Check that tip is a leaf
     match tip {
@@ -898,11 +869,8 @@ where
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
-    let TrieScanRaw {
-        tip,
-        mut parents,
-        steps: _,
-    } = scan_raw::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
+    let TrieScanRaw { tip, mut parents } =
+        scan_raw::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
 
     // Check that tip is a leaf
     match tip {
@@ -1361,11 +1329,8 @@ where
                 value: value.to_owned(),
             };
             let path: Vec<u8> = key.to_bytes()?;
-            let TrieScan {
-                tip,
-                parents,
-                steps: _,
-            } = scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
+            let TrieScan { tip, parents } =
+                scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.

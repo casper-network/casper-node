@@ -24,7 +24,7 @@ use casper_execution_engine::{
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
-            migrate::{MigrateConfig, MigrateError, MigrateSuccess},
+            migrate::{MigrateConfig, MigrateSuccess},
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,

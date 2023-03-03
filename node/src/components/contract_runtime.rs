@@ -342,7 +342,7 @@ where
                 let metrics = Arc::clone(&self.metrics);
 
                 // chainspec.max_era_infos_per_block
-                let delete_era_infos: Option<(u64, u64)> =
+                let _delete_era_infos: Option<(u64, u64)> =
                     self.lowest_era_to_delete.map(|lowest| -> (u64, u64) {
                         (lowest.into(), 100.max(execution_pre_state.era_id.into()))
                     });

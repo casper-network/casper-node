@@ -171,7 +171,7 @@ pub mod stable_era_info {
             .borrow_mut()
             .get(correlation_id, &Key::EraInfo(era_id))
             .map_err(|error| StableKeyError::UnableToRetrieveLastEraInfo(error.into()))?
-            .ok_or_else(|| StableKeyError::KeyDoesNotExist)?;
+            .ok_or(StableKeyError::KeyDoesNotExist)?;
 
         tracking_copy.force_write(Key::EraSummary, last_era_info);
 

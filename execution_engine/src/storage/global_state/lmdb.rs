@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc, time::Instant};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
@@ -294,9 +294,8 @@ impl StateProvider for LmdbGlobalState {
         keys: &[Key],
     ) -> Result<DeleteResult, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
-        for (i, key) in keys.iter().enumerate() {
-            let start = Instant::now();
-            // NOTE:
+
+        for key in keys {
             match delete_without_scratch::<
                 Key,
                 StoredValue,
@@ -307,14 +306,10 @@ impl StateProvider for LmdbGlobalState {
                 correlation_id,
                 &mut txn,
                 &self.trie_store,
-                // &scratch,
-                // &scratch,
                 &state_root_hash,
                 key,
             )? {
                 DeleteResult::Deleted(root) => {
-                    println!("{}/{} time {:?}", i + 1, keys.len(), start.elapsed());
-
                     state_root_hash = root;
                 }
                 other => return Ok(other),
@@ -322,30 +317,6 @@ impl StateProvider for LmdbGlobalState {
         }
 
         txn.commit()?;
-        // for key_chunks in &keys.iter().enumerate().chunks(5) {
-        //     // let keys_to_delete: Vec<Key> = key_chunks.into_iter().collect();
-
-        //     let scratch = self.get_scratch_store();
-
-        //     for (i, key) in key_chunks {
-        //         println!("{}/{}", i + 1, total);
-
-        //         match delete::<Key, StoredValue, _, _, Self::Error>(
-        //             correlation_id,
-        //             &scratch,
-        //             &scratch,
-        //             &state_root_hash,
-        //             key,
-        //         )? {
-        //             DeleteResult::Deleted(root) => {
-        //                 state_root_hash = root;
-        //             }
-        //             other => return Ok(other),
-        //         }
-        //     }
-
-        //     scratch.write_root_to_db(state_root_hash)?;
-        // }
         Ok(DeleteResult::Deleted(state_root_hash))
     }
 }

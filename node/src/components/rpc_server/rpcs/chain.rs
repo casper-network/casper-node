@@ -443,7 +443,8 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 .await;
 
             // If a coherent Key::Summary is not found, we should look in Key::EraInfo(era_id).
-            // In release 1.4.14 we migrate the EraInfo(current_era_id) to the stable key: Key::EraSummary.
+            // In release 1.4.14 we migrate the EraInfo(current_era_id) to the stable key:
+            // Key::EraSummary.
             if let Ok(QueryResult::ValueNotFound(_)) = query_result.as_ref() {
                 let base_key = Key::EraInfo(era_id);
                 query_result = effect_builder

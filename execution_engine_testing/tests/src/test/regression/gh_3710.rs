@@ -1,9 +1,8 @@
 use std::{convert::TryInto, fmt};
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -24,7 +23,7 @@ use casper_types::{
 
 use crate::lmdb_fixture;
 
-const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
+const _DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const FIXTURE_N_ERAS: usize = 10;
 
 const GH_3710_FIXTURE: &str = "gh_3710";
@@ -112,6 +111,8 @@ const DEFAULT_REWARD_VALUE: u64 = 1_000_000;
 #[ignore]
 #[test]
 fn gh_3710_should_delete_eras_on_each_migration_step() {
+    const BATCH_SIZE: usize = 4;
+
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
@@ -128,10 +129,20 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
 
     let last_era_id = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
 
+    // We'll supply last known era info id that so it is guaranteed that next era is not found in
+    // the global state.
+    const CURRENT_ERA_ID: u64 = FIXTURE_N_ERAS as u64 + 1;
+
     let era_info_before_migration = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
 
+    assert_eq!(
+        era_info_before_migration.last(),
+        Some(&Key::EraInfo(EraId::new(CURRENT_ERA_ID as u64))),
+    );
+
+    dbg!(&era_info_before_migration);
     assert_eq!(
         era_info_before_migration.last(),
         Some(&Key::EraInfo(last_era_id))
@@ -139,11 +150,9 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
 
     let current_root_hash = builder.get_post_state_hash();
 
-    const BATCH_SIZE: usize = 5;
+    // Migrate step 1 - delete 5 keys (0..5)
 
-    // Migrate step 1
-
-    let action = MigrateAction::purge_era_info(BATCH_SIZE, FIXTURE_N_ERAS as u64 + 1);
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
 
     builder
         .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
@@ -160,12 +169,10 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
         Some(&Key::EraInfo(EraId::new(BATCH_SIZE as u64))),
     );
 
-    // todo ensure there's Key::EraSummary with highest era id key since we removed eras 0..batch_size
-
-    // Migrate step 2
+    // Migrate step 2 - delete 5 keys (5..10)
 
     let current_root_hash = builder.get_post_state_hash();
-    let action = MigrateAction::purge_era_info(BATCH_SIZE, FIXTURE_N_ERAS as u64 + 1);
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
 
     builder
         .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
@@ -184,17 +191,35 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
         ))),
     );
 
-    // Migrate step 3
+    // Migrate step 3 - delete 2 keys (10..12)
 
     let current_root_hash = builder.get_post_state_hash();
-    let action = MigrateAction::purge_era_info(BATCH_SIZE, FIXTURE_N_ERAS as u64 + 1);
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
     builder
         .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
-    println!("migrate results {:#?}", builder.get_migrate_results());
-
     assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(era_info_after_migration.first(), None,);
+
+    // Migrate step 4 - should be noop, and should not fail
+
+    let current_root_hash = builder.get_post_state_hash();
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
+    builder
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .expect_migrate_success();
+
+    assert_eq!(
+        current_root_hash,
+        builder.get_post_state_hash(),
+        "Post state hash should not change if all era infos are already deleted"
+    );
 
     let era_info_after_migration = builder
         .get_keys(KeyTag::EraInfo)
