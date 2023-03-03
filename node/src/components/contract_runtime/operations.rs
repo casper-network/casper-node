@@ -5,12 +5,18 @@ use tracing::{debug, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
-        StepRequest, StepSuccess,
+        self,
+        migrate::{MigrateAction, MigrationActions},
+        step::EvictItem,
+        DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+        GetEraValidatorsRequest, QueryRequest, QueryResult, RewardItem, StepError, StepRequest,
+        StepSuccess,
     },
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::lmdb::LmdbGlobalState,
+    shared::{
+        additive_map::AdditiveMap, migrate_config::Migration, newtypes::CorrelationId,
+        transform::Transform,
+    },
+    storage::global_state::{lmdb::LmdbGlobalState, scratch::ScratchGlobalState},
 };
 use casper_hashing::Digest;
 use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
@@ -40,6 +46,7 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
+    maybe_migration: Option<&Migration>,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -52,7 +59,7 @@ pub fn execute_finalized_block(
         parent_hash,
         parent_seed,
         next_block_height: _,
-        era_id: _,
+        era_id: current_era_id,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
@@ -95,236 +102,293 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    if let Some(metrics) = metrics.as_ref() {
-        metrics.exec_block.observe(start.elapsed().as_secs_f64());
+    if let Some(migration) = maybe_migration {
+        match scratch_state.run_query(
+            CorrelationId::new(),
+            QueryRequest::new(state_root_hash, Key::Migration, vec![]),
+        )? {
+            QueryResult::ValueNotFound(_) => {
+                state_root_hash =
+                    run_migration(&scratch_state, state_root_hash, migration, current_era_id)?;
+            }
+            QueryResult::Success {
+                value: last_run_migration,
+                ..
+            } => {
+                let last_run_migration = last_run_migration.as_cl_value()?.into_t()?;
+                if migration.migration_id() > last_run_migration {
+                    state_root_hash =
+                        run_migration(&scratch_state, state_root_hash, migration, current_era_id)?;
+                }
+            }
+            other => tracing::error!(?other),
+        }
+
+        if let Some(metrics) = metrics.as_ref() {
+            metrics.exec_block.observe(start.elapsed().as_secs_f64());
+        }
+
+        // If the finalized block has an era report, run the auction contract and get the upcoming era
+        // validators
+        let maybe_step_effect_and_upcoming_era_validators =
+            if let Some(era_report) = finalized_block.era_report() {
+                let StepSuccess {
+                    post_state_hash: _, // ignore the post-state-hash returned from scratch
+                    execution_journal: step_execution_journal,
+                } = commit_step(
+                    &scratch_state, // engine_state
+                    metrics.clone(),
+                    protocol_version,
+                    state_root_hash,
+                    era_report,
+                    finalized_block.timestamp().millis(),
+                    finalized_block.era_id().successor(),
+                )?;
+
+                state_root_hash = engine_state
+                    .write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+
+                // In this flow we execute using a recent state root hash where the system contract
+                // registry is guaranteed to exist.
+                let system_contract_registry = None;
+
+                let upcoming_era_validators = engine_state.get_era_validators(
+                    CorrelationId::new(),
+                    system_contract_registry,
+                    GetEraValidatorsRequest::new(state_root_hash, protocol_version),
+                )?;
+                Some(StepEffectAndUpcomingEraValidators {
+                    step_execution_journal,
+                    upcoming_era_validators,
+                })
+            } else {
+                // Finally, the new state-root-hash from the cumulative changes to global state is
+                // returned when they are written to LMDB.
+                state_root_hash = engine_state
+                    .write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+                None
+            };
+
+        // Flush once, after all deploys have been executed.
+        engine_state.flush_environment()?;
+
+        // Update the metric.
+        let block_height = finalized_block.height();
+        if let Some(metrics) = metrics.as_ref() {
+            metrics.chain_height.set(block_height as i64);
+        }
+
+        let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+            maybe_step_effect_and_upcoming_era_validators
+                .as_ref()
+                .and_then(
+                    |StepEffectAndUpcomingEraValidators {
+                         upcoming_era_validators,
+                         ..
+                     }| {
+                        upcoming_era_validators
+                            .get(&finalized_block.era_id().successor())
+                            .cloned()
+                    },
+                );
+        let block = Block::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            finalized_block,
+            next_era_validator_weights,
+            protocol_version,
+        )?;
+
+        let patched_execution_results = execution_results
+            .into_iter()
+            .map(|(hash, header, result)| (hash, (header, result)))
+            .collect();
+
+        Ok(BlockAndExecutionEffects {
+            block,
+            execution_results: patched_execution_results,
+            maybe_step_effect_and_upcoming_era_validators,
+        })
     }
 
-    // If the finalized block has an era report, run the auction contract and get the upcoming era
-    // validators
-    let maybe_step_effect_and_upcoming_era_validators =
-        if let Some(era_report) = finalized_block.era_report() {
-            let StepSuccess {
-                post_state_hash: _, // ignore the post-state-hash returned from scratch
-                execution_journal: step_execution_journal,
-            } = commit_step(
-                &scratch_state, // engine_state
-                metrics.clone(),
-                protocol_version,
-                state_root_hash,
-                era_report,
-                finalized_block.timestamp().millis(),
-                finalized_block.era_id().successor(),
-            )?;
+    /// Commits the execution effects.
+    fn commit_execution_effects<S>(
+        engine_state: &EngineState<S>,
+        metrics: Option<Arc<Metrics>>,
+        state_root_hash: Digest,
+        deploy_hash: DeployHash,
+        execution_results: ExecutionResults,
+    ) -> Result<(Digest, ExecutionResult), BlockExecutionError>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        let ee_execution_result = execution_results
+            .into_iter()
+            .exactly_one()
+            .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
+        let json_execution_result = ExecutionResult::from(&ee_execution_result);
 
-            state_root_hash =
-                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+        let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
+            EngineExecutionResult::Success {
+                execution_journal,
+                cost,
+                ..
+            } => {
+                // We do want to see the deploy hash and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, %cost, "execution succeeded");
+                execution_journal
+            }
+            EngineExecutionResult::Failure {
+                error,
+                execution_journal,
+                cost,
+                ..
+            } => {
+                // Failure to execute a contract is a user error, not a system error.
+                // We do want to see the deploy hash, error, and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, ?error, %cost, "execution failure");
+                execution_journal
+            }
+        }
+        .into();
+        let new_state_root =
+            commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
+        Ok((new_state_root, json_execution_result))
+    }
 
-            // In this flow we execute using a recent state root hash where the system contract
-            // registry is guaranteed to exist.
-            let system_contract_registry = None;
+    fn commit_transforms<S>(
+        engine_state: &EngineState<S>,
+        metrics: Option<Arc<Metrics>>,
+        state_root_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, engine_state::Error>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        trace!(?state_root_hash, ?effects, "commit");
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = engine_state.apply_effect(correlation_id, state_root_hash, effects);
+        if let Some(metrics) = metrics {
+            metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+        }
+        trace!(?result, "commit result");
+        result.map(Digest::from)
+    }
 
-            let upcoming_era_validators = engine_state.get_era_validators(
-                CorrelationId::new(),
-                system_contract_registry,
-                GetEraValidatorsRequest::new(state_root_hash, protocol_version),
-            )?;
-            Some(StepEffectAndUpcomingEraValidators {
-                step_execution_journal,
-                upcoming_era_validators,
-            })
-        } else {
-            // Finally, the new state-root-hash from the cumulative changes to global state is
-            // returned when they are written to LMDB.
-            state_root_hash =
-                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
-            None
+    fn execute<S>(
+        engine_state: &EngineState<S>,
+        metrics: Option<Arc<Metrics>>,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecutionResults, engine_state::Error>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        trace!(?execute_request, "execute");
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = engine_state.run_execute(correlation_id, execute_request);
+        if let Some(metrics) = metrics {
+            metrics.run_execute.observe(start.elapsed().as_secs_f64());
+        }
+        trace!(?result, "execute result");
+        result
+    }
+
+    fn commit_step<S>(
+        engine_state: &EngineState<S>,
+        maybe_metrics: Option<Arc<Metrics>>,
+        protocol_version: ProtocolVersion,
+        pre_state_root_hash: Digest,
+        era_report: &EraReport<PublicKey>,
+        era_end_timestamp_millis: u64,
+        next_era_id: EraId,
+    ) -> Result<StepSuccess, StepError>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        // Extract the rewards and the inactive validators if this is a switch block
+        let EraReport {
+            equivocators,
+            rewards,
+            inactive_validators,
+        } = era_report;
+
+        let reward_items = rewards
+            .iter()
+            .map(|(vid, value)| RewardItem::new(vid.clone(), *value))
+            .collect();
+
+        // Both inactive validators and equivocators are evicted
+        let evict_items = inactive_validators
+            .iter()
+            .chain(equivocators)
+            .cloned()
+            .map(EvictItem::new)
+            .collect();
+
+        let step_request = StepRequest {
+            pre_state_hash: pre_state_root_hash,
+            protocol_version,
+            reward_items,
+            // Note: The Casper Network does not slash, but another network could
+            slash_items: vec![],
+            evict_items,
+            next_era_id,
+            era_end_timestamp_millis,
         };
 
-    // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
-
-    // Update the metric.
-    let block_height = finalized_block.height();
-    if let Some(metrics) = metrics.as_ref() {
-        metrics.chain_height.set(block_height as i64);
-    }
-
-    let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
-        maybe_step_effect_and_upcoming_era_validators
-            .as_ref()
-            .and_then(
-                |StepEffectAndUpcomingEraValidators {
-                     upcoming_era_validators,
-                     ..
-                 }| {
-                    upcoming_era_validators
-                        .get(&finalized_block.era_id().successor())
-                        .cloned()
-                },
-            );
-    let block = Block::new(
-        parent_hash,
-        parent_seed,
-        state_root_hash,
-        finalized_block,
-        next_era_validator_weights,
-        protocol_version,
-    )?;
-
-    let patched_execution_results = execution_results
-        .into_iter()
-        .map(|(hash, header, result)| (hash, (header, result)))
-        .collect();
-
-    Ok(BlockAndExecutionEffects {
-        block,
-        execution_results: patched_execution_results,
-        maybe_step_effect_and_upcoming_era_validators,
-    })
-}
-
-/// Commits the execution effects.
-fn commit_execution_effects<S>(
-    engine_state: &EngineState<S>,
-    metrics: Option<Arc<Metrics>>,
-    state_root_hash: Digest,
-    deploy_hash: DeployHash,
-    execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult), BlockExecutionError>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    let ee_execution_result = execution_results
-        .into_iter()
-        .exactly_one()
-        .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let json_execution_result = ExecutionResult::from(&ee_execution_result);
-
-    let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
-        EngineExecutionResult::Success {
-            execution_journal,
-            cost,
-            ..
-        } => {
-            // We do want to see the deploy hash and cost in the logs.
-            // We don't need to see the effects in the logs.
-            debug!(?deploy_hash, %cost, "execution succeeded");
-            execution_journal
+        // Have the EE commit the step.
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = engine_state.commit_step(correlation_id, step_request);
+        if let Some(metrics) = maybe_metrics {
+            let elapsed = start.elapsed().as_secs_f64();
+            metrics.commit_step.observe(elapsed);
+            metrics.latest_commit_step.set(elapsed);
         }
-        EngineExecutionResult::Failure {
-            error,
-            execution_journal,
-            cost,
-            ..
-        } => {
-            // Failure to execute a contract is a user error, not a system error.
-            // We do want to see the deploy hash, error, and cost in the logs.
-            // We don't need to see the effects in the logs.
-            debug!(?deploy_hash, ?error, %cost, "execution failure");
-            execution_journal
-        }
+        trace!(?result, "step response");
+        result
     }
-    .into();
-    let new_state_root =
-        commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
-    Ok((new_state_root, json_execution_result))
-}
 
-fn commit_transforms<S>(
-    engine_state: &EngineState<S>,
-    metrics: Option<Arc<Metrics>>,
-    state_root_hash: Digest,
-    effects: AdditiveMap<Key, Transform>,
-) -> Result<Digest, engine_state::Error>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    trace!(?state_root_hash, ?effects, "commit");
-    let correlation_id = CorrelationId::new();
-    let start = Instant::now();
-    let result = engine_state.apply_effect(correlation_id, state_root_hash, effects);
-    if let Some(metrics) = metrics {
-        metrics.apply_effect.observe(start.elapsed().as_secs_f64());
+    fn run_migration<S>(
+        scratch_state: &EngineState<S>,
+        migration: &Migration,
+        pre_state_root_hash: Digest,
+        current_era_id: EraId,
+    ) -> Result<Digest, BlockExecutionError>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        Ok(match migration {
+            Migration::WriteStableEraSummaryKey { .. } => {
+                let success = scratch_state.commit_migrate(MigrationActions::new(
+                    pre_state_root_hash,
+                    vec![MigrateAction::write_stable_era_info(current_era_id.into())],
+                ))?;
+                success.post_state_hash
+            }
+            Migration::PurgeEraInfo {
+                migration_id,
+                batch_size,
+            } => {
+                let success = scratch_state.commit_migrate(MigrationActions::new(
+                    pre_state_root_hash,
+                    vec![MigrateAction::purge_era_info(
+                        *batch_size,
+                        current_era_id.into(),
+                    )],
+                ))?;
+                success.post_state_hash
+            }
+        })
     }
-    trace!(?result, "commit result");
-    result.map(Digest::from)
-}
-
-fn execute<S>(
-    engine_state: &EngineState<S>,
-    metrics: Option<Arc<Metrics>>,
-    execute_request: ExecuteRequest,
-) -> Result<ExecutionResults, engine_state::Error>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    trace!(?execute_request, "execute");
-    let correlation_id = CorrelationId::new();
-    let start = Instant::now();
-    let result = engine_state.run_execute(correlation_id, execute_request);
-    if let Some(metrics) = metrics {
-        metrics.run_execute.observe(start.elapsed().as_secs_f64());
-    }
-    trace!(?result, "execute result");
-    result
-}
-
-fn commit_step<S>(
-    engine_state: &EngineState<S>,
-    maybe_metrics: Option<Arc<Metrics>>,
-    protocol_version: ProtocolVersion,
-    pre_state_root_hash: Digest,
-    era_report: &EraReport<PublicKey>,
-    era_end_timestamp_millis: u64,
-    next_era_id: EraId,
-) -> Result<StepSuccess, StepError>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    // Extract the rewards and the inactive validators if this is a switch block
-    let EraReport {
-        equivocators,
-        rewards,
-        inactive_validators,
-    } = era_report;
-
-    let reward_items = rewards
-        .iter()
-        .map(|(vid, value)| RewardItem::new(vid.clone(), *value))
-        .collect();
-
-    // Both inactive validators and equivocators are evicted
-    let evict_items = inactive_validators
-        .iter()
-        .chain(equivocators)
-        .cloned()
-        .map(EvictItem::new)
-        .collect();
-
-    let step_request = StepRequest {
-        pre_state_hash: pre_state_root_hash,
-        protocol_version,
-        reward_items,
-        // Note: The Casper Network does not slash, but another network could
-        slash_items: vec![],
-        evict_items,
-        next_era_id,
-        era_end_timestamp_millis,
-    };
-
-    // Have the EE commit the step.
-    let correlation_id = CorrelationId::new();
-    let start = Instant::now();
-    let result = engine_state.commit_step(correlation_id, step_request);
-    if let Some(metrics) = maybe_metrics {
-        let elapsed = start.elapsed().as_secs_f64();
-        metrics.commit_step.observe(elapsed);
-        metrics.latest_commit_step.set(elapsed);
-    }
-    trace!(?result, "step response");
-    result
 }

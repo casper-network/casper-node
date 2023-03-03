@@ -323,6 +323,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Migration => {
+                error!("should not remove the migration key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
         }
     }
 
@@ -772,6 +776,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::EraSummary => true,
+            Key::Migration => true,
         }
     }
 
@@ -793,6 +798,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::EraSummary => false,
+            Key::Migration => false,
         }
     }
 
@@ -814,6 +820,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::EraSummary => false,
+            Key::Migration => false,
         }
     }
 

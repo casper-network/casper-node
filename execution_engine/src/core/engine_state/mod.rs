@@ -50,7 +50,7 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use self::migrate::{ActionSuccess, MigrateConfig, MigrateError, MigrateSuccess};
+use self::migrate::{MigrateError, MigrateSuccess, MigrationActions};
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -469,40 +469,48 @@ where
     /// This process applies changes to the global state.
     ///
     /// Returns [`MigrateSuccess`].
-    pub fn commit_migrate(&self, migration_config: MigrateConfig) -> Result<MigrateSuccess, Error> {
-        let mut state_root_hash = migration_config.state_root_hash;
-        let mut actions_taken = Vec::new();
+    pub fn commit_migrate(
+        &self,
+        migration_config: MigrationActions,
+    ) -> Result<MigrateSuccess, Error> {
+        let mut state_root_hash = migration_config.pre_state_root_hash;
         for action in migration_config.actions {
             match action {
                 migrate::MigrateAction::PurgeEraInfo {
-                    batch_size: eras_per_block,
+                    batch_size,
                     current_era_id,
                 } => {
                     let success = migrate::purge_era_info::purge_era_info(
                         &self.state,
-                        migration_config.state_root_hash,
+                        migration_config.pre_state_root_hash,
                         current_era_id,
-                        eras_per_block,
+                        batch_size,
                     )
                     .map_err(|error| Error::MigrateError(MigrateError::PurgeEraInfo(error)))?;
 
-                    state_root_hash = success.post_state_hash;
-                    actions_taken.push(ActionSuccess::PurgeEraInfo(success));
+                    match success {
+                        migrate::purge_era_info::PurgeEraInfoSuccess::Progress(progress) => {
+                            state_root_hash = progress.post_state_hash;
+                        }
+                        migrate::purge_era_info::PurgeEraInfoSuccess::Complete => (),
+                    }
                 }
                 migrate::MigrateAction::WriteStableEraInfo { era_id } => {
-                    let success = migrate::stable_era_info::write_era_info_summary_to_stable_key(
-                        &self.state,
-                        CorrelationId::new(),
-                        migration_config.state_root_hash,
-                        era_id,
-                    )
-                    .map_err(|error| Error::MigrateError(MigrateError::WriteStableKey(error)))?;
-                    state_root_hash = success.post_state_hash();
-                    actions_taken.push(success);
+                    let success =
+                        migrate::write_stable_era_info::write_era_info_summary_to_stable_key(
+                            &self.state,
+                            CorrelationId::new(),
+                            migration_config.pre_state_root_hash,
+                            era_id,
+                        )
+                        .map_err(|error| {
+                            Error::MigrateError(MigrateError::WriteStableKey(error))
+                        })?;
+                    state_root_hash = success.post_state_hash;
                 }
             }
         }
-        Ok(MigrateSuccess::new(state_root_hash, actions_taken))
+        Ok(MigrateSuccess::new(state_root_hash))
     }
 
     /// Creates a new tracking copy instance.

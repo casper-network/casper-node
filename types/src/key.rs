@@ -44,6 +44,7 @@ const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
 const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
 const ERA_SUMMARY_PREFIX: &str = "era-summary-";
+const MIGRATION_PREFIX: &str = "migration-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -60,6 +61,7 @@ pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
 const SYSTEM_CONTRACT_REGISTRY_PADDING_KEY: [u8; 32] = [0u8; 32];
 const ERA_SUMMARY_PADDING_KEY: [u8; 32] = [0u8; 32];
+const MIGRATION_PADDING_KEY: [u8; 32] = [0u8; 32];
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -76,6 +78,8 @@ const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_PADDING_KEY.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + ERA_SUMMARY_PADDING_KEY.len();
+const KEY_MIGRATION_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + MIGRATION_PADDING_KEY.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -99,6 +103,7 @@ pub enum KeyTag {
     Dictionary = 9,
     SystemContractRegistry = 10,
     EraSummary = 14,
+    Migration = 15,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -132,6 +137,9 @@ pub enum Key {
     SystemContractRegistry,
     /// A `Key` under which we store current era info.
     EraSummary,
+    /// A `Key` under which we store the migration_id (u32) of the latest migration.
+    /// Migrations are run in order from lowest to highest.
+    Migration,
 }
 
 /// Errors produced when converting a `String` into a `Key`.
@@ -161,6 +169,8 @@ pub enum FromStrError {
     SystemContractRegistry(String),
     /// Era summary parse error.
     EraSummary(String),
+    /// Migration parse error.
+    Migration(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -210,6 +220,9 @@ impl Display for FromStrError {
             FromStrError::EraSummary(error) => {
                 write!(f, "era-summary from string error: {}", error)
             }
+            FromStrError::Migration(error) => {
+                write!(f, "migration from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -232,6 +245,7 @@ impl Key {
             Key::Dictionary(_) => String::from("Key::Dictionary"),
             Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
             Key::EraSummary => String::from("Key::EraSummary"),
+            Key::Migration => String::from("Key::Migration"),
         }
     }
 
@@ -296,6 +310,13 @@ impl Key {
                     "{}{}",
                     ERA_SUMMARY_PREFIX,
                     base16::encode_lower(&ERA_SUMMARY_PADDING_KEY)
+                )
+            }
+            Key::Migration => {
+                format!(
+                    "{}{}",
+                    MIGRATION_PREFIX,
+                    base16::encode_lower(&MIGRATION_PADDING_KEY)
                 )
             }
         }
@@ -513,6 +534,11 @@ impl Display for Key {
                 "Key::EraSummary({})",
                 base16::encode_lower(&ERA_SUMMARY_PADDING_KEY),
             ),
+            Key::Migration => write!(
+                f,
+                "Key::Migration({})",
+                base16::encode_lower(&MIGRATION_PADDING_KEY),
+            ),
         }
     }
 }
@@ -538,6 +564,7 @@ impl Tagged<KeyTag> for Key {
             Key::Dictionary(_) => KeyTag::Dictionary,
             Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
             Key::EraSummary => KeyTag::EraSummary,
+            Key::Migration => KeyTag::Migration,
         }
     }
 }
@@ -626,6 +653,9 @@ impl ToBytes for Key {
             Key::EraSummary => {
                 result.append(&mut ERA_SUMMARY_PADDING_KEY.to_bytes()?);
             }
+            Key::Migration => {
+                result.append(&mut MIGRATION_PADDING_KEY.to_bytes()?);
+            }
         }
         Ok(result)
     }
@@ -646,6 +676,7 @@ impl ToBytes for Key {
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
             Key::EraSummary => KEY_ERA_SUMMARY_SERIALIZED_LENGTH,
+            Key::Migration => KEY_MIGRATION_SERIALIZED_LENGTH,
         }
     }
 }
@@ -743,6 +774,7 @@ mod serde_helpers {
         Dictionary(String),
         SystemContractRegistry(String),
         EraSummary(String),
+        Migration(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -763,6 +795,7 @@ mod serde_helpers {
                     HumanReadable::SystemContractRegistry(formatted_string)
                 }
                 Key::EraSummary => HumanReadable::EraSummary(formatted_string),
+                Key::Migration => HumanReadable::Migration(formatted_string),
             }
         }
     }
@@ -783,7 +816,8 @@ mod serde_helpers {
                 | HumanReadable::Withdraw(formatted_string)
                 | HumanReadable::Dictionary(formatted_string)
                 | HumanReadable::SystemContractRegistry(formatted_string)
-                | HumanReadable::EraSummary(formatted_string) => formatted_string,
+                | HumanReadable::EraSummary(formatted_string)
+                | HumanReadable::Migration(formatted_string) => formatted_string,
             };
             Key::from_formatted_str(&formatted_string)
         }
@@ -803,6 +837,7 @@ mod serde_helpers {
         Dictionary(&'a HashAddr),
         SystemContractRegistry,
         EraSummary,
+        Migration,
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -820,6 +855,7 @@ mod serde_helpers {
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
                 Key::EraSummary => BinarySerHelper::EraSummary,
+                Key::Migration => BinarySerHelper::Migration,
             }
         }
     }

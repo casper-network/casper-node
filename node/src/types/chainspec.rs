@@ -22,7 +22,7 @@ use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{migrate_config::MigrateConfig, system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -63,6 +63,8 @@ pub struct Chainspec {
     pub(crate) wasm_config: WasmConfig,
     #[serde(rename = "system_costs")]
     pub(crate) system_costs_config: SystemConfig,
+    #[serde(rename = "migration")]
+    pub(crate) migration_config: MigrateConfig,
 }
 
 impl Chainspec {
@@ -112,6 +114,7 @@ impl Chainspec {
         let deploy_config = DeployConfig::random(rng);
         let wasm_costs_config = rng.gen();
         let system_costs_config = rng.gen();
+        let migration_config = rng.gen();
 
         Chainspec {
             protocol_config,
@@ -121,6 +124,7 @@ impl Chainspec {
             deploy_config,
             wasm_config: wasm_costs_config,
             system_costs_config,
+            migration_config,
         }
     }
 }
@@ -135,6 +139,7 @@ impl ToBytes for Chainspec {
         buffer.extend(self.deploy_config.to_bytes()?);
         buffer.extend(self.wasm_config.to_bytes()?);
         buffer.extend(self.system_costs_config.to_bytes()?);
+        buffer.extend(self.migration_config.to_bytes()?);
         Ok(buffer)
     }
 
@@ -146,6 +151,7 @@ impl ToBytes for Chainspec {
             + self.deploy_config.serialized_length()
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
+            + self.migration_config.serialized_length()
     }
 }
 
@@ -158,6 +164,7 @@ impl FromBytes for Chainspec {
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
+        let (migration_config, remainder) = MigrateConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
             network_config,
@@ -166,6 +173,7 @@ impl FromBytes for Chainspec {
             deploy_config,
             wasm_config,
             system_costs_config,
+            migration_config,
         };
         Ok((chainspec, remainder))
     }

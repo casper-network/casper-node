@@ -15,6 +15,17 @@ activation_point = 5900
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
 
+[migration]
+
+[[migration.migrations]]
+migration_id = 0 
+type = "write_stable_era_summary_key"
+ 
+[[migration.migrations]]
+migration_id = 1
+type = "purge_era_info"
+batch_size = 100
+
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis

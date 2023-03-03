@@ -3,6 +3,7 @@ pub mod additive_map;
 pub mod execution_journal;
 pub mod host_function_costs;
 pub mod logging;
+pub mod migrate_config;
 pub mod newtypes;
 pub mod opcode_costs;
 pub mod storage_costs;

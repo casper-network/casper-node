@@ -24,7 +24,7 @@ use casper_execution_engine::{
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
-            migrate::{MigrateConfig, MigrateSuccess},
+            migrate::{MigrateSuccess, MigrationActions},
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
@@ -723,7 +723,7 @@ where
     }
 
     /// Commit a migration.
-    pub fn commit_migrate(&mut self, migrate_config: MigrateConfig) -> &mut Self {
+    pub fn commit_migrate(&mut self, migrate_config: MigrationActions) -> &mut Self {
         let result = self.engine_state.commit_migrate(migrate_config);
 
         if let Ok(MigrateSuccess {

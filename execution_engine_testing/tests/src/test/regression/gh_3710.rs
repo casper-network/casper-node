@@ -8,7 +8,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            migrate::{MigrateAction, MigrateConfig},
+            migrate::{MigrateAction, MigrationActions},
             RewardItem,
         },
         execution,
@@ -155,7 +155,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
 
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -175,7 +175,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
 
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -196,7 +196,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     let current_root_hash = builder.get_post_state_hash();
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -212,7 +212,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
     let current_root_hash = builder.get_post_state_hash();
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_eq!(
@@ -262,7 +262,6 @@ fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
         Some(&Key::EraInfo(EraId::new(CURRENT_ERA_ID as u64))),
     );
 
-    dbg!(&era_info_before_migration);
     assert_eq!(
         era_info_before_migration.last(),
         Some(&Key::EraInfo(last_era_id))
@@ -275,7 +274,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
 
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -295,7 +294,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID + 100);
 
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -316,7 +315,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
     let current_root_hash = builder.get_post_state_hash();
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID + 200);
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_ne!(current_root_hash, builder.get_post_state_hash());
@@ -332,7 +331,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
     let current_root_hash = builder.get_post_state_hash();
     let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID + 300);
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
 
     assert_eq!(
@@ -379,7 +378,7 @@ fn gh_3710_should_write_stable_era_info_key() {
     let current_root_hash = builder.get_post_state_hash();
     let action = MigrateAction::write_stable_era_info(last_era_id);
     builder
-        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .commit_migrate(MigrationActions::new(current_root_hash, vec![action]))
         .expect_migrate_success();
     let era_summary_after_migration = builder
         .get_keys(KeyTag::EraSummary)
