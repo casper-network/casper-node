@@ -135,6 +135,8 @@ mod tests {
 
     use crate::types::{Block, FinalizedBlock};
 
+    // Describes a single item from the set of validators that will be used for switch blocks
+    // created by TestChainSpec.
     pub(crate) struct ValidatorSpec {
         pub(crate) secret_key: SecretKey,
         pub(crate) public_key: PublicKey,
@@ -150,7 +152,7 @@ mod tests {
     // Additionally, this struct allows to generate switch blocks at a specific location in the
     // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
     // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
-    // the `validators` parameter using the weight, if specified.
+    // the `validators` parameter.
     pub(crate) struct TestChainSpec<'a> {
         block: Block,
         rng: &'a mut TestRng,

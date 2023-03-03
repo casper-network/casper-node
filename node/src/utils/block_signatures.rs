@@ -184,9 +184,6 @@ mod tests {
             sigs.insert_proof(pub_key.clone(), sig);
         }
 
-        let y = sigs.verify();
-        dbg!(&y);
-
         sigs
     }
 
