@@ -230,6 +230,126 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
 
 #[ignore]
 #[test]
+fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
+    const BATCH_SIZE: usize = 4;
+
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
+
+    let auction_delay: u64 = lmdb_fixture_state
+        .genesis_request
+        .get("ee_config")
+        .expect("should have ee_config")
+        .get("auction_delay")
+        .expect("should have auction delay")
+        .as_i64()
+        .expect("auction delay should be integer")
+        .try_into()
+        .expect("auction delay should be positive");
+
+    let last_era_id = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
+
+    // We'll supply last known era info id that so it is guaranteed that next era is not found in
+    // the global state.
+    const CURRENT_ERA_ID: u64 = FIXTURE_N_ERAS as u64 + 1;
+
+    let era_info_before_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(
+        era_info_before_migration.last(),
+        Some(&Key::EraInfo(EraId::new(CURRENT_ERA_ID as u64))),
+    );
+
+    dbg!(&era_info_before_migration);
+    assert_eq!(
+        era_info_before_migration.last(),
+        Some(&Key::EraInfo(last_era_id))
+    );
+
+    let current_root_hash = builder.get_post_state_hash();
+
+    // Migrate step 1 - delete 5 keys (0..5)
+
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID);
+
+    builder
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .expect_migrate_success();
+
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(
+        era_info_after_migration.first(),
+        Some(&Key::EraInfo(EraId::new(BATCH_SIZE as u64))),
+    );
+
+    // Migrate step 2 - delete 5 keys (5..10)
+
+    let current_root_hash = builder.get_post_state_hash();
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID + 100);
+
+    builder
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .expect_migrate_success();
+
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(
+        era_info_after_migration.first(),
+        Some(&Key::EraInfo(EraId::new(
+            BATCH_SIZE as u64 + BATCH_SIZE as u64
+        ))),
+    );
+
+    // Migrate step 3 - delete 2 keys (10..12)
+
+    let current_root_hash = builder.get_post_state_hash();
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID + 200);
+    builder
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .expect_migrate_success();
+
+    assert_ne!(current_root_hash, builder.get_post_state_hash());
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(era_info_after_migration.first(), None,);
+
+    // Migrate step 4 - should be noop, and should not fail
+
+    let current_root_hash = builder.get_post_state_hash();
+    let action = MigrateAction::purge_era_info(BATCH_SIZE, CURRENT_ERA_ID + 300);
+    builder
+        .commit_migrate(MigrateConfig::new(current_root_hash, vec![action]))
+        .expect_migrate_success();
+
+    assert_eq!(
+        current_root_hash,
+        builder.get_post_state_hash(),
+        "Post state hash should not change if all era infos are already deleted"
+    );
+
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+
+    assert_eq!(era_info_after_migration.first(), None,);
+}
+
+#[ignore]
+#[test]
 fn gh_3710_should_write_stable_era_info_key() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
