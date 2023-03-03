@@ -488,7 +488,7 @@ where
 impl LargestSpecimen for Signature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         if let Some(item) = cache.get::<Self>() {
-            return item.clone();
+            return *item;
         }
 
         // Note: We do not use strum generated discriminator enums for the signature, as we do not
