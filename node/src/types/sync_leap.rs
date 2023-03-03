@@ -376,8 +376,8 @@ mod tests {
         tests::{TestBlockIterator, TestChainSpec, ValidatorSpec},
         types::{
             chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError, ActivationPoint,
-            Block, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights,
-            FinalitySignature, SyncLeapValidationMetaData,
+            Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
+            EraValidatorWeights, FinalitySignature, SyncLeapIdentifier, SyncLeapValidationMetaData,
         },
         utils::BlockSignatureError,
     };
@@ -1739,5 +1739,17 @@ mod tests {
             signed_block_header_with_metadata_2,
             signed_block_header_with_metadata_3,
         )
+    }
+
+    #[test]
+    fn should_construct_proper_sync_leap_identifier() {
+        let mut rng = TestRng::new();
+
+        let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(BlockHash::random(&mut rng));
+        assert!(!sync_leap_identifier.trusted_ancestor_only());
+
+        let sync_leap_identifier =
+            SyncLeapIdentifier::sync_to_historical(BlockHash::random(&mut rng));
+        assert!(sync_leap_identifier.trusted_ancestor_only());
     }
 }
