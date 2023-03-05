@@ -10,3 +10,7 @@ pub use asymmetric_key::{
     SYSTEM_TAG,
 };
 pub use error::Error;
+
+mod public_key_bytes;
+
+pub use public_key_bytes::PublicKeyBytes;

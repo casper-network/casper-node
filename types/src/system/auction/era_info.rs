@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, U512,
+    CLType, CLTyped, PublicKeyBytes, U512,
 };
 
 const SEIGNIORAGE_ALLOCATION_VALIDATOR_TAG: u8 = 0;
@@ -23,16 +23,16 @@ pub enum SeigniorageAllocation {
     /// Info about a seigniorage allocation for a validator
     Validator {
         /// Validator's public key
-        validator_public_key: PublicKey,
+        validator_public_key: PublicKeyBytes,
         /// Allocated amount
         amount: U512,
     },
     /// Info about a seigniorage allocation for a delegator
     Delegator {
         /// Delegator's public key
-        delegator_public_key: PublicKey,
+        delegator_public_key: PublicKeyBytes,
         /// Validator's public key
-        validator_public_key: PublicKey,
+        validator_public_key: PublicKeyBytes,
         /// Allocated amount
         amount: U512,
     },
@@ -40,22 +40,22 @@ pub enum SeigniorageAllocation {
 
 impl SeigniorageAllocation {
     /// Constructs a [`SeigniorageAllocation::Validator`]
-    pub const fn validator(validator_public_key: PublicKey, amount: U512) -> Self {
+    pub fn validator(validator_public_key: impl Into<PublicKeyBytes>, amount: U512) -> Self {
         SeigniorageAllocation::Validator {
-            validator_public_key,
+            validator_public_key: validator_public_key.into(),
             amount,
         }
     }
 
     /// Constructs a [`SeigniorageAllocation::Delegator`]
-    pub const fn delegator(
-        delegator_public_key: PublicKey,
-        validator_public_key: PublicKey,
+    pub fn delegator(
+        delegator_public_key: impl Into<PublicKeyBytes>,
+        validator_public_key: impl Into<PublicKeyBytes>,
         amount: U512,
     ) -> Self {
         SeigniorageAllocation::Delegator {
-            delegator_public_key,
-            validator_public_key,
+            delegator_public_key: delegator_public_key.into(),
+            validator_public_key: validator_public_key.into(),
             amount,
         }
     }
@@ -126,23 +126,26 @@ impl FromBytes for SeigniorageAllocation {
         let (tag, rem) = <u8>::from_bytes(bytes)?;
         match tag {
             SEIGNIORAGE_ALLOCATION_VALIDATOR_TAG => {
-                let (validator_public_key, rem) = PublicKey::from_bytes(rem)?;
+                let (validator_public_key, rem) = PublicKeyBytes::from_bytes(rem)?;
                 let (amount, rem) = U512::from_bytes(rem)?;
                 Ok((
-                    SeigniorageAllocation::validator(validator_public_key, amount),
+                    SeigniorageAllocation::Validator {
+                        validator_public_key,
+                        amount,
+                    },
                     rem,
                 ))
             }
             SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG => {
-                let (delegator_public_key, rem) = PublicKey::from_bytes(rem)?;
-                let (validator_public_key, rem) = PublicKey::from_bytes(rem)?;
+                let (delegator_public_key, rem) = PublicKeyBytes::from_bytes(rem)?;
+                let (validator_public_key, rem) = PublicKeyBytes::from_bytes(rem)?;
                 let (amount, rem) = U512::from_bytes(rem)?;
                 Ok((
-                    SeigniorageAllocation::delegator(
+                    SeigniorageAllocation::Delegator {
                         delegator_public_key,
                         validator_public_key,
                         amount,
-                    ),
+                    },
                     rem,
                 ))
             }
@@ -190,7 +193,11 @@ impl EraInfo {
     ///   against the validator public key.
     /// * If the match candidate is a delegator allocation, the provided public key is matched
     ///   against the delegator public key.
-    pub fn select(&self, public_key: PublicKey) -> impl Iterator<Item = &SeigniorageAllocation> {
+    pub fn select(
+        &self,
+        public_key: impl Into<PublicKeyBytes>,
+    ) -> impl Iterator<Item = &SeigniorageAllocation> {
+        let public_key = public_key.into();
         self.seigniorage_allocations
             .iter()
             .filter(move |allocation| match allocation {
