@@ -72,14 +72,15 @@ mod relaxed {
     {
         /// Signatures, proposals and evidence the requester was missing.
         SyncResponse(SyncResponse<C>),
-        /// A proposal for a new block. This does not contain any signature; instead, the proposer
-        /// is expected to sign an echo with the proposal hash. Validators will drop any
-        /// proposal they receive unless they either have a signed echo by the proposer and
-        /// the proposer has not double-signed, or they have a quorum of echoes.
+        /// A proposal for a new block. This does not contain any signature; instead, the proposer is
+        /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
+        /// receive unless they either have a signed echo by the proposer and the proposer has not
+        /// double-signed, or they have a quorum of echoes.
         Proposal {
             round_id: RoundId,
             instance_id: C::InstanceId,
             proposal: Proposal<C>,
+            echo: SignedMessage<C>,
         },
         /// An echo or vote signed by an active validator.
         Signed(SignedMessage<C>),
@@ -100,6 +101,10 @@ impl<C: Context> Content<C> {
         }
     }
 }
+
+// This has to be implemented manually because of the <C> generic parameter, which isn't
+// necessarily `Copy` and that breaks the derive.
+impl<C: Context> Copy for Content<C> {}
 
 /// A vote or echo with a signature.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
