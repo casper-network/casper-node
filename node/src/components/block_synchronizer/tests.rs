@@ -22,6 +22,7 @@ enum MockReactorEvent {
     FinalitySignatureFetcherRequest(FetcherRequest<FinalitySignature>),
     TrieOrChunkFetcherRequest(FetcherRequest<TrieOrChunk>),
     BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest<BlockExecutionResultsOrChunk>),
+    SyncLeapFetcherRequest(FetcherRequest<SyncLeap>),
     NetworkInfoRequest(NetworkInfoRequest),
     BlockAccumulatorRequest(BlockAccumulatorRequest),
     PeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
@@ -38,6 +39,12 @@ impl From<FetcherRequest<ApprovalsHashes>> for MockReactorEvent {
         unreachable!()
     }
 }
+
+// impl From<FetcherRequest<SyncLeap>> for MockReactorEvent {
+//     fn from(_req: FetcherRequest<SyncLeap>) -> MockReactorEvent {
+//         unreachable!()
+//     }
+// }
 
 struct MockReactor {
     scheduler: &'static Scheduler<MockReactorEvent>,
@@ -109,6 +116,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     // Create a block synchronizer with a maximum of 5 simultaneous peers
     let mut block_synchronizer = BlockSynchronizer::new(
         Config::default(),
+        Arc::new(Chainspec::random(&mut rng)),
         5,
         validator_matrix,
         prometheus::default_registry(),
