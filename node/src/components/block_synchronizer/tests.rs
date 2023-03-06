@@ -40,12 +40,6 @@ impl From<FetcherRequest<ApprovalsHashes>> for MockReactorEvent {
     }
 }
 
-// impl From<FetcherRequest<SyncLeap>> for MockReactorEvent {
-//     fn from(_req: FetcherRequest<SyncLeap>) -> MockReactorEvent {
-//         unreachable!()
-//     }
-// }
-
 struct MockReactor {
     scheduler: &'static Scheduler<MockReactorEvent>,
     effect_builder: EffectBuilder<MockReactorEvent>,
