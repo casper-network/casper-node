@@ -915,8 +915,8 @@ fn accumulator_should_leap() {
 
     // The accumulator should try to leap at inception, no matter the starting
     // height.
-    assert!(block_accumulator.should_leap(0));
-    assert!(block_accumulator.should_leap(block.height().saturating_add(1_000)));
+    assert!(block_accumulator.should_leap(Some(0)));
+    assert!(block_accumulator.should_leap(Some(block.height().saturating_add(1_000))));
 
     // Create an acceptor to change the highest usable block height.
     {
@@ -936,17 +936,19 @@ fn accumulator_should_leap() {
     assert_eq!(highest_usable_block_height, block.height());
     // We should not leap from a height that is greater than our highest usable
     // block height.
-    assert!(!block_accumulator.should_leap(highest_usable_block_height + 1));
+    assert!(!block_accumulator.should_leap(Some(highest_usable_block_height + 1)));
 
     // We should leap from a height *lower* than `attempt_execution_threshold`
     // from the highest usable block height.
-    assert!(
-        !block_accumulator.should_leap(highest_usable_block_height - attempt_execution_threshold)
-    );
-    assert!(!block_accumulator
-        .should_leap(highest_usable_block_height - attempt_execution_threshold + 1));
-    assert!(block_accumulator
-        .should_leap(highest_usable_block_height - attempt_execution_threshold - 1));
+    assert!(!block_accumulator.should_leap(Some(
+        highest_usable_block_height - attempt_execution_threshold
+    )));
+    assert!(!block_accumulator.should_leap(Some(
+        highest_usable_block_height - attempt_execution_threshold + 1
+    )));
+    assert!(block_accumulator.should_leap(Some(
+        highest_usable_block_height - attempt_execution_threshold - 1
+    )));
 }
 
 #[test]
