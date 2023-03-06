@@ -927,7 +927,8 @@ impl BlockSynchronizer {
                 (item.fetch_id().block_hash(), Some(item), Some(peer))
             }
             Ok(FetchedData::FromStorage { item }) => {
-                (item.fetch_id().block_hash(), Some(item), None)
+                error!(%item, "BlockSynchronizer: sync leap should never come from storage");
+                (item.fetch_id().block_hash(), None, None) // maybe_sync_leap None will demote peer
             }
             Err(err) => {
                 debug!(%err, "BlockSynchronizer: failed to fetch sync leap");
@@ -951,6 +952,7 @@ impl BlockSynchronizer {
                 if demote_peer {
                     builder.demote_peer(maybe_peer_id);
                 } else {
+                    builder.promote_peer(maybe_peer_id);
                     builder.register_era_validator_weights(&self.validator_matrix);
                 }
             }
