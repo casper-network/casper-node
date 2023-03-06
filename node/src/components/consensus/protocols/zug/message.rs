@@ -52,6 +52,10 @@ impl<C: Context> Content<C> {
     }
 }
 
+// This has to be implemented manually because of the <C> generic parameter, which isn't
+// necessarily `Copy` and that breaks the derive.
+impl<C: Context> Copy for Content<C> {}
+
 /// A vote or echo with a signature.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
 #[serde(bound(
@@ -239,6 +243,7 @@ where
         round_id: RoundId,
         instance_id: C::InstanceId,
         proposal: Proposal<C>,
+        echo: SignedMessage<C>,
     },
     /// An echo or vote signed by an active validator.
     Signed(SignedMessage<C>),
