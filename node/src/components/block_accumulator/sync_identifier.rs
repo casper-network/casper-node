@@ -53,10 +53,10 @@ impl SyncIdentifier {
     }
 
     pub(crate) fn block_height_and_era(&self) -> Option<(u64, EraId)> {
-        match (self.block_height(), self.era_id()) {
-            (None, _) | (_, None) => None,
-            (Some(block_height), Some(era_id)) => Some((block_height, era_id)),
+        if let (Some(block_height), Some(era_id)) = (self.block_height(), self.era_id()) {
+            return Some((block_height, era_id));
         }
+        None
     }
 
     pub(crate) fn is_held_locally(&self) -> bool {

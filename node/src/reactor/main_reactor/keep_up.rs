@@ -688,16 +688,10 @@ impl MainReactor {
                     Err(err) => Err(err.to_string()),
                 }
             }
-            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => {
-                if block_height == 0 {
-                    Ok(Some(SyncBackInstruction::GenesisSynced))
-                } else {
-                    Err(format!(
-                        "historical: storage is missing block height index entry {}",
-                        block_height
-                    ))
-                }
-            }
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => Err(format!(
+                "historical: storage is missing block height index entry {}",
+                block_height
+            )),
             HighestOrphanedBlockResult::MissingHeader(block_hash) => Err(format!(
                 "historical: storage is missing block header for {}",
                 block_hash
