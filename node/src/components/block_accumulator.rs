@@ -2,6 +2,7 @@ mod block_acceptor;
 mod config;
 mod error;
 mod event;
+mod local_tip_identifier;
 mod metrics;
 mod sync_identifier;
 mod sync_instruction;
@@ -9,7 +10,6 @@ mod sync_instruction;
 mod tests;
 
 use std::{
-    cmp::Ordering,
     collections::{btree_map, BTreeMap, VecDeque},
     convert::TryInto,
     sync::Arc,
@@ -24,7 +24,15 @@ use tracing::{debug, error, info, warn};
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
-    components::{network::blocklist::BlocklistJustification, Component},
+    components::{
+        block_accumulator::{
+            block_acceptor::{BlockAcceptor, ShouldStore},
+            local_tip_identifier::LocalTipIdentifier,
+            metrics::Metrics,
+        },
+        network::blocklist::BlocklistJustification,
+        Component, ValidatorBoundComponent,
+    },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -41,45 +49,17 @@ use crate::{
     NodeRng,
 };
 
-use crate::components::ValidatorBoundComponent;
-use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
 pub(crate) use sync_identifier::SyncIdentifier;
 pub(crate) use sync_instruction::SyncInstruction;
 
-use metrics::Metrics;
-
 const COMPONENT_NAME: &str = "block_accumulator";
 
 /// If a peer "informs" us about more than the expected number of new blocks times this factor,
 /// they are probably spamming, and we refuse to create new block acceptors for them.
 const PEER_RATE_LIMIT_MULTIPLIER: usize = 2;
-
-#[derive(Clone, Copy, DataSize, Debug, Eq, PartialEq)]
-struct LocalTipIdentifier {
-    height: u64,
-    era_id: EraId,
-}
-
-impl LocalTipIdentifier {
-    fn new(height: u64, era_id: EraId) -> Self {
-        Self { height, era_id }
-    }
-}
-
-impl PartialOrd for LocalTipIdentifier {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.height.partial_cmp(&other.height)
-    }
-}
-
-impl Ord for LocalTipIdentifier {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.height.cmp(&other.height)
-    }
-}
 
 /// A cache of pending blocks and finality signatures that are gossiped to this node.
 ///
@@ -153,70 +133,49 @@ impl BlockAccumulator {
     }
 
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
+        let had_no_local_tip = self.local_tip.is_none(); // first time thru, leap
+        if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
+            self.register_local_tip(block_height, era_id);
+        }
+        if had_no_local_tip || self.should_leap(self.maybe_block_height(&sync_identifier)) {
+            if had_no_local_tip {
+                debug!("Block Accumulator: leap because accumulator is warming up");
+            }
+            return SyncInstruction::Leap {
+                block_hash: sync_identifier.block_hash(),
+            };
+        }
         let block_hash = sync_identifier.block_hash();
-        let block_height = match sync_identifier.block_height() {
-            Some(height) => height,
-            None => {
-                let maybe_height = {
-                    if let Some(block_acceptor) = self.block_acceptors.get(&block_hash) {
-                        block_acceptor.block_height()
-                    } else {
-                        None
-                    }
-                };
-                match maybe_height {
-                    Some(height) => height,
-                    None => {
-                        // we have no height for this block hash, so we must leap
-                        debug!(%block_hash, "Leap: Block Accumulator: we have no height for this block hash, so we must leap");
-                        return SyncInstruction::Leap { block_hash };
-                    }
+        match sync_identifier.block_hash_to_sync(self.next_synchable_block_hash(block_hash)) {
+            Some(sync_block_hash) => {
+                self.reset_last_progress();
+                SyncInstruction::BlockSync {
+                    block_hash: sync_block_hash,
                 }
             }
-        };
-
-        if let Some(new_local_tip) = self.maybe_new_local_tip(&sync_identifier) {
-            let had_no_local_tip = self.local_tip.is_none();
-            self.local_tip = Some(new_local_tip);
-            info!(local_tip=?self.local_tip, "new local tip detected");
-            if had_no_local_tip {
-                // force a leap when accumulator is starting cold.
-                debug!(%block_hash, "Leap: Block Accumulator: force a leap when accumulator is starting cold.");
-                return SyncInstruction::Leap { block_hash };
-            }
-        }
-
-        if self.should_leap(block_height) {
-            return SyncInstruction::Leap { block_hash };
-        }
-
-        let block_hash_to_sync = match (
-            sync_identifier.is_held_locally(),
-            self.next_syncable_block_hash(block_hash),
-        ) {
-            (false, _) => Some(block_hash),
-            (true, Some(child_hash)) => {
-                // we know of the child of this synced block
-                Some(child_hash)
-            }
-            (true, None) => {
-                // the block we just finished syncing appears to have no perceived children
-                // and is either at tip or within execution range of tip
-                None
-            }
-        };
-
-        match block_hash_to_sync {
-            Some(block_hash) => {
-                self.last_progress = Timestamp::now();
-                SyncInstruction::BlockSync { block_hash }
-            }
             None => {
-                if self.is_stalled() {
-                    debug!(%block_hash, "Leap: Block Accumulator: stalled; leaping.");
+                if self.is_stale() {
+                    debug!(%block_hash, "Block Accumulator: leap because stale gossip");
                     SyncInstruction::Leap { block_hash }
                 } else {
                     SyncInstruction::CaughtUp { block_hash }
+                }
+            }
+        }
+    }
+
+    fn maybe_block_height(&self, sync_identifier: &SyncIdentifier) -> Option<u64> {
+        // if the sync identifier doesn't have the tip, we may be able
+        // to discover it from our one of our acceptors
+        match sync_identifier.block_height() {
+            Some(height) => Some(height),
+            None => {
+                if let Some(block_acceptor) =
+                    self.block_acceptors.get(&sync_identifier.block_hash())
+                {
+                    block_acceptor.block_height()
+                } else {
+                    None
                 }
             }
         }
@@ -573,7 +532,7 @@ impl BlockAccumulator {
             .and_then(|acceptor| acceptor.finality_signature(public_key))
     }
 
-    fn is_stalled(&mut self) -> bool {
+    fn is_stale(&mut self) -> bool {
         // we expect to be receiving gossiped blocks from other nodes
         // if we haven't received any messages describing higher blocks
         // for more than the self.dead_air_interval config allows
@@ -585,50 +544,27 @@ impl BlockAccumulator {
         self.last_progress = Timestamp::now();
     }
 
-    fn should_leap(&self, block_height: u64) -> bool {
-        match self.highest_usable_block_height() {
-            Some(highest_usable_block_height) => {
+    fn should_leap(&self, maybe_block_height: Option<u64>) -> bool {
+        match (maybe_block_height, self.highest_usable_block_height()) {
+            (None, _) => true,
+            (Some(_), None) => true,
+            (Some(block_height), Some(highest_usable_block_height)) => {
                 let height_diff = highest_usable_block_height.saturating_sub(block_height);
                 if height_diff > self.attempt_execution_threshold {
-                    debug!(
+                    info!(
                         height_diff,
                         attempt_execution_threshold = self.attempt_execution_threshold,
-                        "Leap: Block Accumulator: leap because height diff is larger than attempt execution threshold"
+                        "Block Accumulator: leap because height diff is larger than attempt execution threshold"
                     );
-                    return true;
+                    true
+                } else {
+                    false
                 }
-                false
-            }
-            None => {
-                debug!(
-                    block_height,
-                    "Leap: Block Accumulator: leap because no highest usable block height"
-                );
-                true
             }
         }
     }
 
-    fn maybe_new_local_tip(&self, sync_identifier: &SyncIdentifier) -> Option<LocalTipIdentifier> {
-        match (sync_identifier.maybe_local_tip_identifier(), self.local_tip) {
-            (Some((block_height, era_id)), Some(local_tip)) => {
-                if local_tip.height < block_height && local_tip.era_id <= era_id {
-                    debug!(
-                        "new block({}) higher than local tip({})",
-                        block_height, local_tip.height
-                    );
-                    return Some(LocalTipIdentifier::new(block_height, era_id));
-                }
-            }
-            (Some((block_height, era_id)), None) => {
-                return Some(LocalTipIdentifier::new(block_height, era_id));
-            }
-            (None, _) => (),
-        }
-        None
-    }
-
-    fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+    fn next_synchable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
         let block_acceptor = self.block_acceptors.get(child_hash)?;
         if block_acceptor.has_sufficient_finality() {
