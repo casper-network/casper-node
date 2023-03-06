@@ -11,8 +11,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, DeployHash, DeployId,
-        EraValidatorWeights, NodeId,
+        chainspec::LegacyRequiredFinality, Block, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockHeader, DeployHash, DeployId, EraValidatorWeights, NodeId, SignatureWeight,
     },
     NodeRng,
 };
@@ -150,43 +150,45 @@ impl BlockAcquisitionAction {
         validator_weights: &EraValidatorWeights,
         signature_acquisition: &SignatureAcquisition,
         is_historical: bool,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> Self {
         let block_hash = block_header.block_hash();
-
-        let requires_strict_finality =
-            signature_acquisition.requires_strict_finality(is_historical);
         let validator_keys = signature_acquisition.have_signatures();
-        if validator_weights
-            .signature_weight(validator_keys)
-            .is_sufficient(requires_strict_finality)
-        {
+        let signature_weight = validator_weights.signature_weight(validator_keys);
+
+        if enough_signatures(
+            signature_weight,
+            legacy_required_finality,
+            signature_acquisition.is_checkable(),
+            is_historical,
+        ) {
             if is_historical {
                 // we have enough signatures; need to make sure we've stored the necessary bits
-                return BlockAcquisitionAction {
+                BlockAcquisitionAction {
                     peers_to_ask: vec![],
                     need_next: NeedNext::BlockMarkedComplete(block_hash, block_header.height()),
-                };
+                }
+            } else {
+                BlockAcquisitionAction {
+                    peers_to_ask: vec![],
+                    need_next: NeedNext::EnqueueForExecution(block_hash, block_header.height()),
+                }
             }
-
-            return BlockAcquisitionAction {
-                peers_to_ask: vec![],
-                need_next: NeedNext::EnqueueForExecution(block_hash, block_header.height()),
-            };
-        }
-
-        let peers_to_ask = peer_list.qualified_peers(rng);
-        let era_id = block_header.era_id();
-        // need more signatures
-        BlockAcquisitionAction {
-            peers_to_ask,
-            need_next: NeedNext::FinalitySignatures(
-                block_hash,
-                era_id,
-                validator_weights
-                    .missing_validators(signature_acquisition.have_signatures())
-                    .cloned()
-                    .collect(),
-            ),
+        } else {
+            let peers_to_ask = peer_list.qualified_peers(rng);
+            let era_id = block_header.era_id();
+            // need more signatures
+            BlockAcquisitionAction {
+                peers_to_ask,
+                need_next: NeedNext::FinalitySignatures(
+                    block_hash,
+                    era_id,
+                    validator_weights
+                        .missing_validators(signature_acquisition.have_signatures())
+                        .cloned()
+                        .collect(),
+                ),
+            }
         }
     }
 
@@ -269,6 +271,7 @@ impl BlockAcquisitionAction {
         signatures: &SignatureAcquisition,
         needs_deploy: Option<DeployIdentifier>,
         is_historical: bool,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> Self {
         match needs_deploy {
             Some(DeployIdentifier::ById(deploy_id)) => {
@@ -296,7 +299,193 @@ impl BlockAcquisitionAction {
                 validator_weights,
                 signatures,
                 is_historical,
+                legacy_required_finality,
             ),
         }
     }
+}
+
+fn enough_signatures(
+    signature_weight: SignatureWeight,
+    legacy_required_finality: LegacyRequiredFinality,
+    is_checkable: bool,
+    is_historical: bool,
+) -> bool {
+    let requires_strict = if is_historical { is_checkable } else { true };
+
+    signature_weight.is_sufficient(requires_strict)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! build_test {
+        ( $name:ident (
+            $signature_weight:path,
+            $legacy_required_finality:path,
+            is_checkable: $is_checkable:expr,
+            is_historical: $is_historical:expr $(,)?
+        ) => $result:expr ) => {
+            #[test]
+            fn $name() {
+                let result = enough_signatures(
+                    $signature_weight,
+                    $legacy_required_finality,
+                    $is_checkable,
+                    $is_historical,
+                );
+
+                assert_eq!(result, $result)
+            }
+        };
+    }
+
+    // Historical false
+
+    build_test!(enough_signatures_params_insufficient_any_false_false(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: false, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_any_false_false(
+        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: false, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_any_false_false(
+        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: false, is_historical: false,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_weak_false_false(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_weak_false_false(
+        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_weak_false_false(
+        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: false,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_strict_false_false(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_strict_false_false(
+        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_strict_false_false(
+        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: false,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_any_true_false(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: true, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_any_true_false(
+        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: true, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_any_true_false(
+        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: true, is_historical: false,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_weak_true_false(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_weak_true_false(
+        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_weak_true_false(
+        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: false,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_strict_true_false(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_strict_true_false(
+        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: false,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_strict_true_false(
+        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: false,
+    ) => true);
+
+    // Historical true
+
+    build_test!(enough_signatures_params_insufficient_any_false_true(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: false, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_any_false_true(
+        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: false, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_strict_any_false_true(
+        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: false, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_weak_false_true(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_weak_false_true(
+        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_strict_weak_false_true(
+        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_strict_false_true(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_strict_false_true(
+        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_strict_strict_false_true(
+        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_any_true_true(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: true, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_any_true_true(
+        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: true, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_any_true_true(
+        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: true, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_weak_true_true(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_weak_true_true(
+        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_weak_true_true(
+        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: true,
+    ) => true);
+
+    build_test!(enough_signatures_params_insufficient_strict_true_true(
+        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_weak_strict_true_true(
+        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: true,
+    ) => false);
+
+    build_test!(enough_signatures_params_strict_strict_true_true(
+        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: true,
+    ) => true);
 }
