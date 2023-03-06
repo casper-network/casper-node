@@ -15,6 +15,7 @@ use crate::{
         block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::EraValidatorsRequest,
         storage::HighestOrphanedBlockResult,
+        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{
@@ -525,9 +526,18 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
+
+        // latch accumulator progress to allow sync-leap time to do work
+        self.block_accumulator.reset_last_progress();
+
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
-        let effects =
-            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
+
+        let effects = effect_builder.immediately().event(move |_| {
+            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                sync_leap_identifier,
+                peers_to_ask,
+            })
+        });
         KeepUpInstruction::Do(offset, effects)
     }
 
@@ -543,17 +553,12 @@ impl MainReactor {
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "historical: leap received");
 
-        self.last_sync_leap_highest_block_hash = Some(block_hash);
-
         let era_validator_weights =
             sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "historical: attempt to register validators for era");
-            if self
-                .validator_matrix
-                .register_era_validator_weights_and_infer_era_0(evw)
-            {
+            if self.validator_matrix.register_era_validator_weights(evw) {
                 info!(%era_id, "historical: got era");
             } else {
                 debug!(%era_id, "historical: era already present or is not relevant");
