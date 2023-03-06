@@ -11,25 +11,6 @@ pub struct MigrateConfig {
     migrations: Vec<Migration>,
 }
 
-impl Distribution<MigrateConfig> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> MigrateConfig {
-        // let batch_size = rng.gen_range(1..10);
-        // let migration_type = rng.gen_range(0..2);
-        // let num_actions = rng.gen_range(0..10);
-        // for n in num_actions {
-        //     if migration_type % 2 == 0 {
-        //         Migration::WriteStableEraSummaryKey { migration_id }
-        //     } else {
-        //         Migration::PurgeEraInfo {
-        //             migration_id,
-        //             batch_size,
-        //         }
-        //     }
-        // }
-        MigrateConfig { migrations: vec![] }
-    }
-}
-
 impl ToBytes for MigrateConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
@@ -131,6 +112,26 @@ impl FromBytes for Migration {
             }
             _ => return Err(bytesrepr::Error::Formatting),
         })
+    }
+}
+
+impl Distribution<MigrateConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MigrateConfig {
+        let batch_size = rng.gen_range(1..10);
+        let migration_type = rng.gen_range(0..2);
+        let num_actions = rng.gen_range(0..10);
+        let mut migrations = vec![];
+        for n in 0..num_actions {
+            if migration_type % 2 == 0 {
+                migrations.push(Migration::WriteStableEraSummaryKey { migration_id: n });
+            } else {
+                migrations.push(Migration::PurgeEraInfo {
+                    migration_id: n,
+                    batch_size,
+                });
+            }
+        }
+        MigrateConfig { migrations }
     }
 }
 

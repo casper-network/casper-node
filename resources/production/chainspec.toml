@@ -15,8 +15,6 @@ activation_point = 5900
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
 
-[migration]
-
 [[migration.migrations]]
 migration_id = 0 
 type = "write_stable_era_summary_key"
