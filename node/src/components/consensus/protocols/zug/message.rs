@@ -60,7 +60,9 @@ mod relaxed {
     }
 
     /// All messages of the protocol.
-    #[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
+    #[derive(
+        DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, EnumDiscriminants,
+    )]
     #[serde(bound(
         serialize = "C::Hash: Serialize",
         deserialize = "C::Hash: Deserialize<'de>",
@@ -107,7 +109,7 @@ impl<C: Context> Content<C> {
 impl<C: Context> Copy for Content<C> {}
 
 /// A vote or echo with a signature.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -190,7 +192,7 @@ impl<C: Context> SignedMessage<C> {
 ///
 /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
 /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -246,7 +248,7 @@ impl<C: Context> SyncRequest<C> {
 
 /// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is
 /// missing.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
