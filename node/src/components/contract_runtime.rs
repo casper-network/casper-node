@@ -359,6 +359,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            None,
                         )
                     })
                     .await;
@@ -633,6 +634,7 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
+                None,
             )
         })
         .await

@@ -483,7 +483,7 @@ where
                     let success = migrate::purge_era_info::purge_era_info(
                         &self.state,
                         migration_config.pre_state_root_hash,
-                        current_era_id,
+                        current_era_id.into(),
                         batch_size,
                     )
                     .map_err(|error| Error::MigrateError(MigrateError::PurgeEraInfo(error)))?;

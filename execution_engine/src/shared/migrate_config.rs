@@ -2,12 +2,32 @@
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
 /// Represents config values for migration.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct MigrateConfig {
     migrations: Vec<Migration>,
+}
+
+impl Distribution<MigrateConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> MigrateConfig {
+        // let batch_size = rng.gen_range(1..10);
+        // let migration_type = rng.gen_range(0..2);
+        // let num_actions = rng.gen_range(0..10);
+        // for n in num_actions {
+        //     if migration_type % 2 == 0 {
+        //         Migration::WriteStableEraSummaryKey { migration_id }
+        //     } else {
+        //         Migration::PurgeEraInfo {
+        //             migration_id,
+        //             batch_size,
+        //         }
+        //     }
+        // }
+        MigrateConfig { migrations: vec![] }
+    }
 }
 
 impl ToBytes for MigrateConfig {
@@ -19,6 +39,13 @@ impl ToBytes for MigrateConfig {
 
     fn serialized_length(&self) -> usize {
         self.migrations.serialized_length()
+    }
+}
+
+impl FromBytes for MigrateConfig {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (migrations, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((Self { migrations }, rem))
     }
 }
 
@@ -113,19 +140,21 @@ pub mod gens {
     use super::*;
     use proptest::{num, prop_compose};
 
-    use super::{
-        auction_costs::gens::auction_costs_arb,
-        handle_payment_costs::gens::handle_payment_costs_arb, mint_costs::gens::mint_costs_arb,
-        standard_payment_costs::gens::standard_payment_costs_arb, Migration, SystemConfig,
-    };
-
     prop_compose! {
         pub fn migration_arb()(
             migration_id in num::u32::ANY,
             batch_size in num::u32::ANY,
-        ) -> SystemConfig {
-            Migration {
-
+            migration_type in num::u8::ANY,
+        ) -> Migration {
+            if migration_type % 2 == 0 {
+                Migration::WriteStableEraSummaryKey {
+                    migration_id,
+                }
+            } else {
+                Migration::PurgeEraInfo {
+                    migration_id,
+                    batch_size,
+                }
             }
         }
     }

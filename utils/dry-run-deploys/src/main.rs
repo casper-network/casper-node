@@ -123,6 +123,7 @@ async fn main() -> Result<(), anyhow::Error> {
             finalized_block,
             deploys,
             transfers,
+            None,
         )?;
         let elapsed_micros = start.elapsed().as_micros() as u64;
         execution_time_hist

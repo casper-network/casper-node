@@ -14,7 +14,7 @@ pub enum MigrateAction {
         batch_size: u32,
 
         /// The current era at the time of the migration.
-        current_era_id: u64,
+        current_era_id: EraId,
     },
     /// Migrate Key::EraInfo(id) -> Key::EraSummary. Should happen once.
     WriteStableEraInfo {
@@ -25,10 +25,10 @@ pub enum MigrateAction {
 
 impl MigrateAction {
     /// Purge era info objects from the trie.
-    pub fn purge_era_info(batch_size: u32, current_era_id: u64) -> Self {
+    pub fn purge_era_info(batch_size: u32, current_era_id: impl Into<EraId>) -> Self {
         Self::PurgeEraInfo {
             batch_size,
-            current_era_id,
+            current_era_id: current_era_id.into(),
         }
     }
     /// Migrate Key::EraInfo(id) -> Key::EraSummary. Should happen once.

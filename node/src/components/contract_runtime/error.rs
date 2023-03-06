@@ -60,6 +60,9 @@ pub enum BlockExecutionError {
     /// An error that occurred while getting era validators.
     #[error(transparent)]
     GetEraValidatorsError(#[from] GetEraValidatorsError),
+    /// Error while running migration in block.
+    #[error("migration error")]
+    Migration,
 }
 
 /// An error raised when block execution events are being created for the reactor.

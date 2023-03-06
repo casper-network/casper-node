@@ -111,7 +111,7 @@ const DEFAULT_REWARD_VALUE: u64 = 1_000_000;
 #[ignore]
 #[test]
 fn gh_3710_should_delete_eras_on_each_migration_step() {
-    const BATCH_SIZE: usize = 4;
+    const BATCH_SIZE: u32 = 4;
 
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
@@ -231,7 +231,7 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
 #[ignore]
 #[test]
 fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
-    const BATCH_SIZE: usize = 4;
+    const BATCH_SIZE: u32 = 4;
 
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);

@@ -10,7 +10,9 @@ use std::{convert::TryFrom, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_execution_engine::shared::{
+    migrate_config::MigrateConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+};
 use casper_types::{EraId, ProtocolVersion};
 
 use super::{
@@ -50,6 +52,7 @@ pub(super) struct TomlChainspec {
     highway: HighwayConfig,
     wasm: WasmConfig,
     system_costs: SystemConfig,
+    migration_config: MigrateConfig,
 }
 
 impl From<&Chainspec> for TomlChainspec {
@@ -69,6 +72,7 @@ impl From<&Chainspec> for TomlChainspec {
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
         let system_costs = chainspec.system_costs_config;
+        let migrate_config = chainspec.migration_config.clone();
 
         TomlChainspec {
             protocol,
@@ -78,6 +82,7 @@ impl From<&Chainspec> for TomlChainspec {
             highway,
             wasm,
             system_costs,
+            migration_config: migrate_config,
         }
     }
 }
@@ -120,5 +125,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
         highway_config: toml_chainspec.highway,
         wasm_config: toml_chainspec.wasm,
         system_costs_config: toml_chainspec.system_costs,
+        migration_config: toml_chainspec.migration_config,
     })
 }
