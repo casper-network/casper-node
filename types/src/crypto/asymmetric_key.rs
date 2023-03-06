@@ -35,7 +35,7 @@ use crate::{
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     checksummed_hex,
     crypto::Error,
-    CLType, CLTyped, Tagged,
+    CLType, CLTyped, PublicKeyBytes, Tagged,
 };
 
 #[cfg(any(feature = "gens", test))]
@@ -256,6 +256,20 @@ impl From<&PublicKey> for Vec<u8> {
             PublicKey::System => Vec::new(),
             PublicKey::Ed25519(key) => key.to_bytes().into(),
             PublicKey::Secp256k1(key) => key.to_bytes().into(),
+        }
+    }
+}
+
+impl TryFrom<PublicKeyBytes> for PublicKey {
+    type Error = Error;
+
+    fn try_from(value: PublicKeyBytes) -> Result<Self, Self::Error> {
+        match value {
+            PublicKeyBytes::System => Ok(Self::System),
+            PublicKeyBytes::Ed25519(ed25519_bytes) => Self::ed25519_from_bytes(ed25519_bytes),
+            PublicKeyBytes::Secp256k1(secp256k1_bytes) => {
+                Self::secp256k1_from_bytes(secp256k1_bytes)
+            }
         }
     }
 }

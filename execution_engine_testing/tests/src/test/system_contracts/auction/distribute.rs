@@ -23,7 +23,7 @@ use casper_types::{
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
         BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
-    EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Key, ProtocolVersion, PublicKey, PublicKeyBytes, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -408,19 +408,19 @@ fn should_distribute_delegation_rate_zero() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_2_expected_payout
     ));
 }
 
@@ -718,19 +718,19 @@ fn should_withdraw_bids_after_distribute() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_1_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_1_expected_payout
     ));
 }
 
@@ -961,19 +961,19 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert!(matches!(
         era_info_1.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout_1
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout_1
     ));
 
     assert!(matches!(
         era_info_1.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout_1
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_expected_payout_1
     ));
 
     assert!(matches!(
         era_info_1.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout_1
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_2_expected_payout_1
     ));
 
     // Next round of rewards
@@ -1096,19 +1096,19 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert!(matches!(
         era_info_2.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount, .. })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout_2
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout_2
     ));
 
     assert!(matches!(
         era_info_2.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout_2
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_expected_payout_2
     ));
 
     assert!(matches!(
         era_info_2.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout_2
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_2_expected_payout_2
     ));
 
     // Withdraw delegator rewards
@@ -1380,19 +1380,19 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert!(matches!(
         era_info_1.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout_1
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout_1
     ));
 
     assert!(matches!(
         era_info_1.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout_1
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_expected_payout_1
     ));
 
     assert!(matches!(
         era_info_1.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout_1
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_expected_payout_1
     ));
 
     let total_supply_2 = builder.total_supply(None);
@@ -1515,19 +1515,19 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert!(matches!(
         era_info_2.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout_2
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout_2
     ));
 
     assert!(matches!(
         era_info_2.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout_2
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_expected_payout_2
     ));
 
     assert!(matches!(
         era_info_2.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout_2
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_expected_payout_2
     ));
 
     // Ensure validators can withdraw their reinvested rewards
@@ -1797,19 +1797,19 @@ fn should_distribute_delegation_rate_half() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_2_expected_payout
     ));
 }
 
@@ -1992,19 +1992,19 @@ fn should_distribute_delegation_rate_full() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_balance
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_balance
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_1_balance
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == expected_delegator_1_balance
     ));
 }
 
@@ -2227,19 +2227,19 @@ fn should_distribute_uneven_delegation_rate_zero() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_2_expected_payout
     ));
 }
 
@@ -2453,19 +2453,19 @@ fn should_distribute_by_factor() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_expected_payout
     ));
 }
 
@@ -2680,19 +2680,19 @@ fn should_distribute_by_factor_regardless_of_stake() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_expected_payout
     ));
 }
 
@@ -2907,19 +2907,19 @@ fn should_distribute_by_factor_uneven() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_expected_payout
     ));
 }
 
@@ -3206,37 +3206,37 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_actual_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_actual_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_actual_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_actual_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_1) && *amount == delegator_1_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_actual_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_2) && *amount == delegator_2_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_3 && *amount == delegator_3_actual_payout
+        if *delegator_public_key == PublicKeyBytes::from(&*DELEGATOR_3) && *amount == delegator_3_actual_payout
     ));
 }
 
@@ -3652,19 +3652,19 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_1) && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_2) && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
+        if *validator_public_key == PublicKeyBytes::from(&*VALIDATOR_3) && *amount == validator_3_expected_payout
     ));
 
     let delegator_1_allocations: Vec<SeigniorageAllocation> =
