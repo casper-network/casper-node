@@ -1461,6 +1461,7 @@ impl<C: Context + 'static> Zug<C> {
 
     /// Sets an update timer for the given timestamp, unless an earlier timer is already set.
     fn schedule_update(&mut self, timestamp: Timestamp) -> ProtocolOutcomes<C> {
+        debug!(%timestamp, "schedule update");
         if self.next_scheduled_update > timestamp {
             self.next_scheduled_update = timestamp;
             vec![ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_UPDATE)]
@@ -1546,6 +1547,7 @@ impl<C: Context + 'static> Zug<C> {
                 if now < timestamp {
                     // The first opportunity to make a proposal is in the future; check again at
                     // that time.
+                    debug!(%now, %timestamp, "update_round - schedule update 1");
                     outcomes.extend(self.schedule_update(timestamp));
                 } else {
                     if self.current_round_start > now {
@@ -1557,6 +1559,7 @@ impl<C: Context + 'static> Zug<C> {
                         .current_round_start
                         .saturating_add(self.proposal_timeout());
                     if current_timeout > now {
+                        debug!(%now, %current_timeout, "update_round - schedule update 2");
                         outcomes.extend(self.schedule_update(current_timeout));
                     }
                 }
@@ -1891,6 +1894,7 @@ impl<C: Context + 'static> Zug<C> {
             let min_timeout = (self.config.proposal_timeout.millis() as f64).max(target_timeout);
             self.proposal_timeout_millis = self.proposal_timeout_millis.max(min_timeout);
         }
+        debug!(%self.proposal_timeout_millis, "proposal timeout updated");
     }
 
     /// Returns `true` if the given validators, together will all faulty validators, form a quorum.
@@ -2197,6 +2201,11 @@ where
             }
             info!(our_idx = idx.0, "start voting");
             self.active_validator = Some(ActiveValidator { idx, secret });
+            debug!(
+                %now,
+                start_timestamp=%self.params.start_timestamp(),
+                "activate_validator - schedule update"
+            );
             outcomes.extend(self.schedule_update(self.params.start_timestamp().max(now)));
         } else {
             error!(
