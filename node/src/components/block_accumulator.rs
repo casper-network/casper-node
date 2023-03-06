@@ -21,7 +21,7 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -43,7 +43,7 @@ use crate::{
     },
     fatal,
     types::{
-        Block, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
+        BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
         ValidatorMatrix,
     },
     NodeRng,
@@ -166,7 +166,7 @@ impl BlockAccumulator {
 
     fn maybe_block_height(&self, sync_identifier: &SyncIdentifier) -> Option<u64> {
         // if the sync identifier doesn't have the tip, we may be able
-        // to discover it from our one of our acceptors
+        // to discover it from one of our acceptors
         match sync_identifier.block_height() {
             Some(height) => Some(height),
             None => {
@@ -516,22 +516,6 @@ impl BlockAccumulator {
             .map(|acceptor| acceptor.peers().iter().cloned().collect())
     }
 
-    fn block(&self, block_hash: &BlockHash) -> Option<Arc<Block>> {
-        self.block_acceptors
-            .get(block_hash)
-            .and_then(|acceptor| acceptor.block())
-    }
-
-    fn finality_signature(
-        &self,
-        block_hash: &BlockHash,
-        public_key: &PublicKey,
-    ) -> Option<FinalitySignature> {
-        self.block_acceptors
-            .get(block_hash)
-            .and_then(|acceptor| acceptor.finality_signature(public_key))
-    }
-
     fn is_stale(&mut self) -> bool {
         // we expect to be receiving gossiped blocks from other nodes
         // if we haven't received any messages describing higher blocks
@@ -757,17 +741,6 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 block_hash,
                 responder,
             }) => responder.respond(self.get_peers(block_hash)).ignore(),
-            Event::Request(BlockAccumulatorRequest::GetBlock {
-                block_hash,
-                responder,
-            }) => responder.respond(self.block(&block_hash)).ignore(),
-            Event::Request(BlockAccumulatorRequest::GetFinalitySignature {
-                block_hash,
-                public_key,
-                responder,
-            }) => responder
-                .respond(self.finality_signature(&block_hash, &public_key))
-                .ignore(),
             Event::RegisterPeer {
                 block_hash,
                 era_id,

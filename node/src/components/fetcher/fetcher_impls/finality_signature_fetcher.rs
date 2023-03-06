@@ -35,14 +35,8 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
         effect_builder: EffectBuilder<REv>,
         id: FinalitySignatureId,
     ) -> Option<FinalitySignature> {
-        if let Some(finality_signature) = effect_builder
-            .get_signature_from_storage(id.block_hash, id.public_key.clone())
-            .await
-        {
-            return Some(finality_signature);
-        }
         effect_builder
-            .get_signature_from_block_accumulator(id.block_hash, id.public_key.clone())
+            .get_signature_from_storage(id.block_hash, id.public_key.clone())
             .await
     }
 

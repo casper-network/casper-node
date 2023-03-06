@@ -33,13 +33,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<Block> {
-        if let Some(block) = effect_builder.get_block_from_storage(id).await {
-            return Some(block);
-        }
-        effect_builder
-            .get_block_from_block_accumulator(id)
-            .await
-            .map(|block| (*block).clone())
+        effect_builder.get_block_from_storage(id).await
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
