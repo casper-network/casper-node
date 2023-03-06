@@ -52,9 +52,10 @@ use crate::{
     reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
     types::{
-        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockHash, BlockHeader, BlockSignatures, Deploy, FinalitySignature, FinalitySignatureId,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap, TrieOrChunk, ValidatorMatrix,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
+        BlockSignatures, Chainspec, Deploy, FinalitySignature, FinalitySignatureId, LegacyDeploy,
+        MetaBlock, MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -202,7 +203,6 @@ pub(crate) struct BlockSynchronizer {
     config: Config,
     chainspec: Arc<Chainspec>,
     max_simultaneous_peers: u32,
-    legacy_required_finality: LegacyRequiredFinality,
     validator_matrix: ValidatorMatrix,
 
     // execute forward block (do not get global state or execution effects)
@@ -220,7 +220,6 @@ impl BlockSynchronizer {
         config: Config,
         chainspec: Arc<Chainspec>,
         max_simultaneous_peers: u32,
-        legacy_required_finality: LegacyRequiredFinality,
         validator_matrix: ValidatorMatrix,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -229,7 +228,6 @@ impl BlockSynchronizer {
             config,
             chainspec,
             max_simultaneous_peers,
-            legacy_required_finality,
             validator_matrix,
             forward: None,
             historical: None,
@@ -530,15 +528,14 @@ impl BlockSynchronizer {
         let need_next_interval = self.config.need_next_interval.into();
         let mut results = Effects::new();
         let max_simultaneous_peers = self.max_simultaneous_peers as usize;
-        let legacy_required_finality = self.legacy_required_finality;
-        let mut builder_needs_next = |builder: &mut BlockBuilder| {
+        let mut builder_needs_next = |builder: &mut BlockBuilder, chainspec: Arc<Chainspec>| {
             if builder.in_flight_latch().is_some() || builder.is_finished() {
                 return;
             }
             let action = builder.block_acquisition_action(
                 rng,
                 max_simultaneous_peers,
-                legacy_required_finality,
+                chainspec.core_config.legacy_required_finality,
             );
             let peers = action.peers_to_ask();
             let need_next = action.need_next();

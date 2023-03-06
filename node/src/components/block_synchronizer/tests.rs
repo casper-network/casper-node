@@ -110,7 +110,6 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
         Config::default(),
         Arc::new(Chainspec::random(&mut rng)),
         5,
-        LegacyRequiredFinality::Any,
         validator_matrix,
         prometheus::default_registry(),
     )

@@ -311,181 +311,457 @@ fn enough_signatures(
     is_checkable: bool,
     is_historical: bool,
 ) -> bool {
-    let requires_strict = if is_historical { is_checkable } else { true };
+    use SignatureWeight::*;
 
-    signature_weight.is_sufficient(requires_strict)
+    if is_checkable {
+        // Normal blocks:
+        signature_weight.is_sufficient(is_historical)
+    } else {
+        // Legacy blocks:
+        matches!((legacy_required_finality, signature_weight), |(
+            LegacyRequiredFinality::Any,
+            Insufficient | Weak | Strict,
+        )| (
+            LegacyRequiredFinality::Weak,
+            Weak | Strict
+        )
+            | (LegacyRequiredFinality::Strict, Strict))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    macro_rules! build_test {
-        ( $name:ident (
-            $signature_weight:path,
-            $legacy_required_finality:path,
-            is_checkable: $is_checkable:expr,
-            is_historical: $is_historical:expr $(,)?
-        ) => $result:expr ) => {
-            #[test]
-            fn $name() {
-                let result = enough_signatures(
-                    $signature_weight,
-                    $legacy_required_finality,
-                    $is_checkable,
-                    $is_historical,
-                );
+    #[test]
+    fn enough_signatures_params_insufficient_any_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Any,
+            false,
+            false,
+        );
 
-                assert_eq!(result, $result)
-            }
-        };
+        assert_eq!(result, true);
     }
 
-    // Historical false
+    #[test]
+    fn enough_signatures_params_weak_any_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Any,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_insufficient_any_false_false(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: false, is_historical: false,
-    ) => false);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_weak_any_false_false(
-        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: false, is_historical: false,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_strict_any_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Any,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_strict_any_false_false(
-        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: false, is_historical: false,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_insufficient_weak_false_false(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: false,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_insufficient_weak_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Weak,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_weak_weak_false_false(
-        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: false,
-    ) => false);
+        assert_eq!(result, false);
+    }
 
-    build_test!(enough_signatures_params_strict_weak_false_false(
-        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: false,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_weak_weak_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Weak,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_insufficient_strict_false_false(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: false,
-    ) => false);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_weak_strict_false_false(
-        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: false,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_strict_weak_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Weak,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_strict_strict_false_false(
-        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: false,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_insufficient_any_true_false(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: true, is_historical: false,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_insufficient_strict_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Strict,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_weak_any_true_false(
-        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: true, is_historical: false,
-    ) => false);
+        assert_eq!(result, false);
+    }
 
-    build_test!(enough_signatures_params_strict_any_true_false(
-        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: true, is_historical: false,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_weak_strict_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Strict,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_insufficient_weak_true_false(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: false,
-    ) => false);
+        assert_eq!(result, false);
+    }
 
-    build_test!(enough_signatures_params_weak_weak_true_false(
-        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: false,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_strict_strict_false_false() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Strict,
+            false,
+            false,
+        );
 
-    build_test!(enough_signatures_params_strict_weak_true_false(
-        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: false,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_insufficient_strict_true_false(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: false,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_insufficient_any_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Any,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_weak_strict_true_false(
-        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: false,
-    ) => false);
+        assert_eq!(result, false);
+    }
 
-    build_test!(enough_signatures_params_strict_strict_true_false(
-        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: false,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_weak_any_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Any,
+            true,
+            false,
+        );
 
-    // Historical true
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_insufficient_any_false_true(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: false, is_historical: true,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_strict_any_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Any,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_weak_any_false_true(
-        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: false, is_historical: true,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_strict_any_false_true(
-        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: false, is_historical: true,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_insufficient_weak_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Weak,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_insufficient_weak_false_true(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: true,
-    ) => false);
+        assert_eq!(result, false);
+    }
 
-    build_test!(enough_signatures_params_weak_weak_false_true(
-        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: true,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_weak_weak_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Weak,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_strict_weak_false_true(
-        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: false, is_historical: true,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_insufficient_strict_false_true(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: true,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_strict_weak_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Weak,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_weak_strict_false_true(
-        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: true,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_strict_strict_false_true(
-        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: false, is_historical: true,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_insufficient_strict_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Strict,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_insufficient_any_true_true(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Any, is_checkable: true, is_historical: true,
-    ) => false);
+        assert_eq!(result, false);
+    }
 
-    build_test!(enough_signatures_params_weak_any_true_true(
-        SignatureWeight::Weak, LegacyRequiredFinality::Any, is_checkable: true, is_historical: true,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_weak_strict_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Strict,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_strict_any_true_true(
-        SignatureWeight::Strict, LegacyRequiredFinality::Any, is_checkable: true, is_historical: true,
-    ) => true);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_insufficient_weak_true_true(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: true,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_strict_strict_true_false() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Strict,
+            true,
+            false,
+        );
 
-    build_test!(enough_signatures_params_weak_weak_true_true(
-        SignatureWeight::Weak, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: true,
-    ) => false);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_strict_weak_true_true(
-        SignatureWeight::Strict, LegacyRequiredFinality::Weak, is_checkable: true, is_historical: true,
-    ) => true);
+    #[test]
+    fn enough_signatures_params_insufficient_any_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Any,
+            false,
+            true,
+        );
 
-    build_test!(enough_signatures_params_insufficient_strict_true_true(
-        SignatureWeight::Insufficient, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: true,
-    ) => false);
+        assert_eq!(result, true);
+    }
 
-    build_test!(enough_signatures_params_weak_strict_true_true(
-        SignatureWeight::Weak, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: true,
-    ) => false);
+    #[test]
+    fn enough_signatures_params_weak_any_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Any,
+            false,
+            true,
+        );
 
-    build_test!(enough_signatures_params_strict_strict_true_true(
-        SignatureWeight::Strict, LegacyRequiredFinality::Strict, is_checkable: true, is_historical: true,
-    ) => true);
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_strict_any_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Any,
+            false,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_insufficient_weak_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Weak,
+            false,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_weak_weak_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Weak,
+            false,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_strict_weak_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Weak,
+            false,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_insufficient_strict_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Strict,
+            false,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_weak_strict_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Strict,
+            false,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_strict_strict_false_true() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Strict,
+            false,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_insufficient_any_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Any,
+            true,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_weak_any_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Any,
+            true,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_strict_any_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Any,
+            true,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_insufficient_weak_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Weak,
+            true,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_weak_weak_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Weak,
+            true,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_strict_weak_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Weak,
+            true,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn enough_signatures_params_insufficient_strict_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Insufficient,
+            LegacyRequiredFinality::Strict,
+            true,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_weak_strict_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Weak,
+            LegacyRequiredFinality::Strict,
+            true,
+            true,
+        );
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn enough_signatures_params_strict_strict_true_true() {
+        let result = enough_signatures(
+            SignatureWeight::Strict,
+            LegacyRequiredFinality::Strict,
+            true,
+            true,
+        );
+
+        assert_eq!(result, true);
+    }
 }

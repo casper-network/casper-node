@@ -335,10 +335,14 @@ impl Distribution<ConsensusProtocolName> for Standard {
     }
 }
 
+/// Which finality a legacy block needs during a fast sync.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
-pub(crate) enum LegacyRequiredFinality {
+pub enum LegacyRequiredFinality {
+    /// Strict finality: more than 2/3rd of validators.
     Strict,
+    /// Weak finality: more than 1/3rd of validators.
     Weak,
+    /// Finality always valid.
     Any,
 }
 
