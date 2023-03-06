@@ -69,7 +69,7 @@ pub(crate) use validator_change::ValidatorChange;
 const COMPONENT_NAME: &str = "consensus";
 
 /// A message to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(crate) enum EraMessage<C>
 where
     C: Context,
@@ -110,7 +110,7 @@ impl<C: Context> From<HighwayMessage<C>> for EraMessage<C> {
 }
 
 /// A request to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, From)]
+#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, From)]
 pub(crate) enum EraRequest<C>
 where
     C: Context,
@@ -148,12 +148,12 @@ pub(crate) struct ConsensusRequestMessage {
 
 /// An ID to distinguish different timers. What they are used for is specific to each consensus
 /// protocol implementation.
-#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct TimerId(pub u8);
 
 /// An ID to distinguish queued actions. What they are used for is specific to each consensus
 /// protocol implementation.
-#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ActionId(pub u8);
 
 #[derive(DataSize, Debug, From)]

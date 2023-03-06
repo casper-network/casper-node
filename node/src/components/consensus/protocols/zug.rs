@@ -54,6 +54,8 @@
 //! with all signed messages that it has and the other is missing.
 
 pub(crate) mod config;
+#[cfg(test)]
+mod des_testing;
 mod fault;
 mod message;
 mod params;
