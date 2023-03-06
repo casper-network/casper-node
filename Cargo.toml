@@ -32,12 +32,12 @@ exclude = ["utils/nctl/remotes/casper-client-rs"]
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.
 [profile.release.package.casper-engine-tests]
-debug = true
+debug = false
 
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 128
+lto = "off"
 
 [profile.bench]
-codegen-units = 1
-lto = true
+codegen-units = 128
+lto = "off"
