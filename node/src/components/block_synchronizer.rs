@@ -1373,7 +1373,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                             let peers = self.historical.as_ref().map_or_else(Vec::new, |builder| {
                                 builder.peer_list().qualified_peers_up_to(
                                     rng,
-                                    self.config.max_parallel_trie_fetches() as usize,
+                                    self.config.max_parallel_trie_fetches as usize,
                                 )
                             });
                             GlobalStateSynchronizerEvent::GetPeers(peers)
