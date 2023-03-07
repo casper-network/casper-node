@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
-    sync::Arc,
 };
 
 use datasize::DataSize;
