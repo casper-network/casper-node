@@ -264,6 +264,13 @@ impl From<MakeBlockExecutableRequest> for Event {
     }
 }
 
+pub(crate) enum HighestOrphanedBlockResult {
+    MissingHighestSequence,
+    MissingFromBlockHeightIndex(u64),
+    Orphan(BlockHeader),
+    MissingHeader(BlockHash),
+}
+
 impl<REv> Component<REv> for Storage
 where
     REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
@@ -2374,19 +2381,27 @@ impl Storage {
         }
     }
 
-    pub(crate) fn get_highest_orphaned_block_header(&self) -> Option<BlockHeader> {
-        if let Some(seq) = self.completed_blocks.highest_sequence() {
-            if let Some(block_hash) = self.block_height_index.get(&seq.low()).cloned() {
-                let mut txn = self
-                    .env
-                    .begin_ro_txn()
-                    .expect("Could not start read only transaction for lmdb");
-                if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
-                    return Some(block.header().clone());
+    pub(crate) fn get_highest_orphaned_block_header(&self) -> HighestOrphanedBlockResult {
+        match self.completed_blocks.highest_sequence() {
+            None => HighestOrphanedBlockResult::MissingHighestSequence,
+            Some(seq) => {
+                let low = seq.low();
+                match self.block_height_index.get(&low).cloned() {
+                    None => HighestOrphanedBlockResult::MissingFromBlockHeightIndex(low),
+                    Some(block_hash) => {
+                        let mut txn = self
+                            .env
+                            .begin_ro_txn()
+                            .expect("Could not start read only transaction for lmdb");
+                        if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
+                            HighestOrphanedBlockResult::Orphan(block.header().clone())
+                        } else {
+                            HighestOrphanedBlockResult::MissingHeader(block_hash)
+                        }
+                    }
                 }
             }
         }
-        None
     }
 
     fn get_execution_results<Tx: Transaction>(
@@ -2672,23 +2687,23 @@ pub struct Config {
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_block_store_size: usize,
+    pub max_block_store_size: usize,
     /// The maximum size of the database to use for the deploy store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_deploy_store_size: usize,
+    pub max_deploy_store_size: usize,
     /// The maximum size of the database to use for the deploy metadata store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_deploy_metadata_store_size: usize,
+    pub max_deploy_metadata_store_size: usize,
     /// The maximum size of the database to use for the component state store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_state_store_size: usize,
+    pub max_state_store_size: usize,
     /// Whether or not memory deduplication is enabled.
-    enable_mem_deduplication: bool,
+    pub enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
-    mem_pool_prune_interval: u16,
+    pub mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {

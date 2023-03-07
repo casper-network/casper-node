@@ -54,7 +54,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         last_progress: Timestamp::from(0),
         available_block_range: AvailableBlockRange::RANGE_0_0,
         block_sync: BlockSynchronizerStatus::doc_example().clone(),
-        starting_state_root_hash: None,
+        starting_state_root_hash: Digest::default(),
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
@@ -108,7 +108,7 @@ pub struct StatusFeed {
     /// The status of the block synchronizer builders.
     pub block_sync: BlockSynchronizerStatus,
     /// The state root hash of the lowest block in the available block range.
-    pub starting_state_root_hash: Option<Digest>,
+    pub starting_state_root_hash: Digest,
 }
 
 impl StatusFeed {
@@ -123,7 +123,7 @@ impl StatusFeed {
         last_progress: Timestamp,
         available_block_range: AvailableBlockRange,
         block_sync: BlockSynchronizerStatus,
-        starting_state_root_hash: Option<Digest>,
+        starting_state_root_hash: Digest,
     ) -> Self {
         let (our_public_signing_key, round_length) = match consensus_status {
             Some((public_key, round_length)) => (Some(public_key), round_length),
@@ -185,7 +185,7 @@ pub struct GetStatusResult {
     /// The chainspec name.
     pub chainspec_name: String,
     /// The state root hash of the lowest block in the available block range.
-    pub starting_state_root_hash: Option<Digest>,
+    pub starting_state_root_hash: Digest,
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
     /// Our public signing key.

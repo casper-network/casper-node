@@ -367,15 +367,21 @@ impl BlockBuilder {
         }
         let era_id = match self.era_id {
             None => {
+                // if we don't have the era_id, we only have block_hash, thus get block_header
                 return BlockAcquisitionAction::block_header(&self.peer_list, rng, self.block_hash);
             }
             Some(era_id) => era_id,
         };
         let validator_weights = match &self.validator_weights {
             None => {
-                return BlockAcquisitionAction::era_validators(era_id);
+                return BlockAcquisitionAction::era_validators(&self.peer_list, rng, era_id);
             }
-            Some(validator_weights) => validator_weights,
+            Some(validator_weights) => {
+                if validator_weights.is_empty() {
+                    return BlockAcquisitionAction::era_validators(&self.peer_list, rng, era_id);
+                }
+                validator_weights
+            }
         };
         match self.acquisition_state.next_action(
             &self.peer_list,

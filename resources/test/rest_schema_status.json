@@ -12,6 +12,7 @@
     "last_progress",
     "peers",
     "reactor_state",
+    "starting_state_root_hash",
     "uptime"
   ],
   "properties": {
@@ -37,12 +38,9 @@
     },
     "starting_state_root_hash": {
       "description": "The state root hash of the lowest block in the available block range.",
-      "anyOf": [
+      "allOf": [
         {
           "$ref": "#/definitions/Digest"
-        },
-        {
-          "type": "null"
         }
       ]
     },
@@ -248,10 +246,20 @@
       "description": "The first era to which the associated protocol version applies.",
       "anyOf": [
         {
-          "$ref": "#/definitions/EraId"
+          "description": "Era id.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
         },
         {
-          "$ref": "#/definitions/Timestamp"
+          "description": "Genesis timestamp.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Timestamp"
+            }
+          ]
         }
       ]
     },

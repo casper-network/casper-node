@@ -19,53 +19,74 @@ use casper_types::{
 };
 use tracing::{error, warn};
 
+/// Configuration values associated with the core protocol.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {
-    pub(crate) era_duration: TimeDiff,
-    pub(crate) minimum_era_height: u64,
-    pub(crate) minimum_block_time: TimeDiff,
-    pub(crate) validator_slots: u32,
+    /// Duration of an era.
+    pub era_duration: TimeDiff,
+
+    /// Minimum era height.
+    pub minimum_era_height: u64,
+
+    /// Minimum block time.
+    pub minimum_block_time: TimeDiff,
+
+    /// Validator slots.
+    pub validator_slots: u32,
+
+    /// Finality threshold fraction.
     #[data_size(skip)]
-    pub(crate) finality_threshold_fraction: Ratio<u64>,
+    pub finality_threshold_fraction: Ratio<u64>,
+
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
-    pub(crate) auction_delay: u64,
+    pub auction_delay: u64,
+
     /// The period after genesis during which a genesis validator's bid is locked.
-    pub(crate) locked_funds_period: TimeDiff,
+    pub locked_funds_period: TimeDiff,
+
     /// The period in which genesis validator's bid is released over time after it's unlocked.
-    pub(crate) vesting_schedule_period: TimeDiff,
+    pub vesting_schedule_period: TimeDiff,
+
     /// The delay in number of eras for paying out the the unbonding amount.
-    pub(crate) unbonding_delay: u64,
+    pub unbonding_delay: u64,
+
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
-    pub(crate) round_seigniorage_rate: Ratio<u64>,
+    pub round_seigniorage_rate: Ratio<u64>,
+
     /// Maximum number of associated keys for a single account.
-    pub(crate) max_associated_keys: u32,
+    pub max_associated_keys: u32,
+
     /// Maximum height of contract runtime call stack.
-    pub(crate) max_runtime_call_stack_height: u32,
+    pub max_runtime_call_stack_height: u32,
+
     /// The minimum bound of motes that can be delegated to a validator.
-    pub(crate) minimum_delegation_amount: u64,
+    pub minimum_delegation_amount: u64,
+
     /// Enables strict arguments checking when calling a contract.
-    pub(crate) strict_argument_checking: bool,
+    pub strict_argument_checking: bool,
+
     /// How many peers to simultaneously ask when sync leaping.
-    pub(crate) simultaneous_peer_requests: u32,
+    pub simultaneous_peer_requests: u32,
+
     /// Which consensus protocol to use.
-    pub(crate) consensus_protocol: ConsensusProtocolName,
+    pub consensus_protocol: ConsensusProtocolName,
 }
 
 impl CoreConfig {
     /// The number of eras that have already started and whose validators are still bonded.
-    pub(crate) fn recent_era_count(&self) -> u64 {
+    pub fn recent_era_count(&self) -> u64 {
         // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
         self.unbonding_delay - self.auction_delay
     }
 
     /// Returns `false` if unbonding delay is not greater than auction delay to ensure
     /// that `recent_era_count()` yields a value of at least 1.
-    pub(super) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         if self.unbonding_delay <= self.auction_delay {
             warn!(
                 unbonding_delay = self.unbonding_delay,
@@ -234,9 +255,12 @@ impl FromBytes for CoreConfig {
     }
 }
 
+/// Consensus protocol name.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
-pub(crate) enum ConsensusProtocolName {
+pub enum ConsensusProtocolName {
+    /// Highway.
     Highway,
+    /// Zug.
     Zug,
 }
 

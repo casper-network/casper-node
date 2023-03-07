@@ -2219,42 +2219,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_block_from_block_accumulator(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<Arc<Block>>
-    where
-        REv: From<BlockAccumulatorRequest>,
-    {
-        self.make_request(
-            |responder| BlockAccumulatorRequest::GetBlock {
-                block_hash,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    pub(crate) async fn get_signature_from_block_accumulator(
-        self,
-        block_hash: BlockHash,
-        public_key: PublicKey,
-    ) -> Option<FinalitySignature>
-    where
-        REv: From<BlockAccumulatorRequest>,
-    {
-        self.make_request(
-            |responder| BlockAccumulatorRequest::GetFinalitySignature {
-                block_hash,
-                public_key,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Set a new stopping point for the node.
     ///
     /// Returns a potentially previously set stop-at spec.

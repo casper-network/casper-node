@@ -16,7 +16,7 @@ use crate::{
     effect::requests::BlockSynchronizerRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId,
+        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap,
     },
 };
 
@@ -45,6 +45,8 @@ pub(crate) enum Event {
     ApprovalsHashesFetched(FetchResult<ApprovalsHashes>),
     #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
+    #[from]
+    SyncLeapFetched(FetchResult<SyncLeap>),
     GlobalStateSynced {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
@@ -118,6 +120,12 @@ impl Display for Event {
                 write!(f, "{}", fetched_item)
             }
             Event::FinalitySignatureFetched(Err(fetcher_error)) => {
+                write!(f, "{}", fetcher_error)
+            }
+            Event::SyncLeapFetched(Ok(fetched_item)) => {
+                write!(f, "{}", fetched_item)
+            }
+            Event::SyncLeapFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
             Event::GlobalStateSynced {

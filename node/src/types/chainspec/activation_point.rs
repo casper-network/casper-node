@@ -23,7 +23,9 @@ const GENESIS_TAG: u8 = 1;
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(untagged)]
 pub enum ActivationPoint {
+    /// Era id.
     EraId(EraId),
+    /// Genesis timestamp.
     Genesis(Timestamp),
 }
 

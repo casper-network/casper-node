@@ -414,7 +414,8 @@ where
                                 true,
                             )
                             .await
-                            .map(|header| *header.state_root_hash());
+                            .map(|header| *header.state_root_hash())
+                            .unwrap_or_default();
                         let status_feed = StatusFeed::new(
                             last_added_block,
                             peers,

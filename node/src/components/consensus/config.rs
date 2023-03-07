@@ -21,18 +21,18 @@ const DEFAULT_MAX_EXECUTION_DELAY: u64 = 3;
 #[derive(DataSize, Debug, Deserialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub(crate) struct Config {
+pub struct Config {
     /// Path to secret key file.
-    pub(crate) secret_key_path: External,
+    pub secret_key_path: External,
     /// The maximum number of blocks by which execution is allowed to lag behind finalization.
     /// If it is more than that, consensus will pause, and resume once the executor has caught up.
     pub max_execution_delay: u64,
     /// Highway-specific node configuration.
     #[serde(default)]
-    pub(crate) highway: HighwayConfig,
+    pub highway: HighwayConfig,
     /// Zug-specific node configuration.
     #[serde(default)]
-    pub(crate) zug: ZugConfig,
+    pub zug: ZugConfig,
 }
 
 impl Default for Config {

@@ -64,6 +64,7 @@ All notable changes to this project will be documented in this file.  The format
 * Connections to unresponsive nodes will be terminated, based on a watchdog feature.
 
 ### Changed
+* The `starting_state_root_hash` field from the REST and JSON-RPC status endpoints now represents the state root hash of the lowest block in the available block range.
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
 * Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
@@ -85,7 +86,6 @@ All notable changes to this project will be documented in this file.  The format
 * Rename `current_era` metric to `consensus_current_era`.
 
 ### Deprecated
-* Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
 * `null` should no longer be used as a value for `params` in JSON-RPC requests.  Prefer an empty Array or Object.
 * Deprecate the `chain_height` metric in favor of `highest_available_block_height`.
 

@@ -27,7 +27,7 @@ pub(crate) mod components;
 mod config_migration;
 mod data_migration;
 pub(crate) mod effect;
-pub(crate) mod logging;
+pub mod logging;
 pub(crate) mod protocol;
 pub(crate) mod reactor;
 #[cfg(test)]
@@ -40,6 +40,7 @@ pub use components::{
     rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };
+pub use reactor::main_reactor::Config as MainReactorConfig;
 pub use utils::WithDir;
 
 use std::sync::{atomic::AtomicUsize, Arc};
