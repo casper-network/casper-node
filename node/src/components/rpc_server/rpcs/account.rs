@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, info};
 
 use casper_types::ProtocolVersion;
 
@@ -92,7 +92,7 @@ impl RpcWithParams for PutDeploy {
 
         match put_deploy_result {
             Ok(_) => {
-                info!(%deploy_hash, "deploy was stored");
+                debug!(%deploy_hash, "deploy was stored");
                 let result = Self::ResponseResult {
                     api_version,
                     deploy_hash,

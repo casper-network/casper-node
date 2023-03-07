@@ -51,20 +51,6 @@ impl Display for Event {
                     block_hash
                 )
             }
-            Event::Request(BlockAccumulatorRequest::GetBlock { block_hash, .. }) => {
-                write!(f, "block accumulator block request for {}", block_hash)
-            }
-            Event::Request(BlockAccumulatorRequest::GetFinalitySignature {
-                block_hash,
-                public_key,
-                ..
-            }) => {
-                write!(
-                    f,
-                    "block accumulator signature request of {} for {}",
-                    public_key, block_hash
-                )
-            }
             Event::RegisterPeer {
                 block_hash, sender, ..
             } => {

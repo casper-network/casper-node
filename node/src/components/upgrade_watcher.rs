@@ -48,7 +48,7 @@ const DEFAULT_UPGRADE_CHECK_INTERVAL: &str = "30sec";
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// How often to scan file system for available upgrades.
-    upgrade_check_interval: TimeDiff,
+    pub upgrade_check_interval: TimeDiff,
 }
 
 impl Default for Config {

@@ -138,14 +138,29 @@ function do_stop_node() {
     fi
 }
 
+function get_reactor_state() {
+    local NODE_ID=${1}
+    local OUTPUT
+    local REACTOR_STATE
+
+    OUTPUT=$(nctl-view-node-status node=$NODE_ID)
+    REACTOR_STATE=$(echo "$OUTPUT" | tail -n +2 | jq -r '.reactor_state')
+
+    echo "$REACTOR_STATE"
+}
+
 function check_network_sync() {
     local WAIT_TIME_SEC=0
     local FIRST_NODE=${1:-1}
     local LAST_NODE=${2:-10}
+    local SYNC_TIMEOUT_SEC=${3:-"$SYNC_TIMEOUT_SEC"}
+    local LOG=${4:-'true'}
 
-    log_step "checking nodes' $FIRST_NODE to $LAST_NODE LFBs are in sync"
+    if [ "$LOG" = 'true' ]; then
+        log_step "checking nodes' $FIRST_NODE to $LAST_NODE LFBs are in sync"
+    fi
+
     while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-
         declare -a ALL_LFBS
 
         index=0
@@ -168,6 +183,7 @@ function check_network_sync() {
 
         if [ "$ALL_EQUAL" -eq 1 ]; then
             log "nodes $FIRST_NODE to $LAST_NODE in sync, proceeding..."
+            nctl-view-chain-height
             break
         fi
 

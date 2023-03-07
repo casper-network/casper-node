@@ -14,31 +14,13 @@ const DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL: &str = "10sec";
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Maximum number of trie nodes to fetch in parallel.
-    max_parallel_trie_fetches: u32,
+    pub max_parallel_trie_fetches: u32,
     /// Time interval for the node to ask for refreshed peers.
-    peer_refresh_interval: TimeDiff,
+    pub peer_refresh_interval: TimeDiff,
     /// Time interval for the node to check what the block synchronizer needs to acquire next.
-    need_next_interval: TimeDiff,
+    pub need_next_interval: TimeDiff,
     /// Time interval for recurring disconnection of dishonest peers.
-    disconnect_dishonest_peers_interval: TimeDiff,
-}
-
-impl Config {
-    pub(crate) fn max_parallel_trie_fetches(&self) -> u32 {
-        self.max_parallel_trie_fetches
-    }
-
-    pub(crate) fn peer_refresh_interval(&self) -> TimeDiff {
-        self.peer_refresh_interval
-    }
-
-    pub(crate) fn need_next_interval(&self) -> TimeDiff {
-        self.need_next_interval
-    }
-
-    pub(crate) fn disconnect_dishonest_peers_interval(&self) -> TimeDiff {
-        self.disconnect_dishonest_peers_interval
-    }
+    pub disconnect_dishonest_peers_interval: TimeDiff,
 }
 
 impl Default for Config {

@@ -214,12 +214,11 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn era_validators(era_id: EraId) -> Self {
-        let peers_to_ask = Default::default();
-        let need_next = NeedNext::EraValidators(era_id);
+    pub(super) fn era_validators(peer_list: &PeerList, rng: &mut NodeRng, era_id: EraId) -> Self {
+        let peers_to_ask = peer_list.qualified_peers(rng);
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next,
+            need_next: NeedNext::EraValidators(era_id),
         }
     }
 

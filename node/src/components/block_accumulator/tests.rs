@@ -159,7 +159,7 @@ impl Reactor for MockReactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
         let block_accumulator_config = Config::default();
-        let block_time = block_accumulator_config.purge_interval() / 2;
+        let block_time = block_accumulator_config.purge_interval / 2;
 
         let block_accumulator = BlockAccumulator::new(
             block_accumulator_config,
@@ -273,7 +273,7 @@ fn upsert_acceptor() {
     let era0 = EraId::from(0);
     let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let recent_era_interval = 1;
-    let block_time = config.purge_interval() / 2;
+    let block_time = config.purge_interval / 2;
     let metrics_registry = Registry::new();
     let mut accumulator = BlockAccumulator::new(
         config,
@@ -299,7 +299,7 @@ fn upsert_acceptor() {
     accumulator.register_local_tip(0, EraId::new(0));
 
     let max_block_count =
-        PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval() / block_time) as usize);
+        PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval / block_time) as usize);
 
     for _ in 0..max_block_count {
         accumulator.upsert_acceptor(
@@ -335,7 +335,7 @@ fn upsert_acceptor() {
         .contains(&ALICE_NODE_ID));
 
     // Modify the timestamp of the acceptor we just added to be too old.
-    let purge_interval = config.purge_interval() * 2;
+    let purge_interval = config.purge_interval * 2;
     let purged_hash = {
         let (hash, timestamp) = accumulator
             .peer_block_timestamps
@@ -825,7 +825,7 @@ fn accumulator_highest_usable_block_height() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let block_accumulator_config = Config::default();
     let recent_era_interval = 1;
-    let block_time = block_accumulator_config.purge_interval() / 2;
+    let block_time = block_accumulator_config.purge_interval / 2;
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
         validator_matrix.clone(),
@@ -950,8 +950,8 @@ fn accumulator_should_leap() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let block_accumulator_config = Config::default();
     let recent_era_interval = 1;
-    let block_time = block_accumulator_config.purge_interval() / 2;
-    let attempt_execution_threshold = block_accumulator_config.attempt_execution_threshold();
+    let block_time = block_accumulator_config.purge_interval / 2;
+    let attempt_execution_threshold = block_accumulator_config.attempt_execution_threshold;
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
         validator_matrix.clone(),
@@ -986,8 +986,8 @@ fn accumulator_should_leap() {
 
     // The accumulator should try to leap at inception, no matter the starting
     // height.
-    assert!(block_accumulator.should_leap(0));
-    assert!(block_accumulator.should_leap(block.height().saturating_add(1_000)));
+    assert!(block_accumulator.should_leap(Some(0)));
+    assert!(block_accumulator.should_leap(Some(block.height().saturating_add(1_000))));
 
     // Create an acceptor to change the highest usable block height.
     {
@@ -1009,17 +1009,19 @@ fn accumulator_should_leap() {
     assert_eq!(highest_usable_block_height, block.height());
     // We should not leap from a height that is greater than our highest usable
     // block height.
-    assert!(!block_accumulator.should_leap(highest_usable_block_height + 1));
+    assert!(!block_accumulator.should_leap(Some(highest_usable_block_height + 1)));
 
     // We should leap from a height *lower* than `attempt_execution_threshold`
     // from the highest usable block height.
-    assert!(
-        !block_accumulator.should_leap(highest_usable_block_height - attempt_execution_threshold)
-    );
-    assert!(!block_accumulator
-        .should_leap(highest_usable_block_height - attempt_execution_threshold + 1));
-    assert!(block_accumulator
-        .should_leap(highest_usable_block_height - attempt_execution_threshold - 1));
+    assert!(!block_accumulator.should_leap(Some(
+        highest_usable_block_height - attempt_execution_threshold
+    )));
+    assert!(!block_accumulator.should_leap(Some(
+        highest_usable_block_height - attempt_execution_threshold + 1
+    )));
+    assert!(block_accumulator.should_leap(Some(
+        highest_usable_block_height - attempt_execution_threshold - 1
+    )));
 }
 
 #[test]
@@ -1028,8 +1030,8 @@ fn accumulator_purge() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let block_accumulator_config = Config::default();
     let recent_era_interval = 1;
-    let block_time = block_accumulator_config.purge_interval() / 2;
-    let purge_interval = block_accumulator_config.purge_interval();
+    let block_time = block_accumulator_config.purge_interval / 2;
+    let purge_interval = block_accumulator_config.purge_interval;
     let time_before_insertion = Timestamp::now();
     let mut block_accumulator = BlockAccumulator::new(
         block_accumulator_config,
