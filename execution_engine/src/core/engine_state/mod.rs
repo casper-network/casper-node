@@ -515,7 +515,7 @@ where
                         }
                     }
                 }
-                migrate::MigrationAction::WriteStableEraInfo { era_id } => {
+                migrate::MigrationAction::WriteStableEraSummary { era_id } => {
                     // This migration should execute in a single step.
                     let success =
                         migrate::write_stable_era_info::write_era_info_summary_to_stable_key(
@@ -553,6 +553,8 @@ where
         S: StateProvider + CommitProvider,
         S::Error: Into<execution::Error>,
     {
+        tracing::debug!("looking for next migration");
+
         let correlation_id = CorrelationId::new();
         let mut tracking_copy = match self
             .state
@@ -562,12 +564,16 @@ where
             Some(tracking_copy) => TrackingCopy::new(tracking_copy),
             None => return Err(Error::RootNotFound(state_root_hash)),
         };
+        tracing::debug!("checking global state for Key::LastMigration");
         // get last migration run
         let maybe_last_migration_run = tracking_copy
             .get(correlation_id, &Key::LastMigration)
-            .map_err(|error| Error::Exec(error.into()))?
+            .ok()
+            .flatten()
             .and_then(|value| value.as_cl_value().cloned())
             .and_then(|value| value.into_t::<u32>().ok());
+
+        tracing::debug!(?maybe_last_migration_run);
 
         // get list of migrations in chainspec
         let mut sorted_migrations = self
@@ -586,6 +592,8 @@ where
             .sorted_by(|left, right| left.migration_id().cmp(&right.migration_id()));
 
         if let Some(migration) = sorted_migrations.next() {
+            tracing::debug!(?migration);
+
             let actions = match migration {
                 Migration::WriteStableEraSummaryKey { .. } => MigrationActions::new(
                     migration.migration_id(),
@@ -598,9 +606,12 @@ where
                     vec![MigrationAction::purge_era_info(batch_size, current_era_id)],
                 ),
             };
+            tracing::debug!(?actions, ?migration, "about to run migration actions");
             let MigrationSuccess { post_state_hash } = self.commit_migration(actions)?;
+            tracing::debug!(?migration, "successfully ran migration");
             return Ok(Some(post_state_hash));
         }
+        tracing::info!("no migration to run.");
         Ok(None)
     }
 

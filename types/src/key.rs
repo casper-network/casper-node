@@ -170,7 +170,7 @@ pub enum FromStrError {
     /// Era summary parse error.
     EraSummary(String),
     /// Migration parse error.
-    Migration(String),
+    LastMigration(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -220,7 +220,7 @@ impl Display for FromStrError {
             FromStrError::EraSummary(error) => {
                 write!(f, "era-summary from string error: {}", error)
             }
-            FromStrError::Migration(error) => {
+            FromStrError::LastMigration(error) => {
                 write!(f, "migration from string error: {}", error)
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),

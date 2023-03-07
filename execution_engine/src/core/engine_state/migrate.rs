@@ -6,6 +6,7 @@ pub mod write_stable_era_info;
 use casper_hashing::Digest;
 use casper_types::EraId;
 
+#[derive(Debug)]
 /// Represents an action taken in a migration.
 pub enum MigrationAction {
     /// Purge era info objects from the trie.
@@ -17,7 +18,7 @@ pub enum MigrationAction {
         current_era_id: EraId,
     },
     /// Migrate Key::EraInfo(id) -> Key::EraSummary. Should happen once.
-    WriteStableEraInfo {
+    WriteStableEraSummary {
         /// the era id to use for this migration.
         era_id: EraId,
     },
@@ -33,10 +34,11 @@ impl MigrationAction {
     }
     /// Migrate Key::EraInfo(id) -> Key::EraSummary. Should happen once.
     pub fn write_stable_era_info(era_id: EraId) -> Self {
-        Self::WriteStableEraInfo { era_id }
+        Self::WriteStableEraSummary { era_id }
     }
 }
 
+#[derive(Debug)]
 /// Represents a migration with one or more actions.
 pub struct MigrationActions {
     /// Id of this migration.
