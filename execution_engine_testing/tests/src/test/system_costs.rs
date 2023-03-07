@@ -17,6 +17,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
+        migrate_config::MigrationConfig,
         opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
         storage_costs::StorageCosts,
         system_config::{
@@ -209,6 +210,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         new_system_config,
+        MigrationConfig::default(),
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -465,6 +467,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         new_system_config,
+        MigrationConfig::default(),
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -941,6 +944,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         new_wasm_config,
         new_system_config,
+        MigrationConfig::default(),
     );
 
     let mut upgrade_request = {

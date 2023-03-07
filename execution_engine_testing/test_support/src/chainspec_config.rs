@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig, GenesisAccount},
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        migrate_config::MigrationConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+    },
 };
 use casper_types::ProtocolVersion;
 
@@ -76,6 +78,8 @@ pub struct ChainspecConfig {
     pub(crate) wasm_config: WasmConfig,
     #[serde(rename = "system_costs")]
     pub(crate) system_costs_config: SystemConfig,
+    #[serde(rename = "migration_config")]
+    pub(crate) migration_config: MigrationConfig,
 }
 
 impl ChainspecConfig {

@@ -17,6 +17,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
+        migrate_config::MigrationConfig,
         opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
         storage_costs::StorageCosts,
         system_config::SystemConfig,
@@ -185,6 +186,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
+        MigrationConfig::default(),
     );
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);

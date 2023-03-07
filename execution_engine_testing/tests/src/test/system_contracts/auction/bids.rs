@@ -25,7 +25,9 @@ use casper_execution_engine::{
         },
         execution,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        migrate_config::MigrationConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+    },
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -2609,6 +2611,7 @@ fn should_release_vfta_holder_stake() {
         NEW_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
+        MigrationConfig::default(),
     );
 
     let global_state = InMemoryGlobalState::empty().expect("should create global state");
@@ -3113,6 +3116,7 @@ fn should_not_allow_delegations_past_limit() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
+        MigrationConfig::default(),
     );
 
     let mut upgrade_request = {
@@ -3378,6 +3382,7 @@ fn should_continue_running_auction_despite_execeeded_delegator_limit() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
+        MigrationConfig::default(),
     );
 
     let mut upgrade_request = {
@@ -3632,6 +3637,7 @@ fn should_enforce_and_check_global_delegator_capacity() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
+        MigrationConfig::default(),
     );
 
     // Reduce the validator slots from the default to only 2.

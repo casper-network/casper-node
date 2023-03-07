@@ -24,17 +24,19 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest, QueryRequest, QueryResult, SystemContractRegistry, UpgradeConfig,
-        UpgradeSuccess,
+        GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
-    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        migrate_config::MigrationConfig, newtypes::CorrelationId, system_config::SystemConfig,
+        wasm_config::WasmConfig,
+    },
     storage::{
         global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -139,7 +141,6 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
-    lowest_era_to_delete: Option<EraId>,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
@@ -341,13 +342,7 @@ where
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
 
-                // chainspec.max_era_infos_per_block
-                let _delete_era_infos: Option<(u64, u64)> =
-                    self.lowest_era_to_delete.map(|lowest| -> (u64, u64) {
-                        (lowest.into(), 100.max(execution_pre_state.era_id.into()))
-                    });
-
-                // chainspec variable for deletion of era_infos
+                //let config = self
 
                 async move {
                     let result = run_intensive_task(move || {
@@ -359,7 +354,6 @@ where
                             finalized_block,
                             deploys,
                             transfers,
-                            None,
                         )
                     })
                     .await;
@@ -434,6 +428,7 @@ impl ContractRuntime {
         contract_runtime_config: &Config,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        migration_config: MigrationConfig,
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         max_stored_value_size: u32,
@@ -474,6 +469,7 @@ impl ContractRuntime {
             minimum_delegation_amount,
             wasm_config,
             system_config,
+            migration_config,
         );
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
@@ -481,7 +477,6 @@ impl ContractRuntime {
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
-            lowest_era_to_delete: None,
             execution_pre_state,
             engine_state,
             metrics,
@@ -546,15 +541,11 @@ impl ContractRuntime {
         &mut self,
         sequential_block_state: ExecutionPreState,
     ) -> Result<(), ConfigError> {
-        let (state_root_hash, era_id) = {
+        let state_root_hash = {
             let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
             *execution_pre_state = sequential_block_state;
-            let state_root_hash = execution_pre_state.pre_state_root_hash;
-            (state_root_hash, execution_pre_state.era_id)
+            execution_pre_state.pre_state_root_hash
         };
-
-        // mark EraInfo objects as next to delete in the following blocks.
-        self.search_for_extraneous_era_infos_to_delete(state_root_hash, 0, era_id.into())?;
 
         // Initialize the system contract registry.
         //
@@ -574,32 +565,6 @@ impl ContractRuntime {
             }
         }
 
-        Ok(())
-    }
-
-    // Store lowest era_info object present and set up to delete it at the next block execution.
-    fn search_for_extraneous_era_infos_to_delete(
-        &mut self,
-        state_root_hash: Digest,
-        low_era_id: u64,
-        high_era_id: u64,
-    ) -> Result<(), engine_state::Error> {
-        for era_id in low_era_id..high_era_id {
-            let era_id = EraId::from(era_id);
-            match self.engine_state.run_query(
-                CorrelationId::new(),
-                QueryRequest::new(state_root_hash, Key::EraInfo(era_id), vec![]),
-            )? {
-                QueryResult::Success { .. } => {
-                    info!(%era_id, "found lowest era info object in need of deletion");
-                    self.lowest_era_to_delete = Some(era_id);
-                    break;
-                }
-                _ => {
-                    todo!("handle other variants...")
-                }
-            }
-        }
         Ok(())
     }
 
@@ -634,7 +599,6 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
-                None,
             )
         })
         .await

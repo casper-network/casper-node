@@ -242,6 +242,7 @@ impl Reactor {
             &config.value().contract_runtime,
             chainspec_loader.chainspec().wasm_config,
             chainspec_loader.chainspec().system_costs_config,
+            chainspec_loader.chainspec().migration_config.clone(),
             chainspec_loader.chainspec().core_config.max_associated_keys,
             chainspec_loader
                 .chainspec()

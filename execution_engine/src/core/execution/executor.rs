@@ -100,7 +100,7 @@ impl Executor {
             spending_limit,
         );
 
-        let mut runtime = Runtime::new(self.config, context);
+        let mut runtime = Runtime::new(self.config.clone(), context);
 
         let result = match execution_kind {
             ExecutionKind::Module(module_bytes) => {
@@ -190,7 +190,7 @@ impl Executor {
 
         // Standard payment is executed in the calling account's context; the stack already
         // captures that.
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(self.config.clone(), runtime_context);
 
         match runtime.call_host_standard_payment(stack) {
             Ok(()) => ExecutionResult::Success {
@@ -305,7 +305,7 @@ impl Executor {
             remaining_spending_limit,
         );
 
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(self.config.clone(), runtime_context);
 
         // DO NOT alter this logic to call a system contract directly (such as via mint_internal,
         // etc). Doing so would bypass necessary context based security checks in some use cases. It
@@ -386,7 +386,7 @@ impl Executor {
             protocol_version,
             correlation_id,
             phase,
-            self.config,
+            self.config.clone(),
             transfers,
             remaining_spending_limit,
         )

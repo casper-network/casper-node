@@ -300,7 +300,7 @@ impl From<&PublicKey> for PublicKeyBytes {
 
             PublicKey::Secp256k1(secp256k1_bytes) => {
                 let secp256k1_bytes = secp256k1_bytes.to_bytes();
-                Self::Secp256k1(secp256k1_bytes.try_into().expect("lengths should match"))
+                Self::Secp256k1(secp256k1_bytes)
             }
         }
     }

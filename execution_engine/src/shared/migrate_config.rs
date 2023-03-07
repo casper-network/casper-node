@@ -6,12 +6,13 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
 /// Represents config values for migration.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
-pub struct MigrateConfig {
-    migrations: Vec<Migration>,
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, Default)]
+pub struct MigrationConfig {
+    /// Represents parameters to be used when running a migration.
+    pub migrations: Vec<Migration>,
 }
 
-impl ToBytes for MigrateConfig {
+impl ToBytes for MigrationConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.migrations.to_bytes()?);
@@ -23,7 +24,7 @@ impl ToBytes for MigrateConfig {
     }
 }
 
-impl FromBytes for MigrateConfig {
+impl FromBytes for MigrationConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (migrations, rem) = FromBytes::from_bytes(bytes)?;
         Ok((Self { migrations }, rem))
@@ -115,8 +116,8 @@ impl FromBytes for Migration {
     }
 }
 
-impl Distribution<MigrateConfig> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MigrateConfig {
+impl Distribution<MigrationConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MigrationConfig {
         let batch_size = rng.gen_range(1..10);
         let migration_type = rng.gen_range(0..2);
         let num_actions = rng.gen_range(0..10);
@@ -131,7 +132,7 @@ impl Distribution<MigrateConfig> for Standard {
                 });
             }
         }
-        MigrateConfig { migrations }
+        MigrationConfig { migrations }
     }
 }
 

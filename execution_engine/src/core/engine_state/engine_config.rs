@@ -5,7 +5,9 @@ use casper_types::{
     KEY_HASH_LENGTH,
 };
 
-use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use crate::shared::{
+    migrate_config::MigrationConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -56,7 +58,7 @@ pub const fn compute_max_delegator_size_limit(
 }
 
 /// The runtime configuration of the execution engine
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct EngineConfig {
     /// Max query depth of the engine.
     pub(crate) max_query_depth: u64,
@@ -70,6 +72,9 @@ pub struct EngineConfig {
     minimum_delegation_amount: u64,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
+
+    /// Configuration for any defined migrations to be run against global state.
+    pub migration_config: MigrationConfig,
 }
 
 impl Default for EngineConfig {
@@ -83,6 +88,7 @@ impl Default for EngineConfig {
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
+            migration_config: MigrationConfig::default(),
         }
     }
 }
@@ -99,6 +105,7 @@ impl EngineConfig {
         minimum_delegation_amount: u64,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        migration_config: MigrationConfig,
     ) -> EngineConfig {
         EngineConfig {
             max_query_depth,
@@ -109,6 +116,7 @@ impl EngineConfig {
             minimum_delegation_amount,
             wasm_config,
             system_config,
+            migration_config,
         }
     }
 

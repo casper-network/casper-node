@@ -11,7 +11,7 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::{
-    migrate_config::MigrateConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+    migrate_config::MigrationConfig, system_config::SystemConfig, wasm_config::WasmConfig,
 };
 use casper_types::{EraId, ProtocolVersion};
 
@@ -52,7 +52,7 @@ pub(super) struct TomlChainspec {
     highway: HighwayConfig,
     wasm: WasmConfig,
     system_costs: SystemConfig,
-    migration_config: MigrateConfig,
+    migration_config: MigrationConfig,
 }
 
 impl From<&Chainspec> for TomlChainspec {

@@ -22,7 +22,9 @@ use casper_execution_engine::{
         engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        migrate_config::MigrationConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+    },
 };
 use casper_types::ProtocolVersion;
 
@@ -210,6 +212,7 @@ impl reactor::Reactor for Reactor {
             &contract_runtime_config,
             WasmConfig::default(),
             SystemConfig::default(),
+            MigrationConfig::default(),
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             MAX_STORED_VALUE_SIZE,

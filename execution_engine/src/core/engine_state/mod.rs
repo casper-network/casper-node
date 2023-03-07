@@ -25,6 +25,7 @@ use std::{
     rc::Rc,
 };
 
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -46,11 +47,11 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
-    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
+    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use self::migrate::{MigrateError, MigrateSuccess, MigrationActions};
+use self::migrate::{MigrateError, MigrationAction, MigrationActions, MigrationSuccess};
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -80,7 +81,10 @@ use crate::{
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    shared::{
+        additive_map::AdditiveMap, migrate_config::Migration, newtypes::CorrelationId,
+        transform::Transform,
+    },
     storage::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
@@ -137,7 +141,7 @@ impl EngineState<LmdbGlobalState> {
     /// Provide a local cached-only version of engine-state.
     pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
         EngineState {
-            config: self.config,
+            config: self.config.clone(),
             state: self.state.create_scratch(),
         }
     }
@@ -168,6 +172,11 @@ where
     /// Returns engine config.
     pub fn config(&self) -> &EngineConfig {
         &self.config
+    }
+
+    /// Returns engine config.
+    pub fn config_clone(&self) -> EngineConfig {
+        self.config.clone()
     }
 
     /// Updates current engine config with a new instance.
@@ -208,7 +217,7 @@ where
             genesis_config_hash,
             protocol_version,
             correlation_id,
-            *self.config(),
+            self.config_clone(),
             ee_config.clone(),
             tracking_copy,
         );
@@ -468,15 +477,15 @@ where
     ///
     /// This process applies changes to the global state.
     ///
-    /// Returns [`MigrateSuccess`].
-    pub fn commit_migrate(
+    /// Returns [`MigrationSuccess`].
+    pub fn commit_migration(
         &self,
         migration_config: MigrationActions,
-    ) -> Result<MigrateSuccess, Error> {
+    ) -> Result<MigrationSuccess, Error> {
         let mut state_root_hash = migration_config.pre_state_root_hash;
         for action in migration_config.actions {
             match action {
-                migrate::MigrateAction::PurgeEraInfo {
+                migrate::MigrationAction::PurgeEraInfo {
                     batch_size,
                     current_era_id,
                 } => {
@@ -489,13 +498,25 @@ where
                     .map_err(|error| Error::MigrateError(MigrateError::PurgeEraInfo(error)))?;
 
                     match success {
+                        // This migration is per-block and incremental, and so we re-run the
+                        // migration which will look for remaining era infos to delete
                         migrate::purge_era_info::PurgeEraInfoSuccess::Progress(progress) => {
                             state_root_hash = progress.post_state_hash;
                         }
-                        migrate::purge_era_info::PurgeEraInfoSuccess::Complete => (),
+                        // Only once all the era info are complete should we mark this migration as
+                        // done.
+                        migrate::purge_era_info::PurgeEraInfoSuccess::Complete => {
+                            // ... and so we mark it finished so that it will not run again.
+                            state_root_hash = self.migration_completed(
+                                // we didn't get a new state root if this was completed.
+                                state_root_hash,
+                                migration_config.migration_id,
+                            )?;
+                        }
                     }
                 }
-                migrate::MigrateAction::WriteStableEraInfo { era_id } => {
+                migrate::MigrationAction::WriteStableEraInfo { era_id } => {
+                    // This migration should execute in a single step.
                     let success =
                         migrate::write_stable_era_info::write_era_info_summary_to_stable_key(
                             &self.state,
@@ -506,11 +527,116 @@ where
                         .map_err(|error| {
                             Error::MigrateError(MigrateError::WriteStableKey(error))
                         })?;
-                    state_root_hash = success.post_state_hash;
+                    // ... and so we mark it finished so that it will not run again.
+                    state_root_hash = self.migration_completed(
+                        success.post_state_hash,
+                        migration_config.migration_id,
+                    )?;
                 }
             }
         }
-        Ok(MigrateSuccess::new(state_root_hash))
+        Ok(MigrationSuccess::new(state_root_hash))
+    }
+
+    /// Runs any pending migration defined within the chainspec in `MigrationConfig`. Calls
+    /// `commit_migration` to commit the migration.
+    ///
+    /// The latest migration id is stored in the trie under `Key::LastMigration`.
+    ///
+    /// Returns `None` if no migrations is to be run.
+    pub fn maybe_run_next_migration(
+        &self,
+        state_root_hash: Digest,
+        current_era_id: EraId,
+    ) -> Result<Option<Digest>, Error>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        let correlation_id = CorrelationId::new();
+        let mut tracking_copy = match self
+            .state
+            .checkout(state_root_hash)
+            .map_err(|error| Error::Exec(error.into()))?
+        {
+            Some(tracking_copy) => TrackingCopy::new(tracking_copy),
+            None => return Err(Error::RootNotFound(state_root_hash)),
+        };
+        // get last migration run
+        let maybe_last_migration_run = tracking_copy
+            .get(correlation_id, &Key::LastMigration)
+            .map_err(|error| Error::Exec(error.into()))?
+            .and_then(|value| value.as_cl_value().cloned())
+            .and_then(|value| value.into_t::<u32>().ok());
+
+        // get list of migrations in chainspec
+        let mut sorted_migrations = self
+            .config
+            .migration_config
+            .migrations
+            .iter()
+            // find any migrations that need to be run
+            .filter(|migration| {
+                !(matches!(
+                    maybe_last_migration_run,
+                    Some(last_run_id) if last_run_id >= migration.migration_id()
+                ))
+            })
+            .cloned()
+            .sorted_by(|left, right| left.migration_id().cmp(&right.migration_id()));
+
+        if let Some(migration) = sorted_migrations.next() {
+            let actions = match migration {
+                Migration::WriteStableEraSummaryKey { .. } => MigrationActions::new(
+                    migration.migration_id(),
+                    state_root_hash,
+                    vec![MigrationAction::write_stable_era_info(current_era_id)],
+                ),
+                Migration::PurgeEraInfo { batch_size, .. } => MigrationActions::new(
+                    migration.migration_id(),
+                    state_root_hash,
+                    vec![MigrationAction::purge_era_info(batch_size, current_era_id)],
+                ),
+            };
+            let MigrationSuccess { post_state_hash } = self.commit_migration(actions)?;
+            return Ok(Some(post_state_hash));
+        }
+        Ok(None)
+    }
+
+    fn migration_completed(
+        &self,
+        state_root_hash: Digest,
+        migration_id: u32,
+    ) -> Result<Digest, Error>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
+        let mut tracking_copy = match self
+            .state
+            .checkout(state_root_hash)
+            .map_err(|error| Error::Exec(error.into()))?
+        {
+            Some(tracking_copy) => TrackingCopy::new(tracking_copy),
+            None => return Err(Error::RootNotFound(state_root_hash)),
+        };
+
+        tracking_copy.force_write(
+            Key::LastMigration,
+            StoredValue::CLValue(CLValue::from_t(migration_id).map_err(execution::Error::CLValue)?),
+        );
+
+        let new_state_root_hash = self
+            .state
+            .commit(
+                CorrelationId::new(),
+                state_root_hash,
+                tracking_copy.effect().transforms,
+            )
+            .map_err(|error| Error::Exec(error.into()))?;
+
+        Ok(new_state_root_hash)
     }
 
     /// Creates a new tracking copy instance.
@@ -561,7 +687,7 @@ where
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, Error> {
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -1855,7 +1981,7 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
         let system_account_addr = PublicKey::System.to_account_hash();
 

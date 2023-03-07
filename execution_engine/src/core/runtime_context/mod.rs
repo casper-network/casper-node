@@ -178,7 +178,7 @@ where
         let protocol_version = self.protocol_version;
         let correlation_id = self.correlation_id;
         let phase = self.phase;
-        let engine_config = self.engine_config;
+        let engine_config = self.engine_config.clone();
         let transfers = self.transfers.clone();
         let remaining_spending_limit = self.remaining_spending_limit();
 
@@ -323,7 +323,7 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
-            Key::Migration => {
+            Key::LastMigration => {
                 error!("should not remove the migration key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
@@ -776,7 +776,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::EraSummary => true,
-            Key::Migration => true,
+            Key::LastMigration => true,
         }
     }
 
@@ -798,7 +798,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::EraSummary => false,
-            Key::Migration => false,
+            Key::LastMigration => false,
         }
     }
 
@@ -820,7 +820,7 @@ where
             }
             Key::SystemContractRegistry => false,
             Key::EraSummary => false,
-            Key::Migration => false,
+            Key::LastMigration => false,
         }
     }
 

@@ -18,6 +18,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::HostFunctionCosts,
+        migrate_config::MigrationConfig,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         system_config::SystemConfig,
@@ -286,6 +287,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         *DOUBLED_WASM_MEMORY_LIMIT,
         SystemConfig::default(),
+        MigrationConfig::default(),
     );
 
     builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);

@@ -96,7 +96,7 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            config: self.config.clone(),
             memory: Some(memory),
             module: Some(module),
             host_buffer: None,
@@ -114,7 +114,7 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            config: self.config.clone(),
             memory: None,
             module: None,
             host_buffer: None,

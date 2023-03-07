@@ -22,7 +22,9 @@ use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
-    shared::{migrate_config::MigrateConfig, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        migrate_config::MigrationConfig, system_config::SystemConfig, wasm_config::WasmConfig,
+    },
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -64,7 +66,7 @@ pub struct Chainspec {
     #[serde(rename = "system_costs")]
     pub(crate) system_costs_config: SystemConfig,
     #[serde(rename = "migration")]
-    pub(crate) migration_config: MigrateConfig,
+    pub(crate) migration_config: MigrationConfig,
 }
 
 impl Chainspec {
@@ -164,7 +166,7 @@ impl FromBytes for Chainspec {
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
-        let (migration_config, remainder) = MigrateConfig::from_bytes(remainder)?;
+        let (migration_config, remainder) = MigrationConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
             network_config,

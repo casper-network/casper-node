@@ -7,7 +7,7 @@ use casper_hashing::Digest;
 use casper_types::EraId;
 
 /// Represents an action taken in a migration.
-pub enum MigrateAction {
+pub enum MigrationAction {
     /// Purge era info objects from the trie.
     PurgeEraInfo {
         /// How many deletes per migration.
@@ -23,7 +23,7 @@ pub enum MigrateAction {
     },
 }
 
-impl MigrateAction {
+impl MigrationAction {
     /// Purge era info objects from the trie.
     pub fn purge_era_info(batch_size: u32, current_era_id: impl Into<EraId>) -> Self {
         Self::PurgeEraInfo {
@@ -39,16 +39,23 @@ impl MigrateAction {
 
 /// Represents a migration with one or more actions.
 pub struct MigrationActions {
+    /// Id of this migration.
+    pub migration_id: u32,
     /// Pre state root hash.
     pub pre_state_root_hash: Digest,
     /// Actions taken during migration.
-    pub actions: Vec<MigrateAction>,
+    pub actions: Vec<MigrationAction>,
 }
 
 impl MigrationActions {
     /// Create a new MigrateConfig.
-    pub fn new(pre_state_root_hash: Digest, actions: Vec<MigrateAction>) -> Self {
+    pub fn new(
+        migration_id: u32,
+        pre_state_root_hash: Digest,
+        actions: Vec<MigrationAction>,
+    ) -> Self {
         Self {
+            migration_id,
             pre_state_root_hash,
             actions,
         }
@@ -57,12 +64,12 @@ impl MigrationActions {
 
 /// A successful migration.
 #[derive(Debug, Clone)]
-pub struct MigrateSuccess {
+pub struct MigrationSuccess {
     /// Post state hash of completed migration.
     pub post_state_hash: Digest,
 }
 
-impl MigrateSuccess {
+impl MigrationSuccess {
     /// Create a new MigrateSuccess.
     pub fn new(post_state_hash: Digest) -> Self {
         Self { post_state_hash }

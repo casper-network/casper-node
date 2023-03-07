@@ -15,6 +15,7 @@ use casper_execution_engine::{
         execution::Error as ExecError,
     },
     shared::{
+        migrate_config::MigrationConfig,
         system_config::{
             auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
             mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
@@ -994,6 +995,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         new_system_config,
+        MigrationConfig::default(),
     );
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;

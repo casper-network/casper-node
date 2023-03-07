@@ -103,7 +103,7 @@ pub enum KeyTag {
     Dictionary = 9,
     SystemContractRegistry = 10,
     EraSummary = 14,
-    Migration = 15,
+    LastMigration = 15,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -139,7 +139,7 @@ pub enum Key {
     EraSummary,
     /// A `Key` under which we store the migration_id (u32) of the latest migration.
     /// Migrations are run in order from lowest to highest.
-    Migration,
+    LastMigration,
 }
 
 /// Errors produced when converting a `String` into a `Key`.
@@ -245,7 +245,7 @@ impl Key {
             Key::Dictionary(_) => String::from("Key::Dictionary"),
             Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
             Key::EraSummary => String::from("Key::EraSummary"),
-            Key::Migration => String::from("Key::Migration"),
+            Key::LastMigration => String::from("Key::Migration"),
         }
     }
 
@@ -312,7 +312,7 @@ impl Key {
                     base16::encode_lower(&ERA_SUMMARY_PADDING_KEY)
                 )
             }
-            Key::Migration => {
+            Key::LastMigration => {
                 format!(
                     "{}{}",
                     MIGRATION_PREFIX,
@@ -534,7 +534,7 @@ impl Display for Key {
                 "Key::EraSummary({})",
                 base16::encode_lower(&ERA_SUMMARY_PADDING_KEY),
             ),
-            Key::Migration => write!(
+            Key::LastMigration => write!(
                 f,
                 "Key::Migration({})",
                 base16::encode_lower(&MIGRATION_PADDING_KEY),
@@ -564,7 +564,7 @@ impl Tagged<KeyTag> for Key {
             Key::Dictionary(_) => KeyTag::Dictionary,
             Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
             Key::EraSummary => KeyTag::EraSummary,
-            Key::Migration => KeyTag::Migration,
+            Key::LastMigration => KeyTag::LastMigration,
         }
     }
 }
@@ -653,7 +653,7 @@ impl ToBytes for Key {
             Key::EraSummary => {
                 result.append(&mut ERA_SUMMARY_PADDING_KEY.to_bytes()?);
             }
-            Key::Migration => {
+            Key::LastMigration => {
                 result.append(&mut MIGRATION_PADDING_KEY.to_bytes()?);
             }
         }
@@ -676,7 +676,7 @@ impl ToBytes for Key {
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
             Key::EraSummary => KEY_ERA_SUMMARY_SERIALIZED_LENGTH,
-            Key::Migration => KEY_MIGRATION_SERIALIZED_LENGTH,
+            Key::LastMigration => KEY_MIGRATION_SERIALIZED_LENGTH,
         }
     }
 }
@@ -795,7 +795,7 @@ mod serde_helpers {
                     HumanReadable::SystemContractRegistry(formatted_string)
                 }
                 Key::EraSummary => HumanReadable::EraSummary(formatted_string),
-                Key::Migration => HumanReadable::Migration(formatted_string),
+                Key::LastMigration => HumanReadable::Migration(formatted_string),
             }
         }
     }
@@ -855,7 +855,7 @@ mod serde_helpers {
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
                 Key::EraSummary => BinarySerHelper::EraSummary,
-                Key::Migration => BinarySerHelper::Migration,
+                Key::LastMigration => BinarySerHelper::Migration,
             }
         }
     }

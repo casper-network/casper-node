@@ -19,6 +19,7 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::HostFunctionCosts,
+        migrate_config::MigrationConfig,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         system_config::SystemConfig,
@@ -305,6 +306,7 @@ fn make_engine_config(max_memory: u32) -> EngineConfig {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         wasm_config,
         SystemConfig::default(),
+        MigrationConfig::default(),
     )
 }
 

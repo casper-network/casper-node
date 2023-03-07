@@ -5,17 +5,11 @@ use tracing::{debug, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self,
-        migrate::{MigrateAction, MigrationActions},
-        step::EvictItem,
-        DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-        GetEraValidatorsRequest, QueryRequest, QueryResult, RewardItem, StepError, StepRequest,
-        StepSuccess,
+        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
+        StepRequest, StepSuccess,
     },
-    shared::{
-        additive_map::AdditiveMap, migrate_config::Migration, newtypes::CorrelationId,
-        transform::Transform,
-    },
+    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
 use casper_hashing::Digest;
@@ -46,7 +40,6 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
-    maybe_migration: Option<&Migration>,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -102,35 +95,10 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    if let Some(migration) = maybe_migration {
-        match scratch_state.run_query(
-            CorrelationId::new(),
-            QueryRequest::new(state_root_hash, Key::Migration, vec![]),
-        )? {
-            QueryResult::ValueNotFound(_) => {
-                state_root_hash =
-                    run_migration(&scratch_state, migration, state_root_hash, current_era_id)?;
-            }
-            QueryResult::Success {
-                value: last_run_migration,
-                ..
-            } => {
-                let last_run_migration = last_run_migration
-                    .as_cl_value()
-                    .cloned()
-                    .ok_or(BlockExecutionError::Migration)?
-                    .into_t()
-                    .map_err(|err| {
-                        tracing::error!(?err, "error deserializing CLValue");
-                        BlockExecutionError::Migration
-                    })?;
-                if migration.migration_id() > last_run_migration {
-                    state_root_hash =
-                        run_migration(&scratch_state, migration, state_root_hash, current_era_id)?;
-                }
-            }
-            other => tracing::error!(?other),
-        }
+    if let Some(new_state_root) =
+        engine_state.maybe_run_next_migration(state_root_hash, current_era_id)?
+    {
+        state_root_hash = new_state_root;
     }
 
     if let Some(metrics) = metrics.as_ref() {
@@ -366,32 +334,4 @@ where
     }
     trace!(?result, "step response");
     result
-}
-
-fn run_migration<S>(
-    scratch_state: &EngineState<S>,
-    migration: &Migration,
-    pre_state_root_hash: Digest,
-    current_era_id: EraId,
-) -> Result<Digest, BlockExecutionError>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    Ok(match migration {
-        Migration::WriteStableEraSummaryKey { .. } => {
-            let success = scratch_state.commit_migrate(MigrationActions::new(
-                pre_state_root_hash,
-                vec![MigrateAction::write_stable_era_info(current_era_id)],
-            ))?;
-            success.post_state_hash
-        }
-        Migration::PurgeEraInfo { batch_size, .. } => {
-            let success = scratch_state.commit_migrate(MigrationActions::new(
-                pre_state_root_hash,
-                vec![MigrateAction::purge_era_info(*batch_size, current_era_id)],
-            ))?;
-            success.post_state_hash
-        }
-    })
 }

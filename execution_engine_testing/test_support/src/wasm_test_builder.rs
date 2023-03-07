@@ -24,7 +24,7 @@ use casper_execution_engine::{
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
-            migrate::{MigrateSuccess, MigrationActions},
+            migrate::{MigrationActions, MigrationSuccess},
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
@@ -100,7 +100,7 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    migrate_results: Vec<Result<MigrateSuccess, engine_state::Error>>,
+    migrate_results: Vec<Result<MigrationSuccess, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
@@ -200,6 +200,7 @@ impl InMemoryWasmTestBuilder {
             chainspec_config.core_config.minimum_delegation_amount,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
+            chainspec_config.migration_config,
         );
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
@@ -276,6 +277,7 @@ impl LmdbWasmTestBuilder {
             chainspec_config.core_config.minimum_delegation_amount,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
+            chainspec_config.migration_config,
         );
 
         Self::new_with_config(data_dir, engine_config)
@@ -724,9 +726,9 @@ where
 
     /// Commit a migration.
     pub fn commit_migrate(&mut self, migrate_config: MigrationActions) -> &mut Self {
-        let result = self.engine_state.commit_migrate(migrate_config);
+        let result = self.engine_state.commit_migration(migrate_config);
 
-        if let Ok(MigrateSuccess {
+        if let Ok(MigrationSuccess {
             post_state_hash, ..
         }) = result.as_ref()
         {
@@ -738,7 +740,7 @@ where
     }
 
     /// Get migration results.
-    pub fn get_migrate_results(&mut self) -> &[Result<MigrateSuccess, Error>] {
+    pub fn get_migrate_results(&mut self) -> &[Result<MigrationSuccess, Error>] {
         &self.migrate_results[..]
     }
 

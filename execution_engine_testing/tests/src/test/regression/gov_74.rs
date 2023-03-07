@@ -117,6 +117,7 @@ fn should_observe_stack_height_limit() {
                 Default::default(),
             ),
             Default::default(),
+            Default::default(),
         );
 
         let mut upgrade_request = UpgradeRequestBuilder::new()
