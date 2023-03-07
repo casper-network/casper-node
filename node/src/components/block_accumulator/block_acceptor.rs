@@ -164,7 +164,7 @@ impl BlockAcceptor {
         if false == had_sufficient_finality {
             if let Some(node_id) = peer {
                 self.register_peer(node_id);
-                check_signatures_from_peer_bound(validator_slots, node_id, &self.signatures)?;
+                check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
             }
             self.signatures
                 .entry(finality_signature.public_key.clone())
@@ -198,7 +198,7 @@ impl BlockAcceptor {
 
         if let Some(node_id) = peer {
             self.register_peer(node_id);
-            check_signatures_from_peer_bound(validator_slots, node_id, &self.signatures)?;
+            check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
         }
         let is_new = !self.signatures.contains_key(&finality_signature.public_key);
 

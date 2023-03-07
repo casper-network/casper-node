@@ -764,7 +764,7 @@ fn acceptor_should_store_block() {
 #[test]
 fn acceptor_should_correctly_bound_the_signatures() {
     let mut rng = TestRng::new();
-    let validator_slots = 3;
+    let validator_slots = 2;
 
     // Create a block and an acceptor for it.
     let block = Arc::new(Block::random(&mut rng));
@@ -772,7 +772,7 @@ fn acceptor_should_correctly_bound_the_signatures() {
     let first_peer = NodeId::random(&mut rng);
 
     // Fill the signatures map:
-    for fin_sig in (0..validator_slots)
+    for fin_sig in (0..validator_slots * 2)
         .map(|_| FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into()))
     {
         assert!(acceptor
