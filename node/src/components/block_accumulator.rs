@@ -397,11 +397,8 @@ impl BlockAccumulator {
             None => return Effects::new(),
         };
 
-        match acceptor.register_finality_signature(
-            finality_signature,
-            sender,
-            self.validator_slots,
-        ) {
+        match acceptor.register_finality_signature(finality_signature, sender, self.validator_slots)
+        {
             Ok(Some(finality_signature)) => self.store_block_and_finality_signatures(
                 effect_builder,
                 ShouldStore::SingleSignature(finality_signature),
