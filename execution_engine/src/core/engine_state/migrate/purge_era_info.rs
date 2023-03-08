@@ -36,8 +36,8 @@ pub enum Error {
     RootNotFound,
 
     /// Key does not exist.
-    #[error("key does not exist")]
-    KeyDoesNotExist,
+    #[error("Key does not exist {0:?}")]
+    KeyDoesNotExist(Key),
 }
 
 /// Result of purging eras migration.
@@ -115,7 +115,7 @@ where
         DeleteResult::Deleted(new_post_state_hash) => {
             state_root_hash = new_post_state_hash;
         }
-        DeleteResult::DoesNotExist => return Err(Error::KeyDoesNotExist),
+        DeleteResult::DoesNotExist(key) => return Err(Error::KeyDoesNotExist(key)),
         DeleteResult::RootNotFound => return Err(Error::RootNotFound),
     }
     Ok(PurgeEraInfoSuccess::Progress(PurgedEraInfo {

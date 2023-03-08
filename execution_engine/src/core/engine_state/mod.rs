@@ -475,7 +475,8 @@ where
 
     /// Commits migrate.
     ///
-    /// This process applies changes to the global state.
+    /// This process applies changes to the global state. You should call `maybe_run_next_migration`
+    /// if the config-driven ratcheting behavior is desired.
     ///
     /// Returns [`MigrationSuccess`].
     pub fn commit_migration(
@@ -518,7 +519,7 @@ where
                 migrate::MigrationAction::WriteStableEraSummary { era_id } => {
                     // This migration should execute in a single step.
                     let success =
-                        migrate::write_stable_era_info::write_era_info_summary_to_stable_key(
+                        migrate::write_stable_era_info::write_era_info_summary_to_era_summary_stable_key(
                             &self.state,
                             CorrelationId::new(),
                             migration_config.pre_state_root_hash,
@@ -541,9 +542,13 @@ where
     /// Runs any pending migration defined within the chainspec in `MigrationConfig`. Calls
     /// `commit_migration` to commit the migration.
     ///
-    /// The latest migration id is stored in the trie under `Key::LastMigration`.
+    /// The latest migration id is stored in the trie under `Key::LastMigration` only when a
+    /// migration is -complete-. Migrations may be chunked, and are intended to be re-entrant. A
+    /// migration that is to be run many times should only increment the value
+    /// under`Key::LastMigration` when it has fully completed. This mechanism exists to allow
+    /// ratcheting forward a chunked migration over time.
     ///
-    /// Returns `None` if no migrations is to be run.
+    /// Returns `None` if no migrations are to be run.
     pub fn maybe_run_next_migration(
         &self,
         state_root_hash: Digest,
@@ -553,9 +558,34 @@ where
         S: StateProvider + CommitProvider,
         S::Error: Into<execution::Error>,
     {
-        tracing::debug!("looking for next migration");
+        if let Some(migration) = self.remaining_migrations(state_root_hash)?.next() {
+            tracing::debug!(?migration, "found migration, running it");
+            let actions = actions_from_config(&migration, current_era_id, state_root_hash);
 
-        let correlation_id = CorrelationId::new();
+            tracing::debug!(?actions, ?migration, "about to run migration actions");
+            let MigrationSuccess { post_state_hash } = self.commit_migration(actions)?;
+
+            tracing::info!(
+                migration_id = migration.migration_id(),
+                "successfully ran migration"
+            );
+
+            return Ok(Some(post_state_hash));
+        }
+
+        tracing::debug!("no migration to run.");
+        Ok(None)
+    }
+
+    /// Returns a sorted iter over any remaining migrations that are not yet marked complete.
+    fn remaining_migrations(
+        &self,
+        state_root_hash: Digest,
+    ) -> Result<impl Iterator<Item = Migration>, Error>
+    where
+        S: StateProvider + CommitProvider,
+        S::Error: Into<execution::Error>,
+    {
         let mut tracking_copy = match self
             .state
             .checkout(state_root_hash)
@@ -564,19 +594,15 @@ where
             Some(tracking_copy) => TrackingCopy::new(tracking_copy),
             None => return Err(Error::RootNotFound(state_root_hash)),
         };
-        tracing::debug!("checking global state for Key::LastMigration");
-        // get last migration run
+
         let maybe_last_migration_run = tracking_copy
-            .get(correlation_id, &Key::LastMigration)
+            .get(CorrelationId::new(), &Key::LastMigration)
             .ok()
             .flatten()
             .and_then(|value| value.as_cl_value().cloned())
             .and_then(|value| value.into_t::<u32>().ok());
 
-        tracing::debug!(?maybe_last_migration_run);
-
-        // get list of migrations in chainspec
-        let mut sorted_migrations = self
+        Ok(self
             .config
             .migration_config
             .migrations
@@ -589,30 +615,7 @@ where
                 ))
             })
             .cloned()
-            .sorted_by(|left, right| left.migration_id().cmp(&right.migration_id()));
-
-        if let Some(migration) = sorted_migrations.next() {
-            tracing::debug!(?migration);
-
-            let actions = match migration {
-                Migration::WriteStableEraSummaryKey { .. } => MigrationActions::new(
-                    migration.migration_id(),
-                    state_root_hash,
-                    vec![MigrationAction::write_stable_era_info(current_era_id)],
-                ),
-                Migration::PurgeEraInfo { batch_size, .. } => MigrationActions::new(
-                    migration.migration_id(),
-                    state_root_hash,
-                    vec![MigrationAction::purge_era_info(batch_size, current_era_id)],
-                ),
-            };
-            tracing::debug!(?actions, ?migration, "about to run migration actions");
-            let MigrationSuccess { post_state_hash } = self.commit_migration(actions)?;
-            tracing::debug!(?migration, "successfully ran migration");
-            return Ok(Some(post_state_hash));
-        }
-        tracing::info!("no migration to run.");
-        Ok(None)
+            .sorted_by(|left, right| left.migration_id().cmp(&right.migration_id())))
     }
 
     fn migration_completed(
@@ -2272,5 +2275,27 @@ where
     fn get_new_system_call_stack(&self) -> RuntimeStack {
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
+    }
+}
+
+fn actions_from_config(
+    migration: &Migration,
+    current_era_id: EraId,
+    state_root_hash: Digest,
+) -> MigrationActions {
+    match *migration {
+        Migration::WriteStableEraSummaryKey { .. } => {
+            let last_era_id = current_era_id.saturating_sub(1);
+            MigrationActions::new(
+                migration.migration_id(),
+                state_root_hash,
+                vec![MigrationAction::write_stable_era_info(last_era_id)],
+            )
+        }
+        Migration::PurgeEraInfo { batch_size, .. } => MigrationActions::new(
+            migration.migration_id(),
+            state_root_hash,
+            vec![MigrationAction::purge_era_info(batch_size, current_era_id)],
+        ),
     }
 }

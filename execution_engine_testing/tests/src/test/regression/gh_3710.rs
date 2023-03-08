@@ -29,85 +29,6 @@ const FIXTURE_N_ERAS: usize = 10;
 const GH_3710_FIXTURE: &str = "gh_3710";
 const DEFAULT_REWARD_VALUE: u64 = 1_000_000;
 
-// #[ignore]
-// #[test]
-// fn gh_3710_should_delete_era_infos_at_upgrade_point() {
-//     let (mut builder, lmdb_fixture_state, _temp_dir) =
-//         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
-
-//     let auction_delay: u64 = lmdb_fixture_state
-//         .genesis_request
-//         .get("ee_config")
-//         .expect("should have ee_config")
-//         .get("auction_delay")
-//         .expect("should have auction delay")
-//         .as_i64()
-//         .expect("auction delay should be integer")
-//         .try_into()
-//         .expect("auction delay should be positive");
-
-//     let last_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
-//     let pre_upgrade_state_root_hash = builder.get_post_state_hash();
-
-//     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-//     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-//     let new_protocol_version = ProtocolVersion::from_parts(
-//         current_protocol_version.value().major,
-//         current_protocol_version.value().minor,
-//         current_protocol_version.value().patch + 1,
-//     );
-
-//     let era_info_keys_before_upgrade = builder
-//         .get_keys(KeyTag::EraInfo)
-//         .expect("should return all the era info keys");
-
-//     let mut upgrade_request = {
-//         UpgradeRequestBuilder::new()
-//             .with_current_protocol_version(previous_protocol_version)
-//             .with_new_protocol_version(new_protocol_version)
-//             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-//             .build()
-//     };
-
-//     builder
-//         .upgrade_with_upgrade_request(builder.get_engine_state().config_clone(), &mut
-// upgrade_request)         .expect_upgrade_success();
-
-//     let upgrade_result = builder.get_upgrade_result(0).expect("result");
-
-//     let upgrade_success = upgrade_result.as_ref().expect("success");
-//     assert_eq!(
-//         upgrade_success.post_state_hash,
-//         builder.get_post_state_hash(),
-//         "sanity check"
-//     );
-
-//     let era_info_keys_after_upgrade = builder
-//         .get_keys(KeyTag::EraInfo)
-//         .expect("should return all the era info keys");
-//     assert_eq!(
-//         era_info_keys_before_upgrade.len(),
-//         auction_delay as usize + 1 + FIXTURE_N_ERAS,
-//     );
-//     assert_eq!(era_info_keys_after_upgrade, Vec::new());
-
-//     let last_era_info_value = builder
-//         .query(
-//             Some(pre_upgrade_state_root_hash),
-//             Key::EraInfo(last_era_info),
-//             &[],
-//         )
-//         .expect("should query pre-upgrade stored value");
-
-//     let era_summary = builder
-//         .query(None, Key::EraSummary, &[])
-//         .expect("should query stable key after the upgrade");
-
-//     assert_eq!(last_era_info_value, era_summary);
-// }
-
 #[ignore]
 #[test]
 fn gh_3710_should_delete_eras_on_each_migration_step() {
@@ -215,10 +136,20 @@ fn gh_3710_should_delete_eras_on_each_migration_step() {
         .commit_migrate(MigrationActions::new(0, current_root_hash, vec![action]))
         .expect_migrate_success();
 
-    assert_eq!(
+    let last_migration_run = builder
+        .get_keys(KeyTag::LastMigration)
+        .expect("should return all the era info keys");
+
+    assert_eq!(last_migration_run.first(), Some(&Key::LastMigration));
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+    assert_eq!(era_info_after_migration.first(), None,);
+
+    assert_ne!(
         current_root_hash,
         builder.get_post_state_hash(),
-        "Post state hash should not change if all era infos are already deleted"
+        "Post state hash should change if last_migration_run is written"
     );
 
     let era_info_after_migration = builder
@@ -334,10 +265,20 @@ fn gh_3710_should_delete_eras_on_each_migration_step_with_increasing_eras() {
         .commit_migrate(MigrationActions::new(0, current_root_hash, vec![action]))
         .expect_migrate_success();
 
-    assert_eq!(
+    let last_migration_run = builder
+        .get_keys(KeyTag::LastMigration)
+        .expect("should return all the era info keys");
+
+    assert_eq!(last_migration_run.first(), Some(&Key::LastMigration));
+    let era_info_after_migration = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should return all the era info keys");
+    assert_eq!(era_info_after_migration.first(), None,);
+
+    assert_ne!(
         current_root_hash,
         builder.get_post_state_hash(),
-        "Post state hash should not change if all era infos are already deleted"
+        "Post state hash should change if last_migration_run is written"
     );
 
     let era_info_after_migration = builder
@@ -504,7 +445,7 @@ where
     }
 }
 
-#[cfg(feature = "fixture-generators")]
+//#[cfg(feature = "fixture-generators")]
 mod fixture {
     use std::collections::BTreeMap;
 

@@ -7,7 +7,7 @@ fn checked_delete<'a, K, V, R, S, E>(
     store: &S,
     root: &Digest,
     key_to_delete: &K,
-) -> Result<DeleteResult, E>
+) -> Result<DeleteResult<K>, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
@@ -68,7 +68,7 @@ mod partial_tries {
             key_to_delete,
         )? {
             DeleteResult::Deleted(root_after_delete) => root_after_delete,
-            DeleteResult::DoesNotExist => panic!("key did not exist"),
+            DeleteResult::DoesNotExist(key) => panic!("key did not exist {:?}", key),
             DeleteResult::RootNotFound => panic!("root should be found"),
         };
         assert_eq!(root_after_delete, *expected_root_after_delete);
@@ -129,7 +129,7 @@ mod partial_tries {
         store: &S,
         root: &Digest,
         key_to_delete: &K,
-    ) -> Result<(), E>
+    ) -> Result<K, E>
     where
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -147,7 +147,7 @@ mod partial_tries {
             key_to_delete,
         )? {
             DeleteResult::Deleted(_) => panic!("should not delete"),
-            DeleteResult::DoesNotExist => Ok(()),
+            DeleteResult::DoesNotExist(key) => Ok(key),
             DeleteResult::RootNotFound => panic!("root should be found"),
         }
     }
@@ -343,7 +343,7 @@ mod full_tries {
         keys_to_delete: &[K],
     ) -> Result<(), E>
     where
-        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + PartialEq,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<K, V>,
@@ -370,7 +370,9 @@ mod full_tries {
                 DeleteResult::Deleted(new_root) => {
                     expected_root = new_root;
                 }
-                DeleteResult::DoesNotExist => {}
+                DeleteResult::DoesNotExist(missing) => {
+                    assert_eq!(*key, missing)
+                }
                 DeleteResult::RootNotFound => panic!("should find root"),
             }
         }

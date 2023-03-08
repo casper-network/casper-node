@@ -733,6 +733,10 @@ impl FromBytes for Key {
                 let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::EraSummary, rem))
             }
+            tag if tag == KeyTag::LastMigration as u8 => {
+                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                Ok((Key::LastMigration, rem))
+            }
             _ => Err(Error::Formatting),
         }
     }

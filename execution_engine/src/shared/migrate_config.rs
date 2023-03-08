@@ -64,14 +64,14 @@ impl ToBytes for Migration {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         match self {
             Migration::WriteStableEraSummaryKey { migration_id } => {
-                ret.append(&mut vec![0u8]);
+                ret.push(0u8);
                 ret.append(&mut migration_id.to_bytes()?);
             }
             Migration::PurgeEraInfo {
                 migration_id,
                 batch_size,
             } => {
-                ret.append(&mut vec![1u8]);
+                ret.push(1u8);
                 ret.append(&mut migration_id.to_bytes()?);
                 ret.append(&mut batch_size.to_bytes()?)
             }
@@ -82,12 +82,12 @@ impl ToBytes for Migration {
     fn serialized_length(&self) -> usize {
         match self {
             Migration::WriteStableEraSummaryKey { migration_id } => {
-                migration_id.serialized_length()
+                1 + migration_id.serialized_length()
             }
             Migration::PurgeEraInfo {
                 migration_id,
                 batch_size,
-            } => migration_id.serialized_length() + batch_size.serialized_length(),
+            } => 1 + migration_id.serialized_length() + batch_size.serialized_length(),
         }
     }
 }
@@ -159,5 +159,39 @@ pub mod gens {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let migration1 = Migration::PurgeEraInfo {
+            migration_id: 15,
+            batch_size: 42,
+        };
+        let migration2 = Migration::WriteStableEraSummaryKey { migration_id: 16 };
+        let migrations = MigrationConfig {
+            migrations: vec![migration1, migration2],
+        };
+        let bytes = migrations.to_bytes().unwrap();
+        assert_eq!(bytes.len(), migrations.serialized_length());
+        let (from_bytes, _) = MigrationConfig::from_bytes(&bytes).unwrap();
+        assert_eq!(migrations, from_bytes);
+    }
+
+    #[test]
+    fn bytesrepr_fails_with_bad_tag() {
+        let migration = Migration::PurgeEraInfo {
+            migration_id: 10,
+            batch_size: 22,
+        };
+        let mut bytes = migration.to_bytes().unwrap();
+        bytes[0] = 42u8;
+
+        let result = Migration::from_bytes(&bytes);
+        assert!(matches!(result, Err(bytesrepr::Error::Formatting)));
     }
 }

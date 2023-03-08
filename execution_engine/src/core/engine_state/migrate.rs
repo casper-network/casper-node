@@ -19,7 +19,8 @@ pub enum MigrationAction {
     },
     /// Migrate Key::EraInfo(id) -> Key::EraSummary. Should happen once.
     WriteStableEraSummary {
-        /// the era id to use for this migration.
+        /// The era id to use for this migration. This should be current_era_id - 1, because the
+        /// current era's era_info doesn't exist until the auction runs.
         era_id: EraId,
     },
 }

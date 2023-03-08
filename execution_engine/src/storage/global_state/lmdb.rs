@@ -17,8 +17,8 @@ use crate::{
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                delete_without_scratch, keys_with_prefix, missing_trie_keys, put_trie, read,
-                read_with_proof, DeleteResult, ReadResult,
+                delete, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof,
+                DeleteResult, ReadResult,
             },
         },
     },
@@ -286,26 +286,19 @@ impl StateProvider for LmdbGlobalState {
         Ok(missing_descendants)
     }
 
-    /// Delete keys.
+    /// Delete keys using the scratch trie.
     fn delete_keys(
         &self,
         correlation_id: CorrelationId,
         mut state_root_hash: Digest,
         keys: &[Key],
-    ) -> Result<DeleteResult, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-
+    ) -> Result<DeleteResult<Key>, Self::Error> {
+        let scratch_trie_store = self.get_scratch_store();
         for key in keys {
-            match delete_without_scratch::<
-                Key,
-                StoredValue,
-                lmdb::RwTransaction,
-                LmdbTrieStore,
-                Self::Error,
-            >(
+            match delete::<Key, StoredValue, _, _, Self::Error>(
                 correlation_id,
-                &mut txn,
-                &self.trie_store,
+                &scratch_trie_store,
+                &scratch_trie_store,
                 &state_root_hash,
                 key,
             )? {
@@ -315,8 +308,7 @@ impl StateProvider for LmdbGlobalState {
                 other => return Ok(other),
             }
         }
-
-        txn.commit()?;
+        scratch_trie_store.write_root_to_db(state_root_hash)?;
         Ok(DeleteResult::Deleted(state_root_hash))
     }
 }

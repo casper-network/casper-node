@@ -728,10 +728,7 @@ where
     pub fn commit_migrate(&mut self, migrate_config: MigrationActions) -> &mut Self {
         let result = self.engine_state.commit_migration(migrate_config);
 
-        if let Ok(MigrationSuccess {
-            post_state_hash, ..
-        }) = result.as_ref()
-        {
+        if let Ok(MigrationSuccess { post_state_hash }) = result.as_ref() {
             self.post_state_hash = Some(*post_state_hash);
         }
 

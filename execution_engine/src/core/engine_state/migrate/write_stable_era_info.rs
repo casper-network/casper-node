@@ -15,19 +15,19 @@ use casper_types::{EraId, Key};
 #[non_exhaustive]
 pub enum StableKeyError {
     /// Execution Engine error.
-    #[error("exec error: {0}")]
+    #[error("Error during migration: {0}")]
     Exec(execution::Error),
 
     /// Unable to retrieve last era info.
-    #[error("unable to retrieve last era info")]
+    #[error("Unable to retrieve last era info:s {0}")]
     UnableToRetrieveLastEraInfo(execution::Error),
     /// Root not found.
-    #[error("root not found")]
+    #[error("Root not found")]
     RootNotFound,
 
     /// Key does not exist.
-    #[error("key does not exist")]
-    KeyDoesNotExist,
+    #[error("Key does not exist {0:?}")]
+    KeyDoesNotExist(Key),
 }
 
 /// Action for writing stable key for era summary, used once from EraInfo(id) -> EraSummary.
@@ -37,7 +37,7 @@ pub struct WroteEraSummary {
 }
 
 /// Write era info currently at era_id(number) key to stable key.
-pub fn write_era_info_summary_to_stable_key<S>(
+pub fn write_era_info_summary_to_era_summary_stable_key<S>(
     state: &S,
     correlation_id: CorrelationId,
     state_root_hash: Digest,
@@ -55,14 +55,15 @@ where
         None => return Err(StableKeyError::RootNotFound),
     };
 
+    let era_info_key = Key::EraInfo(era_id);
     let last_era_info = match tracking_copy
         .borrow_mut()
-        .get(correlation_id, &Key::EraInfo(era_id))
+        .get(correlation_id, &era_info_key)
         .map_err(|error| StableKeyError::UnableToRetrieveLastEraInfo(error.into()))?
     {
         Some(era_info) => era_info,
         None => {
-            return Err(StableKeyError::KeyDoesNotExist);
+            return Err(StableKeyError::KeyDoesNotExist(era_info_key));
         }
     };
 

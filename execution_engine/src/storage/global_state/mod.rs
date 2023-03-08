@@ -133,7 +133,7 @@ pub trait StateProvider {
         correlation_id: CorrelationId,
         root: Digest,
         keys_to_delete: &[Key],
-    ) -> Result<DeleteResult, Self::Error>;
+    ) -> Result<DeleteResult<Key>, Self::Error>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.

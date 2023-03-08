@@ -95,6 +95,12 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
+    if let Some(new_state_root) =
+        engine_state.maybe_run_next_migration(state_root_hash, current_era_id)?
+    {
+        state_root_hash = new_state_root;
+    }
+
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
     }
@@ -133,13 +139,6 @@ pub fn execute_finalized_block(
                 upcoming_era_validators,
             })
         } else {
-            // Only
-            tracing::debug!("maybe_run_next_migration");
-            if let Some(new_state_root) =
-                engine_state.maybe_run_next_migration(state_root_hash, current_era_id)?
-            {
-                state_root_hash = new_state_root;
-            }
             // Finally, the new state-root-hash from the cumulative changes to global state is
             // returned when they are written to LMDB.
             state_root_hash =

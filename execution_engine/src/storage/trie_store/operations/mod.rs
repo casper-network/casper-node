@@ -8,7 +8,6 @@ use std::{
     mem,
 };
 
-use itertools::Either;
 use tracing::{error, warn};
 
 use casper_hashing::Digest;
@@ -510,122 +509,10 @@ where
     }
 }
 
-struct TrieScanRaw<K, V> {
-    tip: Either<Bytes, Trie<K, V>>,
-    parents: Parents<K, V>,
-}
-
-impl<K, V> TrieScanRaw<K, V> {
-    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>) -> Self {
-        TrieScanRaw { tip, parents }
-    }
-}
-
-/// Just like scan, however we don't parse the tip.
-fn scan_raw<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
-    txn: &T,
-    store: &S,
-    key_bytes: &[u8],
-    root: &Trie<K, V>,
-) -> Result<TrieScanRaw<K, V>, E>
-where
-    K: ToBytes + FromBytes + Clone,
-    V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    let path = key_bytes;
-
-    let mut current_trie;
-    let mut current = Bytes::from(root.to_bytes()?);
-    let mut depth: usize = 0;
-    let mut acc: Parents<K, V> = Vec::new();
-
-    loop {
-        current_trie = if current.first() == Some(&0) {
-            return Ok(TrieScanRaw::new(Either::Left(current), acc));
-        } else {
-            let (deserialized, _) = Trie::<K, V>::from_bytes(&current)?;
-            deserialized
-        };
-        match current_trie {
-            _leaf @ Trie::Leaf { .. } => {
-                // since we are checking if this is a leaf and skipping, we do not expect to ever
-                // hit this.
-                unreachable!()
-            }
-            Trie::Node { pointer_block } => {
-                let index = {
-                    assert!(depth < path.len(), "depth must be < {}", path.len());
-                    path[depth]
-                };
-                let maybe_pointer: Option<Pointer> = {
-                    let index: usize = index.into();
-                    assert!(index < RADIX, "index must be < {}", RADIX);
-                    pointer_block[index]
-                };
-                let pointer = match maybe_pointer {
-                    Some(pointer) => pointer,
-                    None => {
-                        return Ok(TrieScanRaw::new(
-                            Either::Right(Trie::Node { pointer_block }),
-                            acc,
-                        ));
-                    }
-                };
-                match store.get_raw(txn, pointer.hash())? {
-                    Some(next) => {
-                        current = next;
-                        depth += 1;
-                        acc.push((index, Trie::Node { pointer_block }))
-                    }
-                    None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from path: {:?})",
-                            pointer.hash(),
-                            path
-                        );
-                    }
-                }
-            }
-            Trie::Extension { affix, pointer } => {
-                let sub_path = &path[depth..depth + affix.len()];
-                if sub_path != affix.as_slice() {
-                    return Ok(TrieScanRaw::new(
-                        Either::Right(Trie::Extension { affix, pointer }),
-                        acc,
-                    ));
-                }
-                match store.get_raw(txn, pointer.hash())? {
-                    Some(next) => {
-                        let index = {
-                            assert!(depth < path.len(), "depth must be < {}", path.len());
-                            path[depth]
-                        };
-                        current = next;
-                        depth += affix.len();
-                        acc.push((index, Trie::Extension { affix, pointer }))
-                    }
-                    None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from path: {:?})",
-                            pointer.hash(),
-                            path
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
-pub enum DeleteResult {
+pub enum DeleteResult<K> {
     Deleted(Digest),
-    DoesNotExist,
+    DoesNotExist(K),
     RootNotFound,
 }
 
@@ -636,7 +523,7 @@ pub fn delete<'a, K, V, R, S, E>(
     store: &S,
     root: &Digest,
     key_to_delete: &K,
-) -> Result<DeleteResult, E>
+) -> Result<DeleteResult<K>, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
@@ -652,15 +539,13 @@ where
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
-
-    // TODO: scan_raw
     let TrieScan { tip, mut parents } =
         scan::<_, _, _, _, E>(correlation_id, &txn, store, &key_bytes, &root_trie)?;
 
-    // Check that tip is a leaf
+    // Check that tip is the leaf we expected.
     match tip {
         Trie::Leaf { key, .. } if key == *key_to_delete => {}
-        _ => return Ok(DeleteResult::DoesNotExist),
+        _ => return Ok(DeleteResult::DoesNotExist(key_to_delete.clone())),
     }
 
     let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
@@ -836,6 +721,7 @@ where
     for (hash, element) in new_elements.iter() {
         store.put(&mut txn, hash, element)?;
     }
+
     // The hash of the final trie in the new elements is the new root
     let new_root = new_elements
         .pop()
@@ -844,216 +730,6 @@ where
 
     txn.commit()?;
 
-    Ok(DeleteResult::Deleted(new_root))
-}
-
-pub fn delete_without_scratch<K, V, T, S, E>(
-    correlation_id: CorrelationId,
-    txn: &mut T,
-    store: &S,
-    root: &Digest,
-    key_to_delete: &K,
-) -> Result<DeleteResult, E>
-where
-    K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
-    V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    let root_trie = match store.get(txn, root)? {
-        None => return Ok(DeleteResult::RootNotFound),
-        Some(root_trie) => root_trie,
-    };
-
-    let key_bytes = key_to_delete.to_bytes()?;
-    let TrieScanRaw { tip, mut parents } =
-        scan_raw::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
-
-    // Check that tip is a leaf
-    match tip {
-        Either::Left(_) => {}
-        _ => return Ok(DeleteResult::DoesNotExist),
-    }
-
-    let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
-
-    while let Some((idx, parent)) = parents.pop() {
-        match (new_elements.last_mut(), parent) {
-            (_, Trie::Leaf { .. }) => panic!("Should not find leaf"),
-            (None, Trie::Extension { .. }) => panic!("Extension node should never end in leaf"),
-            (Some((_, Trie::Leaf { .. })), _) => panic!("New elements should never contain a leaf"),
-            // The parent is the node which pointed to the leaf we deleted, and that leaf had
-            // multiple siblings.
-            (None, Trie::Node { mut pointer_block }) if pointer_block.child_count() > 2 => {
-                let trie_node: Trie<K, V> = {
-                    pointer_block[idx as usize] = None;
-                    Trie::Node { pointer_block }
-                };
-                let trie_key = Digest::hash(&trie_node.to_bytes()?);
-                new_elements.push((trie_key, trie_node))
-            }
-            // The parent is the node which pointed to the leaf we deleted, and that leaf had one or
-            // zero siblings.
-            (None, Trie::Node { mut pointer_block }) => {
-                let (sibling_idx, sibling_pointer) = match pointer_block
-                    .as_indexed_pointers()
-                    .find(|(jdx, _)| idx != *jdx)
-                {
-                    // There are zero siblings.  Elsewhere we maintain the invariant that only the
-                    // root node can contain a single leaf.  Therefore the parent is the root node.
-                    // The resulting output is just the empty node and nothing else.
-                    None => {
-                        let trie_node = Trie::Node {
-                            pointer_block: Box::new(PointerBlock::new()),
-                        };
-                        let trie_key = Digest::hash(&trie_node.to_bytes()?);
-                        new_elements.push((trie_key, trie_node));
-                        break;
-                    }
-                    Some((sibling_idx, pointer)) => (sibling_idx, pointer),
-                };
-                // There is one sibling.
-                match (sibling_pointer, parents.pop()) {
-                    (_, Some((_, Trie::Leaf { .. }))) => panic!("Should not have leaf in scan"),
-                    // There is no grandparent.  Therefore the parent is the root node.  Output the
-                    // root node with the index zeroed out.
-                    (_, None) => {
-                        pointer_block[idx as usize] = None;
-                        let trie_node = Trie::Node { pointer_block };
-                        let trie_key = Digest::hash(&trie_node.to_bytes()?);
-                        new_elements.push((trie_key, trie_node));
-                        break;
-                    }
-                    // The sibling is a leaf and the grandparent is a node.  Reseat the single leaf
-                    // sibling into the grandparent.
-                    (Pointer::LeafPointer(..), Some((idx, Trie::Node { mut pointer_block }))) => {
-                        pointer_block[idx as usize] = Some(sibling_pointer);
-                        let trie_node = Trie::Node { pointer_block };
-                        let trie_key = Digest::hash(&trie_node.to_bytes()?);
-                        new_elements.push((trie_key, trie_node))
-                    }
-                    // The sibling is a leaf and the grandparent is an extension.
-                    (Pointer::LeafPointer(..), Some((_, Trie::Extension { .. }))) => {
-                        match parents.pop() {
-                            None => panic!("Root node cannot be an extension node"),
-                            Some((_, Trie::Leaf { .. })) => panic!("Should not find leaf"),
-                            Some((_, Trie::Extension { .. })) => {
-                                panic!("Extension cannot extend to an extension")
-                            }
-                            // The great-grandparent is a node. Reseat the single leaf sibling into
-                            // the position the grandparent was in.
-                            Some((idx, Trie::Node { mut pointer_block })) => {
-                                pointer_block[idx as usize] = Some(sibling_pointer);
-                                let trie_node = Trie::Node { pointer_block };
-                                let trie_key = Digest::hash(&trie_node.to_bytes()?);
-                                new_elements.push((trie_key, trie_node))
-                            }
-                        }
-                    }
-                    // The single sibling is a node or an extension, and a grandparent exists.
-                    // Therefore the parent is not the root
-                    (Pointer::NodePointer(sibling_trie_key), Some((idx, grandparent))) => {
-                        // Push the grandparent back onto the parents so it may be processed later.
-                        parents.push((idx, grandparent));
-                        // Elsewhere we maintain the invariant that all trie keys have corresponding
-                        // trie values.
-                        let sibling_trie = store
-                            .get(txn, &sibling_trie_key)?
-                            .expect("should have sibling");
-                        match sibling_trie {
-                            Trie::Leaf { .. } => {
-                                panic!("Node pointer should not point to leaf")
-                            }
-                            // The single sibling is a node, and there exists a grandparent.
-                            // Therefore the parent is not the root.  We output an extension to
-                            // replace the parent, with a single byte corresponding to the sibling
-                            // index.  In the next loop iteration, we will handle the case where
-                            // this extension might need to be combined with a grandparent
-                            // extension.
-                            Trie::Node { .. } => {
-                                let new_extension: Trie<K, V> = Trie::Extension {
-                                    affix: vec![sibling_idx].into(),
-                                    pointer: sibling_pointer,
-                                };
-                                let trie_key = Digest::hash(&new_extension.to_bytes()?);
-                                new_elements.push((trie_key, new_extension))
-                            }
-                            // The single sibling is a extension.  We output an extension to replace
-                            // the parent, prepending the sibling index to the sibling's affix.  In
-                            // the next loop iteration, we will handle the case where this extension
-                            // might need to be combined with a grandparent extension.
-                            Trie::Extension {
-                                affix: extension_affix,
-                                pointer,
-                            } => {
-                                let mut new_affix = vec![sibling_idx];
-                                new_affix.extend(Vec::<u8>::from(extension_affix));
-                                let new_extension: Trie<K, V> = Trie::Extension {
-                                    affix: new_affix.into(),
-                                    pointer,
-                                };
-                                let trie_key = Digest::hash(&new_extension.to_bytes()?);
-                                new_elements.push((trie_key, new_extension))
-                            }
-                        }
-                    }
-                }
-            }
-            // The parent is a pointer block, and we are propagating a node or extension upwards.
-            // It is impossible to propagate a leaf upwards.  Reseat the thing we are propagating
-            // into the parent.
-            (Some((trie_key, _)), Trie::Node { mut pointer_block }) => {
-                let trie_node: Trie<K, V> = {
-                    pointer_block[idx as usize] = Some(Pointer::NodePointer(*trie_key));
-                    Trie::Node { pointer_block }
-                };
-                let trie_key = Digest::hash(&trie_node.to_bytes()?);
-                new_elements.push((trie_key, trie_node))
-            }
-            // The parent is an extension, and we are outputting an extension.  Prepend the parent
-            // affix to affix of the output extension, mutating the output in place.  This is the
-            // only mutate-in-place.
-            (
-                Some((
-                    trie_key,
-                    Trie::Extension {
-                        affix: child_affix,
-                        pointer,
-                    },
-                )),
-                Trie::Extension { affix, .. },
-            ) => {
-                let mut new_affix: Vec<u8> = affix.into();
-                new_affix.extend_from_slice(child_affix.as_slice());
-                *child_affix = new_affix.into();
-                *trie_key = {
-                    let new_extension: Trie<K, V> = Trie::Extension {
-                        affix: child_affix.to_owned(),
-                        pointer: pointer.to_owned(),
-                    };
-                    Digest::hash(&new_extension.to_bytes()?)
-                }
-            }
-            // The parent is an extension and the new element is a pointer block.  The next element
-            // we add will be an extension to the pointer block we are going to add.
-            (Some((trie_key, Trie::Node { .. })), Trie::Extension { affix, .. }) => {
-                let pointer = Pointer::NodePointer(*trie_key);
-                let trie_extension = Trie::Extension { affix, pointer };
-                let trie_key = Digest::hash(&trie_extension.to_bytes()?);
-                new_elements.push((trie_key, trie_extension))
-            }
-        }
-    }
-    for (hash, element) in new_elements.iter() {
-        store.put(txn, hash, element)?;
-    }
-    // The hash of the final trie in the new elements is the new root
-    let new_root = new_elements
-        .pop()
-        .map(|(hash, _)| hash)
-        .unwrap_or_else(|| root.to_owned());
     Ok(DeleteResult::Deleted(new_root))
 }
 

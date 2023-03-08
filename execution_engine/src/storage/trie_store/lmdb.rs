@@ -203,7 +203,6 @@ impl ScratchTrieStore {
         let store = self.store;
         let cache = &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
 
-        dbg!(cache.len());
         let (is_root_dirty, root_trie) = cache
             .get(&state_root)
             .ok_or(CommitError::TrieNotFoundInCache(state_root))?;
