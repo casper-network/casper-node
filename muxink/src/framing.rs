@@ -12,6 +12,7 @@
 //! * [`length_delimited`]: Transforms byte-like values into self-contained frames with a
 //!   length-prefix.
 
+pub mod fixed_size;
 pub mod length_delimited;
 pub mod little_endian;
 
