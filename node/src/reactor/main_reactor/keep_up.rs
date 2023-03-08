@@ -15,6 +15,7 @@ use crate::{
         block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::EraValidatorsRequest,
         storage::HighestOrphanedBlockResult,
+        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{
@@ -346,9 +347,6 @@ impl MainReactor {
         block_era_id: EraId,
         parent_metadata: ParentMetadata,
     ) -> KeepUpInstruction {
-        let simultaneous_peer_requests =
-            self.chainspec.core_config.simultaneous_peer_requests as usize;
-
         // We try to read the validator sets from global states of two blocks - if either returns
         // `RootNotFound`, we'll initiate fetching of the corresponding global state.
         let effects = async move {
@@ -372,7 +370,7 @@ impl MainReactor {
             // A return value of `Ok` means that validators were read successfully.
             // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
             // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            let result = match (parent_era_validators_result, block_era_validators_result) {
+            match (parent_era_validators_result, block_era_validators_result) {
                 // Both states were present - return the result.
                 (Ok(parent_era_validators), Ok(block_era_validators)) => {
                     Ok((parent_era_validators, block_era_validators))
@@ -407,25 +405,6 @@ impl MainReactor {
                     );
                     Err(vec![])
                 }
-            };
-
-            match result {
-                // If we got `Err`, we initiate syncing of the global states.
-                Err(global_state_hashes) => {
-                    let peers_to_ask = effect_builder
-                        .get_fully_connected_peers(simultaneous_peer_requests)
-                        .await;
-                    if peers_to_ask.is_empty() {
-                        // If no peers, we do nothing - this should effectively wait and retry
-                        // later.
-                        Err((vec![], vec![]))
-                    } else {
-                        // Return the hashes and peers.
-                        Err((global_state_hashes, peers_to_ask))
-                    }
-                }
-                // Nothing to do with an `Ok` result.
-                Ok(res) => Ok(res),
             }
         }
         .result(
@@ -439,10 +418,9 @@ impl MainReactor {
                 )
             },
             // A global state was missing - we ask the BlockSynchronizer to fetch what is needed.
-            |(global_states_to_sync, peers_to_ask)| {
+            |global_states_to_sync| {
                 MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::SyncGlobalStates(
                     global_states_to_sync,
-                    peers_to_ask,
                 ))
             },
         );
@@ -525,9 +503,18 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
+
+        // latch accumulator progress to allow sync-leap time to do work
+        self.block_accumulator.reset_last_progress();
+
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
-        let effects =
-            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
+
+        let effects = effect_builder.immediately().event(move |_| {
+            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                sync_leap_identifier,
+                peers_to_ask,
+            })
+        });
         KeepUpInstruction::Do(offset, effects)
     }
 
@@ -543,17 +530,12 @@ impl MainReactor {
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "historical: leap received");
 
-        self.last_sync_leap_highest_block_hash = Some(block_hash);
-
         let era_validator_weights =
             sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "historical: attempt to register validators for era");
-            if self
-                .validator_matrix
-                .register_era_validator_weights_and_infer_era_0(evw)
-            {
+            if self.validator_matrix.register_era_validator_weights(evw) {
                 info!(%era_id, "historical: got era");
             } else {
                 debug!(%era_id, "historical: era already present or is not relevant");

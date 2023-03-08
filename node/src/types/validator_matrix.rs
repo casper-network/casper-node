@@ -99,13 +99,13 @@ impl ValidatorMatrix {
     // Currently we only infer the validator weights for era 0 from the set registered for era 1.
     // This is needed for the case where we want to sync leap to a block in era 0 of a pre 1.5.0
     // network for which we cant get the validator weights from a switch block.
-    pub(crate) fn register_era_validator_weights_and_infer_era_0(
+    pub(crate) fn register_era_validator_weights(
         &mut self,
         validators: EraValidatorWeights,
     ) -> bool {
-        let was_present = self.register_era_validator_weights(validators.clone());
+        let was_present = self.register_era_validator_weights_bounded(validators.clone());
         if validators.era_id() == EraId::from(1) {
-            self.register_era_validator_weights(EraValidatorWeights::new(
+            self.register_era_validator_weights_bounded(EraValidatorWeights::new(
                 EraId::from(0),
                 validators.validator_weights,
                 validators.finality_threshold_fraction,
@@ -115,16 +115,13 @@ impl ValidatorMatrix {
         was_present
     }
 
-    pub(crate) fn register_era_validator_weights(
-        &mut self,
-        validators: EraValidatorWeights,
-    ) -> bool {
+    fn register_era_validator_weights_bounded(&mut self, validators: EraValidatorWeights) -> bool {
         let era_id = validators.era_id;
         let mut guard = self
             .inner
             .write()
             .expect("poisoned lock on validator matrix");
-        let was_present = guard.insert(era_id, validators).is_some();
+        let is_new = guard.insert(era_id, validators).is_none();
         if guard.len() > MAX_VALIDATOR_MATRIX_ENTRIES {
             // Safe to unwrap because we check above that we have sufficient entries.
             let median_key = guard
@@ -135,7 +132,7 @@ impl ValidatorMatrix {
             guard.remove(&median_key);
             return median_key != era_id;
         }
-        !was_present
+        is_new
     }
 
     pub(crate) fn register_validator_weights(

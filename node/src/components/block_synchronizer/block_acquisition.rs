@@ -277,32 +277,26 @@ impl BlockAcquisitionState {
                 BlockAcquisitionAction::block_header(peer_list, rng, *block_hash),
             ),
             BlockAcquisitionState::HaveBlockHeader(block_header, signatures) => {
-                if validator_weights.is_empty() {
-                    Ok(BlockAcquisitionAction::era_validators(
-                        validator_weights.era_id(),
-                    ))
-                } else {
-                    // Collect signatures with Vacant state or which are currently missing from the
-                    // SignatureAcquisition.
-                    let mut missing_signatures: HashSet<PublicKey> = validator_weights
-                        .missing_validators(signatures.not_vacant())
-                        .cloned()
-                        .collect();
-                    // If there are too few, retry any in Pending state.
-                    if missing_signatures.len() < max_simultaneous_peers {
-                        missing_signatures.extend(
-                            validator_weights
-                                .missing_validators(signatures.not_pending())
-                                .cloned(),
-                        );
-                    }
-                    Ok(BlockAcquisitionAction::finality_signatures(
-                        peer_list,
-                        rng,
-                        block_header,
-                        missing_signatures.into_iter().collect(),
-                    ))
+                // Collect signatures with Vacant state or which are currently missing from the
+                // SignatureAcquisition.
+                let mut missing_signatures: HashSet<PublicKey> = validator_weights
+                    .missing_validators(signatures.not_vacant())
+                    .cloned()
+                    .collect();
+                // If there are too few, retry any in Pending state.
+                if missing_signatures.len() < max_simultaneous_peers {
+                    missing_signatures.extend(
+                        validator_weights
+                            .missing_validators(signatures.not_pending())
+                            .cloned(),
+                    );
                 }
+                Ok(BlockAcquisitionAction::finality_signatures(
+                    peer_list,
+                    rng,
+                    block_header,
+                    missing_signatures.into_iter().collect(),
+                ))
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Ok(
                 BlockAcquisitionAction::block_body(peer_list, rng, header.block_hash()),
