@@ -9,6 +9,7 @@ mod memory_metrics;
 mod utils;
 
 mod catch_up;
+mod genesis_instruction;
 mod keep_up;
 mod reactor_state;
 #[cfg(test)]
@@ -288,14 +289,19 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => reactor::wrap_effects(
-                MainEvent::UpgradeWatcher,
-                self.upgrade_watcher.handle_event(
-                    effect_builder,
-                    rng,
-                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
-                ),
-            ),
+            ) => {
+                // register activation point of upgrade w/ block accumulator
+                self.block_accumulator
+                    .register_activation_point(next_upgrade.activation_point());
+                reactor::wrap_effects(
+                    MainEvent::UpgradeWatcher,
+                    self.upgrade_watcher.handle_event(
+                        effect_builder,
+                        rng,
+                        upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
+                    ),
+                )
+            }
             MainEvent::RpcServer(event) => reactor::wrap_effects(
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),

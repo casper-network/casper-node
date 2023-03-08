@@ -381,8 +381,8 @@ mod tests {
             handle.request_allowance(1).await;
             let elapsed = start.elapsed();
 
-            assert!(elapsed >= Duration::from_secs(9));
-            assert!(elapsed <= Duration::from_secs(10));
+            assert!(elapsed >= Duration::from_secs(9), "flip");
+            assert!(elapsed <= Duration::from_secs(10), "flop");
         }
     }
 

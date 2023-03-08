@@ -2,6 +2,7 @@ mod block_acceptor;
 mod config;
 mod error;
 mod event;
+mod leap_instruction;
 mod local_tip_identifier;
 mod metrics;
 mod sync_identifier;
@@ -43,12 +44,13 @@ use crate::{
     },
     fatal,
     types::{
-        BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
-        ValidatorMatrix,
+        ActivationPoint, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState,
+        NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
 
+use crate::components::block_accumulator::leap_instruction::LeapInstruction;
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
@@ -85,6 +87,8 @@ pub(crate) struct BlockAccumulator {
     /// and to determine if this node is close enough to the perceived tip of the
     /// network to transition to executing block for itself.
     local_tip: Option<LocalTipIdentifier>,
+    /// Chainspec activation point.
+    activation_point: Option<ActivationPoint>,
     /// Configured setting for how close to perceived tip local tip must be for
     /// this node to attempt block execution for itself.
     attempt_execution_threshold: u64,
@@ -104,6 +108,7 @@ pub(crate) struct BlockAccumulator {
     peer_block_timestamps: BTreeMap<NodeId, VecDeque<(BlockHash, Timestamp)>>,
     /// The minimum time between a block and its child.
     min_block_time: TimeDiff,
+    /// Metrics.
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -125,6 +130,7 @@ impl BlockAccumulator {
             last_progress: Timestamp::now(),
             purge_interval: config.purge_interval,
             local_tip: None,
+            activation_point: None,
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
@@ -133,24 +139,20 @@ impl BlockAccumulator {
     }
 
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
-        let had_no_local_tip = self.local_tip.is_none(); // first time thru, leap
+        let block_hash = sync_identifier.block_hash();
         if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
             self.register_local_tip(block_height, era_id);
         }
-        if had_no_local_tip || self.should_leap(self.maybe_block_height(&sync_identifier)) {
-            if had_no_local_tip {
-                debug!("Block Accumulator: leap because accumulator is warming up");
-            }
-            return SyncInstruction::Leap {
-                block_hash: sync_identifier.block_hash(),
-            };
+        let leap_instruction = self.leap_instruction(&sync_identifier);
+        info!(?leap_instruction, %sync_identifier, "Block Accumulator: leap {}", leap_instruction);
+        if leap_instruction.should_leap() {
+            return SyncInstruction::Leap { block_hash };
         }
-        let block_hash = sync_identifier.block_hash();
         match sync_identifier.block_hash_to_sync(self.next_synchable_block_hash(block_hash)) {
-            Some(sync_block_hash) => {
+            Some(block_hash_to_sync) => {
                 self.reset_last_progress();
                 SyncInstruction::BlockSync {
-                    block_hash: sync_block_hash,
+                    block_hash: block_hash_to_sync,
                 }
             }
             None => {
@@ -164,26 +166,14 @@ impl BlockAccumulator {
         }
     }
 
-    fn maybe_block_height(&self, sync_identifier: &SyncIdentifier) -> Option<u64> {
-        // if the sync identifier doesn't have the tip, we may be able
-        // to discover it from one of our acceptors
-        match sync_identifier.block_height() {
-            Some(height) => Some(height),
-            None => {
-                if let Some(block_acceptor) =
-                    self.block_acceptors.get(&sync_identifier.block_hash())
-                {
-                    block_acceptor.block_height()
-                } else {
-                    None
-                }
-            }
-        }
+    /// Register activation point from next protocol version chainspec.
+    pub(crate) fn register_activation_point(&mut self, activation_point: ActivationPoint) {
+        self.activation_point = Some(activation_point);
     }
 
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
+    fn register_local_tip(&mut self, height: u64, era_id: EraId) {
         let new_local_tip = match self.local_tip {
             Some(current) => current.height < height && current.era_id <= era_id,
             None => true,
@@ -487,29 +477,6 @@ impl BlockAccumulator {
         effects
     }
 
-    fn highest_usable_block_height(&self) -> Option<u64> {
-        let mut ret = self.local_tip.map(|local_tip| local_tip.height);
-        for block_acceptor in self.block_acceptors.values() {
-            if false == block_acceptor.has_sufficient_finality() {
-                continue;
-            }
-            match block_acceptor.block_height() {
-                None => {
-                    continue;
-                }
-                Some(acceptor_height) => {
-                    if let Some(curr_height) = ret {
-                        if acceptor_height <= curr_height {
-                            continue;
-                        }
-                    }
-                    ret = Some(acceptor_height);
-                }
-            };
-        }
-        ret
-    }
-
     fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
         self.block_acceptors
             .get(&block_hash)
@@ -528,22 +495,58 @@ impl BlockAccumulator {
         self.last_progress = Timestamp::now();
     }
 
-    fn should_leap(&self, maybe_block_height: Option<u64>) -> bool {
-        match (maybe_block_height, self.highest_usable_block_height()) {
-            (None, _) => true,
-            (Some(_), None) => true,
-            (Some(block_height), Some(highest_usable_block_height)) => {
-                let height_diff = highest_usable_block_height.saturating_sub(block_height);
-                if height_diff > self.attempt_execution_threshold {
-                    info!(
-                        height_diff,
-                        attempt_execution_threshold = self.attempt_execution_threshold,
-                        "Block Accumulator: leap because height diff is larger than attempt execution threshold"
-                    );
-                    true
-                } else {
-                    false
-                }
+    fn leap_instruction(&self, sync_identifier: &SyncIdentifier) -> LeapInstruction {
+        let height = match (self.local_tip, sync_identifier.block_height()) {
+            (None, _) => {
+                // if the accumulator is unaware of local tip,
+                // leap to learn more about the network state
+                return LeapInstruction::UnsetLocalTip;
+            }
+            (Some(local_tip_identifier), None) => local_tip_identifier.height,
+            (Some(local_tip_identifier), Some(block_height)) => {
+                local_tip_identifier.height.max(block_height)
+            }
+        };
+        match self
+            .block_acceptors
+            .iter()
+            .filter(|(_, acceptor)| {
+                acceptor.has_sufficient_finality() && acceptor.block_height().is_some()
+            })
+            .max_by(|x, y| x.1.block_height().cmp(&y.1.block_height()))
+            .map(|(_, acceptor)| {
+                (
+                    acceptor.block_height().unwrap_or_default(),
+                    acceptor.is_upgrade_boundary(self.activation_point),
+                )
+            }) {
+            // if we have no usable block acceptors, leap to learn more about the network state
+            None => LeapInstruction::NoUsableBlockAcceptors,
+            Some((acceptor_height, is_upgrade_boundary)) => {
+                // the accumulator has heard about at least one usable block via gossiping
+                // if we've see chatter about a usable higher block, we can determine
+                // if we have local state at or near that highest usable block.
+                // if we have reason to believe we have fallen too far behind the network,
+                // we should switch to catchup mode and start the leap process
+                // otherwise, we should attempt to keep up with the network by
+                // executing our own blocks.
+
+                // This is a special case; if we have heard chatter about the last block
+                // before a protocol upgrade and have enough finality signatures to believe
+                // it, we want to be cautious about leaping, because other nodes on the
+                // network are starting to go down and come back up on the new protocol
+                // version and may or may not respond. Thus, it is best for the node to
+                // continue executing its own blocks to get to the upgrade point on its
+                // own (if able).
+                let is_upgrade_boundary = is_upgrade_boundary == Some(true);
+
+                let distance_from_highest_known_block = acceptor_height.saturating_sub(height);
+
+                LeapInstruction::from_execution_threshold(
+                    self.attempt_execution_threshold,
+                    distance_from_highest_known_block,
+                    is_upgrade_boundary,
+                )
             }
         }
     }
