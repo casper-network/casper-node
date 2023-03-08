@@ -47,7 +47,7 @@ use crate::{
             ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
             StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
@@ -585,11 +585,7 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(
                         effect_builder
-                            .sync_global_state(
-                                block_hash,
-                                global_state_root_hash,
-                                peers.into_iter().collect(),
-                            )
+                            .sync_global_state(block_hash, global_state_root_hash)
                             .event(move |result| Event::GlobalStateSynced { block_hash, result }),
                     );
                 }
@@ -976,13 +972,21 @@ impl BlockSynchronizer {
                     | GlobalStateSynchronizerError::PutTrie(_, unreliable_peers) => {
                         (None, unreliable_peers)
                     }
-                    GlobalStateSynchronizerError::NoPeersAvailable(_) => {
+                    GlobalStateSynchronizerError::NoPeersAvailable => {
                         // This should never happen. Before creating a sync request,
                         // the block synchronizer will request another set of peers
                         // (both random and from the accumulator).
                         debug!(
                             "BlockSynchronizer: global state sync request was issued with no peers"
                         );
+                        (None, Vec::new())
+                    }
+                    GlobalStateSynchronizerError::ProcessingAnotherRequest {
+                        hash_being_synced,
+                        hash_requested,
+                    } => {
+                        warn!(%hash_being_synced, %hash_requested,
+                        "BlockSynchronizer: global state sync is processing another request");
                         (None, Vec::new())
                     }
                 }
@@ -994,7 +998,7 @@ impl BlockSynchronizer {
                 debug!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
             } else {
                 if let Some(root_hash) = maybe_root_hash {
-                    if let Err(error) = builder.register_global_state(root_hash) {
+                    if let Err(error) = builder.register_global_state(root_hash.into_inner()) {
                         error!(%block_hash, %error, "BlockSynchronizer: failed to apply global state");
                     }
                 }
@@ -1336,37 +1340,52 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     // it's sent when we need to sync global states of an immediate switch block
                     // and its parent in order to check whether the validators have been
                     // changed by the upgrade
-                    BlockSynchronizerRequest::SyncGlobalStates(global_states, peers_to_ask) => {
-                        global_states
-                            .into_iter()
-                            .flat_map(move |(block_hash, global_state_hash)| {
-                                // only start syncing the state if we haven't started already
-                                if !self
-                                    .global_sync
-                                    .has_global_state_request(&global_state_hash)
-                                {
-                                    effect_builder
-                                        .sync_global_state(
-                                            block_hash,
-                                            global_state_hash,
-                                            peers_to_ask.clone().into_iter().collect(),
-                                        )
-                                        .ignore()
-                                } else {
-                                    Effects::new()
-                                }
-                            })
-                            .collect()
+                    BlockSynchronizerRequest::SyncGlobalStates(mut global_states) => {
+                        if let Some((block_hash, global_state_hash)) = global_states.pop() {
+                            let global_states_clone = global_states.clone();
+                            effect_builder
+                                .sync_global_state(block_hash, global_state_hash)
+                                .result(
+                                    move |_| {
+                                        Event::Request(BlockSynchronizerRequest::SyncGlobalStates(
+                                            global_states_clone,
+                                        ))
+                                    },
+                                    move |_| {
+                                        global_states.push((block_hash, global_state_hash));
+                                        Event::Request(BlockSynchronizerRequest::SyncGlobalStates(
+                                            global_states,
+                                        ))
+                                    },
+                                )
+                        } else {
+                            Effects::new()
+                        }
                     }
                 },
                 // tunnel event to global state synchronizer
                 // global_state_sync is a black box; we do not hook need next here
                 // global_state_sync signals the historical sync builder at the end of its process,
                 // and need next is then re-hooked to get the rest of the block
-                Event::GlobalStateSynchronizer(event) => reactor::wrap_effects(
-                    Event::GlobalStateSynchronizer,
-                    self.global_sync.handle_event(effect_builder, rng, event),
-                ),
+                Event::GlobalStateSynchronizer(event) => {
+                    let processed_event = match event {
+                        GlobalStateSynchronizerEvent::GetPeers(_) => {
+                            let peers = self.historical.as_ref().map_or_else(Vec::new, |builder| {
+                                builder.peer_list().qualified_peers_up_to(
+                                    rng,
+                                    self.config.max_parallel_trie_fetches as usize,
+                                )
+                            });
+                            GlobalStateSynchronizerEvent::GetPeers(peers)
+                        }
+                        event => event,
+                    };
+                    reactor::wrap_effects(
+                        Event::GlobalStateSynchronizer,
+                        self.global_sync
+                            .handle_event(effect_builder, rng, processed_event),
+                    )
+                }
                 // when a peer is disconnected from for any reason, disqualify peer
                 Event::DisconnectFromPeer(node_id) => {
                     self.register_disconnected_peer(node_id);
