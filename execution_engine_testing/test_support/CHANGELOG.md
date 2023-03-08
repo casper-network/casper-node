@@ -11,7 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## 2.3.0
+## 3.0.0
+
+### Changed
+* Version bump only to match major version bump of `casper-execution-engine` dependency.
+
+
+
+## 2.3.0 [YANKED]
 
 ### Added
 * Add `ChainspecConfig` to support parsing a chainspec.
