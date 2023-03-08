@@ -166,8 +166,8 @@ impl Reactor for MockReactor {
             validator_matrix.clone(),
             RECENT_ERA_INTERVAL,
             block_time,
-            registry,
             VALIDATOR_SLOTS,
+            registry,
         )
         .unwrap();
 
@@ -280,8 +280,8 @@ fn upsert_acceptor() {
         validator_matrix,
         recent_era_interval,
         block_time,
-        &metrics_registry,
         VALIDATOR_SLOTS,
+        &metrics_registry,
     )
     .unwrap();
 
@@ -831,8 +831,8 @@ fn accumulator_highest_usable_block_height() {
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
-        &Registry::default(),
         VALIDATOR_SLOTS,
+        &Registry::default(),
     )
     .unwrap();
 
@@ -957,8 +957,8 @@ fn accumulator_should_leap() {
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
-        &Registry::default(),
         VALIDATOR_SLOTS,
+        &Registry::default(),
     )
     .unwrap();
 
@@ -1038,8 +1038,8 @@ fn accumulator_purge() {
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
-        &Registry::default(),
         VALIDATOR_SLOTS,
+        &Registry::default(),
     )
     .unwrap();
     block_accumulator.register_local_tip(0, 0.into());

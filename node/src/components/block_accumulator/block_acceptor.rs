@@ -128,6 +128,9 @@ impl BlockAcceptor {
                 actual: finality_signature.block_hash,
             });
         }
+        if let Some(node_id) = peer {
+            check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
+        }
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
             match peer {
@@ -151,7 +154,6 @@ impl BlockAcceptor {
         if false == had_sufficient_finality {
             if let Some(node_id) = peer {
                 self.register_peer(node_id);
-                check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
             }
             self.signatures
                 .entry(finality_signature.public_key.clone())
@@ -185,7 +187,6 @@ impl BlockAcceptor {
 
         if let Some(node_id) = peer {
             self.register_peer(node_id);
-            check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
         }
         let is_new = !self.signatures.contains_key(&finality_signature.public_key);
 
@@ -469,67 +470,74 @@ impl BlockAcceptor {
 }
 
 #[cfg(test)]
-fn random_finality_signature(rng: &mut casper_types::testing::TestRng) -> FinalitySignature {
-    FinalitySignature::random_for_block(BlockHash::random(rng), rng.gen())
-}
+mod tests {
+    use super::*;
+    use casper_types::testing::TestRng;
+    //use crate::types::NodeId;
+    //use std::collections::{BTreeMap, BTreeSet};
 
-#[test]
-fn check_signatures_from_peer_bound_works() {
-    let rng = &mut casper_types::testing::TestRng::new();
-    let max_signatures = 3;
-    let peer_to_check = NodeId::random(rng);
+    #[test]
+    fn check_signatures_from_peer_bound_works() {
+        let rng = &mut TestRng::new();
+        let max_signatures = 3;
+        let peer_to_check = NodeId::random(rng);
 
-    let mut signatures = BTreeMap::new();
-    // Insert only the peer to check:
-    signatures.insert(
-        PublicKey::random(rng),
-        (random_finality_signature(rng), {
-            let mut nodes = BTreeSet::new();
-            nodes.insert(peer_to_check);
-            nodes
-        }),
-    );
-    // Insert an unrelated peer:
-    signatures.insert(
-        PublicKey::random(rng),
-        (random_finality_signature(rng), {
-            let mut nodes = BTreeSet::new();
-            nodes.insert(NodeId::random(rng));
-            nodes
-        }),
-    );
-    // Insert both the peer to check and an unrelated one:
-    signatures.insert(
-        PublicKey::random(rng),
-        (random_finality_signature(rng), {
-            let mut nodes = BTreeSet::new();
-            nodes.insert(NodeId::random(rng));
-            nodes.insert(peer_to_check);
-            nodes
-        }),
-    );
+        let mut signatures = BTreeMap::new();
+        // Insert only the peer to check:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(peer_to_check);
+                nodes
+            }),
+        );
+        // Insert an unrelated peer:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(NodeId::random(rng));
+                nodes
+            }),
+        );
+        // Insert both the peer to check and an unrelated one:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(NodeId::random(rng));
+                nodes.insert(peer_to_check);
+                nodes
+            }),
+        );
 
-    // The peer has send only 2 signatures, so adding a new signature should pass:
-    assert!(matches!(
-        check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
-        Ok(())
-    ));
+        // The peer has send only 2 signatures, so adding a new signature should pass:
+        assert!(matches!(
+            check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
+            Ok(())
+        ));
 
-    // Let's insert once again both the peer to check and an unrelated one:
-    signatures.insert(
-        PublicKey::random(rng),
-        (random_finality_signature(rng), {
-            let mut nodes = BTreeSet::new();
-            nodes.insert(NodeId::random(rng));
-            nodes.insert(peer_to_check);
-            nodes
-        }),
-    );
+        // Let's insert once again both the peer to check and an unrelated one:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(NodeId::random(rng));
+                nodes.insert(peer_to_check);
+                nodes
+            }),
+        );
 
-    // Now this should fail:
-    assert!(matches!(
-        check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
-        Err(AcceptorError::TooManySignatures { peer, limit })
-            if peer == peer_to_check && limit == max_signatures
-    ));
+        // Now this should fail:
+        assert!(matches!(
+            check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
+            Err(AcceptorError::TooManySignatures { peer, limit })
+                if peer == peer_to_check && limit == max_signatures
+        ));
+    }
+
+    fn random_finality_signature(rng: &mut TestRng) -> FinalitySignature {
+        FinalitySignature::random_for_block(BlockHash::random(rng), rng.gen())
+    }
 }

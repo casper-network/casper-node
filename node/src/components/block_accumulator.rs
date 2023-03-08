@@ -116,8 +116,8 @@ impl BlockAccumulator {
         validator_matrix: ValidatorMatrix,
         recent_era_interval: u64,
         min_block_time: TimeDiff,
-        registry: &Registry,
         validator_slots: u32,
+        registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Self {
             validator_matrix,
