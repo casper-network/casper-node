@@ -833,7 +833,6 @@ where
         }
     }
 
-    dbg!(new_elements.len());
     for (hash, element) in new_elements.iter() {
         store.put(&mut txn, hash, element)?;
     }
