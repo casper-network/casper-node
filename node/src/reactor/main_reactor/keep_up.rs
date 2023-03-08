@@ -142,6 +142,12 @@ impl MainReactor {
                 return None;
             }
         }
+
+        if self.block_synchronizer.forward_progress().is_active() {
+            debug!("KeepUp: still syncing a block");
+            return None;
+        }
+
         let queue_depth = self.contract_runtime.queue_depth();
         if queue_depth > 0 {
             debug!("KeepUp: should_validate queue_depth {}", queue_depth);
@@ -172,8 +178,8 @@ impl MainReactor {
             }
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 // for a synced forward block -> we have header, body, any referenced deploys,
-                // and sufficient finality (by weight) of signatures. this node will ultimately
-                // attempt to execute this block to produce global state and execution effects.
+                // sufficient finality (by weight) of signatures, associated global state and
+                // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
         }

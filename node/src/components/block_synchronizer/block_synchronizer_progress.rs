@@ -11,6 +11,16 @@ pub(crate) enum BlockSynchronizerProgress {
     Synced(BlockHash, u64, EraId),
 }
 
+impl BlockSynchronizerProgress {
+    pub(crate) fn is_active(&self) -> bool {
+        match self {
+            BlockSynchronizerProgress::Idle | BlockSynchronizerProgress::Synced(_, _, _) => false,
+            BlockSynchronizerProgress::Syncing(_, _, _)
+            | BlockSynchronizerProgress::Executing(_, _, _) => true,
+        }
+    }
+}
+
 impl Display for BlockSynchronizerProgress {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
