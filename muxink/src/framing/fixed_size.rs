@@ -130,7 +130,7 @@ mod tests {
     fn encodes_simple_cases_correctly() {
         let seq = &[b"abc", b"def", b"ghi"];
 
-        for &input in seq.into_iter() {
+        for &input in seq.iter() {
             let mut input = Bytes::from(input.to_vec());
             let mut codec = FixedSize::new(3);
 

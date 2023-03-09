@@ -115,7 +115,7 @@ mod tests {
         let seq = [0x01020304u32, 0xAABBCCDD];
         let outcomes: &[&[u8]] = &[b"\x04\x03\x02\x01", b"\xDD\xCC\xBB\xAA"];
 
-        for (input, &expected) in seq.into_iter().zip(outcomes.into_iter()) {
+        for (input, &expected) in seq.into_iter().zip(outcomes.iter()) {
             let mut codec = LittleEndian::<u32>::default();
             let mut outcome = codec.encode_frame(input).expect("encoding should not fail");
             assert_eq!(outcome.remaining(), 4);
