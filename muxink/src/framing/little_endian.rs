@@ -22,13 +22,10 @@ macro_rules! int_codec {
         impl crate::framing::FrameEncoder<$ty> for LittleEndian<$ty> {
             // Encoding can never fail.
             type Error = Infallible;
+            type Output = crate::ImmediateFrame<[u8; ::std::mem::size_of::<$ty>()]>;
 
-            // We use a cursor, which is just a single `usize` of overhead when sending the encoded
-            // number.
-            type Output = std::io::Cursor<[u8; (<$ty>::BITS / 8) as usize]>;
-
-            fn encode_frame(&mut self, buffer: $ty) -> Result<Self::Output, Self::Error> {
-                Ok(std::io::Cursor::new(buffer.to_le_bytes()))
+            fn encode_frame(&mut self, value: $ty) -> Result<Self::Output, Self::Error> {
+                Ok(crate::ImmediateFrame::from(value))
             }
         }
 
@@ -66,6 +63,7 @@ int_codec!(i128);
 
 #[cfg(test)]
 mod tests {
+    use bytes::Buf;
     use futures::io::Cursor;
 
     use crate::{framing::FrameEncoder, io::FrameReader, testing::collect_stream_results};
@@ -117,10 +115,11 @@ mod tests {
         let seq = [0x01020304u32, 0xAABBCCDD];
         let outcomes: &[&[u8]] = &[b"\x04\x03\x02\x01", b"\xDD\xCC\xBB\xAA"];
 
-        for (input, expected) in seq.into_iter().zip(outcomes.into_iter()) {
+        for (input, &expected) in seq.into_iter().zip(outcomes.into_iter()) {
             let mut codec = LittleEndian::<u32>::default();
-            let outcome = codec.encode_frame(input).expect("encoding should not fail");
-            assert_eq!(outcome.get_ref(), *expected);
+            let mut outcome = codec.encode_frame(input).expect("encoding should not fail");
+            assert_eq!(outcome.remaining(), 4);
+            assert_eq!(&outcome.copy_to_bytes(4), expected);
         }
     }
 }

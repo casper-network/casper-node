@@ -67,7 +67,7 @@ impl<A> ImmediateFrame<A> {
 /// Implements conversion functions to immediate types for atomics like `u8`, etc.
 macro_rules! impl_immediate_frame_le {
     ($t:ty) => {
-        impl From<$t> for ImmediateFrame<[u8; ::std::mem::size_of::<$t>()]> {
+        impl From<$t> for ImmediateFrame<[u8; (<$t>::BITS / 8) as usize]> {
             #[inline]
             fn from(value: $t) -> Self {
                 ImmediateFrame::new(value.to_le_bytes())
@@ -79,6 +79,13 @@ macro_rules! impl_immediate_frame_le {
 impl_immediate_frame_le!(u8);
 impl_immediate_frame_le!(u16);
 impl_immediate_frame_le!(u32);
+impl_immediate_frame_le!(u64);
+impl_immediate_frame_le!(u128);
+impl_immediate_frame_le!(i8);
+impl_immediate_frame_le!(i16);
+impl_immediate_frame_le!(i32);
+impl_immediate_frame_le!(i64);
+impl_immediate_frame_le!(i128);
 
 impl<A> Buf for ImmediateFrame<A>
 where
