@@ -424,9 +424,8 @@ fn check_signatures_from_peer_bound(
         .values()
         .filter(|(_fin_sig, nodes)| nodes.contains(&peer))
         .count();
-    let in_bound = usize::try_from(limit).map_or(false, |limit| signatures_for_peer < limit);
 
-    if in_bound {
+    if signatures_for_peer < limit as usize {
         Ok(())
     } else {
         Err(AcceptorError::TooManySignatures { peer, limit })
