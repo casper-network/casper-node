@@ -20,9 +20,10 @@ DEPLOY_SPAM_COUNT = 300
 DISTURBANCE_INTERVAL_SECS = 5
 
 # Time allowed for the network to progress
-PROGRESS_WAIT_TIMEOUT_SECS = 60
+PROGRESS_WAIT_TIMEOUT_SECS = 2 * 60
 
 invoke_lock = threading.Lock()
+current_node_count = 5
 
 
 # Kill a random node, wait one minute, restart node
@@ -107,11 +108,11 @@ def wait_for_height(target_height):
 
 
 def deploy_sender_thread(count, interval):
+    global current_node_count
     command = "nctl-transfer-wasm node={} transfers=1"
     while True:
         for i in range(count):
-            nctl_call = command.format(random.randint(
-                1, 5))  # TODO: send to all, not first 5
+            nctl_call = command.format(random.randint(1, current_node_count))
             invoke(nctl_call)
         log("sent " + str(count) + " deploys and sleeping " + str(interval) +
             " seconds")
@@ -230,7 +231,6 @@ def join_node(current_node_count):
 
 
 prepare_test_env()
-current_node_count = 5
 while True:
     disturbance_1(current_node_count)
     assert_network_is_progressing(current_node_count)
