@@ -83,24 +83,37 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=10 skip_setup=true
 }
 
+function run_soundness_test() {
+    echo "Starting network soundness test"
+
+    # Really-really make sure nothing is leftover
+    nctl-assets-teardown
+
+    $NCTL/sh/scenarios/network_soundness.py
+
+    # Clean up after the test
+    nctl-assets-teardown
+}
+
 source "$NCTL/sh/staging/set_override_tomls.sh"
-#start_run_teardown "client.sh"
-#start_run_teardown "itst01.sh"
-#start_run_teardown "itst02.sh"
-#start_run_teardown "itst06.sh"
-#start_run_teardown "itst07.sh"
-#start_run_teardown "itst11.sh"
-#start_run_teardown "itst13.sh"
-#start_run_teardown "itst14.sh"
-#start_run_teardown "bond_its.sh"
-#start_run_teardown "emergency_upgrade_test.sh"
-#start_run_teardown "emergency_upgrade_test_balances.sh"
-#start_run_teardown "upgrade_after_emergency_upgrade_test.sh"
-#start_run_teardown "sync_test.sh timeout=500"
-#start_run_teardown "gov96.sh"
-#start_run_teardown "swap_validator_set.sh"
-#start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
+start_run_teardown "client.sh"
+start_run_teardown "itst01.sh"
+start_run_teardown "itst02.sh"
+start_run_teardown "itst06.sh"
+start_run_teardown "itst07.sh"
+start_run_teardown "itst11.sh"
+start_run_teardown "itst13.sh"
+start_run_teardown "itst14.sh"
+start_run_teardown "bond_its.sh"
+start_run_teardown "emergency_upgrade_test.sh"
+start_run_teardown "emergency_upgrade_test_balances.sh"
+start_run_teardown "upgrade_after_emergency_upgrade_test.sh"
+start_run_teardown "sync_test.sh timeout=500"
+start_run_teardown "gov96.sh"
+start_run_teardown "swap_validator_set.sh"
+start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
 start_run_teardown "network_soundness.sh"
 
-# Run nightly upgrade tests
-# run_nightly_upgrade_test
+run_nightly_upgrade_test
+
+run_soundness_test
