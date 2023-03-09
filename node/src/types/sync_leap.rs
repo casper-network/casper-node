@@ -17,12 +17,12 @@ use crate::{
     components::fetcher::{FetchItem, Tag},
     types::{
         error::BlockHeaderWithMetadataValidationError, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, Chainspec, EraValidatorWeights,
+        BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights,
     },
     utils::{self, BlockSignatureError},
 };
 
-use super::{chainspec::GlobalStateUpdate, ActivationPoint};
+use super::sync_leap_validation_metadata::SyncLeapValidationMetaData;
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
@@ -193,41 +193,6 @@ impl Display for SyncLeap {
             "sync leap message for trusted {}",
             self.trusted_block_header.block_hash()
         )
-    }
-}
-
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct SyncLeapValidationMetaData {
-    recent_era_count: u64,
-    activation_point: ActivationPoint,
-    global_state_update: Option<GlobalStateUpdate>,
-    #[data_size(skip)]
-    finality_threshold_fraction: Ratio<u64>,
-}
-
-impl SyncLeapValidationMetaData {
-    #[cfg(test)]
-    pub fn new(
-        recent_era_count: u64,
-        activation_point: ActivationPoint,
-        global_state_update: Option<GlobalStateUpdate>,
-        finality_threshold_fraction: Ratio<u64>,
-    ) -> Self {
-        Self {
-            recent_era_count,
-            activation_point,
-            global_state_update,
-            finality_threshold_fraction,
-        }
-    }
-
-    pub(crate) fn from_chainspec(chainspec: &Chainspec) -> Self {
-        Self {
-            recent_era_count: chainspec.core_config.recent_era_count(),
-            activation_point: chainspec.protocol_config.activation_point,
-            global_state_update: chainspec.protocol_config.global_state_update.clone(),
-            finality_threshold_fraction: chainspec.core_config.finality_threshold_fraction,
-        }
     }
 }
 
