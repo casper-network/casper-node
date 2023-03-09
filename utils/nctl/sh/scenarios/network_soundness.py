@@ -9,18 +9,25 @@ import sys
 import threading
 from time import sleep
 
+# How long to keep the test running (assuming errorless run)
 TEST_DURATION_SECS = 30 * 60
+
+# Wasm transfers
 DEPLOY_SPAM_INTERVAL_SECS = 3 * 60
-DEPLOY_SPAM_COUNT = 200
-HARASSMENT_INTERVAL_SECS = 5
+DEPLOY_SPAM_COUNT = 300
+
+# How long to wait between invoking disturbance scenarios
+DISTURBANCE_INTERVAL_SECS = 5
+
+# Time allowed for the network to progress
 PROGRESS_WAIT_TIMEOUT_SECS = 60
 
 invoke_lock = threading.Lock()
 
 
 # Kill a random node, wait one minute, restart node
-def harassment_1(node_count):
-    log("*** starting harassment type 1 ***")
+def disturbance_1(node_count):
+    log("*** starting disturbance type 1 ***")
     random_node = random.randint(1, node_count)
     stop_node(random_node)
     sleep(60)
@@ -29,8 +36,8 @@ def harassment_1(node_count):
 
 
 # Kill two random nodes, wait one minute, restart nodes
-def harassment_2(node_count):
-    log("*** starting harassment type 2 ***")
+def disturbance_2(node_count):
+    log("*** starting disturbance type 2 ***")
     random_nodes = random.sample(range(1, node_count), 2)
     stop_node(random_nodes[0])
     stop_node(random_nodes[1])
@@ -103,11 +110,21 @@ def deploy_sender_thread(count, interval):
     command = "nctl-transfer-wasm node={} transfers=1"
     while True:
         for i in range(count):
-            nctl_call = command.format(random.randint(1, 5))
+            nctl_call = command.format(random.randint(
+                1, 5))  # TODO: send to all, not first 5
             invoke(nctl_call)
         log("sent " + str(count) + " deploys and sleeping " + str(interval) +
             " seconds")
         sleep(interval)
+    return
+
+
+def get_node_rpc_endpoint(node):
+    command = "nctl-view-node-ports node={}".format(node)
+    result = invoke(command)
+    m = re.match(r'.*RPC @ (\d*).*', result)
+    if m and m.group(1):
+        return "localhost:{}/rpc/".format(int(m.group(1)))
     return
 
 
@@ -215,12 +232,13 @@ def join_node(current_node_count):
 prepare_test_env()
 current_node_count = 5
 while True:
+    disturbance_1(current_node_count)
+    assert_network_is_progressing(current_node_count)
+    sleep(DISTURBANCE_INTERVAL_SECS)
+
+    disturbance_2(current_node_count)
+    assert_network_is_progressing(current_node_count)
+    sleep(DISTURBANCE_INTERVAL_SECS)
+
     current_node_count = join_node(current_node_count)
     assert_network_is_progressing(current_node_count)
-    harassment_1(current_node_count)
-    # assert_network_is_progressing(current_node_count)
-    # sleep(HARASSMENT_INTERVAL_SECS)
-    # harassment_2(current_node_count)
-    # assert_network_is_progressing(current_node_count)
-    # sleep(HARASSMENT_INTERVAL_SECS)
-    # sleep(HARASSMENT_INTERVAL_SECS)
