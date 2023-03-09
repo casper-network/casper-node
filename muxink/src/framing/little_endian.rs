@@ -22,7 +22,7 @@ macro_rules! int_codec {
         impl crate::framing::FrameEncoder<$ty> for LittleEndian<$ty> {
             // Encoding can never fail.
             type Error = Infallible;
-            type Output = crate::ImmediateFrame<[u8; ::std::mem::size_of::<$ty>()]>;
+            type Output = crate::ImmediateFrame<[u8; (<$ty>::BITS / 8) as usize]>;
 
             fn encode_frame(&mut self, value: $ty) -> Result<Self::Output, Self::Error> {
                 Ok(crate::ImmediateFrame::from(value))
