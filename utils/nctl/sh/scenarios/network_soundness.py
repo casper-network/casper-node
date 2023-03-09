@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import os
 import random
 import re
@@ -8,12 +9,41 @@ import sys
 import threading
 from time import sleep
 
-TEST_DURATION_SECS = 2 * 60
+TEST_DURATION_SECS = 30 * 60
 DEPLOY_SPAM_INTERVAL_SECS = 3 * 60
 DEPLOY_SPAM_COUNT = 200
 HARASSMENT_INTERVAL_SECS = 5
+PROGRESS_WAIT_TIMEOUT_SECS = 60
 
 invoke_lock = threading.Lock()
+
+
+# Kill a random node, wait one minute, restart node
+def harassment_1(node_count):
+    log("*** starting harassment type 1 ***")
+    random_node = random.randint(1, node_count)
+    stop_node(random_node)
+    sleep(60)
+    start_node(random_node)
+    return
+
+
+# Kill two random nodes, wait one minute, restart nodes
+def harassment_2(node_count):
+    log("*** starting harassment type 2 ***")
+    random_nodes = random.sample(range(1, node_count), 2)
+    stop_node(random_nodes[0])
+    stop_node(random_nodes[1])
+    sleep(60)
+    start_node(random_nodes[0])
+    start_node(random_nodes[1])
+    return
+
+
+def log(msg):
+    timestamp = datetime.datetime.now()
+    print("{} - {}".format(timestamp, msg))
+    return
 
 
 def invoke(command):
@@ -25,13 +55,13 @@ def invoke(command):
 
 
 def compile_node():
-    print("*** building nodes ***")
+    log("*** building nodes ***")
     command = "nctl-compile"
     invoke(command)
 
 
 def start_network():
-    print("*** starting network ***")
+    log("*** starting network ***")
     command = "nctl-assets-teardown && NCTL_NODE_LOG_FORMAT=text nctl-assets-setup && RUST_LOG=debug nctl-start"
     invoke(command)
 
@@ -46,7 +76,9 @@ def get_chain_height(node):
 
 
 def wait_for_height(target_height):
-    print("*** waiting for height {} ***".format(target_height))
+    log("*** waiting for height {} for {} secs ***".format(
+        target_height, PROGRESS_WAIT_TIMEOUT_SECS))
+    retries = PROGRESS_WAIT_TIMEOUT_SECS / 2
     while True:
         heights = []
         for node in range(1, 6):
@@ -56,6 +88,14 @@ def wait_for_height(target_height):
             list(filter(lambda height: height < target_height, heights))) != 0
         if not keep_waiting:
             return
+        retries -= 1
+        if retries == 0:
+            log("*** ERROR: network didn't reach height {} in {} secs (current node heights: {}) ***"
+                .format(target_height, PROGRESS_WAIT_TIMEOUT_SECS, heights))
+            os._exit(1)
+        if retries % 10 == 0:
+            log("*** still waiting for height {} for {} secs (current node heights: {}) ***"
+                .format(target_height, int(retries * 2), heights))
         sleep(2)
 
 
@@ -65,14 +105,14 @@ def deploy_sender_thread(count, interval):
         for i in range(count):
             nctl_call = command.format(random.randint(1, 5))
             invoke(nctl_call)
-        print("sent " + str(count) + " deploys and sleeping " + str(interval) +
-              " seconds")
+        log("sent " + str(count) + " deploys and sleeping " + str(interval) +
+            " seconds")
         sleep(interval)
     return
 
 
 def start_sending_deploys():
-    print("*** starting sending deploys ***")
+    log("*** starting sending deploys ***")
     handle = threading.Thread(target=deploy_sender_thread,
                               args=(DEPLOY_SPAM_COUNT,
                                     DEPLOY_SPAM_INTERVAL_SECS))
@@ -83,13 +123,13 @@ def start_sending_deploys():
 
 def test_timer_thread(secs):
     sleep(secs)
-    print("*** " + str(secs) + " secs passed - finishing test ***")
+    log("*** " + str(secs) + " secs passed - finishing test ***")
     os._exit(0)
     return
 
 
 def start_test_timer(secs):
-    print("*** starting test timer (" + str(secs) + " secs) ***")
+    log("*** starting test timer (" + str(secs) + " secs) ***")
     handle = threading.Thread(target=test_timer_thread, args=(secs, ))
     handle.daemon = True
     handle.start()
@@ -97,28 +137,40 @@ def start_test_timer(secs):
 
 
 def prepare_test_env():
-    #    compile_node()
-    #    start_network()
+    compile_node()
+    start_network()
     wait_for_height(2)
     timer_thread = start_test_timer(TEST_DURATION_SECS)
     deploy_sender_handle = start_sending_deploys()
 
 
-# Kill a random node, wait one minute, restart node
-def harassment_1():
-    # TODO
-    print("*** starting harassment #1 ***")
-    return
+def stop_node(node):
+    log("*** stopping node {} ***".format(node))
+    command = "nctl-stop node={}".format(node)
+    invoke(command)
 
 
-# Kill two random nodes, wait one minute, restart nodes
-def harassment_2():
-    print("*** starting harassment #2 ***")
-    # TODO
-    return
+def start_node(node):
+    log("*** starting node {} ***".format(node))
+    command = "nctl-view-chain-lfb"
+    result = invoke(command)
+    trusted_hash = None
+    for line in result.splitlines():
+        if line.endswith("'N/A'"):
+            continue
+        tokens = line.split()
+        trusted_hash = tokens[-1]
+        break
+    if trusted_hash is not None:
+        command = "nctl-start node={} hash={}".format(node, trusted_hash)
+        log(command)
+        invoke(command)
+    else:
+        log("ERROR: getting trusted hash")
 
 
 def wait_until_nodes_settle_on_the_same_height(node_count):
+    retries = PROGRESS_WAIT_TIMEOUT_SECS / 2
     while True:
         heights = []
         for node in range(1, node_count + 1):
@@ -127,23 +179,48 @@ def wait_until_nodes_settle_on_the_same_height(node_count):
         if len(heights) == node_count and all(x == heights[0]
                                               for x in heights):
             return heights[0]
+        retries -= 1
+        if retries == 0:
+            log("*** ERROR: nodes didn't settle on the equal heights in {} secs (current node heights: {}) ***"
+                .format(PROGRESS_WAIT_TIMEOUT_SECS, heights))
+            os._exit(1)
+        if retries % 10 == 0:
+            log("*** still waiting for nodes to settle on the same height for {} secs (current node heights: {}) ***"
+                .format(int(retries * 2), heights))
+
         sleep(2)
 
 
-# Kill two random nodes, wait one minute, restart nodes
 def assert_network_is_progressing(node_count):
-    print("*** asserting network is progressing ***")
+    log("*** asserting network is progressing ***")
     current_height = wait_until_nodes_settle_on_the_same_height(node_count)
     target_height = current_height + 5
     wait_for_height(target_height)
-    print("network correctly progressed from {} to {}".format(
+    log("network correctly progressed from {} to {}".format(
         current_height, target_height))
     return
+
+
+def join_node(current_node_count):
+    if current_node_count >= 10:
+        log("*** not joining new node, 10 already in the network ***")
+        return current_node_count
+
+    current_node_count += 1
+    log("*** joining node {} ***".format(current_node_count))
+    start_node(current_node_count)
+    return current_node_count
 
 
 prepare_test_env()
 current_node_count = 5
 while True:
-    harassment_1()
+    current_node_count = join_node(current_node_count)
     assert_network_is_progressing(current_node_count)
-    sleep(HARASSMENT_INTERVAL_SECS)
+    harassment_1(current_node_count)
+    # assert_network_is_progressing(current_node_count)
+    # sleep(HARASSMENT_INTERVAL_SECS)
+    # harassment_2(current_node_count)
+    # assert_network_is_progressing(current_node_count)
+    # sleep(HARASSMENT_INTERVAL_SECS)
+    # sleep(HARASSMENT_INTERVAL_SECS)
