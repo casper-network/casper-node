@@ -342,7 +342,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -366,7 +366,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -390,7 +390,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -402,7 +402,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -426,7 +426,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -438,7 +438,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -450,7 +450,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -462,7 +462,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -474,7 +474,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -498,7 +498,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -510,7 +510,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -522,7 +522,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -534,7 +534,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -546,7 +546,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -558,7 +558,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -570,7 +570,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -582,7 +582,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -594,7 +594,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -606,7 +606,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -618,7 +618,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -630,7 +630,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -642,7 +642,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -654,7 +654,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -666,7 +666,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -678,7 +678,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -690,7 +690,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -702,7 +702,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -714,7 +714,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -726,7 +726,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 
     #[test]
@@ -738,7 +738,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -750,7 +750,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, false);
+        assert!(result == false);
     }
 
     #[test]
@@ -762,6 +762,6 @@ mod tests {
             true,
         );
 
-        assert_eq!(result, true);
+        assert!(result == true);
     }
 }
