@@ -14,7 +14,6 @@
 
 pub mod fixed_size;
 pub mod length_delimited;
-pub mod little_endian;
 
 use std::fmt::Debug;
 

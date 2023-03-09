@@ -29,6 +29,7 @@ pub mod demux;
 pub mod fragmented;
 pub mod framing;
 pub mod io;
+pub mod little_endian;
 pub mod mux;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
