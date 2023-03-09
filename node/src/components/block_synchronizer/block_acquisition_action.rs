@@ -263,6 +263,7 @@ impl BlockAcquisitionAction {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn maybe_needs_deploy(
         block_header: &BlockHeader,
         peer_list: &PeerList,

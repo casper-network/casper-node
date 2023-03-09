@@ -207,6 +207,7 @@ impl ToBytes for CoreConfig {
             + self.minimum_block_time.serialized_length()
             + self.validator_slots.serialized_length()
             + self.finality_threshold_fraction.serialized_length()
+            + self.legacy_required_finality.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
             + self.vesting_schedule_period.serialized_length()
