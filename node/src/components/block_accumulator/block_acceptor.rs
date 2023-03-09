@@ -129,6 +129,10 @@ impl BlockAcceptor {
             });
         }
         if let Some(node_id) = peer {
+            // We multiply the number of validators by 2 to get the maximum of signatures, because of
+            // the theoretically possible scenario when we're collecting sigs but are not yet able
+            // to validate them (no validator weights). We should allow to absorb more than theoretical
+            // limit (but not much more) so we don't fill all slots with invalid sigs:
             check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
         }
         if let Err(error) = finality_signature.is_verified() {
@@ -420,8 +424,7 @@ fn check_signatures_from_peer_bound(
         .values()
         .filter(|(_fin_sig, nodes)| nodes.contains(&peer))
         .count();
-    let in_bound = u32::try_from(signatures_for_peer)
-        .map_or(false, |signatures_for_peer| signatures_for_peer < limit);
+    let in_bound = usize::try_from(limit).map_or(false, |limit| signatures_for_peer < limit);
 
     if in_bound {
         Ok(())
