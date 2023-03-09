@@ -129,10 +129,11 @@ impl BlockAcceptor {
             });
         }
         if let Some(node_id) = peer {
-            // We multiply the number of validators by 2 to get the maximum of signatures, because of
-            // the theoretically possible scenario when we're collecting sigs but are not yet able
-            // to validate them (no validator weights). We should allow to absorb more than theoretical
-            // limit (but not much more) so we don't fill all slots with invalid sigs:
+            // We multiply the number of validators by 2 to get the maximum of signatures, because
+            // of the theoretically possible scenario when we're collecting sigs but are
+            // not yet able to validate them (no validator weights). We should allow to
+            // absorb more than theoretical limit (but not much more) so we don't fill
+            // all slots with invalid sigs:
             check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
         }
         if let Err(error) = finality_signature.is_verified() {
