@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use datasize::DataSize;
 use itertools::Itertools;
