@@ -181,7 +181,7 @@ impl BlockAcquisitionAction {
             .missing_validators(signature_acquisition.have_signatures())
             .cloned()
             .collect();
-        debug!(%era_id, validators_count = validators.len(),
+        debug!(%era_id, validators_count = validators.len(), peers_to_ask = peers_to_ask.len(),
             "BlockSynchronizer: requesting strict finality signatures");
         BlockAcquisitionAction {
             peers_to_ask,
