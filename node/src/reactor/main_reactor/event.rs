@@ -237,8 +237,8 @@ pub(crate) enum MainEvent {
     #[from]
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
 
-    // Event related to figuring out validators for immediate switch blocks.
-    GotImmediateSwitchBlockEraValidators(EraId, EraValidators, EraValidators),
+    // Event related to figuring out validators for blocks after upgrades.
+    GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
 }
 
 impl ReactorEvent for MainEvent {
@@ -351,7 +351,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
             MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
             MainEvent::UnexecutedBlockAnnouncement(_) => "UnexecutedBlockAnnouncement",
-            MainEvent::GotImmediateSwitchBlockEraValidators(_, _, _) => {
+            MainEvent::GotBlockAfterUpgradeEraValidators(_, _, _) => {
                 "GotImmediateSwitchBlockEraValidators"
             }
         }
@@ -533,10 +533,10 @@ impl Display for MainEvent {
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
             MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::UnexecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
-            MainEvent::GotImmediateSwitchBlockEraValidators(era_id, _, _) => {
+            MainEvent::GotBlockAfterUpgradeEraValidators(era_id, _, _) => {
                 write!(
                     f,
-                    "got immediate switch block era validators for era {}",
+                    "got era validators for block after an upgrade in era {}",
                     era_id
                 )
             }

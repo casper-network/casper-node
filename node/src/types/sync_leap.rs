@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
     iter,
     sync::Arc,
@@ -117,8 +117,10 @@ impl SyncLeap {
         &self,
         fault_tolerance_fraction: Ratio<u64>,
     ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
-        let switch_block_heights: HashSet<_> =
-            self.switch_blocks().map(BlockHeader::height).collect();
+        let block_protocol_versions: HashMap<_, _> = self
+            .headers()
+            .map(|hdr| (hdr.height(), hdr.protocol_version()))
+            .collect();
         self.switch_blocks()
             .find(|block_header| block_header.is_genesis())
             .into_iter()
@@ -131,12 +133,15 @@ impl SyncLeap {
             })
             .chain(
                 self.switch_blocks()
-                    // filter out switch blocks preceding immediate switch blocks - we don't want
-                    // to read the era validators directly from them, as they might have been
-                    // altered by the upgrade, we'll get them from the blocks' global states
-                    // instead
+                    // filter out switch blocks preceding upgrades - we don't want to read the era
+                    // validators directly from them, as they might have been altered by the
+                    // upgrade, we'll get them from the blocks' global states instead
                     .filter(move |block_header| {
-                        !switch_block_heights.contains(&(block_header.height() + 1))
+                        block_protocol_versions
+                            .get(&(block_header.height() + 1))
+                            .map_or(true, |other_protocol_version| {
+                                block_header.protocol_version() == *other_protocol_version
+                            })
                     })
                     .flat_map(move |block_header| {
                         Some(EraValidatorWeights::new(

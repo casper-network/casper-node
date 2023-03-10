@@ -1343,7 +1343,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     }
 
                     // this is a request that's separate from a typical block synchronizer flow;
-                    // it's sent when we need to sync global states of an immediate switch block
+                    // it's sent when we need to sync global states of block after an upgrade
                     // and its parent in order to check whether the validators have been
                     // changed by the upgrade
                     BlockSynchronizerRequest::SyncGlobalStates(mut global_states) => {

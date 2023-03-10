@@ -46,13 +46,13 @@ enum SyncBackInstruction {
     GenesisSynced,
 }
 
-// Additional data for syncing immediate switch blocks
+// Additional data for syncing blocks immediately after upgrades
 #[derive(Debug)]
 struct ParentMetadata {
-    // Global state and protocol version of the immediate switch block
+    // Global state and protocol version of the block after upgrade
     global_state_hash: Digest,
     protocol_version: ProtocolVersion,
-    // Hash, global state and protocol version of the parent of the immediate switch block
+    // Hash, global state and protocol version of the parent of the block after upgrade
     parent_hash: BlockHash,
     parent_state_hash: Digest,
     parent_protocol_version: ProtocolVersion,
@@ -323,13 +323,11 @@ impl MainReactor {
                         }
                         (false, Some(parent_metadata)) => {
                             // The validators matrix doesn't have the validators _and_ we are trying
-                            // to sync an immediate switch block; we
-                            // need to read the validators from the
-                            // global states of the block and its parent and compare them in order
-                            // to decide which validators to use - might
-                            // require syncing global states in
-                            // the process.
-                            Some(self.try_read_validators_for_immediate_switch_block(
+                            // to sync a block immediately after an upgrade; we need to read the
+                            // validators from the global states of the block and its parent and
+                            // compare them in order to decide which validators to use - might
+                            // require syncing global states in the process.
+                            Some(self.try_read_validators_for_block_after_upgrade(
                                 effect_builder,
                                 parent_hash,
                                 era_id,
@@ -344,9 +342,9 @@ impl MainReactor {
         }
     }
 
-    // Attempts to read the validators from the global states of the immediate switch block and its
+    // Attempts to read the validators from the global states of the block after the upgrade and its
     // parent; initiates fetching of the missing global states, if any.
-    fn try_read_validators_for_immediate_switch_block(
+    fn try_read_validators_for_block_after_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         block_hash: BlockHash,
@@ -417,7 +415,7 @@ impl MainReactor {
             // We got the era validators - just emit the event that will cause them to be compared,
             // validators matrix to be updated and reactor to be cranked.
             move |(parent_era_validators, block_era_validators)| {
-                MainEvent::GotImmediateSwitchBlockEraValidators(
+                MainEvent::GotBlockAfterUpgradeEraValidators(
                     block_era_id,
                     parent_era_validators,
                     block_era_validators,
@@ -620,18 +618,18 @@ impl MainReactor {
                         // know its era which allows us to know if we have the validator
                         // set for that era or not;
                         // note: there is a special case here where the parent might be an
-                        // immediate switch block - we check for that case by attempting to read
-                        // its parent and seeing whether it is also a switch block; if it is, we
-                        // pass the parent metadata on in the Sync instruction, so that we can read
-                        // the correct set of validators if the validators matrix doesn't have the
-                        // validators for the parent's era yet
+                        // block created immediately after an upgrade - we check for that case by
+                        // attempting to read its parent and seeing whether the protocol versions
+                        // differ; if they do, we pass the parent metadata on in the Sync
+                        // instruction, so that we can read the correct set of validators if the
+                        // validators matrix doesn't have the validators for the parent's era yet
                         let maybe_parent_metadata = self
                             .storage
                             .read_block_header(parent_block_header.parent_hash())
                             .map_err(|err| err.to_string())?
                             .and_then(|grandparent_header| {
-                                (parent_block_header.is_switch_block()
-                                    && grandparent_header.is_switch_block())
+                                (parent_block_header.protocol_version()
+                                    != grandparent_header.protocol_version())
                                 .then(|| ParentMetadata {
                                     global_state_hash: *parent_block_header.state_root_hash(),
                                     protocol_version: parent_block_header.protocol_version(),
