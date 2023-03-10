@@ -312,21 +312,19 @@ fn enough_signatures(
     is_checkable: bool,
     is_historical: bool,
 ) -> bool {
-    use SignatureWeight::*;
-
     if is_checkable {
         // Normal blocks:
-        signature_weight.is_sufficient(is_historical)
+        signature_weight.is_sufficient(false == is_historical)
     } else {
         // Legacy blocks:
         matches!((legacy_required_finality, signature_weight), |(
             LegacyRequiredFinality::Any,
-            Insufficient | Weak | Strict,
+            SignatureWeight::Insufficient | SignatureWeight::Weak | SignatureWeight::Strict,
         )| (
             LegacyRequiredFinality::Weak,
-            Weak | Strict
+            SignatureWeight::Weak | SignatureWeight::Strict
         )
-            | (LegacyRequiredFinality::Strict, Strict))
+            | (LegacyRequiredFinality::Strict, SignatureWeight::Strict))
     }
 }
 
@@ -463,7 +461,7 @@ mod tests {
             false,
         );
 
-        assert!(result == true);
+        assert!(result == false);
     }
 
     #[test]
@@ -499,7 +497,7 @@ mod tests {
             false,
         );
 
-        assert!(result == true);
+        assert!(result == false);
     }
 
     #[test]
@@ -535,7 +533,7 @@ mod tests {
             false,
         );
 
-        assert!(result == true);
+        assert!(result == false);
     }
 
     #[test]
@@ -679,7 +677,7 @@ mod tests {
             true,
         );
 
-        assert!(result == false);
+        assert!(result == true);
     }
 
     #[test]
@@ -715,7 +713,7 @@ mod tests {
             true,
         );
 
-        assert!(result == false);
+        assert!(result == true);
     }
 
     #[test]
@@ -751,7 +749,7 @@ mod tests {
             true,
         );
 
-        assert!(result == false);
+        assert!(result == true);
     }
 
     #[test]
