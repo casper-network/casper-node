@@ -78,3 +78,21 @@ where
 {
     iterator.try_fold(U512::zero(), |acc, n| acc.checked_add(n))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::consensus::ClContext;
+    use casper_types::{testing::TestRng, PublicKey};
+
+    #[test]
+    #[should_panic]
+    fn ftt_panics_during_overflow() {
+        let rng = &mut TestRng::new();
+        let mut validator_stakes = BTreeMap::new();
+        validator_stakes.insert(PublicKey::random(rng), U512::MAX);
+        validator_stakes.insert(PublicKey::random(rng), U512::from(1_u32));
+
+        validators::<ClContext>(&Default::default(), &Default::default(), validator_stakes);
+    }
+}
