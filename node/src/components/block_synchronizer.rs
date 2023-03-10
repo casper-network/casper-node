@@ -535,7 +535,11 @@ impl BlockSynchronizer {
             let action = builder.block_acquisition_action(rng, max_simultaneous_peers);
             let peers = action.peers_to_ask();
             let need_next = action.need_next();
-            info!("BlockSynchronizer: {}", need_next);
+            info!(
+                "BlockSynchronizer: {} with {} peers",
+                need_next,
+                peers.len()
+            );
             match need_next {
                 NeedNext::Nothing(_) => {
                     // currently idle or waiting, check back later
@@ -568,6 +572,7 @@ impl BlockSynchronizer {
                         .take(max_simultaneous_peers)
                         .zip(peers.into_iter().cycle())
                     {
+                        debug!(%validator, %peer, "attempting to fetch FinalitySignature");
                         builder.register_finality_signature_pending(validator.clone());
                         let id = FinalitySignatureId {
                             block_hash,
