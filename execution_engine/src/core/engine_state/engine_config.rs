@@ -1,5 +1,10 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
+use casper_types::{
+    bytesrepr::{U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    KEY_HASH_LENGTH,
+};
+
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 /// Default value for a maximum query depth configuration option.
@@ -19,6 +24,41 @@ const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 /// Default length of total vesting schedule period expressed in days.
 pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
     VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
+
+/// The size in bytes per delegator entry in SeigniorageRecipient struct.
+/// 34 bytes PublicKey + 10 bytes U512 for the delegated amount
+const SIZE_PER_DELEGATOR_ENTRY: u32 = 44;
+/// The fixed portion, in bytes, of the SeigniorageRecipient struct and its key in the
+/// `SeigniorageRecipients` map.
+/// 34 bytes for the public key + 10 bytes validator weight + 1 byte for delegation rate.
+const FIXED_SIZE_PER_VALIDATOR: u32 = 45;
+/// The size of a key of the `SeigniorageRecipientsSnapshot`, i.e. an `EraId`.
+const FIXED_SIZE_PER_ERA: u32 = U64_SERIALIZED_LENGTH as u32;
+/// The overhead of the Key::Hash under which the seigniorage snapshot lives.
+/// The hash length plus an additional byte for the tag.
+const KEY_HASH_SERIALIZED_LENGTH: u32 = KEY_HASH_LENGTH as u32 + 1;
+
+#[doc(hidden)]
+pub const fn compute_max_delegator_size_limit(
+    max_stored_value_size: u32,
+    auction_delay: u64,
+    validator_slots: u32,
+) -> u32 {
+    let size_limit_per_snapshot =
+        (max_stored_value_size - U8_SERIALIZED_LENGTH as u32 - KEY_HASH_SERIALIZED_LENGTH)
+            / (auction_delay + 1) as u32;
+    let size_per_seigniorage_recipients = size_limit_per_snapshot - FIXED_SIZE_PER_ERA;
+    let size_limit_per_validator =
+        (size_per_seigniorage_recipients / validator_slots) - FIXED_SIZE_PER_VALIDATOR;
+    // The max number of the delegators per validator is the size limit allotted
+    // to a single validator divided by the size of a single delegator entry.
+    // For the given:
+    // 1. max limit of 8MB
+    // 2. 100 validator slots
+    // 3. an auction delay of 1
+    // There will be a maximum of roughly 953 delegators per validator.
+    size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY
+}
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]

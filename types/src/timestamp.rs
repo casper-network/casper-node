@@ -107,7 +107,8 @@ impl Timestamp {
 impl Display for Timestamp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(self.0)) {
-            Some(system_time) => write!(f, "{}", humantime::format_rfc3339_millis(system_time)),
+            Some(system_time) => write!(f, "{}", humantime::format_rfc3339_millis(system_time))
+                .or_else(|e| write!(f, "Invalid timestamp: {}: {}", e, self.0)),
             None => write!(f, "invalid Timestamp: {} ms after the Unix epoch", self.0),
         }
     }
@@ -450,5 +451,10 @@ mod tests {
         assert_eq!(timediff, bincode::deserialize(&serialized_bincode).unwrap());
 
         bytesrepr::test_serialization_roundtrip(&timediff);
+    }
+
+    #[test]
+    fn does_not_crash_for_big_timestamp_value() {
+        assert!(Timestamp::MAX.to_string().starts_with("Invalid timestamp:"));
     }
 }

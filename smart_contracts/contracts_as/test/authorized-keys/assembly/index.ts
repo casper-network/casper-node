@@ -9,6 +9,21 @@ const ARG_KEY_MANAGEMENT_THRESHOLD = "key_management_threshold";
 const ARG_DEPLOY_THRESHOLD = "deploy_threshold";
 
 export function call(): void {
+  let publicKeyBytes = new Array<u8>(32);
+  publicKeyBytes.fill(123);
+  let accountHash = new AccountHash(publicKeyBytes);
+
+  const addResult = addAssociatedKey(accountHash, 100);
+  switch (addResult) {
+    case AddKeyFailure.DuplicateKey:
+      break;
+    case AddKeyFailure.Ok:
+      break;
+    default:
+      Error.fromUserError(50).revert();
+      break;
+  }
+
   let keyManagementThresholdBytes = CL.getNamedArg(ARG_KEY_MANAGEMENT_THRESHOLD);
   let keyManagementThreshold = keyManagementThresholdBytes[0];
 

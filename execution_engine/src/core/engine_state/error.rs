@@ -12,8 +12,7 @@ use crate::{
         runtime::stack,
     },
     shared::wasm_prep,
-    storage,
-    storage::global_state::CommitError,
+    storage::{self, global_state::CommitError},
 };
 
 /// Engine state errors.

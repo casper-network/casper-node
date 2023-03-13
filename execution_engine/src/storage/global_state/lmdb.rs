@@ -26,6 +26,7 @@ use crate::{
 };
 
 /// Global state implemented against LMDB as a backing data store.
+#[derive(Clone)]
 pub struct LmdbGlobalState {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,

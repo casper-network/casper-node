@@ -11,9 +11,13 @@ use crate::storage::{error::in_memory, global_state::CommitError};
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
-    /// LMDB error returned from underlying `lmdb` crate.
+    /// Error from the underlying database.
     #[error(transparent)]
     Lmdb(#[from] lmdb_external::Error),
+
+    /// Error when we cannot open a column family.
+    #[error("unable to open column family {0}")]
+    UnableToOpenColumnFamily(String),
 
     /// (De)serialization error.
     #[error("{0}")]

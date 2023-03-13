@@ -299,6 +299,7 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -394,6 +395,7 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -425,7 +427,7 @@ impl LmdbWasmTestBuilder {
         path
     }
 
-    /// Returns the file size on disk of the backing lmdb file behind DbGlobalState.
+    /// Returns the file size on disk of the backing lmdb file behind LmdbGlobalState.
     pub fn lmdb_on_disk_size(&self) -> Option<u64> {
         if let Some(path) = self.global_state_dir.as_ref() {
             let mut path = path.clone();
@@ -436,7 +438,7 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_db to flush these changes to LmdbGlobalState.
+    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
