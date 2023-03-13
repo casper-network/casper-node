@@ -27,7 +27,7 @@ use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
-use tokio::{sync::oneshot, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use casper_types::ProtocolVersion;
@@ -48,7 +48,7 @@ use crate::{
     },
     reactor::{main_reactor::MainEvent, Finalize},
     types::{ChainspecInfo, StatusFeed},
-    utils::{self, ListeningError},
+    utils::{self, DropSwitch, Fuse, ListeningError, ObservableFuse},
     NodeRng,
 };
 pub use config::Config;
@@ -92,7 +92,7 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
-    shutdown_sender: oneshot::Sender<()>,
+    shutdown_fuse: DropSwitch<ObservableFuse>,
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -284,21 +284,21 @@ where
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
         let cfg = &self.config;
-        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+        let shutdown_fuse = ObservableFuse::new();
 
         let builder = utils::start_listening(&cfg.address)?;
         let server_join_handle = Some(tokio::spawn(http_server::run(
             builder,
             effect_builder,
             self.api_version,
-            shutdown_receiver,
+            shutdown_fuse.clone(),
             cfg.qps_limit,
         )));
 
         let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
-            shutdown_sender,
+            shutdown_fuse: DropSwitch::new(shutdown_fuse),
             server_join_handle,
             node_startup_instant,
             network_name,
@@ -312,7 +312,7 @@ impl Finalize for RestServer {
     fn finalize(self) -> BoxFuture<'static, ()> {
         async {
             if let Some(mut rest_server) = self.inner_rest {
-                let _ = rest_server.shutdown_sender.send(());
+                let _ = rest_server.shutdown_fuse.inner().set();
 
                 // Wait for the server to exit cleanly.
                 if let Some(join_handle) = rest_server.server_join_handle.take() {
