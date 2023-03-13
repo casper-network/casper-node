@@ -110,6 +110,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "array-init"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d62b7694a562cdf5a74227903507c56ab2cc8bdd1f781ed5cb4cf9c9f810bfc"
+
+[[package]]
 name = "assert-json-diff"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -535,6 +541,7 @@ dependencies = [
  "ansi_term",
  "anyhow",
  "aquamarine",
+ "array-init",
  "assert-json-diff",
  "assert_matches",
  "async-trait",
@@ -568,6 +575,7 @@ dependencies = [
  "linked-hash-map",
  "lmdb-rkv",
  "log",
+ "muxink",
  "num",
  "num-derive",
  "num-rational 0.4.1",
@@ -601,12 +609,12 @@ dependencies = [
  "static_assertions",
  "stats_alloc",
  "structopt",
+ "strum 0.24.1",
  "sys-info",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-openssl",
- "tokio-serde",
  "tokio-stream",
  "tokio-util 0.6.10",
  "toml",
@@ -657,7 +665,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "serde_test",
- "strum",
+ "strum 0.21.0",
  "tempfile",
  "thiserror",
  "uint",
@@ -1349,18 +1357,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "educe"
-version = "0.4.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb0188e3c3ba8df5753894d54461f0e39bc91741dc5b22e1c46999ec2c71f4e4"
-dependencies = [
- "enum-ordinalize",
- "proc-macro2 1.0.50",
- "quote 1.0.23",
- "syn 1.0.107",
-]
-
-[[package]]
 name = "ee-1071-regression"
 version = "0.1.0"
 dependencies = [
@@ -1619,20 +1615,6 @@ checksum = "828de45d0ca18782232dfb8f3ea9cc428e8ced380eb26a520baaacfc70de39ce"
 dependencies = [
  "proc-macro2 1.0.50",
  "quote 1.0.23",
- "syn 1.0.107",
-]
-
-[[package]]
-name = "enum-ordinalize"
-version = "3.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a62bb1df8b45ecb7ffa78dca1c17a438fb193eb083db0b1b494d2a61bcb5096a"
-dependencies = [
- "num-bigint 0.4.3",
- "num-traits",
- "proc-macro2 1.0.50",
- "quote 1.0.23",
- "rustc_version",
  "syn 1.0.107",
 ]
 
@@ -2755,6 +2737,20 @@ version = "0.1.0"
 dependencies = [
  "casper-contract 1.4.4",
  "casper-types 1.5.0",
+]
+
+[[package]]
+name = "muxink"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-util 0.7.4",
+ "tracing",
 ]
 
 [[package]]
@@ -4346,7 +4342,16 @@ version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aaf86bbcfd1fa9670b7a129f64fc0c9fcbbfe4f1bc4210e9e98fe71ffc12cde2"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.21.1",
+]
+
+[[package]]
+name = "strum"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
+dependencies = [
+ "strum_macros 0.24.3",
 ]
 
 [[package]]
@@ -4358,6 +4363,19 @@ dependencies = [
  "heck 0.3.3",
  "proc-macro2 1.0.50",
  "quote 1.0.23",
+ "syn 1.0.107",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
+dependencies = [
+ "heck 0.4.0",
+ "proc-macro2 1.0.50",
+ "quote 1.0.23",
+ "rustversion",
  "syn 1.0.107",
 ]
 
@@ -4598,21 +4616,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-serde"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "911a61637386b789af998ee23f50aa30d5fd7edcec8d6d3dedae5e5815205466"
-dependencies = [
- "bincode",
- "bytes",
- "educe",
- "futures-core",
- "futures-sink",
- "pin-project",
- "serde",
-]
-
-[[package]]
 name = "tokio-stream"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4644,6 +4647,7 @@ checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "log",
  "pin-project-lite",
@@ -4658,6 +4662,7 @@ checksum = "0bb2e075f03b3d66d8d8785356224ba688d2906a371015e225beeb65ca92c740"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",
