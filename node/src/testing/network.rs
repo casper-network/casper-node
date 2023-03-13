@@ -460,7 +460,9 @@ where
     }
 
     /// Returns the internal map of nodes, mutable.
-    pub(crate) fn nodes_mut(&mut self) -> &mut HashMap<NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn nodes_mut(
+        &mut self,
+    ) -> &mut HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>> {
         &mut self.nodes
     }
 
