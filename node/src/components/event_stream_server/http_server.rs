@@ -1,13 +1,15 @@
 use futures::{future, Future, FutureExt};
 use tokio::{
     select,
-    sync::{broadcast, mpsc, oneshot},
+    sync::{broadcast, mpsc},
     task,
 };
 use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
 use casper_types::ProtocolVersion;
+
+use crate::utils::{Fuse, ObservableFuse};
 
 use super::{
     sse_server::{BroadcastChannelMessage, Id, NewSubscriberInfo, ServerSentEvent},
@@ -17,7 +19,7 @@ use super::{
 /// Run the HTTP server.
 ///
 /// * `server_with_shutdown` is the actual server as a future which can be gracefully shut down.
-/// * `server_shutdown_sender` is the channel by which the server will be notified to shut down.
+/// * `shutdown_fuse` is the fuse by which the server will be notified to shut down.
 /// * `data_receiver` will provide the server with local events which should then be sent to all
 ///   subscribed clients.
 /// * `broadcaster` is used by the server to send events to each subscribed client after receiving
@@ -29,7 +31,7 @@ pub(super) async fn run(
     config: Config,
     api_version: ProtocolVersion,
     server_with_shutdown: impl Future<Output = ()> + Send + 'static,
-    server_shutdown_sender: oneshot::Sender<()>,
+    shutdown_fuse: ObservableFuse,
     mut data_receiver: mpsc::UnboundedReceiver<(EventIndex, SseData)>,
     broadcaster: broadcast::Sender<BroadcastChannelMessage>,
     mut new_subscriber_info_receiver: mpsc::UnboundedReceiver<NewSubscriberInfo>,
@@ -117,7 +119,7 @@ pub(super) async fn run(
 
     // Kill the event-stream handlers, and shut down the server.
     let _ = broadcaster.send(BroadcastChannelMessage::Shutdown);
-    let _ = server_shutdown_sender.send(());
+    let _ = shutdown_fuse.set();
 
     trace!("Event stream server stopped");
 }
