@@ -1,5 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
@@ -178,16 +178,15 @@ impl BlockAcquisitionAction {
             let peers_to_ask = peer_list.qualified_peers(rng);
             let era_id = block_header.era_id();
             // need more signatures
+            let validators: Vec<_> = validator_weights
+                .missing_validators(signature_acquisition.have_signatures())
+                .cloned()
+                .collect();
+            debug!(%era_id, validators_count = validators.len(), peers_to_ask = peers_to_ask.len(),
+                "BlockSynchronizer: requesting strict finality signatures");
             BlockAcquisitionAction {
                 peers_to_ask,
-                need_next: NeedNext::FinalitySignatures(
-                    block_hash,
-                    era_id,
-                    validator_weights
-                        .missing_validators(signature_acquisition.have_signatures())
-                        .cloned()
-                        .collect(),
-                ),
+                need_next: NeedNext::FinalitySignatures(block_hash, era_id, validators),
             }
         }
     }
