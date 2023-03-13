@@ -620,7 +620,7 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
+                            .fetch::<ApprovalsHashes>(block_hash, node_id, block.clone())
                             .event(Event::ApprovalsHashesFetched)
                     }))
                 }

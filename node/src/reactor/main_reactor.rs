@@ -1097,6 +1097,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             chainspec.core_config.unbonding_delay,
             chainspec.core_config.minimum_block_time,
+            chainspec.core_config.validator_slots,
             registry,
         )?;
         let block_synchronizer = BlockSynchronizer::new(

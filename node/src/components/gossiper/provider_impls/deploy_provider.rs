@@ -18,7 +18,11 @@ impl ItemProvider<Deploy> for Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy> 
     async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         item_id: DeployId,
-    ) -> Option<Deploy> {
-        effect_builder.get_stored_deploy(item_id).await
+    ) -> Option<Box<Deploy>> {
+        // TODO: Make `get_stored_deploy` return a boxed value instead of boxing here.
+        effect_builder
+            .get_stored_deploy(item_id)
+            .await
+            .map(Box::new)
     }
 }
