@@ -82,6 +82,64 @@ fn single_chunk_execution_results_dont_apply_other_chunks() {
 }
 
 #[test]
+fn execution_results_chunks_from_block_with_different_hash_are_not_applied() {
+    let mut rng = TestRng::new();
+    let block = Block::random(&mut rng);
+    let test_chunks = chunks_with_proof_from_data(&[0; ChunkWithProof::CHUNK_SIZE_BYTES * 3]);
+
+    // Start acquiring chunks
+    let mut acquisition = ExecutionResultsAcquisition::new_acquiring(
+        *block.hash(),
+        ExecutionResultsChecksum::Uncheckable,
+        test_chunks.clone().into_iter().take(1).collect(),
+        3,
+        1,
+    );
+    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash()).response(
+        ValueOrChunk::ChunkWithProof(test_chunks.last_key_value().unwrap().1.clone()),
+    );
+    acquisition = assert_matches!(
+        acquisition.apply_block_execution_results_or_chunk(exec_result, vec![]),
+        Ok(acq) => acq
+    );
+    assert_matches!(acquisition, ExecutionResultsAcquisition::Acquiring { .. });
+
+    // Applying execution results from other block should return an error
+    let exec_result = BlockExecutionResultsOrChunkId::new(*Block::random(&mut rng).hash())
+        .response(ValueOrChunk::ChunkWithProof(
+            test_chunks.first_key_value().unwrap().1.clone(),
+        ));
+    assert_matches!(
+        acquisition.apply_block_execution_results_or_chunk(exec_result, vec![]),
+        Err(Error::BlockHashMismatch {expected, .. }) => assert_eq!(expected, *block.hash())
+    );
+}
+
+#[test]
+fn execution_results_chunks_from_trie_with_different_chunk_count_are_not_applied() {
+    let mut rng = TestRng::new();
+    let test_chunks_1 = chunks_with_proof_from_data(&[0; ChunkWithProof::CHUNK_SIZE_BYTES * 3]);
+    assert_eq!(test_chunks_1.len(), 3);
+
+    let test_chunks_2 = chunks_with_proof_from_data(&[1; ChunkWithProof::CHUNK_SIZE_BYTES * 2]);
+    assert_eq!(test_chunks_2.len(), 2);
+
+    // If chunk tries have different number of chunks we shouldn't attempt to apply the incoming
+    // chunk and exit early
+    let bad_chunk = test_chunks_2.first_key_value().unwrap();
+
+    let apply_result = apply_chunk(
+        *Block::random(&mut rng).hash(),
+        ExecutionResultsChecksum::Uncheckable,
+        test_chunks_1.into_iter().take(2).collect(),
+        bad_chunk.1.clone(),
+        Some(3),
+    );
+
+    assert_matches!(apply_result, Err(Error::ChunkCountMismatch {expected, actual, ..}) if expected == 3 && actual == 2);
+}
+
+#[test]
 fn invalid_execution_results_from_applied_chunks_dont_deserialize() {
     let mut rng = TestRng::new();
     let block = Block::random(&mut rng);
