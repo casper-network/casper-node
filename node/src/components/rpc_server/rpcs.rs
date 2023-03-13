@@ -21,7 +21,6 @@ use hyper::server::{conn::AddrIncoming, Builder};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::oneshot;
 use tower::ServiceBuilder;
 use tracing::info;
 use warp::Filter;
@@ -31,6 +30,7 @@ use casper_types::ProtocolVersion;
 
 use super::{ReactorEventT, RpcRequest};
 use crate::effect::EffectBuilder;
+use crate::utils::{Fuse, ObservableFuse};
 pub use common::ErrorData;
 use docs::DocExample;
 pub use error_code::ErrorCode;
@@ -288,13 +288,11 @@ pub(super) async fn run(
     let server = builder.serve(make_svc);
     info!(address = %server.local_addr(), "started {} server", server_name);
 
-    let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
-    let server_with_shutdown = server.with_graceful_shutdown(async {
-        shutdown_receiver.await.ok();
-    });
+    let shutdown_fuse = ObservableFuse::new();
+    let server_with_shutdown = server.with_graceful_shutdown(shutdown_fuse.clone().wait_owned());
 
     let _ = tokio::spawn(server_with_shutdown).await;
-    let _ = shutdown_sender.send(());
+    let _ = shutdown_fuse.set();
     info!("{} server shut down", server_name);
 }
 
