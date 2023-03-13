@@ -43,6 +43,22 @@ impl SyncIdentifier {
         }
     }
 
+    pub(crate) fn era_id(&self) -> Option<EraId> {
+        match self {
+            SyncIdentifier::BlockHash(_) | SyncIdentifier::BlockIdentifier(_, _) => None,
+            SyncIdentifier::SyncedBlockIdentifier(_, _, era_id)
+            | SyncIdentifier::ExecutingBlockIdentifier(_, _, era_id)
+            | SyncIdentifier::LocalTip(_, _, era_id) => Some(*era_id),
+        }
+    }
+
+    pub(crate) fn block_height_and_era(&self) -> Option<(u64, EraId)> {
+        if let (Some(block_height), Some(era_id)) = (self.block_height(), self.era_id()) {
+            return Some((block_height, era_id));
+        }
+        None
+    }
+
     pub(crate) fn is_held_locally(&self) -> bool {
         match self {
             SyncIdentifier::BlockHash(_) | SyncIdentifier::BlockIdentifier(_, _) => false,
@@ -53,14 +69,11 @@ impl SyncIdentifier {
         }
     }
 
-    pub(crate) fn maybe_local_tip_identifier(&self) -> Option<(u64, EraId)> {
-        match self {
-            SyncIdentifier::BlockHash(_)
-            | SyncIdentifier::BlockIdentifier(_, _)
-            | SyncIdentifier::ExecutingBlockIdentifier(_, _, _) => None,
-
-            SyncIdentifier::SyncedBlockIdentifier(_, block_height, era_id)
-            | SyncIdentifier::LocalTip(_, block_height, era_id) => Some((*block_height, *era_id)),
+    pub(crate) fn block_hash_to_sync(&self, child_hash: Option<BlockHash>) -> Option<BlockHash> {
+        if self.is_held_locally() {
+            child_hash
+        } else {
+            Some(self.block_hash())
         }
     }
 }

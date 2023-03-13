@@ -32,7 +32,7 @@ const SMALL_TIMEOUTS_VALIDATE_AND_STORE_TIMEOUT: &str = "1sec";
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// Target number of peers to infect with a given piece of data.
-    infection_target: u8,
+    pub infection_target: u8,
     /// The saturation limit as a percentage, with a maximum value of 99.  Used as a termination
     /// condition.
     ///
@@ -40,22 +40,22 @@ pub struct Config {
     /// don't manage to newly infect 3 peers.  We will stop gossiping once we know of more than 15
     /// holders excluding us since 80% saturation would imply 3 new infections in 15 peers.
     #[serde(deserialize_with = "deserialize_saturation_limit_percent")]
-    saturation_limit_percent: u8,
+    pub saturation_limit_percent: u8,
     /// The maximum duration in seconds for which to keep finished entries.
     ///
     /// The longer they are retained, the lower the likelihood of re-gossiping a piece of data.
     /// However, the longer they are retained, the larger the list of finished entries can grow.
-    finished_entry_duration: TimeDiff,
+    pub finished_entry_duration: TimeDiff,
     /// The timeout duration in seconds for a single gossip request, i.e. for a single gossip
     /// message sent from this node, it will be considered timed out if the expected response from
     /// that peer is not received within this specified duration.
-    gossip_request_timeout: TimeDiff,
+    pub gossip_request_timeout: TimeDiff,
     /// The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered
     /// data from a peer which gossiped information about that data to this node.
-    get_remainder_timeout: TimeDiff,
+    pub get_remainder_timeout: TimeDiff,
     /// The timeout duration for a newly-received, gossiped item to be validated and stored by
     /// another component before the gossiper abandons waiting to gossip the item onwards.
-    validate_and_store_timeout: TimeDiff,
+    pub validate_and_store_timeout: TimeDiff,
 }
 
 impl Config {

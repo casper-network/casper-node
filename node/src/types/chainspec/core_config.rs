@@ -19,53 +19,77 @@ use casper_types::{
 };
 use tracing::{error, warn};
 
+/// Configuration values associated with the core protocol.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {
-    pub(crate) era_duration: TimeDiff,
-    pub(crate) minimum_era_height: u64,
-    pub(crate) minimum_block_time: TimeDiff,
-    pub(crate) validator_slots: u32,
+    /// Duration of an era.
+    pub era_duration: TimeDiff,
+
+    /// Minimum era height.
+    pub minimum_era_height: u64,
+
+    /// Minimum block time.
+    pub minimum_block_time: TimeDiff,
+
+    /// Validator slots.
+    pub validator_slots: u32,
+
+    /// Finality threshold fraction.
     #[data_size(skip)]
-    pub(crate) finality_threshold_fraction: Ratio<u64>,
+    pub finality_threshold_fraction: Ratio<u64>,
+
+    /// Which finality is required for legacy blocks.
+    pub legacy_required_finality: LegacyRequiredFinality,
+
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
-    pub(crate) auction_delay: u64,
+    pub auction_delay: u64,
+
     /// The period after genesis during which a genesis validator's bid is locked.
-    pub(crate) locked_funds_period: TimeDiff,
+    pub locked_funds_period: TimeDiff,
+
     /// The period in which genesis validator's bid is released over time after it's unlocked.
-    pub(crate) vesting_schedule_period: TimeDiff,
+    pub vesting_schedule_period: TimeDiff,
+
     /// The delay in number of eras for paying out the the unbonding amount.
-    pub(crate) unbonding_delay: u64,
+    pub unbonding_delay: u64,
+
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
-    pub(crate) round_seigniorage_rate: Ratio<u64>,
+    pub round_seigniorage_rate: Ratio<u64>,
+
     /// Maximum number of associated keys for a single account.
-    pub(crate) max_associated_keys: u32,
+    pub max_associated_keys: u32,
+
     /// Maximum height of contract runtime call stack.
-    pub(crate) max_runtime_call_stack_height: u32,
+    pub max_runtime_call_stack_height: u32,
+
     /// The minimum bound of motes that can be delegated to a validator.
-    pub(crate) minimum_delegation_amount: u64,
+    pub minimum_delegation_amount: u64,
+
     /// Enables strict arguments checking when calling a contract.
-    pub(crate) strict_argument_checking: bool,
+    pub strict_argument_checking: bool,
+
     /// How many peers to simultaneously ask when sync leaping.
-    pub(crate) simultaneous_peer_requests: u32,
+    pub simultaneous_peer_requests: u32,
+
     /// Which consensus protocol to use.
-    pub(crate) consensus_protocol: ConsensusProtocolName,
+    pub consensus_protocol: ConsensusProtocolName,
 }
 
 impl CoreConfig {
     /// The number of eras that have already started and whose validators are still bonded.
-    pub(crate) fn recent_era_count(&self) -> u64 {
+    pub fn recent_era_count(&self) -> u64 {
         // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
         self.unbonding_delay - self.auction_delay
     }
 
     /// Returns `false` if unbonding delay is not greater than auction delay to ensure
     /// that `recent_era_count()` yields a value of at least 1.
-    pub(super) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         if self.unbonding_delay <= self.auction_delay {
             warn!(
                 unbonding_delay = self.unbonding_delay,
@@ -116,6 +140,7 @@ impl CoreConfig {
         let minimum_block_time = TimeDiff::from_seconds(rng.gen_range(1..60));
         let validator_slots = rng.gen_range(1..10_000);
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
+        let legacy_required_finality = rng.gen();
         let auction_delay = rng.gen_range(1..5);
         let locked_funds_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
         let vesting_schedule_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
@@ -137,6 +162,7 @@ impl CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            legacy_required_finality,
             auction_delay,
             locked_funds_period,
             vesting_schedule_period,
@@ -160,6 +186,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.minimum_block_time.to_bytes()?);
         buffer.extend(self.validator_slots.to_bytes()?);
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
+        buffer.extend(self.legacy_required_finality.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
         buffer.extend(self.vesting_schedule_period.to_bytes()?);
@@ -180,6 +207,7 @@ impl ToBytes for CoreConfig {
             + self.minimum_block_time.serialized_length()
             + self.validator_slots.serialized_length()
             + self.finality_threshold_fraction.serialized_length()
+            + self.legacy_required_finality.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
             + self.vesting_schedule_period.serialized_length()
@@ -201,6 +229,7 @@ impl FromBytes for CoreConfig {
         let (minimum_block_time, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_slots, remainder) = u32::from_bytes(remainder)?;
         let (finality_threshold_fraction, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (legacy_required_finality, remainder) = LegacyRequiredFinality::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (vesting_schedule_period, remainder) = TimeDiff::from_bytes(remainder)?;
@@ -218,6 +247,7 @@ impl FromBytes for CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            legacy_required_finality,
             auction_delay,
             locked_funds_period,
             vesting_schedule_period,
@@ -234,9 +264,12 @@ impl FromBytes for CoreConfig {
     }
 }
 
+/// Consensus protocol name.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
-pub(crate) enum ConsensusProtocolName {
+pub enum ConsensusProtocolName {
+    /// Highway.
     Highway,
+    /// Zug.
     Zug,
 }
 
@@ -299,6 +332,85 @@ impl Distribution<ConsensusProtocolName> for Standard {
             ConsensusProtocolName::Highway
         } else {
             ConsensusProtocolName::Zug
+        }
+    }
+}
+
+/// Which finality a legacy block needs during a fast sync.
+#[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
+pub enum LegacyRequiredFinality {
+    /// Strict finality: more than 2/3rd of validators.
+    Strict,
+    /// Weak finality: more than 1/3rd of validators.
+    Weak,
+    /// Finality always valid.
+    Any,
+}
+
+impl Serialize for LegacyRequiredFinality {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            LegacyRequiredFinality::Strict => "Strict",
+            LegacyRequiredFinality::Weak => "Weak",
+            LegacyRequiredFinality::Any => "Any",
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LegacyRequiredFinality {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match String::deserialize(deserializer)?.to_lowercase().as_str() {
+            "strict" => Ok(LegacyRequiredFinality::Strict),
+            "weak" => Ok(LegacyRequiredFinality::Weak),
+            "any" => Ok(LegacyRequiredFinality::Any),
+            _ => Err(DeError::custom("unknown legacy required finality")),
+        }
+    }
+}
+
+const LEGACY_REQUIRED_FINALITY_STRICT_TAG: u8 = 0;
+const LEGACY_REQUIRED_FINALITY_WEAK_TAG: u8 = 1;
+const LEGACY_REQUIRED_FINALITY_ANY_TAG: u8 = 2;
+
+impl ToBytes for LegacyRequiredFinality {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let tag = match self {
+            LegacyRequiredFinality::Strict => LEGACY_REQUIRED_FINALITY_STRICT_TAG,
+            LegacyRequiredFinality::Weak => LEGACY_REQUIRED_FINALITY_WEAK_TAG,
+            LegacyRequiredFinality::Any => LEGACY_REQUIRED_FINALITY_ANY_TAG,
+        };
+        Ok(vec![tag])
+    }
+
+    fn serialized_length(&self) -> usize {
+        1
+    }
+}
+
+impl FromBytes for LegacyRequiredFinality {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            LEGACY_REQUIRED_FINALITY_STRICT_TAG => Ok((LegacyRequiredFinality::Strict, remainder)),
+            LEGACY_REQUIRED_FINALITY_WEAK_TAG => Ok((LegacyRequiredFinality::Weak, remainder)),
+            LEGACY_REQUIRED_FINALITY_ANY_TAG => Ok((LegacyRequiredFinality::Any, remainder)),
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Distribution<LegacyRequiredFinality> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LegacyRequiredFinality {
+        match rng.gen_range(0..3) {
+            0 => LegacyRequiredFinality::Strict,
+            1 => LegacyRequiredFinality::Weak,
+            2 => LegacyRequiredFinality::Any,
+            _not_in_range => unreachable!(),
         }
     }
 }

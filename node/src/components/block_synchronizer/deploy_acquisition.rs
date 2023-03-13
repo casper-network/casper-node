@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     cmp::Ord,
     fmt::{Display, Formatter},

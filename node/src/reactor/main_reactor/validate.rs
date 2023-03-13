@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
@@ -25,9 +25,12 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> ValidateInstruction {
         let queue_depth = self.contract_runtime.queue_depth();
-        if self.contract_runtime.queue_depth() > 0 {
-            debug!("Validate: should_validate queue_depth {}", queue_depth);
-            return ValidateInstruction::KeepUp;
+        if queue_depth > 0 {
+            warn!("Validate: should_validate queue_depth {}", queue_depth);
+            return ValidateInstruction::CheckLater(
+                "allow time for contract runtime execution to occur".to_string(),
+                self.control_logic_default_delay.into(),
+            );
         }
         if self.switch_block.is_none() {
             // validate status is only checked at switch blocks
@@ -105,7 +108,7 @@ impl MainReactor {
             Some(weights) => weights,
         };
         if !highest_era_weights.contains_key(self.consensus.public_key()) {
-            debug!(state = %self.state,"highest_era_weights does not contain signing_public_key");
+            info!(state = %self.state,"highest_era_weights does not contain signing_public_key");
             return Ok(None);
         }
 
@@ -121,7 +124,7 @@ impl MainReactor {
 
         let era_id = highest_switch_block_header.era_id();
         if self.upgrade_watcher.should_upgrade_after(era_id) {
-            debug!(state = %self.state, era_id = era_id.value(), "upgrade required after given era");
+            info!(state = %self.state, era_id = era_id.value(), "upgrade required after given era");
             return Ok(None);
         }
 

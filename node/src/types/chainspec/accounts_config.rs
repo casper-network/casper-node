@@ -34,6 +34,7 @@ where
     Ok(vec)
 }
 
+/// Configuration values associated with accounts.toml
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
     #[serde(deserialize_with = "sorted_vec_deserializer")]
@@ -43,6 +44,7 @@ pub struct AccountsConfig {
 }
 
 impl AccountsConfig {
+    /// Creates a new `AccountsConfig`.
     pub fn new(accounts: Vec<AccountConfig>, delegators: Vec<DelegatorConfig>) -> Self {
         Self {
             accounts,
@@ -50,14 +52,17 @@ impl AccountsConfig {
         }
     }
 
+    /// Accounts.
     pub fn accounts(&self) -> &[AccountConfig] {
         &self.accounts
     }
 
+    /// Delegators.
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
     }
 
+    /// Account.
     pub fn account(&self, public_key: &PublicKey) -> Option<&AccountConfig> {
         self.accounts
             .iter()

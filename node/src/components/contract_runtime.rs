@@ -598,9 +598,9 @@ impl ContractRuntime {
 
         let environment = Arc::new(LmdbEnvironment::new(
             storage_dir,
-            contract_runtime_config.max_global_state_size(),
-            contract_runtime_config.max_readers(),
-            contract_runtime_config.manual_sync_enabled(),
+            contract_runtime_config.max_global_state_size_or_default(),
+            contract_runtime_config.max_readers_or_default(),
+            contract_runtime_config.manual_sync_enabled_or_default(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(
@@ -611,7 +611,7 @@ impl ContractRuntime {
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth(),
+            contract_runtime_config.max_query_depth_or_default(),
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,

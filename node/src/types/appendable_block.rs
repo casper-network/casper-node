@@ -209,8 +209,9 @@ impl Display for AppendableBlock {
             .sum::<usize>();
         write!(
             formatter,
-            "AppendableBlock({} non-transfers with {} approvals, {} transfers with {} approvals, \
+            "AppendableBlock(timestamp-{}: {} non-transfers with {} approvals, {} transfers with {} approvals, \
             total of {} deploys with {} approvals, total gas {}, total size {})",
+            self.timestamp,
             self.deploys.len(),
             deploy_approvals_count,
             self.transfers.len(),

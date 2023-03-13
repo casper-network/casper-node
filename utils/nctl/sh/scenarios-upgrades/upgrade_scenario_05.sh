@@ -13,10 +13,11 @@
 # Step 08: Await 10 era.
 # Step 09: Stage nodes 1&10 and restart.
 # Step 10: Assert all nodes are running
-# Step 11: Assert lfbs are in sync
-# Step 12: Assert chain didn't stall.
-# Step 13: Run Health Checks
-# Step 14: Terminate.
+# Step 11: Check Reactor State
+# Step 12: Assert lfbs are in sync
+# Step 13: Assert chain didn't stall.
+# Step 14: Run Health Checks
+# Step 15: Terminate.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -74,6 +75,7 @@ function _main()
     _step_12
     _step_13
     _step_14
+    _step_15
 }
 
 # Step 01: Start network from pre-built stage.
@@ -302,46 +304,60 @@ function _step_10()
     fi
 }
 
-# Step 11: Assert lfbs are in sync
+# Step 11: Check reactor state
 function _step_11()
 {
-    local NODES_IN_SYNC
-    local LOOPS_ALLOWED
+    local FIRST_NODE=1
+    local LAST_NODE=10
+    local TIMEOUT=180
+    local TIME_COUNT=0
+    local NODE_INDEX
+    local NODE_REACTOR_STATE
+    local ALLOWED_STATES
 
-    # allow 5 minutes
-    LOOPS_ALLOWED=300
+    ALLOWED_STATES=('Validate' 'KeepUp')
+    NODE_INDEX="$FIRST_NODE"
 
-    log_step_upgrades 11 "Asserting all nodes are in sync..."
+    log_step_upgrades 11 "Check reactor states..."
 
-    while [ "$LOOPS_ALLOWED" != '0' ]; do
-        NODES_IN_SYNC=$(nctl-view-chain-lfb | awk '{print $NF}' | uniq -c | sed 's/^ *//g' | awk '{ print $1 }')
-        if [ "$NODES_IN_SYNC" = '10' ]; then
-            log "... all $NODES_IN_SYNC nodes are in sync"
-            break
+    while [ "$NODE_INDEX" -le "$LAST_NODE" ] && [ "$TIME_COUNT" -lt "$TIMEOUT" ]; do
+        NODE_REACTOR_STATE=$(get_reactor_state "$NODE_INDEX")
+        if [[ "${ALLOWED_STATES[@]}" =~ "$NODE_REACTOR_STATE" ]]; then
+            log "Node-$NODE_INDEX found with reactor state of: $NODE_REACTOR_STATE [ok]"
+            NODE_INDEX=$((NODE_INDEX + 1))
         else
-            # Retry sync check for 20m in 10s intervals
-            LOOPS_ALLOWED=$(( LOOPS_ALLOWED - 10 ))
-            log "...retrying for another $((LOOPS_ALLOWED / 60)) mins, sleep 10"
-            sleep 10
+            log "Node-$NODE_INDEX found with reactor state of: $NODE_REACTOR_STATE [retrying]"
+            log "... time remaining until timeout: $((TIMEOUT - TIME_COUNT))"
+            TIME_COUNT=$((TIME_COUNT + 1))
+            sleep 1
         fi
     done
 
-    if [ "$LOOPS_ALLOWED" = '0' ]; then
-        log "ERROR: 10 nodes not found in sync"
-        log "... dumping logs"
-        nctl-view-chain-height; nctl-assets-dump
+    # gt since the index would be incremented to 11 if it made it to 10
+    if [ "$NODE_INDEX" -gt "$LAST_NODE" ]; then
+        log "... all nodes reactor states ok!"
+    else
+        log "Error: reactor check timed out after $TIMEOUT seconds"
         exit 1
     fi
 }
 
-# Step 12: Assert chain didn't stall.
+# Step 12: Assert lfbs are in sync
 function _step_12()
+{
+    log_step_upgrades 12 "Asserting all nodes are in sync..."
+    # args: first node, last node, timeout, log_step
+    check_network_sync '1' '10' '300' 'false'
+}
+
+# Step 13: Assert chain didn't stall.
+function _step_13()
 {
     local HEIGHT_1
     local HEIGHT_2
     local NODE_ID
 
-    log_step_upgrades 12 "Asserting nodes didn't stall"
+    log_step_upgrades 13 "Asserting nodes didn't stall"
 
     HEIGHT_1=$(get_chain_height 2)
     await_n_blocks '5' 'true' '2'
@@ -358,11 +374,11 @@ function _step_12()
     done
 }
 
-# Step 13: Run NCTL health checks
-function _step_13()
+# Step 14: Run NCTL health checks
+function _step_14()
 {
     # restarts=12 - Nodes that upgrade
-    log_step_upgrades 13 "running health checks"
+    log_step_upgrades 14 "running health checks"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \
             equivocators='0' \
@@ -372,10 +388,10 @@ function _step_13()
             ejections=0
 }
 
-# Step 14: Terminate.
-function _step_14()
+# Step 15: Terminate.
+function _step_15()
 {
-    log_step_upgrades 14 "upgrade_scenario_05 successful - tidying up"
+    log_step_upgrades 15 "upgrade_scenario_05 successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

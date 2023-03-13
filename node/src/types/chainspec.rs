@@ -33,15 +33,13 @@ use casper_types::{
     EraId, ProtocolVersion,
 };
 
-#[cfg(test)]
-pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
-pub use self::error::Error;
-pub(crate) use self::{
-    accounts_config::AccountsConfig,
+pub use self::{
+    accounts_config::{AccountConfig, AccountsConfig, ValidatorConfig},
     activation_point::ActivationPoint,
     chainspec_raw_bytes::ChainspecRawBytes,
-    core_config::{ConsensusProtocolName, CoreConfig},
+    core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality},
     deploy_config::DeployConfig,
+    error::Error,
     global_state_update::GlobalStateUpdate,
     highway_config::HighwayConfig,
     network_config::NetworkConfig,
@@ -56,25 +54,38 @@ pub const CHAINSPEC_FILENAME: &str = "chainspec.toml";
 /// upgrades to basic system functionality occurring after genesis.
 #[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct Chainspec {
+    /// Protocol config.
     #[serde(rename = "protocol")]
-    pub(crate) protocol_config: ProtocolConfig,
+    pub protocol_config: ProtocolConfig,
+
+    /// Network config.
     #[serde(rename = "network")]
-    pub(crate) network_config: NetworkConfig,
+    pub network_config: NetworkConfig,
+
+    /// Core config.
     #[serde(rename = "core")]
-    pub(crate) core_config: CoreConfig,
+    pub core_config: CoreConfig,
+
+    /// Highway config.
     #[serde(rename = "highway")]
-    pub(crate) highway_config: HighwayConfig,
+    pub highway_config: HighwayConfig,
+
+    /// Deploy Config.
     #[serde(rename = "deploys")]
-    pub(crate) deploy_config: DeployConfig,
+    pub deploy_config: DeployConfig,
+
+    /// Wasm config.
     #[serde(rename = "wasm")]
-    pub(crate) wasm_config: WasmConfig,
+    pub wasm_config: WasmConfig,
+
+    /// System costs config.
     #[serde(rename = "system_costs")]
-    pub(crate) system_costs_config: SystemConfig,
+    pub system_costs_config: SystemConfig,
 }
 
 impl Chainspec {
     /// Returns `false` and logs errors if the values set in the config don't make sense.
-    pub(crate) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         if (self.network_config.maximum_net_message_size as usize)
             < ChunkWithProof::CHUNK_SIZE_BYTES * 3
         {
@@ -121,7 +132,7 @@ impl Chainspec {
     }
 
     /// Serializes `self` and hashes the resulting bytes.
-    pub(crate) fn hash(&self) -> Digest {
+    pub fn hash(&self) -> Digest {
         let serialized_chainspec = self.to_bytes().unwrap_or_else(|error| {
             error!(%error, "failed to serialize chainspec");
             vec![]
@@ -130,13 +141,13 @@ impl Chainspec {
     }
 
     /// Returns the protocol version of the chainspec.
-    pub(crate) fn protocol_version(&self) -> ProtocolVersion {
+    pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_config.version
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
     /// subsequent eras are deleted from storage.
-    pub(crate) fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
+    pub fn hard_reset_to_start_of_era(&self) -> Option<EraId> {
         self.protocol_config
             .hard_reset
             .then(|| self.protocol_config.activation_point.era_id())

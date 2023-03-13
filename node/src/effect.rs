@@ -1365,7 +1365,6 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         state_root_hash: Digest,
-        peers: HashSet<NodeId>,
     ) -> Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>
     where
         REv: From<SyncGlobalStateRequest>,
@@ -1374,7 +1373,6 @@ impl<REv> EffectBuilder<REv> {
             |responder| SyncGlobalStateRequest {
                 block_hash,
                 state_root_hash,
-                peers,
                 responder,
             },
             QueueKind::SyncGlobalState,
@@ -2217,42 +2215,6 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::NetworkInfo,
-        )
-        .await
-    }
-
-    pub(crate) async fn get_block_from_block_accumulator(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<Arc<Block>>
-    where
-        REv: From<BlockAccumulatorRequest>,
-    {
-        self.make_request(
-            |responder| BlockAccumulatorRequest::GetBlock {
-                block_hash,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    pub(crate) async fn get_signature_from_block_accumulator(
-        self,
-        block_hash: BlockHash,
-        public_key: PublicKey,
-    ) -> Option<FinalitySignature>
-    where
-        REv: From<BlockAccumulatorRequest>,
-    {
-        self.make_request(
-            |responder| BlockAccumulatorRequest::GetFinalitySignature {
-                block_hash,
-                public_key,
-                responder,
-            },
-            QueueKind::Regular,
         )
         .await
     }

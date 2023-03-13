@@ -17,8 +17,9 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        DeployId, EraValidatorWeights, FinalitySignature, SignatureWeight,
+        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
+        BlockHash, BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature,
+        SignatureWeight,
     },
     NodeRng,
 };
@@ -268,6 +269,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
+        legacy_required_finality: LegacyRequiredFinality,
         max_simultaneous_peers: usize,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
@@ -277,32 +279,26 @@ impl BlockAcquisitionState {
                 BlockAcquisitionAction::block_header(peer_list, rng, *block_hash),
             ),
             BlockAcquisitionState::HaveBlockHeader(block_header, signatures) => {
-                if validator_weights.is_empty() {
-                    Ok(BlockAcquisitionAction::era_validators(
-                        validator_weights.era_id(),
-                    ))
-                } else {
-                    // Collect signatures with Vacant state or which are currently missing from the
-                    // SignatureAcquisition.
-                    let mut missing_signatures: HashSet<PublicKey> = validator_weights
-                        .missing_validators(signatures.not_vacant())
-                        .cloned()
-                        .collect();
-                    // If there are too few, retry any in Pending state.
-                    if missing_signatures.len() < max_simultaneous_peers {
-                        missing_signatures.extend(
-                            validator_weights
-                                .missing_validators(signatures.not_pending())
-                                .cloned(),
-                        );
-                    }
-                    Ok(BlockAcquisitionAction::finality_signatures(
-                        peer_list,
-                        rng,
-                        block_header,
-                        missing_signatures.into_iter().collect(),
-                    ))
+                // Collect signatures with Vacant state or which are currently missing from the
+                // SignatureAcquisition.
+                let mut missing_signatures: HashSet<PublicKey> = validator_weights
+                    .missing_validators(signatures.not_vacant())
+                    .cloned()
+                    .collect();
+                // If there are too few, retry any in Pending state.
+                if missing_signatures.len() < max_simultaneous_peers {
+                    missing_signatures.extend(
+                        validator_weights
+                            .missing_validators(signatures.not_pending())
+                            .cloned(),
+                    );
                 }
+                Ok(BlockAcquisitionAction::finality_signatures(
+                    peer_list,
+                    rng,
+                    block_header,
+                    missing_signatures.into_iter().collect(),
+                ))
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Ok(
                 BlockAcquisitionAction::block_body(peer_list, rng, header.block_hash()),
@@ -327,6 +323,7 @@ impl BlockAcquisitionState {
                         validator_weights,
                         signatures,
                         is_historical,
+                        legacy_required_finality,
                     ))
                 }
             }
@@ -353,6 +350,7 @@ impl BlockAcquisitionState {
                         validator_weights,
                         signatures,
                         is_historical,
+                        legacy_required_finality,
                     ))
                 }
             }
@@ -377,6 +375,7 @@ impl BlockAcquisitionState {
                         signatures,
                         deploys.needs_deploy(),
                         is_historical,
+                        legacy_required_finality,
                     ))
                 }
             }
@@ -392,6 +391,7 @@ impl BlockAcquisitionState {
                     signatures,
                     deploys.needs_deploy(),
                     is_historical,
+                    legacy_required_finality,
                 ))
             }
             BlockAcquisitionState::HaveAllDeploys(block, signatures) => {
@@ -402,6 +402,7 @@ impl BlockAcquisitionState {
                     validator_weights,
                     signatures,
                     is_historical,
+                    legacy_required_finality,
                 ))
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, ..) => {
