@@ -532,7 +532,11 @@ impl BlockSynchronizer {
             if builder.in_flight_latch().is_some() || builder.is_finished() {
                 return;
             }
-            let action = builder.block_acquisition_action(rng, max_simultaneous_peers);
+            let action = builder.block_acquisition_action(
+                rng,
+                max_simultaneous_peers,
+                chainspec.core_config.legacy_required_finality,
+            );
             let peers = action.peers_to_ask();
             let need_next = action.need_next();
             info!(

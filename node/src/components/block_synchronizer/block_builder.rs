@@ -20,9 +20,9 @@ use super::{
 };
 use crate::{
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, NodeId,
-        ValidatorMatrix,
+        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
+        BlockHash, BlockHeader, BlockSignatures, DeployHash, DeployId, EraValidatorWeights,
+        FinalitySignature, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -345,6 +345,7 @@ impl BlockBuilder {
         &mut self,
         rng: &mut NodeRng,
         max_simultaneous_peers: usize,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
@@ -388,6 +389,7 @@ impl BlockBuilder {
             validator_weights,
             rng,
             self.should_fetch_execution_state,
+            legacy_required_finality,
             max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
