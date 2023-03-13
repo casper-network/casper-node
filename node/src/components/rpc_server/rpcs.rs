@@ -294,7 +294,7 @@ pub(super) async fn run(
     let server_with_shutdown = server.with_graceful_shutdown(shutdown_fuse.clone().wait_owned());
 
     let _ = tokio::spawn(server_with_shutdown).await;
-    let _ = shutdown_fuse.set();
+    shutdown_fuse.set();
     info!("{} server shut down", server_name);
 }
 

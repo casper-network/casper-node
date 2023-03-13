@@ -119,7 +119,7 @@ pub(super) async fn run(
 
     // Kill the event-stream handlers, and shut down the server.
     let _ = broadcaster.send(BroadcastChannelMessage::Shutdown);
-    let _ = shutdown_fuse.set();
+    shutdown_fuse.set();
 
     trace!("Event stream server stopped");
 }

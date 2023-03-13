@@ -312,7 +312,7 @@ impl Finalize for RestServer {
     fn finalize(self) -> BoxFuture<'static, ()> {
         async {
             if let Some(mut rest_server) = self.inner_rest {
-                let _ = rest_server.shutdown_fuse.inner().set();
+                rest_server.shutdown_fuse.inner().set();
 
                 // Wait for the server to exit cleanly.
                 if let Some(join_handle) = rest_server.server_join_handle.take() {
