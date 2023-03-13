@@ -29,8 +29,10 @@ use casper_json_rpc::{Error, Params, RequestHandlers, RequestHandlersBuilder, Re
 use casper_types::ProtocolVersion;
 
 use super::{ReactorEventT, RpcRequest};
-use crate::effect::EffectBuilder;
-use crate::utils::{Fuse, ObservableFuse};
+use crate::{
+    effect::EffectBuilder,
+    utils::{Fuse, ObservableFuse},
+};
 pub use common::ErrorData;
 use docs::DocExample;
 pub use error_code::ErrorCode;
