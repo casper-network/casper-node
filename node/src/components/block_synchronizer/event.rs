@@ -78,7 +78,7 @@ impl Display for Event {
             Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
                 write!(f, "block synchronizer need next request")
             }
-            Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states, _)) => {
+            Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states)) => {
                 write!(f, "global states to be synced: [")?;
                 for (block_hash, global_state_hash) in global_states {
                     write!(

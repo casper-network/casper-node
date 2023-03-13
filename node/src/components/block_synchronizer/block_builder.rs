@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -627,5 +624,9 @@ impl BlockBuilder {
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
         self.in_flight_latch = None;
+    }
+
+    pub(crate) fn peer_list(&self) -> &PeerList {
+        &self.peer_list
     }
 }
