@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 use crate::{
     reactor::{EventQueueHandle, QueueKind, Scheduler},
@@ -7,7 +9,6 @@ use crate::{
 use casper_types::{bytesrepr::Bytes, testing::TestRng};
 use futures::channel::oneshot;
 use rand::Rng;
-use std::time::Duration;
 
 /// Event for the mock reactor.
 #[derive(Debug)]
