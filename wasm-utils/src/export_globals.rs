@@ -5,7 +5,7 @@ use parity_wasm::elements;
 ///
 /// This will export all internal mutable globals under the name of
 /// concat(`prefix`, i) where i is the index inside the range of
-/// [0..<total number of internal mutable globals>].
+/// [0..total_number_of_internal_mutable_globals].
 pub fn export_mutable_globals(module: &mut elements::Module, prefix: impl Into<String>) {
     let exports = global_section(module)
         .map(|section| {
