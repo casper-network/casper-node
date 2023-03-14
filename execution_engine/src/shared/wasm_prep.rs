@@ -2,13 +2,13 @@
 use parity_wasm::elements::{
     self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
 };
-use pwasm_utils::{self, stack_height};
 use thiserror::Error;
+use wasm_utils::{self, stack_height};
 
 use super::wasm_config::WasmConfig;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
-/// Name of the internal gas function injected by [`pwasm_utils::inject_gas_counter`].
+/// Name of the internal gas function injected by [`wasm_utils::inject_gas_counter`].
 const INTERNAL_GAS_FUNCTION_NAME: &str = "gas";
 
 /// We only allow maximum of 4k function pointers in a table section.
@@ -379,7 +379,7 @@ pub fn preprocess(
     ensure_valid_access(&module)?;
 
     if memory_section(&module).is_none() {
-        // `pwasm_utils::externalize_mem` expects a non-empty memory section to exist in the module,
+        // `wasm_utils::externalize_mem` expects a non-empty memory section to exist in the module,
         // and panics otherwise.
         return Err(PreprocessingError::MissingMemorySection);
     }
@@ -390,8 +390,8 @@ pub fn preprocess(
     ensure_parameter_limit(&module, DEFAULT_MAX_PARAMETER_COUNT)?;
     ensure_valid_imports(&module)?;
 
-    let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
-    let module = pwasm_utils::inject_gas_counter(
+    let module = wasm_utils::externalize_mem(module, None, wasm_config.max_memory);
+    let module = wasm_utils::inject_gas_counter(
         module,
         &wasm_config.opcode_costs().to_set(),
         DEFAULT_GAS_MODULE_NAME,

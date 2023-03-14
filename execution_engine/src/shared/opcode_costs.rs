@@ -2,9 +2,9 @@
 use std::collections::BTreeMap;
 
 use datasize::DataSize;
-use pwasm_utils::rules::{InstructionType, Metering, Set};
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
+use wasm_utils::rules::{InstructionType, Metering, Set};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 

@@ -1,0 +1,17 @@
+[package]
+name = "wasm-utils"
+version = "0.16.0"
+edition = "2021"
+
+[dependencies]
+byteorder = "1"
+log = "0.4"
+parity-wasm = "0.41.0"
+
+[dev-dependencies]
+binaryen = "0.8"
+diff = "0.1.11"
+indoc = "0.3"
+rand = "0.7"
+tempdir = "0.3"
+wabt = "0.10"

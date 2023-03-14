@@ -248,7 +248,7 @@ where
             Err(Error::FunctionNotFound(missing_name))
         } else {
             let mut module = self.try_get_module()?.clone();
-            pwasm_utils::optimize(&mut module, entry_point_names)?;
+            wasm_utils::optimize(&mut module, entry_point_names)?;
             parity_wasm::serialize(module).map_err(Error::ParityWasm)
         }
     }
