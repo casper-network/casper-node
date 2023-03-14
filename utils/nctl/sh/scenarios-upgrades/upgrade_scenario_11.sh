@@ -5,18 +5,13 @@
 
 # 1. Start v1 running at current mainnet commit.
 # 2. Waits for genesis era to complete.
-# 3. Bonds in a non-genesis validator.
 # 4. Delegates from an unused account.
 # 5. Waits for the auction delay to take effect.
-# 6. Asserts non-genesis validator is in auction info.
 # 7. Asserts delegation is in auction info.
 # 8. Stages the network for upgrade.
 # 9. Assert v2 nodes run & the chain advances (new blocks are generated).
 # 10. Waits 1 era.
-# 11. Unbonds previously bonded non-genesis validator.
-# 12. Undelegates from previously used account
 # 13. Waits for the auction delay to take effect.
-# 14. Asserts non-genesis validator is NO LONGER an active validator.
 # 15. Asserts delegatee is NO LONGER in auction info.
 # 16. Run Health Checks
 # 17. Successful test cleanup.
@@ -208,7 +203,7 @@ function _step_07()
 
 function _step_08()
 {
-    log_step_upgrades 7 "Awaiting Auction_Delay = 1 + 1"
+    log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
     nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='300'
 }
 
@@ -224,7 +219,7 @@ function _step_09()
     HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
     AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
 
-    log_step_upgrades 8 "Asserting user-$USER_ID is NOT a delegatee"
+    log_step_upgrades 9 "Asserting user-$USER_ID is NOT a delegatee"
 
     if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
         log "ERROR: user-$USER_ID found in auction info delegators!"
@@ -236,11 +231,11 @@ function _step_09()
     fi
 }
 
-# Step 16: Run NCTL health checks
-function _step_16()
+# Step 10: Run NCTL health checks
+function _step_10()
 {
     # restarts=6 - Nodes that upgrade
-    log_step_upgrades 16 "running health checks"
+    log_step_upgrades 10 "running health checks"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \
             equivocators='0' \
@@ -250,10 +245,10 @@ function _step_16()
             ejections=0
 }
 
-# Step 17: Terminate.
-function _step_17()
+# Step 11: Terminate.
+function _step_11()
 {
-    log_step_upgrades 17 "test successful - tidying up"
+    log_step_upgrades 11 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
