@@ -22,6 +22,7 @@ function _upgrade_node() {
 
     local PATH_TO_NET
     local PATH_TO_NODE
+    local CHAIN_NAME
 
 
     PATH_TO_NET=$(get_path_to_net)
@@ -31,12 +32,16 @@ function _upgrade_node() {
     PATH_TO_UPGRADED_CHAINSPEC_FILE="$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/chainspec.toml
     cp "$PATH_TO_CHAINSPEC_FILE" "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
 
+    # Really make sure the chain name stays the same :)
+    CHAIN_NAME=$(get_chain_name)
+
     # Write chainspec contents.
     local SCRIPT=(
         "import toml;"
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
         "cfg['protocol']['version']='$PROTOCOL_VERSION'.replace('_', '.');"
         "cfg['protocol']['activation_point']=$ACTIVATE_ERA;"
+        "cfg['network']['name']='$CHAIN_NAME';"
         "toml.dump(cfg, open('$PATH_TO_UPGRADED_CHAINSPEC_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
