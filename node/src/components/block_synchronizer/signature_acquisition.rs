@@ -105,14 +105,6 @@ impl SignatureAcquisition {
         self.maybe_is_checkable.unwrap_or(false)
     }
 
-    pub(super) fn requires_strict_finality(&self, is_recent_block: bool) -> bool {
-        if is_recent_block {
-            return true;
-        }
-
-        self.maybe_is_checkable.unwrap_or(false)
-    }
-
     pub(super) fn signature_weight(&self) -> SignatureWeight {
         self.signature_weight
     }

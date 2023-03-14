@@ -13,5 +13,5 @@ pub(super) trait ItemProvider<T: GossipItem> {
     async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
-    ) -> Option<T>;
+    ) -> Option<Box<T>>;
 }

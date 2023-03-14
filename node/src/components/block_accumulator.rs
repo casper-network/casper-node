@@ -104,6 +104,8 @@ pub(crate) struct BlockAccumulator {
     peer_block_timestamps: BTreeMap<NodeId, VecDeque<(BlockHash, Timestamp)>>,
     /// The minimum time between a block and its child.
     min_block_time: TimeDiff,
+    /// The number of validator slots.
+    validator_slots: u32,
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -114,6 +116,7 @@ impl BlockAccumulator {
         validator_matrix: ValidatorMatrix,
         recent_era_interval: u64,
         min_block_time: TimeDiff,
+        validator_slots: u32,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Self {
@@ -128,6 +131,7 @@ impl BlockAccumulator {
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
+            validator_slots,
             metrics: Metrics::new(registry)?,
         })
     }
@@ -356,6 +360,14 @@ impl BlockAccumulator {
                     error!(%error, "failed to merge meta blocks, this is a bug");
                     Effects::new()
                 }
+                Error::TooManySignatures { peer, limit } => effect_builder
+                    .announce_block_peer_with_justification(
+                        peer,
+                        BlocklistJustification::SentTooManyFinalitySignatures {
+                            max_allowed: limit,
+                        },
+                    )
+                    .ignore(),
             },
         }
     }
@@ -385,7 +397,8 @@ impl BlockAccumulator {
             None => return Effects::new(),
         };
 
-        match acceptor.register_finality_signature(finality_signature, sender) {
+        match acceptor.register_finality_signature(finality_signature, sender, self.validator_slots)
+        {
             Ok(Some(finality_signature)) => self.store_block_and_finality_signatures(
                 effect_builder,
                 ShouldStore::SingleSignature(finality_signature),
@@ -402,60 +415,66 @@ impl BlockAccumulator {
                 }
                 None => Effects::new(),
             },
-            Err(error) => {
-                match error {
-                    Error::InvalidGossip(ref gossip_error) => {
-                        warn!(%gossip_error, "received invalid finality_signature");
-                        effect_builder
-                            .announce_block_peer_with_justification(
-                                gossip_error.peer(),
-                                BlocklistJustification::SentBadFinalitySignature { error },
-                            )
-                            .ignore()
-                    }
-                    Error::EraMismatch {
+            Err(error) => match error {
+                Error::InvalidGossip(ref gossip_error) => {
+                    warn!(%gossip_error, "received invalid finality_signature");
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            gossip_error.peer(),
+                            BlocklistJustification::SentBadFinalitySignature { error },
+                        )
+                        .ignore()
+                }
+                Error::EraMismatch {
+                    peer,
+                    block_hash,
+                    expected,
+                    actual,
+                } => {
+                    // the acceptor logic purges finality signatures that don't match
+                    // the era validators, so in this case we can continue to
+                    // use the acceptor
+                    warn!(
+                        "era mismatch from {} for {}; expected: {} and actual: {}",
+                        peer, block_hash, expected, actual
+                    );
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            peer,
+                            BlocklistJustification::SentBadFinalitySignature { error },
+                        )
+                        .ignore()
+                }
+                ref error @ Error::BlockHashMismatch { .. } => {
+                    error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                    Effects::new()
+                }
+                ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
+                    error!(%error, "should not have sufficient finality without block");
+                    Effects::new()
+                }
+                Error::InvalidConfiguration => fatal!(
+                    effect_builder,
+                    "node has an invalid configuration, shutting down"
+                )
+                .ignore(),
+                Error::BogusValidator(_) => {
+                    error!(%error, "unexpected detection of bogus validator, this is a bug");
+                    Effects::new()
+                }
+                Error::MetaBlockMerge(error) => {
+                    error!(%error, "failed to merge meta blocks, this is a bug");
+                    Effects::new()
+                }
+                Error::TooManySignatures { peer, limit } => effect_builder
+                    .announce_block_peer_with_justification(
                         peer,
-                        block_hash,
-                        expected,
-                        actual,
-                    } => {
-                        // the acceptor logic purges finality signatures that don't match
-                        // the era validators, so in this case we can continue to
-                        // use the acceptor
-                        warn!(
-                            "era mismatch from {} for {}; expected: {} and actual: {}",
-                            peer, block_hash, expected, actual
-                        );
-                        effect_builder
-                            .announce_block_peer_with_justification(
-                                peer,
-                                BlocklistJustification::SentBadFinalitySignature { error },
-                            )
-                            .ignore()
-                    }
-                    ref error @ Error::BlockHashMismatch { .. } => {
-                        error!(%error, "finality signature has mismatched block_hash; this is a bug");
-                        Effects::new()
-                    }
-                    ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
-                        error!(%error, "should not have sufficient finality without block");
-                        Effects::new()
-                    }
-                    Error::InvalidConfiguration => fatal!(
-                        effect_builder,
-                        "node has an invalid configuration, shutting down"
+                        BlocklistJustification::SentTooManyFinalitySignatures {
+                            max_allowed: limit,
+                        },
                     )
                     .ignore(),
-                    Error::BogusValidator(_) => {
-                        error!(%error, "unexpected detection of bogus validator, this is a bug");
-                        Effects::new()
-                    }
-                    Error::MetaBlockMerge(error) => {
-                        error!(%error, "failed to merge meta blocks, this is a bug");
-                        Effects::new()
-                    }
-                }
-            }
+            },
         }
     }
 

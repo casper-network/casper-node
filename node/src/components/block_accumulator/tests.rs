@@ -40,6 +40,7 @@ use crate::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const RECENT_ERA_INTERVAL: u64 = 1;
+const VALIDATOR_SLOTS: u32 = 100;
 
 fn meta_block_with_default_state(block: Arc<Block>) -> MetaBlock {
     MetaBlock::new(block, vec![], MetaBlockState::new())
@@ -165,6 +166,7 @@ impl Reactor for MockReactor {
             validator_matrix.clone(),
             RECENT_ERA_INTERVAL,
             block_time,
+            VALIDATOR_SLOTS,
             registry,
         )
         .unwrap();
@@ -278,6 +280,7 @@ fn upsert_acceptor() {
         validator_matrix,
         recent_era_interval,
         block_time,
+        VALIDATOR_SLOTS,
         &metrics_registry,
     )
     .unwrap();
@@ -392,7 +395,7 @@ fn acceptor_register_finality_signature() {
     let wrong_fin_sig = FinalitySignature::random_for_block(BlockHash::random(&mut rng), 0);
     assert!(matches!(
         acceptor
-            .register_finality_signature(wrong_fin_sig, None)
+            .register_finality_signature(wrong_fin_sig, None, VALIDATOR_SLOTS)
             .unwrap_err(),
         Error::BlockHashMismatch {
             expected: _,
@@ -411,7 +414,7 @@ fn acceptor_register_finality_signature() {
     // reached an invalid state.
     assert!(matches!(
         acceptor
-            .register_finality_signature(invalid_fin_sig.clone(), None)
+            .register_finality_signature(invalid_fin_sig.clone(), None, VALIDATOR_SLOTS)
             .unwrap_err(),
         Error::InvalidConfiguration
     ));
@@ -419,7 +422,7 @@ fn acceptor_register_finality_signature() {
     let first_peer = NodeId::random(&mut rng);
     assert!(matches!(
         acceptor
-            .register_finality_signature(invalid_fin_sig, Some(first_peer))
+            .register_finality_signature(invalid_fin_sig, Some(first_peer), VALIDATOR_SLOTS)
             .unwrap_err(),
         Error::InvalidGossip(_)
     ));
@@ -427,13 +430,13 @@ fn acceptor_register_finality_signature() {
     let fin_sig =
         FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
     assert!(acceptor
-        .register_finality_signature(fin_sig.clone(), Some(first_peer))
+        .register_finality_signature(fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
     // Register it from the second peer as well.
     let second_peer = NodeId::random(&mut rng);
     assert!(acceptor
-        .register_finality_signature(fin_sig.clone(), Some(second_peer))
+        .register_finality_signature(fin_sig.clone(), Some(second_peer), VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
     // Make sure the peer list is updated accordingly.
@@ -444,7 +447,7 @@ fn acceptor_register_finality_signature() {
     let second_fin_sig =
         FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
     assert!(acceptor
-        .register_finality_signature(second_fin_sig.clone(), Some(first_peer))
+        .register_finality_signature(second_fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
     // Make sure the peer list for the first signature is unchanged.
@@ -473,7 +476,7 @@ fn acceptor_register_finality_signature() {
     invalid_fin_sig.era_id = (u64::MAX ^ u64::from(invalid_fin_sig.era_id)).into();
     assert!(matches!(
         acceptor
-            .register_finality_signature(invalid_fin_sig.clone(), Some(first_peer))
+            .register_finality_signature(invalid_fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
             .unwrap_err(),
         Error::EraMismatch {
             block_hash: _,
@@ -486,14 +489,14 @@ fn acceptor_register_finality_signature() {
     // invalid state.
     assert!(matches!(
         acceptor
-            .register_finality_signature(invalid_fin_sig, None)
+            .register_finality_signature(invalid_fin_sig, None, VALIDATOR_SLOTS)
             .unwrap_err(),
         Error::InvalidConfiguration
     ));
     // Registering valid signatures still works, but we already had the second
     // signature.
     assert!(acceptor
-        .register_finality_signature(second_fin_sig.clone(), Some(second_peer))
+        .register_finality_signature(second_fin_sig.clone(), Some(second_peer), VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
     assert!(acceptor
@@ -507,7 +510,7 @@ fn acceptor_register_finality_signature() {
         FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
     assert_eq!(
         acceptor
-            .register_finality_signature(third_fin_sig.clone(), Some(first_peer))
+            .register_finality_signature(third_fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
             .unwrap()
             .unwrap(),
         third_fin_sig
@@ -515,11 +518,11 @@ fn acceptor_register_finality_signature() {
     // Additional registrations of the third signature with and without a peer
     // should still work.
     assert!(acceptor
-        .register_finality_signature(third_fin_sig.clone(), Some(second_peer))
+        .register_finality_signature(third_fin_sig.clone(), Some(second_peer), VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
     assert!(acceptor
-        .register_finality_signature(third_fin_sig, None)
+        .register_finality_signature(third_fin_sig, None, VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
 }
@@ -657,7 +660,9 @@ fn acceptor_should_store_block() {
     );
     signatures.push(fin_sig.clone());
     // First signature with 40% weight brings the block to weak finality.
-    acceptor.register_finality_signature(fin_sig, None).unwrap();
+    acceptor
+        .register_finality_signature(fin_sig, None, VALIDATOR_SLOTS)
+        .unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
 
@@ -676,7 +681,9 @@ fn acceptor_should_store_block() {
     // The third signature with weight 10% doesn't make the block go to
     // strict finality.
     signatures.push(fin_sig.clone());
-    acceptor.register_finality_signature(fin_sig, None).unwrap();
+    acceptor
+        .register_finality_signature(fin_sig, None, VALIDATOR_SLOTS)
+        .unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
 
@@ -690,7 +697,7 @@ fn acceptor_should_store_block() {
         non_validator_keys.1.clone(),
     );
     acceptor
-        .register_finality_signature(bogus_sig, Some(faulty_peer))
+        .register_finality_signature(bogus_sig, Some(faulty_peer), VALIDATOR_SLOTS)
         .unwrap();
     let (should_store, offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
@@ -707,7 +714,9 @@ fn acceptor_should_store_block() {
     );
     signatures.push(fin_sig.clone());
     // Second signature with 40% weight brings the block to strict finality.
-    acceptor.register_finality_signature(fin_sig, None).unwrap();
+    acceptor
+        .register_finality_signature(fin_sig, None, VALIDATOR_SLOTS)
+        .unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     let block_signatures = signatures_for_block(&block, &signatures);
     let mut meta_block_with_expected_state = meta_block.clone();
@@ -732,7 +741,9 @@ fn acceptor_should_store_block() {
     );
     // Already have sufficient finality signatures, so we're not supposed to
     // store anything else.
-    acceptor.register_finality_signature(fin_sig, None).unwrap();
+    acceptor
+        .register_finality_signature(fin_sig, None, VALIDATOR_SLOTS)
+        .unwrap();
     let (should_store, _offenders) = acceptor.should_store_block(&era_validator_weights);
     assert_eq!(should_store, ShouldStore::Nothing);
 
@@ -751,6 +762,64 @@ fn acceptor_should_store_block() {
 }
 
 #[test]
+fn acceptor_should_correctly_bound_the_signatures() {
+    let mut rng = TestRng::new();
+    let validator_slots = 2;
+
+    // Create a block and an acceptor for it.
+    let block = Arc::new(Block::random(&mut rng));
+    let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
+    let first_peer = NodeId::random(&mut rng);
+
+    // Fill the signatures map:
+    for fin_sig in (0..validator_slots * 2)
+        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into()))
+    {
+        assert!(acceptor
+            .register_finality_signature(fin_sig, Some(first_peer), validator_slots)
+            .unwrap()
+            .is_none());
+    }
+
+    let fin_sig =
+        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+    assert!(matches!(
+        acceptor.register_finality_signature(fin_sig, Some(first_peer), validator_slots),
+        Err(Error::TooManySignatures { .. }),
+    ));
+}
+
+#[test]
+fn acceptor_signatures_bound_should_not_be_triggered_if_peers_are_different() {
+    let mut rng = TestRng::new();
+    let validator_slots = 3;
+
+    // Create a block and an acceptor for it.
+    let block = Arc::new(Block::random(&mut rng));
+    let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
+    let first_peer = NodeId::random(&mut rng);
+    let second_peer = NodeId::random(&mut rng);
+
+    // Fill the signatures map:
+    for fin_sig in (0..validator_slots)
+        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into()))
+    {
+        assert!(acceptor
+            .register_finality_signature(fin_sig, Some(first_peer), validator_slots)
+            .unwrap()
+            .is_none());
+    }
+
+    // This should pass, because it is another peer:
+    let fin_sig =
+        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+    assert!(acceptor
+        .register_finality_signature(fin_sig, Some(second_peer), validator_slots)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
 fn accumulator_highest_usable_block_height() {
     let mut rng = TestRng::new();
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
@@ -762,6 +831,7 @@ fn accumulator_highest_usable_block_height() {
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
+        VALIDATOR_SLOTS,
         &Registry::default(),
     )
     .unwrap();
@@ -821,7 +891,7 @@ fn accumulator_highest_usable_block_height() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block_2.clone(), vec![], state);
         acceptor
-            .register_finality_signature(fin_sig_2, None)
+            .register_finality_signature(fin_sig_2, None, VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, None).unwrap();
     }
@@ -838,7 +908,7 @@ fn accumulator_highest_usable_block_height() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block_1.clone(), vec![], state);
         acceptor
-            .register_finality_signature(fin_sig_1, None)
+            .register_finality_signature(fin_sig_1, None, VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, None).unwrap();
         block_accumulator
@@ -859,7 +929,7 @@ fn accumulator_highest_usable_block_height() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block_3.clone(), vec![], state);
         acceptor
-            .register_finality_signature(fin_sig_3, None)
+            .register_finality_signature(fin_sig_3, None, VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, None).unwrap();
         block_accumulator
@@ -887,6 +957,7 @@ fn accumulator_should_leap() {
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
+        VALIDATOR_SLOTS,
         &Registry::default(),
     )
     .unwrap();
@@ -925,7 +996,9 @@ fn accumulator_should_leap() {
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block.clone(), vec![], state);
-        acceptor.register_finality_signature(fin_sig, None).unwrap();
+        acceptor
+            .register_finality_signature(fin_sig, None, VALIDATOR_SLOTS)
+            .unwrap();
         acceptor.register_block(meta_block, None).unwrap();
         block_accumulator
             .block_acceptors
@@ -965,6 +1038,7 @@ fn accumulator_purge() {
         validator_matrix.clone(),
         recent_era_interval,
         block_time,
+        VALIDATOR_SLOTS,
         &Registry::default(),
     )
     .unwrap();
@@ -1025,7 +1099,7 @@ fn accumulator_purge() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block_1.clone(), vec![], state);
         acceptor
-            .register_finality_signature(fin_sig_1, Some(peer_1))
+            .register_finality_signature(fin_sig_1, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, None).unwrap();
     }
@@ -1046,7 +1120,7 @@ fn accumulator_purge() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block_2.clone(), vec![], state);
         acceptor
-            .register_finality_signature(fin_sig_2, Some(peer_2))
+            .register_finality_signature(fin_sig_2, Some(peer_2), VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, None).unwrap();
     }
@@ -1071,7 +1145,7 @@ fn accumulator_purge() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(block_3.clone(), vec![], state);
         acceptor
-            .register_finality_signature(fin_sig_3, Some(peer_1))
+            .register_finality_signature(fin_sig_3, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, Some(peer_2)).unwrap();
     }
@@ -1153,7 +1227,7 @@ fn accumulator_purge() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(in_range_block.clone(), vec![], state);
         acceptor
-            .register_finality_signature(in_range_block_sig, Some(peer_1))
+            .register_finality_signature(in_range_block_sig, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, Some(peer_2)).unwrap();
     }
@@ -1189,7 +1263,7 @@ fn accumulator_purge() {
         state.register_has_sufficient_finality();
         let meta_block = MetaBlock::new(out_of_range_block.clone(), vec![], state);
         acceptor
-            .register_finality_signature(out_of_range_block_sig, Some(peer_1))
+            .register_finality_signature(out_of_range_block_sig, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
         acceptor.register_block(meta_block, Some(peer_2)).unwrap();
     }
