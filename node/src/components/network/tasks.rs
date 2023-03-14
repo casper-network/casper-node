@@ -1,6 +1,7 @@
 //! Tasks run by the component.
 
 use std::{
+    convert::Infallible,
     fmt::Display,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -18,7 +19,7 @@ use futures::{
 };
 
 use muxink::{
-    backpressured::BackpressuredStream,
+    backpressured::{BackpressuredSink, BackpressuredStream},
     demux::Demultiplexer,
     fragmented::{Defragmentizer, Fragmentizer},
     little_endian::LittleEndian,
@@ -47,9 +48,9 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     limiter::LimiterHandle,
     message::NodeKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingCarrier, IncomingChannel,
-    Message, Metrics, OutgoingAckCarrier, OutgoingAckChannel, OutgoingCarrier,
-    OutgoingCarrierError, OutgoingChannel, Payload, Transport, BACKPRESSURE_WINDOW_SIZE,
+    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingAckCarrier, IncomingCarrier,
+    IncomingChannel, Message, Metrics, OutgoingAckCarrier, OutgoingAckChannel, OutgoingCarrier,
+    OutgoingChannel, OutgoingChannelError, Payload, Transport, BACKPRESSURE_WINDOW_SIZE,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -57,7 +58,7 @@ use crate::{
     components::network::{
         deserialize_network_message,
         handshake::{negotiate_handshake, HandshakeOutcome},
-        Config,
+        Config, IncomingAckChannel,
     },
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
@@ -538,7 +539,7 @@ where
     // We create a single select that returns items from all the streams.
     let mut select = SelectAll::new();
     for channel in Channel::iter() {
-        let demuxer =
+        let demux_handle =
             Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
                 .expect("mutex poisoned");
 
@@ -548,7 +549,7 @@ where
         let incoming: IncomingChannel = BackpressuredStream::new(
             Defragmentizer::new(
                 context.chain_info.maximum_net_message_size as usize,
-                demuxer,
+                demux_handle,
             ),
             ack_sink,
             BACKPRESSURE_WINDOW_SIZE,
@@ -640,8 +641,9 @@ where
 pub(super) async fn encoded_message_sender(
     queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
     carrier: OutgoingCarrier,
+    ack_carrier: Arc<Mutex<IncomingAckCarrier>>,
     limiter: LimiterHandle,
-) -> Result<(), OutgoingCarrierError> {
+) -> Result<(), OutgoingChannelError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize
     // `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
     let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
@@ -651,10 +653,24 @@ pub(super) async fn encoded_message_sender(
 
     for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
         let mux_handle = carrier.create_channel_handle(channel as u8);
-        let channel: OutgoingChannel = Fragmentizer::new(fragment_size, mux_handle);
+
+        // Note: We use `Infallibe` here, since we do not care about the actual API.
+        // TODO: The `muxink` API could probably be improved here to not require an `E` parameter.
+        let ack_demux_handle =
+            Demultiplexer::create_handle::<Infallible>(ack_carrier.clone(), channel as u8)
+                .expect("handle creation should not fail");
+
+        let ack_stream: IncomingAckChannel = LittleEndian::new(ack_demux_handle);
+
+        let outgoing: OutgoingChannel = BackpressuredSink::new(
+            Fragmentizer::new(fragment_size, mux_handle),
+            ack_stream,
+            BACKPRESSURE_WINDOW_SIZE,
+        );
+
         boiler_room.push(shovel_data(
             queue,
-            channel,
+            outgoing,
             local_stop.clone(),
             limiter.clone(),
         ));

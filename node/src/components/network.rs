@@ -48,6 +48,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
+    io,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
     sync::{Arc, Mutex},
@@ -61,12 +62,12 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use muxink::{
-    backpressured::BackpressuredStream,
-    demux::{Demultiplexer, DemultiplexerHandle},
+    backpressured::{BackpressuredSink, BackpressuredSinkError, BackpressuredStream},
+    demux::{Demultiplexer, DemultiplexerError, DemultiplexerHandle},
     fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
     framing::{fixed_size::FixedSize, length_delimited::LengthDelimited},
     io::{FrameReader, FrameWriter},
-    little_endian::LittleEndian,
+    little_endian::{DecodeError, LittleEndian},
     mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
     ImmediateFrameU64,
 };
@@ -836,7 +837,7 @@ where
 
                 let ack_reader: AckFrameReader =
                     FrameReader::new(FixedSize::new(8), read_compat, ACK_BUFFER_SIZE);
-                let ack_carrier = Demultiplexer::new(ack_reader);
+                let ack_carrier = Arc::new(Mutex::new(Demultiplexer::new(ack_reader)));
 
                 let write_compat =
                     tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
@@ -847,6 +848,7 @@ where
                     tasks::encoded_message_sender(
                         receivers,
                         carrier,
+                        ack_carrier,
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                     )
@@ -1386,11 +1388,16 @@ type OutgoingFrameWriter = FrameWriter<
 /// The multiplexer to send fragments over an underlying frame writer.
 type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
 
-/// The error type associated with the primary sink implementation of `OutgoingCarrier`.
-type OutgoingCarrierError = MultiplexerError<std::io::Error>;
+/// The error type associated with the primary sink implementation.
+type OutgoingChannelError =
+    BackpressuredSinkError<MultiplexerError<io::Error>, DecodeError<DemultiplexerError<io::Error>>>;
 
 /// An instance of a channel on an outgoing carrier.
-type OutgoingChannel = Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>;
+type OutgoingChannel = BackpressuredSink<
+    Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>,
+    IncomingAckChannel,
+    Bytes,
+>;
 
 /// The reader for incoming length-prefixed frames.
 type IncomingFrameReader = FrameReader<LengthDelimited, Compat<ReadHalf<Transport>>>;
@@ -1412,11 +1419,17 @@ type AckFrameWriter =
 /// Frame reader for ACKs, received through an outgoing connection.
 type AckFrameReader = FrameReader<FixedSize, Compat<ReadHalf<Transport>>>;
 
-/// Multiplexer sending ACKs for various channels over an `AckWriter`.
+/// Multiplexer sending ACKs for various channels over an `AckFrameWriter`.
 type OutgoingAckCarrier = Multiplexer<AckFrameWriter>;
 
-/// Outgoing ACK stream.
+/// Outgoing ACK sink.
 type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckFrameWriter>>;
+
+/// Demultiplexer receiving ACKs for various channels over an `AckFrameReader`.
+type IncomingAckCarrier = Demultiplexer<AckFrameReader>;
+
+/// Incoming ACK stream.
+type IncomingAckChannel = LittleEndian<u64, DemultiplexerHandle<AckFrameReader>>;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
