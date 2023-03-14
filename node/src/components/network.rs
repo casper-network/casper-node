@@ -149,6 +149,9 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 /// The size of a single message fragment sent over the wire.
 const MESSAGE_FRAGMENT_SIZE: usize = 4096;
 
+/// How many bytes of ACKs to read in one go.
+const ACK_BUFFER_SIZE: usize = 1024;
+
 /// How often to send a ping down a healthy connection.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -627,7 +630,7 @@ where
                 let write_compat: Compat<WriteHalf<SslStream<TcpStream>>> =
                     tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
 
-                let ack_writer: AckWriter = FrameWriter::new(FixedSize::new(8), write_compat);
+                let ack_writer: AckFrameWriter = FrameWriter::new(FixedSize::new(8), write_compat);
                 let ack_carrier = Multiplexer::new(ack_writer);
 
                 // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
@@ -826,10 +829,19 @@ where
 
                 // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
                 // tokio built-in version instead). The compat layer fixes that.
-                let compat_transport =
-                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
+
+                let (read_half, write_half) = tokio::io::split(transport);
+
+                let read_compat = tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
+
+                let ack_reader: AckFrameReader =
+                    FrameReader::new(FixedSize::new(8), read_compat, ACK_BUFFER_SIZE);
+                let ack_carrier = Demultiplexer::new(ack_reader);
+
+                let write_compat =
+                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
                 let carrier: OutgoingCarrier =
-                    Multiplexer::new(FrameWriter::new(LengthDelimited, compat_transport));
+                    Multiplexer::new(FrameWriter::new(LengthDelimited, write_compat));
 
                 effects.extend(
                     tasks::encoded_message_sender(
@@ -1365,8 +1377,11 @@ fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [Unbound
 type Transport = SslStream<TcpStream>;
 
 /// The writer for outgoing length-prefixed frames.
-type OutgoingFrameWriter =
-    FrameWriter<ChannelPrefixedFrame<SingleFragment>, LengthDelimited, Compat<Transport>>;
+type OutgoingFrameWriter = FrameWriter<
+    ChannelPrefixedFrame<SingleFragment>,
+    LengthDelimited,
+    Compat<WriteHalf<Transport>>,
+>;
 
 /// The multiplexer to send fragments over an underlying frame writer.
 type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
@@ -1390,15 +1405,18 @@ type IncomingChannel = BackpressuredStream<
     Bytes,
 >;
 
-/// Writer for ACKs, sent back over the incoming connection.
-type AckWriter =
+/// Frame writer for ACKs, sent back over the incoming connection.
+type AckFrameWriter =
     FrameWriter<ChannelPrefixedFrame<ImmediateFrameU64>, FixedSize, Compat<WriteHalf<Transport>>>;
 
+/// Frame reader for ACKs, received through an outgoing connection.
+type AckFrameReader = FrameReader<FixedSize, Compat<ReadHalf<Transport>>>;
+
 /// Multiplexer sending ACKs for various channels over an `AckWriter`.
-type OutgoingAckCarrier = Multiplexer<AckWriter>;
+type OutgoingAckCarrier = Multiplexer<AckFrameWriter>;
 
 /// Outgoing ACK stream.
-type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckWriter>>;
+type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckFrameWriter>>;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
