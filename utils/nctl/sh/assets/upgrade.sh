@@ -17,6 +17,8 @@ function _upgrade_node() {
     local PROTOCOL_VERSION=${1}
     local ACTIVATE_ERA=${2}
     local NODE_ID=${3}
+    local CONFIG_PATH=${4}
+    local PATH_TO_CHAINSPEC_FILE=${5:-"$PATH_TO_NET/chainspec/chainspec.toml"}
 
     local PATH_TO_NET
     local PATH_TO_NODE
@@ -25,7 +27,6 @@ function _upgrade_node() {
     PATH_TO_NET=$(get_path_to_net)
 
     # Set chainspec file.
-    PATH_TO_CHAINSPEC_FILE="$PATH_TO_NET"/chainspec/chainspec.toml
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
     PATH_TO_UPGRADED_CHAINSPEC_FILE="$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/chainspec.toml
     cp "$PATH_TO_CHAINSPEC_FILE" "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
@@ -55,7 +56,25 @@ function _upgrade_node() {
     cp "$PATH_TO_UPGRADED_CHAINSPEC_FILE" "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Copy config file.
-    cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
+    if [ -z "$CONFIG_PATH" ]; then
+        cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
+    else
+        cp "$CONFIG_PATH" "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/config.toml
+        local SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/config.toml');"
+            "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
+            "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
+            "cfg['network']['bind_address']='$(get_network_bind_address "$NODE_ID")';"
+            "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
+            "cfg['storage']['path']='../../storage';"
+            "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
+            "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
+            "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
+            "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/config.toml', 'w'));"
+        )
+        python3 -c "${SCRIPT[*]}"
+    fi
 
     # Clean up.
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
@@ -141,8 +160,10 @@ function _emergency_upgrade_node() {
     local STATE_HASH=${4}
     local STATE_SOURCE=${5:-1}
     local NODE_COUNT=${6:-5}
+    local CONFIG_PATH=${7:-""}
+    local CHAINSPEC_PATH=${8:-""}
 
-    _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
+    _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$CONFIG_PATH" "$CHAINSPEC_PATH"
 
     local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
 
