@@ -7,7 +7,7 @@ use crate::{components::fetcher::FetchItem, types::NodeId};
 
 #[derive(Clone, Debug, Error, PartialEq, Eq, Serialize)]
 pub(crate) enum Error<T: FetchItem> {
-    #[error("could not fetch item with id {id:?} from peer {peer:?}")]
+    #[error("item with id {id:?} absent on peer {peer:?}")]
     Absent { id: T::Id, peer: NodeId },
 
     #[error("peer {peer:?} rejected fetch request for item with id {id:?}")]

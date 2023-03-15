@@ -17,6 +17,8 @@ use crate::{
     NodeRng,
 };
 
+use super::block_acquisition::signatures_from_missing_validators;
+
 #[derive(Debug)]
 pub(crate) struct BlockAcquisitionAction {
     peers_to_ask: Vec<NodeId>,
@@ -137,20 +139,29 @@ impl BlockAcquisitionAction {
         let peers_to_ask = peer_list.qualified_peers(rng);
         let era_id = block_header.era_id();
         let block_hash = block_header.block_hash();
+
+        debug!(
+            %era_id,
+            missing_signatures = missing_signatures.len(),
+            peers_to_ask = peers_to_ask.len(),
+            "BlockSynchronizer: requesting finality signatures");
+
         BlockAcquisitionAction {
             peers_to_ask,
             need_next: NeedNext::FinalitySignatures(block_hash, era_id, missing_signatures),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn strict_finality_signatures(
         peer_list: &PeerList,
         rng: &mut NodeRng,
         block_header: &BlockHeader,
         validator_weights: &EraValidatorWeights,
-        signature_acquisition: &SignatureAcquisition,
+        signature_acquisition: &mut SignatureAcquisition,
         is_historical: bool,
         legacy_required_finality: LegacyRequiredFinality,
+        max_simultaneous_peers: usize,
     ) -> Self {
         let block_hash = block_header.block_hash();
         let validator_keys = signature_acquisition.have_signatures();
@@ -175,19 +186,16 @@ impl BlockAcquisitionAction {
                 }
             }
         } else {
-            let peers_to_ask = peer_list.qualified_peers(rng);
-            let era_id = block_header.era_id();
-            // need more signatures
-            let validators: Vec<_> = validator_weights
-                .missing_validators(signature_acquisition.have_signatures())
-                .cloned()
-                .collect();
-            debug!(%era_id, validators_count = validators.len(), peers_to_ask = peers_to_ask.len(),
-                "BlockSynchronizer: requesting strict finality signatures");
-            BlockAcquisitionAction {
-                peers_to_ask,
-                need_next: NeedNext::FinalitySignatures(block_hash, era_id, validators),
-            }
+            // Collect signatures with Vacant state or which are currently missing from the
+            // SignatureAcquisition.
+            signatures_from_missing_validators(
+                validator_weights,
+                signature_acquisition,
+                max_simultaneous_peers,
+                peer_list,
+                rng,
+                block_header,
+            )
         }
     }
 
@@ -268,10 +276,11 @@ impl BlockAcquisitionAction {
         peer_list: &PeerList,
         rng: &mut NodeRng,
         validator_weights: &EraValidatorWeights,
-        signatures: &SignatureAcquisition,
+        signatures: &mut SignatureAcquisition,
         needs_deploy: Option<DeployIdentifier>,
         is_historical: bool,
         legacy_required_finality: LegacyRequiredFinality,
+        max_simultaneous_peers: usize,
     ) -> Self {
         match needs_deploy {
             Some(DeployIdentifier::ById(deploy_id)) => {
@@ -300,6 +309,7 @@ impl BlockAcquisitionAction {
                 signatures,
                 is_historical,
                 legacy_required_finality,
+                max_simultaneous_peers,
             ),
         }
     }
