@@ -242,6 +242,12 @@ impl Ticket {
     pub fn new(sender: Sender<()>) -> Self {
         Self { sender }
     }
+
+    /// Creates a dummy ticket that will have no effect when dropped.
+    pub fn create_dummy() -> Self {
+        let (sender, _receiver) = futures::channel::mpsc::channel(1);
+        Self { sender }
+    }
 }
 
 impl Drop for Ticket {
