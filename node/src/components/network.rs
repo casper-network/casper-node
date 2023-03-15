@@ -631,7 +631,8 @@ where
                 let write_compat: Compat<WriteHalf<SslStream<TcpStream>>> =
                     tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
 
-                let ack_writer: AckFrameWriter = FrameWriter::new(FixedSize::new(8), write_compat);
+                let ack_writer: AckFrameWriter =
+                    FrameWriter::new(FixedSize::new(ACK_FRAME_SIZE), write_compat);
                 let ack_carrier = Multiplexer::new(ack_writer);
 
                 // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
@@ -836,7 +837,7 @@ where
                 let read_compat = tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
 
                 let ack_reader: AckFrameReader =
-                    FrameReader::new(FixedSize::new(8), read_compat, ACK_BUFFER_SIZE);
+                    FrameReader::new(FixedSize::new(ACK_FRAME_SIZE), read_compat, ACK_BUFFER_SIZE);
                 let ack_carrier = Arc::new(Mutex::new(Demultiplexer::new(ack_reader)));
 
                 let write_compat =
@@ -1415,6 +1416,9 @@ type IncomingChannel = BackpressuredStream<
 /// Frame writer for ACKs, sent back over the incoming connection.
 type AckFrameWriter =
     FrameWriter<ChannelPrefixedFrame<ImmediateFrameU64>, FixedSize, Compat<WriteHalf<Transport>>>;
+
+/// ACK frames are 9 bytes (channel prefix + `u64`).
+const ACK_FRAME_SIZE: usize = 9;
 
 /// Frame reader for ACKs, received through an outgoing connection.
 type AckFrameReader = FrameReader<FixedSize, Compat<ReadHalf<Transport>>>;
