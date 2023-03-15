@@ -140,6 +140,10 @@ impl NextUpgrade {
             protocol_version,
         }
     }
+
+    pub(crate) fn activation_point(&self) -> ActivationPoint {
+        self.activation_point
+    }
 }
 
 impl From<ProtocolConfig> for NextUpgrade {

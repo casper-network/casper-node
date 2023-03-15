@@ -12,8 +12,8 @@ use crate::{
         fetcher::{EmptyValidationMetadata, FetchItem},
     },
     types::{
-        BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock, NodeId,
-        SignatureWeight,
+        ActivationPoint, BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature,
+        MetaBlock, NodeId, SignatureWeight,
     },
 };
 
@@ -352,6 +352,19 @@ impl BlockAcceptor {
 
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
+    }
+
+    pub(super) fn is_upgrade_boundary(
+        &self,
+        activation_point: Option<ActivationPoint>,
+    ) -> Option<bool> {
+        match (&self.meta_block, activation_point) {
+            (None, _) => None,
+            (Some(_), None) => Some(false),
+            (Some(meta_block), Some(activation_point)) => {
+                Some(meta_block.is_upgrade_boundary(activation_point))
+            }
+        }
     }
 
     pub(super) fn last_progress(&self) -> Timestamp {
