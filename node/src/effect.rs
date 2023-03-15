@@ -822,17 +822,17 @@ impl<REv> EffectBuilder<REv> {
         REv: FromIncoming<P> + Send,
         P: 'static,
     {
+        // TODO: Remove demands entirely as they are no longer needed with tickets.
         let reactor_event =
             match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload) {
                 Ok((rev, demand_has_been_satisfied)) => {
                     tokio::spawn(async move {
-                        // TODO: Consider removing demands as a whole and using tickets solely.
                         demand_has_been_satisfied.await;
                         drop(ticket);
                     });
                     rev
                 }
-                Err(payload) => <REv as FromIncoming<P>>::from_incoming(sender, payload),
+                Err(payload) => <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket),
             };
 
         self.event_queue

@@ -9,6 +9,7 @@ use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
+use muxink::backpressured::Ticket;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -285,7 +286,8 @@ where
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
-    fn from_incoming(sender: NodeId, payload: Message) -> Self {
+    fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
+        drop(ticket); // TODO
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
             Message::ConsensusRequest(_message) => {
