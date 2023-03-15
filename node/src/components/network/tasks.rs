@@ -669,6 +669,7 @@ pub(super) async fn encoded_message_sender(
         );
 
         boiler_room.push(shovel_data(
+            channel,
             queue,
             outgoing,
             local_stop.clone(),
@@ -700,6 +701,7 @@ pub(super) async fn encoded_message_sender(
 ///
 /// Will loop forever, until either told to stop through the `stop` flag, or a send error occurs.
 async fn shovel_data<S>(
+    channel: Channel,
     mut source: UnboundedReceiver<EncodedMessage>,
     mut dest: S,
     stop: ObservableFuse,
@@ -708,6 +710,7 @@ async fn shovel_data<S>(
 where
     S: Sink<Bytes> + Unpin,
 {
+    trace!(%channel, "starting data shoveller for channel");
     loop {
         let recv = source.recv();
         pin_mut!(recv);
@@ -720,6 +723,9 @@ where
                 send_finished,
                 send_token,
             })) => {
+                let encoded_size = data.len();
+                let has_responder = send_finished.is_some();
+                trace!(%channel, encoded_size, has_responder, "attempting to send payload");
                 limiter.request_allowance(data.len() as u32).await;
                 // Note: It may be tempting to use `feed()` instead of `send()` when no responder
                 //       is present, since after all the sender is only guaranteed an eventual
@@ -732,6 +738,7 @@ where
                     responder.respond(()).await;
                 }
 
+                trace!(%channel, encoded_size, has_responder, "finished sending payload");
                 // We only drop the token once the message is sent or at least buffered.
                 drop(send_token);
             }
