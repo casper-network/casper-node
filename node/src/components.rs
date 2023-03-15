@@ -55,9 +55,8 @@ pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
-// The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
-pub mod in_memory_network;
+pub mod in_memory_network; // The `in_memory_network` is public for use in doctests.
 pub(crate) mod metrics;
 pub(crate) mod network;
 pub(crate) mod rest_server;

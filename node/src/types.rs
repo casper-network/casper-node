@@ -3,6 +3,7 @@
 pub(crate) mod appendable_block;
 mod available_block_range;
 mod block;
+mod block_chain;
 pub mod chainspec;
 mod chunkable;
 mod deploy;
