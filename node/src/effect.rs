@@ -819,16 +819,24 @@ impl<REv> EffectBuilder<REv> {
     /// Announces an incoming network message.
     pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P, ticket: Ticket)
     where
-        REv: FromIncoming<P>,
+        REv: FromIncoming<P> + Send,
+        P: 'static,
     {
-        // TODO: Propagate ticket where needed.
-        drop(ticket);
+        let reactor_event =
+            match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload) {
+                Ok((rev, demand_has_been_satisfied)) => {
+                    tokio::spawn(async move {
+                        // TODO: Consider removing demands as a whole and using tickets solely.
+                        demand_has_been_satisfied.await;
+                        drop(ticket);
+                    });
+                    rev
+                }
+                Err(payload) => <REv as FromIncoming<P>>::from_incoming(sender, payload),
+            };
 
         self.event_queue
-            .schedule(
-                <REv as FromIncoming<P>>::from_incoming(sender, payload),
-                QueueKind::NetworkIncoming,
-            )
+            .schedule(reactor_event, QueueKind::NetworkIncoming)
             .await
     }
 
