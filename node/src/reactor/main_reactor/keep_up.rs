@@ -477,10 +477,8 @@ impl MainReactor {
         parent_hash: BlockHash,
         error: LeapActivityError,
     ) -> KeepUpInstruction {
-        self.attempts += 1;
         warn!(
             %error,
-            remaining_attempts = %self.max_attempts.saturating_sub(self.attempts),
             "historical: failed leap",
         );
         self.sync_back_leaper_idle(

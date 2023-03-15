@@ -858,6 +858,12 @@ fn accumulator_should_leap() {
 
     block_accumulator.local_tip = Some(LocalTipIdentifier::new(1, era_id));
 
+    let synced = SyncIdentifier::BlockHash(BlockHash::random(&mut rng));
+    expected_leap_instruction(
+        LeapInstruction::UnknownBlockHeight,
+        block_accumulator.leap_instruction(&synced),
+    );
+
     let synced = SyncIdentifier::SyncedBlockIdentifier(BlockHash::random(&mut rng), 1, era_id);
     expected_leap_instruction(
         LeapInstruction::NoUsableBlockAcceptors,
@@ -1001,6 +1007,7 @@ fn block_acceptor(block: Block) -> BlockAcceptor {
                 ALICE_PUBLIC_KEY.clone(),
             ),
             None,
+            VALIDATOR_SLOTS,
         )
         .unwrap();
 

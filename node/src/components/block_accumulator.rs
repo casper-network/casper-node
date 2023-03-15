@@ -28,6 +28,7 @@ use crate::{
     components::{
         block_accumulator::{
             block_acceptor::{BlockAcceptor, ShouldStore},
+            leap_instruction::LeapInstruction,
             local_tip_identifier::LocalTipIdentifier,
             metrics::Metrics,
         },
@@ -50,7 +51,6 @@ use crate::{
     NodeRng,
 };
 
-use crate::components::block_accumulator::leap_instruction::LeapInstruction;
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
@@ -144,11 +144,10 @@ impl BlockAccumulator {
 
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
         let block_hash = sync_identifier.block_hash();
+        let leap_instruction = self.leap_instruction(&sync_identifier);
         if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
             self.register_local_tip(block_height, era_id);
         }
-        let leap_instruction = self.leap_instruction(&sync_identifier);
-        info!(?leap_instruction, %sync_identifier, "Block Accumulator: leap {}", leap_instruction);
         if leap_instruction.should_leap() {
             return SyncInstruction::Leap { block_hash };
         }
@@ -161,7 +160,7 @@ impl BlockAccumulator {
             }
             None => {
                 if self.is_stale() {
-                    debug!(%block_hash, "Block Accumulator: leap because stale gossip");
+                    debug!(%block_hash, "BlockAccumulator: leap because stale gossip");
                     SyncInstruction::Leap { block_hash }
                 } else {
                     SyncInstruction::CaughtUp { block_hash }
@@ -375,7 +374,6 @@ impl BlockAccumulator {
             + From<FatalAnnouncement>
             + Send,
     {
-        debug!(%finality_signature, "registering finality signature");
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
         self.upsert_acceptor(block_hash, Some(era_id), sender);
@@ -384,9 +382,13 @@ impl BlockAccumulator {
             Some(acceptor) => acceptor,
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
-            None => return Effects::new(),
+            None => {
+                warn!(%finality_signature, "no acceptor to receive finality_signature");
+                return Effects::new();
+            }
         };
 
+        debug!(%finality_signature, "registering finality signature");
         match acceptor.register_finality_signature(finality_signature, sender, self.validator_slots)
         {
             Ok(Some(finality_signature)) => self.store_block_and_finality_signatures(
@@ -515,17 +517,31 @@ impl BlockAccumulator {
     }
 
     fn leap_instruction(&self, sync_identifier: &SyncIdentifier) -> LeapInstruction {
-        let height = match (self.local_tip, sync_identifier.block_height()) {
-            (None, _) => {
+        let local_tip_height = match self.local_tip {
+            Some(local_tip) => local_tip.height,
+            None => {
                 // if the accumulator is unaware of local tip,
                 // leap to learn more about the network state
                 return LeapInstruction::UnsetLocalTip;
             }
-            (Some(local_tip_identifier), None) => local_tip_identifier.height,
-            (Some(local_tip_identifier), Some(block_height)) => {
-                local_tip_identifier.height.max(block_height)
+        };
+
+        let sync_identifier_height = match sync_identifier.block_height() {
+            Some(block_height) => block_height,
+            None => {
+                if let Some(height) = self
+                    .block_acceptors
+                    .get(&sync_identifier.block_hash())
+                    .filter(|x| x.block_height().is_some())
+                    .map(|x| x.block_height().unwrap_or_default())
+                {
+                    height
+                } else {
+                    return LeapInstruction::UnknownBlockHeight;
+                }
             }
         };
+
         match self
             .block_acceptors
             .iter()
@@ -539,7 +555,6 @@ impl BlockAccumulator {
                     acceptor.is_upgrade_boundary(self.activation_point),
                 )
             }) {
-            // if we have no usable block acceptors, leap to learn more about the network state
             None => LeapInstruction::NoUsableBlockAcceptors,
             Some((acceptor_height, is_upgrade_boundary)) => {
                 // the accumulator has heard about at least one usable block via gossiping
@@ -559,6 +574,7 @@ impl BlockAccumulator {
                 // own (if able).
                 let is_upgrade_boundary = is_upgrade_boundary == Some(true);
 
+                let height = local_tip_height.max(sync_identifier_height);
                 let distance_from_highest_known_block = acceptor_height.saturating_sub(height);
 
                 LeapInstruction::from_execution_threshold(
@@ -776,6 +792,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {
+                debug!(%finality_signature, "BlockAccumulator: CreatedFinalitySignature");
                 self.register_finality_signature(effect_builder, *finality_signature, None)
             }
             Event::ReceivedFinalitySignature {

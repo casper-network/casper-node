@@ -6,10 +6,11 @@ pub(super) enum LeapInstruction {
     AtHighestKnownBlock,
     WithinAttemptExecutionThreshold(u64),
     TooCloseToUpgradeBoundary(u64),
+    NoUsableBlockAcceptors,
 
     // should leap
     UnsetLocalTip,
-    NoUsableBlockAcceptors,
+    UnknownBlockHeight,
     OutsideAttemptExecutionThreshold(u64),
 }
 
@@ -22,6 +23,7 @@ impl LeapInstruction {
         if distance_from_highest_known_block == 0 {
             return LeapInstruction::AtHighestKnownBlock;
         }
+        // allow double the execution threshold back off as a safety margin
         if is_upgrade_boundary
             && distance_from_highest_known_block <= attempt_execution_threshold * 2
         {
@@ -39,9 +41,10 @@ impl LeapInstruction {
         match self {
             LeapInstruction::AtHighestKnownBlock
             | LeapInstruction::WithinAttemptExecutionThreshold(_)
-            | LeapInstruction::TooCloseToUpgradeBoundary(_) => false,
+            | LeapInstruction::TooCloseToUpgradeBoundary(_)
+            | LeapInstruction::NoUsableBlockAcceptors => false,
             LeapInstruction::UnsetLocalTip
-            | LeapInstruction::NoUsableBlockAcceptors
+            | LeapInstruction::UnknownBlockHeight
             | LeapInstruction::OutsideAttemptExecutionThreshold(_) => true,
         }
     }
@@ -72,6 +75,9 @@ impl Display for LeapInstruction {
             }
             LeapInstruction::UnsetLocalTip => {
                 write!(f, "block accumulator local tip is unset")
+            }
+            LeapInstruction::UnknownBlockHeight => {
+                write!(f, "unknown block height")
             }
             LeapInstruction::NoUsableBlockAcceptors => {
                 write!(
