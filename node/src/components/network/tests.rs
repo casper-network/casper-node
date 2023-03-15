@@ -124,12 +124,13 @@ impl From<ContractRuntimeRequest> for Event {
 }
 
 impl FromIncoming<Message> for Event {
-    fn from_incoming(sender: NodeId, payload: Message, _ticket: Ticket) -> Self {
-        // Note: `ticket` is dropped directly, no backpressure is used in the test reactor.
+    fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
         match payload {
-            Message::AddressGossiper(message) => {
-                Event::AddressGossiperIncoming(GossiperIncoming { sender, message })
-            }
+            Message::AddressGossiper(message) => Event::AddressGossiperIncoming(GossiperIncoming {
+                sender,
+                message,
+                ticket: Arc::new(ticket),
+            }),
         }
     }
 }

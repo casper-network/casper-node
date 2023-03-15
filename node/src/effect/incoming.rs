@@ -8,6 +8,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use muxink::backpressured::Ticket;
 use serde::Serialize;
 
 use crate::{
@@ -18,11 +19,13 @@ use crate::{
 
 use super::AutoClosingResponder;
 
-/// An envelope for an incoming message, attaching a sender address.
+/// An envelope for an incoming message, attaching a sender address and a backpressure ticket.
 #[derive(DataSize, Debug, Serialize)]
 pub struct MessageIncoming<M> {
     pub(crate) sender: NodeId,
     pub(crate) message: M,
+    #[serde(skip)]
+    pub(crate) ticket: Arc<Ticket>,
 }
 
 impl<M> Display for MessageIncoming<M>

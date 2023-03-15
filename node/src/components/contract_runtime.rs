@@ -266,11 +266,13 @@ impl ContractRuntime {
         TrieRequestIncoming {
             sender,
             message: TrieRequest(ref serialized_id),
+            ticket,
         }: TrieRequestIncoming,
     ) -> Effects<Event>
     where
         REv: From<NetworkRequest<Message>> + Send,
     {
+        drop(ticket); // TODO: Properly handle ticket.
         let fetch_response = match self.get_trie(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {

@@ -287,63 +287,95 @@ where
         + From<FinalitySignatureIncoming>,
 {
     fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
-        drop(ticket); // TODO
+        let ticket = Arc::new(ticket);
         match payload {
-            Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
+            Message::Consensus(message) => ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket,
+            }
+            .into(),
             Message::ConsensusRequest(_message) => {
                 // TODO: Remove this once from_incoming and try_demand_from_incoming are unified.
                 unreachable!("called from_incoming with a consensus request")
             }
-            Message::BlockGossiper(message) => GossiperIncoming { sender, message }.into(),
-            Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
-            Message::FinalitySignatureGossiper(message) => {
-                GossiperIncoming { sender, message }.into()
+            Message::BlockGossiper(message) => GossiperIncoming {
+                sender,
+                message,
+                ticket,
             }
-            Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
+            .into(),
+            Message::DeployGossiper(message) => GossiperIncoming {
+                sender,
+                message,
+                ticket,
+            }
+            .into(),
+            Message::FinalitySignatureGossiper(message) => GossiperIncoming {
+                sender,
+                message,
+                ticket,
+            }
+            .into(),
+            Message::AddressGossiper(message) => GossiperIncoming {
+                sender,
+                message,
+                ticket,
+            }
+            .into(),
             Message::GetRequest { tag, serialized_id } => match tag {
                 Tag::Deploy => NetRequestIncoming {
                     sender,
                     message: NetRequest::Deploy(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::LegacyDeploy => NetRequestIncoming {
                     sender,
                     message: NetRequest::LegacyDeploy(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::Block => NetRequestIncoming {
                     sender,
                     message: NetRequest::Block(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockHeader => NetRequestIncoming {
                     sender,
                     message: NetRequest::BlockHeader(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieRequestIncoming {
                     sender,
                     message: TrieRequest(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::FinalitySignature => NetRequestIncoming {
                     sender,
                     message: NetRequest::FinalitySignature(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::SyncLeap => NetRequestIncoming {
                     sender,
                     message: NetRequest::SyncLeap(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::ApprovalsHashes => NetRequestIncoming {
                     sender,
                     message: NetRequest::ApprovalsHashes(serialized_id),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetRequestIncoming {
                     sender,
                     message: NetRequest::BlockExecutionResults(serialized_id),
+                    ticket,
                 }
                 .into(),
             },
@@ -354,52 +386,64 @@ where
                 Tag::Deploy => NetResponseIncoming {
                     sender,
                     message: NetResponse::Deploy(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::LegacyDeploy => NetResponseIncoming {
                     sender,
                     message: NetResponse::LegacyDeploy(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::Block => NetResponseIncoming {
                     sender,
                     message: NetResponse::Block(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockHeader => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockHeader(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
                     message: TrieResponse(serialized_item.to_vec()),
+                    ticket,
                 }
                 .into(),
                 Tag::FinalitySignature => NetResponseIncoming {
                     sender,
                     message: NetResponse::FinalitySignature(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::SyncLeap => NetResponseIncoming {
                     sender,
                     message: NetResponse::SyncLeap(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::ApprovalsHashes => NetResponseIncoming {
                     sender,
                     message: NetResponse::ApprovalsHashes(serialized_item),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetResponseIncoming {
                     sender,
                     message: NetResponse::BlockExecutionResults(serialized_item),
+                    ticket,
                 }
                 .into(),
             },
-            Message::FinalitySignature(message) => {
-                FinalitySignatureIncoming { sender, message }.into()
+            Message::FinalitySignature(message) => FinalitySignatureIncoming {
+                sender,
+                message,
+                ticket,
             }
+            .into(),
         }
     }
 
