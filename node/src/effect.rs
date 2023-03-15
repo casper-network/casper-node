@@ -108,6 +108,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use muxink::backpressured::Ticket;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -816,10 +817,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces an incoming network message.
-    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P)
+    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P, ticket: Ticket)
     where
         REv: FromIncoming<P>,
     {
+        // TODO: Propagate ticket where needed.
+        drop(ticket);
+
         self.event_queue
             .schedule(
                 <REv as FromIncoming<P>>::from_incoming(sender, payload),

@@ -62,7 +62,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use muxink::{
-    backpressured::{BackpressuredSink, BackpressuredSinkError, BackpressuredStream},
+    backpressured::{BackpressuredSink, BackpressuredSinkError, BackpressuredStream, Ticket},
     demux::{Demultiplexer, DemultiplexerError, DemultiplexerHandle},
     fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
     framing::{fixed_size::FixedSize, length_delimited::LengthDelimited},
@@ -985,11 +985,13 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
         msg: Message<P>,
+        ticket: Ticket,
         span: Span,
     ) -> Effects<Event<P>>
     where
         REv: FromIncoming<P> + From<PeerBehaviorAnnouncement>,
     {
+        // Note: For non-payload channels, we drop the `Ticket` implicitly at end of scope.
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
                 // We should never receive a handshake message on an established connection. Simply
@@ -1018,9 +1020,9 @@ where
                     Effects::new()
                 }
             }
-            Message::Payload(payload) => {
-                effect_builder.announce_incoming(peer_id, payload).ignore()
-            }
+            Message::Payload(payload) => effect_builder
+                .announce_incoming(peer_id, payload, ticket)
+                .ignore(),
         })
     }
 
@@ -1229,9 +1231,12 @@ where
                 Event::IncomingConnection { incoming, span } => {
                     self.handle_incoming_connection(incoming, span)
                 }
-                Event::IncomingMessage { peer_id, msg, span } => {
-                    self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
-                }
+                Event::IncomingMessage {
+                    peer_id,
+                    msg,
+                    span,
+                    ticket,
+                } => self.handle_incoming_message(effect_builder, *peer_id, *msg, ticket, span),
                 Event::IncomingClosed {
                     result,
                     peer_id,

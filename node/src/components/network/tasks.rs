@@ -589,16 +589,13 @@ where
 
         trace!(%msg, %channel, "message received");
 
-        // TODO: Re-add support for demands when backpressure is added. Right now, the ticket is
-        //       simply dropped, causing an `ACK` to be sent.
-        drop(ticket);
-
         // The limiter stops _all_ channels, as they share a resource pool anyway.
         limiter
             .request_allowance(msg.payload_incoming_resource_estimate(&context.payload_weights))
             .await;
 
         // Ensure the peer did not try to sneak in a message on a different channel.
+        // TODO: Verify we still need this.
         let msg_channel = msg.get_channel();
         if msg_channel != channel {
             return Err(MessageReaderError::WrongChannel {
@@ -621,6 +618,7 @@ where
                     peer_id: Box::new(peer_id),
                     msg: Box::new(msg),
                     span: span.clone(),
+                    ticket,
                 },
                 queue_kind,
             )
