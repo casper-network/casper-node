@@ -7,7 +7,7 @@ mod deploy_acquisition;
 mod error;
 mod event;
 mod execution_results_acquisition;
-mod global_state_synchronizer;
+mod global_state_acquisition;
 mod metrics;
 mod need_next;
 mod peer_list;
