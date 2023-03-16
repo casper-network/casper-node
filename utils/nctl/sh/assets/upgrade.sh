@@ -122,6 +122,7 @@ function _generate_global_state_update() {
     local STATE_HASH=${2}
     local STATE_SOURCE=${3:-1}
     local NODE_COUNT=${4:-5}
+    #NOTE ${5} used for params, update accordingly if needed
 
     local PATH_TO_NET=$(get_path_to_net)
 
@@ -136,8 +137,7 @@ function _generate_global_state_update() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash then we Add the parameters that define the new validators.
     # We're using the reserve validators, from NODE_COUNT+1 to NODE_COUNT*2.
-    local PARAMS
-    PARAMS="generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $(_validators_state_update_config $NODE_COUNT)"
+    local PARAMS=${5:-"generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $(_validators_state_update_config $NODE_COUNT)"}
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
@@ -167,6 +167,7 @@ function _emergency_upgrade_node() {
     local NODE_COUNT=${6:-5}
     local CONFIG_PATH=${7:-""}
     local CHAINSPEC_PATH=${8:-""}
+    local GENERATE_GS_UPDATE=${9:-"true"}
 
     _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$CONFIG_PATH" "$CHAINSPEC_PATH"
 
@@ -183,7 +184,9 @@ function _emergency_upgrade_node() {
 
     local PATH_TO_NET=$(get_path_to_net)
 
-    _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$NODE_COUNT"
+    if [ "$GENERATE_GS_UPDATE" == 'true' ]; then
+        _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$NODE_COUNT"
+    fi
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml

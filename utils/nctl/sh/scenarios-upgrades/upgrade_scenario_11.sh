@@ -51,15 +51,35 @@ function _main()
     _step_07
     _step_08
     _step_09
-    exit 1
     _step_10
     _step_11
     _step_12
-    _step_13
-    _step_14
-    _step_15
-    _step_16
-    _step_17
+}
+
+function _custom_validators_state_update_config()
+{
+    local PUBKEY
+    TEMPFILE=$(mktemp)
+
+    echo 'only_listed_validators = false' >> $TEMPFILE
+
+    cat << EOF >> $TEMPFILE
+[[accounts]]
+public_key = "$(get_node_public_key_hex_extended 6)"
+
+[accounts.validator]
+bonded_amount = "$((6 + 1000000000000000))"
+delegation_rate = 100
+
+[[accounts]]
+public_key = "$(get_node_public_key_hex_extended 1)"
+
+[accounts.validator]
+bonded_amount = "0"
+delegation_rate = 100
+EOF
+
+    echo $TEMPFILE
 }
 
 # Step 01: Start network from pre-built stage.
@@ -78,7 +98,8 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            accounts_path="$NCTL/overrides/upgrade_scenario_3.pre.accounts.toml"
+            chainspec_path="$NCTL/overrides/upgrade_scenario_11.pre.chainspec.toml.in" \
+            accounts_path="$NCTL/overrides/upgrade_scenario_11.pre.accounts.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -109,7 +130,7 @@ function _step_03()
 function _step_04()
 {
     log_step_upgrades 4 "Awaiting Auction_Delay = 1 + 1"
-    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='300'
+    nctl-await-n-eras offset='2' sleep_interval='2.0' timeout='300'
 }
 
 # Step 05: Assert USER_ID is a delegatee
@@ -146,6 +167,9 @@ function _step_05()
             fi
         fi
     done
+
+    nctl-view-chain-auction-info
+    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
 }
 
 # Step 06: Undelegate previous user
@@ -161,6 +185,10 @@ function _step_06()
             amount="$AMOUNT" \
             delegator="$ACCOUNT_ID" \
             validator="$NODE_ID"
+
+    nctl-view-chain-auction-info
+    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+    nctl-view-chain-auction-info
 }
 
 # Emergency Restart this bitch with a validator swap
@@ -172,6 +200,8 @@ function _step_07()
     local STATE_HASH
     local TRUSTED_HASH
     local PROTOCOL_VERSION
+    local GS_PARAMS
+    local STATE_SOURCE_PATH
 
     ACTIVATE_ERA="$(get_chain_era)"
     ERA_ID=$((ACTIVATE_ERA - 1))
@@ -179,6 +209,8 @@ function _step_07()
     STATE_HASH=$(echo "$SWITCH_BLOCK" | jq -r '.header.state_root_hash')
     TRUSTED_HASH=$(echo "$SWITCH_BLOCK" | jq -r '.hash')
     PROTOCOL_VERSION='2_0_0'
+    STATE_SOURCE_PATH=$(get_path_to_node 1)
+    GS_PARAMS="generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $(_custom_validators_state_update_config)"
 
     log_step_upgrades 7 "Emergency restart with validator swap"
     log "...emergency upgrade activation era = $ACTIVATE_ERA"
@@ -188,23 +220,23 @@ function _step_07()
 
     do_node_stop_all
 
+    _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$GS_PARAMS"
+
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
         log "...preparing $NODE_ID"
-        _emergency_upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$NCTL_CASPER_HOME/resources/local/config.toml" "$NCTL_CASPER_HOME/resources/local/chainspec.toml.in"
+        _emergency_upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$NCTL_CASPER_HOME/resources/local/config.toml" "$NCTL/overrides/upgrade_scenario_11.post.chainspec.toml.in" "false"
         log "...starting $NODE_ID"
-        #HACK FOR NOW
-        #sed -i 's/\[block_proposer\]//g' $(get_path_to_node_config $NODE_ID)/"$PROTOCOL_VERSION"/config.toml
-        #sed -i 's/max_execution_delay.*//g' $(get_path_to_node_config $NODE_ID)/"$PROTOCOL_VERSION"/config.toml
-        #sed -i 's/max_execution_delay.*//g' $(get_path_to_node_config $NODE_ID)/"$PROTOCOL_VERSION"/config.toml
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
     sleep 10
+
+    rm -f $TEMPFILE
 }
 
 function _step_08()
 {
     log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
-    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='300'
+    nctl-await-n-eras offset='2' sleep_interval='2.0' timeout='300'
 }
 
 # Step 08: Assert USER_ID is NOT a delegatee
@@ -229,6 +261,8 @@ function _step_09()
     else
         log "... Could not find $HEX in auction info delegators! [expected]"
     fi
+
+    nctl-view-chain-auction-info
 }
 
 # Step 10: Run NCTL health checks
