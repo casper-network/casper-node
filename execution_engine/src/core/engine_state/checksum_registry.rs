@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut checksum_registry = ChecksumRegistry::new();
-        checksum_registry.insert("a", Digest::hash(&[9; 100]));
+        checksum_registry.insert("a", Digest::hash([9; 100]));
         bytesrepr::test_serialization_roundtrip(&checksum_registry);
     }
 }

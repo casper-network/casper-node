@@ -335,6 +335,8 @@ mod tests {
     use casper_hashing::Digest;
     use casper_types::{account::AccountHash, CLValue};
 
+    use crate::global_state::storage::state::scratch::tests::TestPair;
+
     use super::*;
 
     fn create_test_pairs() -> Vec<(Key, StoredValue)> {
@@ -395,7 +397,7 @@ mod tests {
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
-            for (key, value) in &test_pairs_updated {
+            for TestPair { key, value } in &test_pairs_updated {
                 tmp.insert(*key, Transform::Write(value.to_owned()));
             }
             tmp
@@ -405,7 +407,7 @@ mod tests {
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
-        for (key, value) in test_pairs_updated.iter().cloned() {
+        for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
                 updated_checkout.read(correlation_id, &key).unwrap()
@@ -422,7 +424,7 @@ mod tests {
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
-            for (key, value) in &test_pairs_updated {
+            for TestPair { key, value } in &test_pairs_updated {
                 tmp.insert(*key, Transform::Write(value.to_owned()));
             }
             tmp
@@ -431,7 +433,7 @@ mod tests {
         let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
-        for (key, value) in test_pairs_updated.iter().cloned() {
+        for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
                 updated_checkout.read(correlation_id, &key).unwrap()
@@ -448,7 +450,7 @@ mod tests {
         assert_eq!(
             None,
             original_checkout
-                .read(correlation_id, &test_pairs_updated[2].0)
+                .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
     }

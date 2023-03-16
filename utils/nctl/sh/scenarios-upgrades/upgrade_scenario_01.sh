@@ -3,7 +3,7 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1 running at current mainnet commit.
+# 1. Start network from pre-built stage.
 # 2. Execute some deploys to populate global state a little
 # 3. Upgrade all running nodes to v2
 # 4. Assert v2 nodes run & the chain advances (new blocks are generated)
@@ -237,13 +237,23 @@ function _step_08()
     local NX_PROTOCOL_VERSION
     local NX_STATE_ROOT_HASH
     local RETRY_COUNT
+    local NODE_COUNT
 
     log_step_upgrades 8 "asserting joined nodes are running upgrade"
 
+    NODE_COUNT=$(get_count_of_nodes)
+    # Status refresh.
+    for NODE_ID in $(seq 1 $NODE_COUNT)
+    do
+        source "$NCTL"/sh/node/status.sh node="$NODE_ID"
+    done
+
     # Assert all nodes are live.
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    for NODE_ID in $(seq 1 $NODE_COUNT)
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
+            log "node-$NODE_ID not up"
+            log "NODE_COUNT_UP: $(get_count_of_up_nodes)"
             log "ERROR :: protocol upgrade failure - >= 1 nodes not live"
             exit 1
         fi
@@ -300,6 +310,12 @@ function _step_08()
         else
             log "HASH MATCH :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
         fi
+    done
+
+    log "Waiting for all nodes to sync to genesis"
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        await_node_historical_sync_to_genesis "$NODE_ID" "300"
     done
 }
 

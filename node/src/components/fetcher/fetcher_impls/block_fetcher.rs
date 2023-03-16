@@ -5,7 +5,11 @@ use futures::FutureExt;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
-    effect::{requests::StorageRequest, EffectBuilder},
+    effect::{
+        announcements::FetchedNewBlockAnnouncement,
+        requests::{BlockAccumulatorRequest, StorageRequest},
+        EffectBuilder,
+    },
     types::{Block, BlockHash, NodeId},
 };
 
@@ -25,7 +29,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: From<StorageRequest> + Send>(
+    async fn get_locally<REv: From<StorageRequest> + From<BlockAccumulatorRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<Block> {
@@ -42,5 +46,15 @@ impl ItemFetcher<Block> for Fetcher<Block> {
                 .map(|_| ())
                 .boxed(),
         )
+    }
+
+    async fn announce_fetched_new_item<REv: From<FetchedNewBlockAnnouncement> + Send>(
+        effect_builder: EffectBuilder<REv>,
+        item: Block,
+        peer: NodeId,
+    ) {
+        effect_builder
+            .announce_fetched_new_block(Arc::new(item), peer)
+            .await
     }
 }

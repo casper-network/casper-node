@@ -69,7 +69,7 @@ impl<C: Context> WriteWal<C> {
         let file = OpenOptions::new()
             .append(true)
             .create(true)
-            .open(&wal_path)
+            .open(wal_path)
             .map_err(WriteWalError::FileCouldntBeOpened)?;
         Ok(WriteWal {
             writer: BufWriter::new(file),
@@ -117,7 +117,7 @@ impl<C: Context> ReadWal<C> {
             .create(true)
             .read(true)
             .write(true)
-            .open(&wal_path)
+            .open(wal_path)
             .map_err(|err| ReadWalError::FileCouldntBeCreated(wal_path.clone(), err))?;
         Ok(ReadWal {
             reader: BufReader::new(file),

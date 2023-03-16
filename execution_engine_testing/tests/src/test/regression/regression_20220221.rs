@@ -36,7 +36,7 @@ fn generate_secret_keys() -> impl Iterator<Item = SecretKey> {
         let u256 = U256::from(i);
         let mut u256_bytes = [0u8; 32];
         u256.to_big_endian(&mut u256_bytes);
-        SecretKey::ed25519_from_bytes(&u256_bytes).expect("should create secret key")
+        SecretKey::ed25519_from_bytes(u256_bytes).expect("should create secret key")
     })
 }
 
@@ -63,7 +63,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
     .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = UpgradeRequestBuilder::default()
         .with_new_validator_slots(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT + 1)

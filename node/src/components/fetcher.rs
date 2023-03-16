@@ -20,8 +20,14 @@ use tracing::trace;
 use crate::{
     components::Component,
     effect::{
-        announcements::PeerBehaviorAnnouncement,
-        requests::{ContractRuntimeRequest, FetcherRequest, NetworkRequest, StorageRequest},
+        announcements::{
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
+            PeerBehaviorAnnouncement,
+        },
+        requests::{
+            BlockAccumulatorRequest, ContractRuntimeRequest, FetcherRequest, NetworkRequest,
+            StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
@@ -44,9 +50,8 @@ pub(crate) use tag::Tag;
 pub(crate) type FetchResult<T> = Result<FetchedData<T>, Error<T>>;
 pub(crate) type FetchResponder<T> = Responder<FetchResult<T>>;
 
-const COMPONENT_NAME: &str = "fetcher";
-
-/// The component which fetches an item from local storage or asks a peer if it's not in storage.
+/// The component which fetches an item from local component(s) or asks a peer if it's not
+/// available locally.
 #[derive(DataSize, Debug)]
 pub(crate) struct Fetcher<T>
 where
@@ -55,18 +60,21 @@ where
     get_from_peer_timeout: Duration,
     item_handles: HashMap<T::Id, HashMap<NodeId, ItemHandle<T>>>,
     #[data_size(skip)]
+    name: &'static str,
+    #[data_size(skip)]
     metrics: Metrics,
 }
 
 impl<T: FetchItem> Fetcher<T> {
     pub(crate) fn new(
-        name: &str,
+        name: &'static str,
         config: &Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             item_handles: HashMap::new(),
+            name,
             metrics: Metrics::new(name, registry)?,
         })
     }
@@ -77,9 +85,12 @@ where
     Fetcher<T>: ItemFetcher<T>,
     T: FetchItem + 'static,
     REv: From<StorageRequest>
+        + From<BlockAccumulatorRequest>
         + From<ContractRuntimeRequest>
         + From<NetworkRequest<Message>>
         + From<PeerBehaviorAnnouncement>
+        + From<FetchedNewBlockAnnouncement>
+        + From<FetchedNewFinalitySignatureAnnouncement>
         + Send,
 {
     type Event = Event<T>;
@@ -98,20 +109,20 @@ where
                 validation_metadata,
                 responder,
             }) => self.fetch(effect_builder, id, peer, validation_metadata, responder),
-            Event::GetFromStorageResult {
+            Event::GetLocallyResult {
                 id,
                 peer,
                 validation_metadata,
                 maybe_item,
                 responder,
-            } => match *maybe_item {
+            } => match maybe_item {
                 Some(item) => {
                     self.metrics().found_in_storage.inc();
                     responder
                         .respond(Ok(FetchedData::from_storage(item)))
                         .ignore()
                 }
-                None => self.failed_to_get_from_storage(
+                None => self.failed_to_get_locally(
                     effect_builder,
                     id,
                     peer,
@@ -137,11 +148,16 @@ where
             Event::TimeoutPeer { id, peer } => {
                 self.signal(id.clone(), Err(Error::TimedOut { id, peer }), peer)
             }
-            Event::PutToStorage { item, peer } => self.signal(item.fetch_id(), Ok(*item), peer),
+            Event::PutToStorage { item, peer } => {
+                let mut effects =
+                    Self::announce_fetched_new_item(effect_builder, (*item).clone(), peer).ignore();
+                effects.extend(self.signal(item.fetch_id(), Ok(*item), peer));
+                effects
+            }
         }
     }
 
     fn name(&self) -> &str {
-        COMPONENT_NAME
+        self.name
     }
 }

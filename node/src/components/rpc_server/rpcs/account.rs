@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, info};
 
 use casper_types::ProtocolVersion;
 
@@ -42,7 +42,7 @@ pub struct PutDeployParams {
 
 impl DocExample for PutDeployParams {
     fn doc_example() -> &'static Self {
-        &*PUT_DEPLOY_PARAMS
+        &PUT_DEPLOY_PARAMS
     }
 }
 
@@ -59,7 +59,7 @@ pub struct PutDeployResult {
 
 impl DocExample for PutDeployResult {
     fn doc_example() -> &'static Self {
-        &*PUT_DEPLOY_RESULT
+        &PUT_DEPLOY_RESULT
     }
 }
 
@@ -92,7 +92,7 @@ impl RpcWithParams for PutDeploy {
 
         match put_deploy_result {
             Ok(_) => {
-                info!(%deploy_hash, "deploy was stored");
+                debug!(%deploy_hash, "deploy was stored");
                 let result = Self::ResponseResult {
                     api_version,
                     deploy_hash,

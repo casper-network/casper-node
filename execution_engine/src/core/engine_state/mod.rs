@@ -22,7 +22,7 @@ pub mod upgrade;
 
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     convert::TryFrom,
     rc::Rc,
 };
@@ -30,7 +30,7 @@ use std::{
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use casper_hashing::Digest;
 use casper_storage::{
@@ -54,16 +54,17 @@ use casper_types::{
     contracts::NamedKeys,
     system::{
         auction::{
-            EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
-    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
+    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 pub use self::{
@@ -155,7 +156,7 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         }
     }
 
-    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    /// Writes state cached in an `EngineState<ScratchEngineState>` to LMDB.
     pub fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
@@ -191,7 +192,7 @@ impl EngineState<LmdbGlobalState> {
         }
     }
 
-    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    /// Writes state cached in an `EngineState<ScratchEngineState>` to LMDB.
     pub fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
@@ -408,6 +409,7 @@ where
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
+            debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
             let auction_contract = tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, *auction_hash)?;
@@ -435,19 +437,6 @@ where
                 .write(locked_funds_period_key, value);
         }
 
-        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *auction_hash)?;
-
-            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_unbonding_delay)
-                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
-            );
-            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
-        }
-
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
             let new_round_seigniorage_rate: Ratio<U512> = {
                 let (numer, denom) = new_round_seigniorage_rate.into();
@@ -471,6 +460,103 @@ where
         // apply the arbitrary modifications
         for (key, value) in upgrade_config.global_state_update() {
             tracking_copy.borrow_mut().write(*key, value.clone());
+        }
+
+        // This is a one time data transformation which will be removed
+        // in a following upgrade.
+        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
+        {
+            let withdraw_keys = tracking_copy
+                .borrow_mut()
+                .get_keys(correlation_id, &KeyTag::Withdraw)
+                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
+
+            let (unbonding_delay, current_era_id) = {
+                let auction_contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, *auction_hash)?;
+
+                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+                let delay = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &unbonding_delay_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
+                    .clone()
+                    .into_t::<u64>()
+                    .map_err(execution::Error::from)?;
+
+                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
+
+                let era_id = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &era_id_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveEraId)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
+                    .clone()
+                    .into_t::<EraId>()
+                    .map_err(execution::Error::from)?;
+
+                (delay, era_id)
+            };
+
+            for key in withdraw_keys {
+                // Transform only those withdraw purses that are still to be
+                // processed in the unbonding queue.
+                let withdraw_purses = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &key)
+                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                    .ok_or(Error::FailedToGetStoredWithdraws)?
+                    .as_withdraw()
+                    .ok_or(Error::FailedToGetWithdrawPurses)?
+                    .to_owned();
+
+                // Ensure that sufficient balance exists for all unbond purses that are to be
+                // migrated.
+                Self::fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
+                    &withdraw_purses,
+                    &tracking_copy,
+                    correlation_id,
+                )?;
+
+                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
+                    .into_iter()
+                    .filter_map(|purse| {
+                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
+                            return Some(UnbondingPurse::from(purse));
+                        }
+                        None
+                    })
+                    .collect();
+
+                let unbonding_key = key
+                    .withdraw_to_unbond()
+                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
+
+                tracking_copy
+                    .borrow_mut()
+                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
+            }
+        }
+
+        // We insert the new unbonding delay once the purses to be paid out have been transformed
+        // based on the previous unbonding delay.
+        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, *auction_hash)?;
+
+            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_unbonding_delay)
+                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
         let execution_effect = tracking_copy.borrow().effect();
@@ -2091,7 +2177,7 @@ where
             .borrow_mut()
             .get_system_contracts(correlation_id)
             .map_err(|error| {
-                error!(%error, "Failed to retrieve system contract registry");
+                warn!(%error, "Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
             });
         result
@@ -2193,6 +2279,52 @@ where
             .read_with_proof(correlation_id, &key)
             .map_err(Into::into)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
+    }
+
+    /// As the name suggests, used to ensure commit_upgrade fails if we lack sufficient balances.
+    fn fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
+        withdraw_purses: &[WithdrawPurse],
+        tracking_copy: &Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+        correlation_id: CorrelationId,
+    ) -> Result<(), Error> {
+        let mut balances = BTreeMap::new();
+        for purse in withdraw_purses.iter() {
+            match balances.entry(*purse.bonding_purse()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(*purse.amount());
+                }
+                Entry::Occupied(mut entry) => {
+                    let value = entry.get_mut();
+                    let new_val = value.checked_add(*purse.amount()).ok_or_else(|| {
+                        Error::Mint("overflowed a u512 during unbond migration".into())
+                    })?;
+                    *value = new_val;
+                }
+            }
+        }
+        for (unbond_purse_uref, unbond_amount) in balances {
+            let key = match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, unbond_purse_uref.into())
+            {
+                Ok(key) => key,
+                Err(_) => return Err(Error::Mint("purse balance not found".into())),
+            };
+            let current_balance = tracking_copy
+                .borrow_mut()
+                .get_purse_balance(CorrelationId::new(), key)?
+                .value();
+
+            if unbond_amount > current_balance {
+                // If we don't have enough balance to migrate, the only thing we can do
+                // is to fail the upgrade.
+                error!(%current_balance, %unbond_purse_uref, %unbond_amount, "commit_upgrade failed during migration - insufficient in purse to unbond");
+                return Err(Error::Mint(
+                    "insufficient balance detected while migrating unbond purses".into(),
+                ));
+            }
+        }
+        Ok(())
     }
 }
 

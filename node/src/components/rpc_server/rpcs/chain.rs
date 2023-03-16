@@ -117,7 +117,7 @@ pub struct GetBlockParams {
 
 impl DocExample for GetBlockParams {
     fn doc_example() -> &'static Self {
-        &*GET_BLOCK_PARAMS
+        &GET_BLOCK_PARAMS
     }
 }
 
@@ -134,7 +134,7 @@ pub struct GetBlockResult {
 
 impl DocExample for GetBlockResult {
     fn doc_example() -> &'static Self {
-        &*GET_BLOCK_RESULT
+        &GET_BLOCK_RESULT
     }
 }
 
@@ -187,7 +187,7 @@ pub struct GetBlockTransfersParams {
 
 impl DocExample for GetBlockTransfersParams {
     fn doc_example() -> &'static Self {
-        &*GET_BLOCK_TRANSFERS_PARAMS
+        &GET_BLOCK_TRANSFERS_PARAMS
     }
 }
 
@@ -221,7 +221,7 @@ impl GetBlockTransfersResult {
 
 impl DocExample for GetBlockTransfersResult {
     fn doc_example() -> &'static Self {
-        &*GET_BLOCK_TRANSFERS_RESULT
+        &GET_BLOCK_TRANSFERS_RESULT
     }
 }
 
@@ -278,7 +278,7 @@ pub struct GetStateRootHashParams {
 
 impl DocExample for GetStateRootHashParams {
     fn doc_example() -> &'static Self {
-        &*GET_STATE_ROOT_HASH_PARAMS
+        &GET_STATE_ROOT_HASH_PARAMS
     }
 }
 
@@ -295,7 +295,7 @@ pub struct GetStateRootHashResult {
 
 impl DocExample for GetStateRootHashResult {
     fn doc_example() -> &'static Self {
-        &*GET_STATE_ROOT_HASH_RESULT
+        &GET_STATE_ROOT_HASH_RESULT
     }
 }
 
@@ -344,7 +344,7 @@ pub struct GetEraInfoParams {
 
 impl DocExample for GetEraInfoParams {
     fn doc_example() -> &'static Self {
-        &*GET_ERA_INFO_PARAMS
+        &GET_ERA_INFO_PARAMS
     }
 }
 
@@ -361,7 +361,7 @@ pub struct GetEraInfoResult {
 
 impl DocExample for GetEraInfoResult {
     fn doc_example() -> &'static Self {
-        &*GET_ERA_INFO_RESULT
+        &GET_ERA_INFO_RESULT
     }
 }
 

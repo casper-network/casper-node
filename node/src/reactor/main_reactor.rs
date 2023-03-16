@@ -9,6 +9,7 @@ mod memory_metrics;
 mod utils;
 
 mod catch_up;
+mod genesis_instruction;
 mod keep_up;
 mod reactor_state;
 #[cfg(test)]
@@ -17,15 +18,17 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
@@ -52,8 +55,9 @@ use crate::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UpgradeWatcherAnnouncement,
+            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -74,14 +78,56 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-#[cfg(test)]
-use crate::{testing::network::NetworkedReactor, types::NodeId};
-pub(crate) use config::Config;
+pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
 
 /// Main node reactor.
+///
+/// This following diagram represents how the components involved in the **sync process** interact
+/// with each other.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     G((Network))
+///     E((BlockAccumulator))
+///     H[(Storage)]
+///     I((SyncLeaper))
+///     A(("Reactor<br/>(control logic)"))
+///     B((ContractRuntime))
+///     C((BlockSynchronizer))
+///     D((Consensus))
+///     K((Gossiper))
+///     J((Fetcher))
+///     F((DeployBuffer))
+///
+///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
+///     linkStyle 0 fill:none,stroke:red,color:red
+///
+///     A -->|"Execute block<br/>(genesis or upgrade)"| B
+///
+///     G -->|Peers| C
+///     G -->|Peers| D
+///
+///     C -->|Block data| E
+///
+///     J -->|Block data| C
+///
+///     D -->|Execute block| B
+///
+///     A -->|SyncLeap| I
+///
+///     B -->|Put block| H
+///     C -->|Mark block complete| H
+///     E -->|Mark block complete| H
+///     C -->|Execute block| B
+///
+///     C -->|Complete block<br/>with Deploys| F
+///
+///     K -->|Deploy| F
+///     K -->|Block data| E
+/// ```
 #[derive(DataSize, Debug)]
 pub(crate) struct MainReactor {
     // components
@@ -149,217 +195,6 @@ impl reactor::Reactor for MainReactor {
     type Config = WithDir<Config>;
     type Error = Error;
 
-    fn new(
-        config: Self::Config,
-        chainspec: Arc<Chainspec>,
-        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-        network_identity: NetworkIdentity,
-        registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut NodeRng,
-    ) -> Result<(Self, Effects<MainEvent>), Error> {
-        let node_startup_instant = Instant::now();
-
-        let effect_builder = EffectBuilder::new(event_queue);
-
-        let metrics = Metrics::new(registry.clone());
-        let memory_metrics = MemoryMetrics::new(registry.clone())?;
-        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
-
-        let protocol_version = chainspec.protocol_config.version;
-
-        let trusted_hash = config.value().node.trusted_hash;
-        let (root_dir, config) = config.into_parts();
-        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
-        let validator_matrix = ValidatorMatrix::new(
-            chainspec.core_config.finality_threshold_fraction,
-            chainspec
-                .protocol_config
-                .global_state_update
-                .as_ref()
-                .and_then(|global_state_update| global_state_update.validators.clone()),
-            chainspec.protocol_config.activation_point.era_id(),
-            our_secret_key.clone(),
-            our_public_key.clone(),
-            chainspec.core_config.auction_delay,
-        );
-
-        let storage_config = WithDir::new(&root_dir, config.storage.clone());
-
-        let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
-        let storage = Storage::new(
-            &storage_config,
-            chainspec.core_config.finality_threshold_fraction,
-            hard_reset_to_start_of_era,
-            protocol_version,
-            &chainspec.network_config.name,
-            chainspec.deploy_config.max_ttl,
-            chainspec.core_config.recent_era_count(),
-            Some(registry),
-            config.node.force_resync,
-        )?;
-
-        let contract_runtime = ContractRuntime::new(
-            protocol_version,
-            storage.root_path(),
-            &config.contract_runtime,
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.max_associated_keys,
-            chainspec.core_config.max_runtime_call_stack_height,
-            chainspec.core_config.minimum_delegation_amount,
-            chainspec.core_config.strict_argument_checking,
-            chainspec.core_config.vesting_schedule_period.millis(),
-            registry,
-        )?;
-
-        let network = Network::new(
-            config.network.clone(),
-            network_identity,
-            Some((our_secret_key.clone(), our_public_key.clone())),
-            registry,
-            chainspec.as_ref(),
-            validator_matrix.clone(),
-        )?;
-
-        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
-            "address_gossiper",
-            config.gossip,
-            registry,
-        )?;
-
-        let rpc_server = RpcServer::new(
-            config.rpc_server.clone(),
-            config.speculative_exec_server.clone(),
-            protocol_version,
-            chainspec.network_config.name.clone(),
-            node_startup_instant,
-        );
-        let rest_server = RestServer::new(
-            config.rest_server.clone(),
-            protocol_version,
-            chainspec.network_config.name.clone(),
-            node_startup_instant,
-        );
-        let event_stream_server = EventStreamServer::new(
-            config.event_stream_server.clone(),
-            storage.root_path().to_path_buf(),
-            protocol_version,
-        );
-        let diagnostics_port =
-            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
-        let shutdown_trigger = ShutdownTrigger::new();
-
-        // local / remote data management
-        let sync_leaper = SyncLeaper::new(chainspec.clone(), registry)?;
-        let fetchers = Fetchers::new(&config.fetcher, registry)?;
-
-        // gossipers
-        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
-            "block_gossiper",
-            config.gossip,
-            registry,
-        )?;
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
-            "deploy_gossiper",
-            config.gossip,
-            registry,
-        )?;
-        let finality_signature_gossiper =
-            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
-                "finality_signature_gossiper",
-                config.gossip,
-                registry,
-            )?;
-
-        // consensus
-        let consensus = EraSupervisor::new(
-            storage.root_path(),
-            our_secret_key,
-            our_public_key,
-            config.consensus,
-            chainspec.clone(),
-            registry,
-        )?;
-
-        // chain / deploy management
-
-        let block_accumulator = BlockAccumulator::new(
-            config.block_accumulator,
-            validator_matrix.clone(),
-            chainspec.core_config.unbonding_delay,
-            chainspec.core_config.minimum_block_time,
-            registry,
-        )?;
-        let block_synchronizer = BlockSynchronizer::new(
-            config.block_synchronizer,
-            chainspec.core_config.simultaneous_peer_requests,
-            validator_matrix.clone(),
-            registry,
-        )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
-        let upgrade_watcher =
-            UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
-        let deploy_buffer =
-            DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
-
-        let reactor = MainReactor {
-            chainspec,
-            chainspec_raw_bytes,
-            storage,
-            contract_runtime,
-            upgrade_watcher,
-            net: network,
-            address_gossiper,
-
-            rpc_server,
-            rest_server,
-            event_stream_server,
-            deploy_acceptor,
-            fetchers,
-
-            block_gossiper,
-            deploy_gossiper,
-            finality_signature_gossiper,
-            sync_leaper,
-            deploy_buffer,
-            consensus,
-            block_validator,
-            block_accumulator,
-            block_synchronizer,
-            diagnostics_port,
-            shutdown_trigger,
-
-            metrics,
-            memory_metrics,
-            event_queue_metrics,
-
-            state: ReactorState::Initialize {},
-            attempts: 0,
-            last_progress: Timestamp::now(),
-            max_attempts: config.node.max_attempts,
-            idle_tolerance: config.node.idle_tolerance,
-            control_logic_default_delay: config.node.control_logic_default_delay,
-            trusted_hash,
-            validator_matrix,
-            switch_block: None,
-            sync_to_genesis: config.node.sync_to_genesis,
-            signature_gossip_tracker: SignatureGossipTracker::new(),
-        };
-        info!("MainReactor: instantiated");
-        let effects = effect_builder
-            .immediately()
-            .event(|()| MainEvent::ReactorCrank);
-        Ok((reactor, effects))
-    }
-
-    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
-        self.memory_metrics.estimate(self);
-        self.event_queue_metrics
-            .record_event_queue_counts(&event_queue_handle)
-    }
-
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -404,6 +239,42 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
                 self.handle_meta_block(effect_builder, rng, meta_block)
             }
+            MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
+                let only_from_available_block_range = true;
+                if let Ok(Some(block_header)) = self
+                    .storage
+                    .read_block_header_by_height(block_height, only_from_available_block_range)
+                {
+                    let block_hash = block_header.block_hash();
+                    reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(block_header),
+                                header_hash: block_hash,
+                            },
+                        ),
+                    )
+                } else {
+                    // Warn logging here because this codepath of handling an
+                    // `UnexecutedBlockAnnouncement` is coming from the
+                    // contract runtime when a block with a lower height than
+                    // the next expected executable height is enqueued. This
+                    // happens after restarts when consensus is creating the
+                    // required eras and attempts to retrace its steps in the
+                    // era by enqueuing all finalized blocks starting from the
+                    // first one in that era, blocks which should have already
+                    // been executed and marked complete in storage.
+                    error!(
+                        block_height,
+                        "Finalized block enqueued for execution, but a complete \
+                        block header with the same height is not present in storage."
+                    );
+                    Effects::new()
+                }
+            }
 
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
@@ -418,14 +289,19 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::UpgradeWatcherAnnouncement(
                 UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => reactor::wrap_effects(
-                MainEvent::UpgradeWatcher,
-                self.upgrade_watcher.handle_event(
-                    effect_builder,
-                    rng,
-                    upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
-                ),
-            ),
+            ) => {
+                // register activation point of upgrade w/ block accumulator
+                self.block_accumulator
+                    .register_activation_point(next_upgrade.activation_point());
+                reactor::wrap_effects(
+                    MainEvent::UpgradeWatcher,
+                    self.upgrade_watcher.handle_event(
+                        effect_builder,
+                        rng,
+                        upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
+                    ),
+                )
+            }
             MainEvent::RpcServer(event) => reactor::wrap_effects(
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
@@ -685,7 +561,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     block_accumulator::Event::ReceivedBlock {
-                        block: item,
+                        block: Arc::new(*item),
                         sender,
                     },
                 ),
@@ -693,6 +569,19 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_block_id,
             )) => Effects::new(),
+            MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
+                reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::ReceivedBlock {
+                            block,
+                            sender: peer,
+                        },
+                    ),
+                )
+            }
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
                 // Finality signature received via broadcast.
@@ -771,6 +660,22 @@ impl reactor::Reactor for MainReactor {
                     .register_signature(gossiped_finality_signature_id);
                 Effects::new()
             }
+            MainEvent::FinalitySignatureFetcherAnnouncement(
+                FetchedNewFinalitySignatureAnnouncement {
+                    finality_signature,
+                    peer,
+                },
+            ) => reactor::wrap_effects(
+                MainEvent::BlockAccumulator,
+                self.block_accumulator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_accumulator::Event::ReceivedFinalitySignature {
+                        finality_signature,
+                        sender: peer,
+                    },
+                ),
+            ),
 
             // DEPLOYS
             MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
@@ -960,6 +865,81 @@ impl reactor::Reactor for MainReactor {
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
 
+            // This event gets emitted when we manage to read the era validators from the global
+            // states of an immediate switch block and its parent. Once that happens, we can check
+            // for the signs of any changes happening during the upgrade and register the correct
+            // set of validators in the validators matrix.
+            MainEvent::GotImmediateSwitchBlockEraValidators(
+                era_id,
+                parent_era_validators,
+                block_era_validators,
+            ) => {
+                // `era_id`, being the era of the immediate switch block, will be absent in the
+                // validators stored in the immediate switch block - therefore we will use its
+                // successor for the comparison.
+                let era_to_check = era_id.successor();
+                // We read the validators for era_id+1 from the parent of the immediate switch
+                // block.
+                let validators_in_parent = match parent_era_validators.get(&era_to_check) {
+                    Some(validators) => validators,
+                    None => {
+                        return fatal!(
+                            effect_builder,
+                            "couldn't find validators for era {} in parent_era_validators",
+                            era_to_check
+                        )
+                        .ignore();
+                    }
+                };
+                // We also read the validators from the immediate switch block itself.
+                let validators_in_block = match block_era_validators.get(&era_to_check) {
+                    Some(validators) => validators,
+                    None => {
+                        return fatal!(
+                            effect_builder,
+                            "couldn't find validators for era {} in block_era_validators",
+                            era_to_check
+                        )
+                        .ignore();
+                    }
+                };
+                // Decide which validators to use for `era_id` in the validators matrix.
+                let validators_to_register = if validators_in_parent == validators_in_block {
+                    // Nothing interesting happened - register the regular validators, ie. the
+                    // ones stored for `era_id` in the parent of the immediate switch block.
+                    match parent_era_validators.get(&era_id) {
+                        Some(validators) => validators,
+                        None => {
+                            return fatal!(
+                                effect_builder,
+                                "couldn't find validators for era {} in parent_era_validators",
+                                era_id
+                            )
+                            .ignore();
+                        }
+                    }
+                } else {
+                    // We had an upgrade changing the validators! We use the same validators that
+                    // will be used for the era after the immediate switch block, as we can't trust
+                    // the ones we would use normally.
+                    validators_in_block
+                };
+                let mut effects = self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    era_id,
+                    validators_to_register.clone(),
+                );
+                // Crank the reactor so that any synchronizing tasks blocked by the lack of
+                // validators for `era_id` can resume.
+                effects.extend(
+                    effect_builder
+                        .immediately()
+                        .event(|_| MainEvent::ReactorCrank),
+                );
+                effects
+            }
+
             // DELEGATE ALL FETCHER RELEVANT EVENTS to self.fetchers.dispatch_fetcher_event(..)
             MainEvent::LegacyDeployFetcher(..)
             | MainEvent::LegacyDeployFetcherRequest(..)
@@ -983,9 +963,245 @@ impl reactor::Reactor for MainReactor {
                 .dispatch_fetcher_event(effect_builder, rng, event),
         }
     }
+
+    fn new(
+        config: Self::Config,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        network_identity: NetworkIdentity,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<MainEvent>), Error> {
+        let node_startup_instant = Instant::now();
+
+        let effect_builder = EffectBuilder::new(event_queue);
+
+        let metrics = Metrics::new(registry.clone());
+        let memory_metrics = MemoryMetrics::new(registry.clone())?;
+        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
+
+        let protocol_version = chainspec.protocol_config.version;
+
+        let trusted_hash = config.value().node.trusted_hash;
+        let (root_dir, config) = config.into_parts();
+        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
+        let validator_matrix = ValidatorMatrix::new(
+            chainspec.core_config.finality_threshold_fraction,
+            chainspec
+                .protocol_config
+                .global_state_update
+                .as_ref()
+                .and_then(|global_state_update| global_state_update.validators.clone()),
+            chainspec.protocol_config.activation_point.era_id(),
+            our_secret_key.clone(),
+            our_public_key.clone(),
+            chainspec.core_config.auction_delay,
+        );
+
+        let storage_config = WithDir::new(&root_dir, config.storage.clone());
+
+        let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
+        let storage = Storage::new(
+            &storage_config,
+            hard_reset_to_start_of_era,
+            protocol_version,
+            &chainspec.network_config.name,
+            chainspec.deploy_config.max_ttl,
+            chainspec.core_config.recent_era_count(),
+            Some(registry),
+            config.node.force_resync,
+        )?;
+
+        let contract_runtime = ContractRuntime::new(
+            protocol_version,
+            storage.root_path(),
+            &config.contract_runtime,
+            chainspec.wasm_config,
+            chainspec.system_costs_config,
+            chainspec.core_config.max_associated_keys,
+            chainspec.core_config.max_runtime_call_stack_height,
+            chainspec.core_config.minimum_delegation_amount,
+            chainspec.core_config.strict_argument_checking,
+            chainspec.core_config.vesting_schedule_period.millis(),
+            registry,
+        )?;
+
+        let network = Network::new(
+            config.network.clone(),
+            network_identity,
+            Some((our_secret_key.clone(), our_public_key.clone())),
+            registry,
+            chainspec.as_ref(),
+            validator_matrix.clone(),
+        )?;
+
+        let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
+            "address_gossiper",
+            config.gossip,
+            registry,
+        )?;
+
+        let rpc_server = RpcServer::new(
+            config.rpc_server.clone(),
+            config.speculative_exec_server.clone(),
+            protocol_version,
+            chainspec.network_config.name.clone(),
+            node_startup_instant,
+        );
+        let rest_server = RestServer::new(
+            config.rest_server.clone(),
+            protocol_version,
+            chainspec.network_config.name.clone(),
+            node_startup_instant,
+        );
+        let event_stream_server = EventStreamServer::new(
+            config.event_stream_server.clone(),
+            storage.root_path().to_path_buf(),
+            protocol_version,
+        );
+        let diagnostics_port =
+            DiagnosticsPort::new(WithDir::new(&root_dir, config.diagnostics_port));
+        let shutdown_trigger = ShutdownTrigger::new();
+
+        // local / remote data management
+        let sync_leaper = SyncLeaper::new(chainspec.clone(), registry)?;
+        let fetchers = Fetchers::new(&config.fetcher, registry)?;
+
+        // gossipers
+        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
+            "block_gossiper",
+            config.gossip,
+            registry,
+        )?;
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
+            "deploy_gossiper",
+            config.gossip,
+            registry,
+        )?;
+        let finality_signature_gossiper =
+            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
+                "finality_signature_gossiper",
+                config.gossip,
+                registry,
+            )?;
+
+        // consensus
+        let consensus = EraSupervisor::new(
+            storage.root_path(),
+            our_secret_key,
+            our_public_key,
+            config.consensus,
+            chainspec.clone(),
+            registry,
+        )?;
+
+        // chain / deploy management
+
+        let block_accumulator = BlockAccumulator::new(
+            config.block_accumulator,
+            validator_matrix.clone(),
+            chainspec.core_config.unbonding_delay,
+            chainspec.core_config.minimum_block_time,
+            chainspec.core_config.validator_slots,
+            registry,
+        )?;
+        let block_synchronizer = BlockSynchronizer::new(
+            config.block_synchronizer,
+            chainspec.clone(),
+            chainspec.core_config.simultaneous_peer_requests,
+            validator_matrix.clone(),
+            registry,
+        )?;
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let upgrade_watcher =
+            UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
+        let deploy_buffer =
+            DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
+
+        let reactor = MainReactor {
+            chainspec,
+            chainspec_raw_bytes,
+            storage,
+            contract_runtime,
+            upgrade_watcher,
+            net: network,
+            address_gossiper,
+
+            rpc_server,
+            rest_server,
+            event_stream_server,
+            deploy_acceptor,
+            fetchers,
+
+            block_gossiper,
+            deploy_gossiper,
+            finality_signature_gossiper,
+            sync_leaper,
+            deploy_buffer,
+            consensus,
+            block_validator,
+            block_accumulator,
+            block_synchronizer,
+            diagnostics_port,
+            shutdown_trigger,
+
+            metrics,
+            memory_metrics,
+            event_queue_metrics,
+
+            state: ReactorState::Initialize {},
+            attempts: 0,
+            last_progress: Timestamp::now(),
+            max_attempts: config.node.max_attempts,
+            idle_tolerance: config.node.idle_tolerance,
+            control_logic_default_delay: config.node.control_logic_default_delay,
+            trusted_hash,
+            validator_matrix,
+            switch_block: None,
+            sync_to_genesis: config.node.sync_to_genesis,
+            signature_gossip_tracker: SignatureGossipTracker::new(),
+        };
+        info!("MainReactor: instantiated");
+        let effects = effect_builder
+            .immediately()
+            .event(|()| MainEvent::ReactorCrank);
+        Ok((reactor, effects))
+    }
+
+    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
+        self.memory_metrics.estimate(self);
+        self.event_queue_metrics
+            .record_event_queue_counts(&event_queue_handle)
+    }
 }
 
 impl MainReactor {
+    fn update_validator_weights(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+        validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Effects<MainEvent> {
+        self.validator_matrix
+            .register_validator_weights(era_id, validator_weights);
+        info!(%era_id, "validator_matrix updated");
+        // notify validator bound components
+        let mut effects = reactor::wrap_effects(
+            MainEvent::BlockAccumulator,
+            self.block_accumulator
+                .handle_validators(effect_builder, rng),
+        );
+        effects.extend(reactor::wrap_effects(
+            MainEvent::BlockSynchronizer,
+            self.block_synchronizer
+                .handle_validators(effect_builder, rng),
+        ));
+        effects
+    }
+
     fn handle_meta_block(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
@@ -997,7 +1213,7 @@ impl MainReactor {
         }: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
-            "handling meta block {} {} {:?}",
+            "MetaBlock: handling meta block {} {} {:?}",
             block.height(),
             block.hash(),
             state
@@ -1005,7 +1221,7 @@ impl MainReactor {
         if !state.is_stored() {
             return fatal!(
                 effect_builder,
-                "block should be stored after execution or accumulation"
+                "MetaBlock: block should be stored after execution or accumulation"
             )
             .ignore();
         }
@@ -1013,6 +1229,11 @@ impl MainReactor {
         let mut effects = Effects::new();
 
         if state.register_as_sent_to_deploy_buffer().was_updated() {
+            debug!(
+                "MetaBlock: notifying deploy buffer: {} {}",
+                block.height(),
+                block.hash(),
+            );
             effects.extend(reactor::wrap_effects(
                 MainEvent::DeployBuffer,
                 self.deploy_buffer.handle_event(
@@ -1027,19 +1248,18 @@ impl MainReactor {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
                 let era_id = block.header().era_id();
                 let next_era_id = era_id.successor();
-                self.validator_matrix
-                    .register_validator_weights(next_era_id, validator_weights.clone());
-                info!(%era_id, %next_era_id, "validator_matrix updated");
-                // notify validator bound components
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator
-                        .handle_validators(effect_builder, rng),
-                ));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockSynchronizer,
-                    self.block_synchronizer
-                        .handle_validators(effect_builder, rng),
+                debug!(
+                    "MetaBlock: updating validator matrix: {} {} {} {}",
+                    block.height(),
+                    block.hash(),
+                    era_id,
+                    next_era_id
+                );
+                effects.extend(self.update_validator_weights(
+                    effect_builder,
+                    rng,
+                    next_era_id,
+                    validator_weights.clone(),
                 ));
             }
         }
@@ -1050,6 +1270,11 @@ impl MainReactor {
             .validator_matrix
             .is_self_validator_in_era(block.header().era_id())
         {
+            debug!(
+                "MetaBlock: updating validator gossip state: {} {}",
+                block.height(),
+                block.hash(),
+            );
             self.update_meta_block_gossip_state(
                 effect_builder,
                 rng,
@@ -1061,6 +1286,11 @@ impl MainReactor {
         }
 
         if !state.is_executed() {
+            debug!(
+                "MetaBlock: unexecuted block: {} {}",
+                block.height(),
+                block.hash(),
+            );
             // We've done as much as we can on a valid but un-executed block.
             return effects;
         }
@@ -1071,6 +1301,20 @@ impl MainReactor {
                 .validator_matrix
                 .create_finality_signature(block.header())
             {
+                debug!(
+                    %finality_signature,
+                    "MetaBlock: registering finality signature: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::Storage,
+                    effect_builder
+                        .put_finality_signature_to_storage(finality_signature.clone())
+                        .ignore(),
+                ));
+
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator.handle_event(
@@ -1094,6 +1338,11 @@ impl MainReactor {
         }
 
         if state.register_as_consensus_notified().was_updated() {
+            debug!(
+                "MetaBlock: notifying consensus: {} {}",
+                block.height(),
+                block.hash(),
+            );
             effects.extend(reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus.handle_event(
@@ -1108,6 +1357,11 @@ impl MainReactor {
         }
 
         if state.register_as_accumulator_notified().was_updated() {
+            debug!(
+                "MetaBlock: notifying accumulator: {} {}",
+                block.height(),
+                block.hash(),
+            );
             let meta_block = MetaBlock {
                 block,
                 execution_results,
@@ -1134,6 +1388,11 @@ impl MainReactor {
         // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
         // `KeepUp`.
         if state.is_marked_complete() {
+            debug!(
+                "MetaBlock: marked complete: {} {}",
+                block.height(),
+                block.hash(),
+            );
             if block.header().is_switch_block() {
                 match self.switch_block.as_ref().map(|header| header.height()) {
                     Some(current_height) => {
@@ -1156,6 +1415,11 @@ impl MainReactor {
             );
         }
 
+        debug!(
+            "MetaBlock: update gossip state: {} {}",
+            block.height(),
+            block.hash(),
+        );
         self.update_meta_block_gossip_state(
             effect_builder,
             rng,
@@ -1166,6 +1430,11 @@ impl MainReactor {
         );
 
         if state.register_as_synchronizer_notified().was_updated() {
+            debug!(
+                "MetaBlock: notifying block synchronizer: {} {}",
+                block.height(),
+                block.hash(),
+            );
             effects.extend(reactor::wrap_effects(
                 MainEvent::BlockSynchronizer,
                 self.block_synchronizer.handle_event(
@@ -1193,6 +1462,11 @@ impl MainReactor {
             return effects;
         }
 
+        debug!(
+            "MetaBlock: notifying event stream: {} {}",
+            block.height(),
+            block.hash(),
+        );
         effects.extend(reactor::wrap_effects(
             MainEvent::EventStreamServer,
             self.event_stream_server.handle_event(
@@ -1216,6 +1490,11 @@ impl MainReactor {
             ));
         }
 
+        debug!(
+            "MetaBlock: notifying shutdown watcher: {} {}",
+            block.height(),
+            block.hash(),
+        );
         effects.extend(reactor::wrap_effects(
             MainEvent::ShutdownTrigger,
             self.shutdown_trigger.handle_event(
@@ -1275,7 +1554,7 @@ impl MainReactor {
 
 #[cfg(test)]
 impl NetworkedReactor for MainReactor {
-    fn node_id(&self) -> NodeId {
+    fn node_id(&self) -> crate::types::NodeId {
         self.net.node_id()
     }
 }

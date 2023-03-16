@@ -85,7 +85,7 @@ fn get_balance_should_work() {
         Err(ValidationError::UnexpectedKey)
     );
 
-    let bogus_hash = Digest::hash(&[5u8; 32]);
+    let bogus_hash = Digest::hash([5u8; 32]);
     assert_eq!(
         core::validate_balance_proof(
             &bogus_hash,
@@ -170,7 +170,7 @@ fn get_balance_using_public_key_should_work() {
         Err(ValidationError::UnexpectedKey)
     );
 
-    let bogus_hash = Digest::hash(&[5u8; 32]);
+    let bogus_hash = Digest::hash([5u8; 32]);
     assert_eq!(
         core::validate_balance_proof(
             &bogus_hash,

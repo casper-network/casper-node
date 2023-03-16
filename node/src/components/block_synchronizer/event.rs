@@ -9,11 +9,14 @@ use casper_execution_engine::core::engine_state;
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
-    components::{block_synchronizer::GlobalStateSynchronizerError, fetcher::FetchResult},
+    components::{
+        block_synchronizer::{GlobalStateSynchronizerError, GlobalStateSynchronizerResponse},
+        fetcher::FetchResult,
+    },
     effect::requests::BlockSynchronizerRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId,
+        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap,
     },
 };
 
@@ -42,10 +45,12 @@ pub(crate) enum Event {
     ApprovalsHashesFetched(FetchResult<ApprovalsHashes>),
     #[from]
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
+    #[from]
+    SyncLeapFetched(FetchResult<SyncLeap>),
     GlobalStateSynced {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
-        result: Result<Digest, GlobalStateSynchronizerError>,
+        result: Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>,
     },
     GotExecutionResultsChecksum {
         block_hash: BlockHash,
@@ -72,6 +77,17 @@ impl Display for Event {
         match self {
             Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
                 write!(f, "block synchronizer need next request")
+            }
+            Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states)) => {
+                write!(f, "global states to be synced: [")?;
+                for (block_hash, global_state_hash) in global_states {
+                    write!(
+                        f,
+                        "(block {}, global state {}), ",
+                        block_hash, global_state_hash
+                    )?;
+                }
+                write!(f, "]")
             }
             Event::Request(_) => {
                 write!(f, "block synchronizer request from effect builder")
@@ -106,11 +122,17 @@ impl Display for Event {
             Event::FinalitySignatureFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
+            Event::SyncLeapFetched(Ok(fetched_item)) => {
+                write!(f, "{}", fetched_item)
+            }
+            Event::SyncLeapFetched(Err(fetcher_error)) => {
+                write!(f, "{}", fetcher_error)
+            }
             Event::GlobalStateSynced {
                 block_hash: _,
                 result,
             } => match result {
-                Ok(root_hash) => write!(f, "synced global state under root {}", root_hash),
+                Ok(response) => write!(f, "synced global state under root {}", response.hash()),
                 Err(error) => write!(f, "failed to sync global state: {}", error),
             },
             Event::GotExecutionResultsChecksum {

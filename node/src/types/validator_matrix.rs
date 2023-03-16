@@ -10,6 +10,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
+use tracing::debug;
 
 use casper_types::{EraId, PublicKey, SecretKey, U512};
 
@@ -17,7 +18,7 @@ use super::{BlockHeader, FinalitySignature};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 
-#[derive(Eq, PartialEq, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, DataSize)]
 pub(crate) enum SignatureWeight {
     /// Too few signatures to make any guarantees about the block's finality.
     Insufficient,
@@ -92,16 +93,35 @@ impl ValidatorMatrix {
         }
     }
 
+    // When the chain starts, the validator weights will be the same until the unbonding delay is
+    // elapsed. This allows us to possibly infer the weights of other eras if the era registered is
+    // within the unbonding delay.
+    // Currently we only infer the validator weights for era 0 from the set registered for era 1.
+    // This is needed for the case where we want to sync leap to a block in era 0 of a pre 1.5.0
+    // network for which we cant get the validator weights from a switch block.
     pub(crate) fn register_era_validator_weights(
         &mut self,
         validators: EraValidatorWeights,
     ) -> bool {
+        let was_present = self.register_era_validator_weights_bounded(validators.clone());
+        if validators.era_id() == EraId::from(1) {
+            self.register_era_validator_weights_bounded(EraValidatorWeights::new(
+                EraId::from(0),
+                validators.validator_weights,
+                validators.finality_threshold_fraction,
+            ));
+            debug!("Validator Matrix: Inferred validator weights for Era 0 from weights in Era 1");
+        }
+        was_present
+    }
+
+    fn register_era_validator_weights_bounded(&mut self, validators: EraValidatorWeights) -> bool {
         let era_id = validators.era_id;
         let mut guard = self
             .inner
             .write()
             .expect("poisoned lock on validator matrix");
-        let was_present = guard.insert(era_id, validators).is_some();
+        let is_new = guard.insert(era_id, validators).is_none();
         if guard.len() > MAX_VALIDATOR_MATRIX_ENTRIES {
             // Safe to unwrap because we check above that we have sufficient entries.
             let median_key = guard
@@ -112,7 +132,7 @@ impl ValidatorMatrix {
             guard.remove(&median_key);
             return median_key != era_id;
         }
-        !was_present
+        is_new
     }
 
     pub(crate) fn register_validator_weights(
@@ -184,6 +204,10 @@ impl ValidatorMatrix {
         }
     }
 
+    pub(crate) fn public_signing_key(&self) -> &PublicKey {
+        &self.public_signing_key
+    }
+
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
     pub(crate) fn is_self_validator_in_era(&self, era_id: EraId) -> Option<bool> {
@@ -222,6 +246,10 @@ impl ValidatorMatrix {
 
     fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
         self.inner.read().unwrap()
+    }
+
+    pub(crate) fn eras(&self) -> Vec<EraId> {
+        self.read_inner().keys().copied().collect_vec()
     }
 }
 

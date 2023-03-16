@@ -141,7 +141,7 @@ pub struct GetItemParams {
 
 impl DocExample for GetItemParams {
     fn doc_example() -> &'static Self {
-        &*GET_ITEM_PARAMS
+        &GET_ITEM_PARAMS
     }
 }
 
@@ -160,7 +160,7 @@ pub struct GetItemResult {
 
 impl DocExample for GetItemResult {
     fn doc_example() -> &'static Self {
-        &*GET_ITEM_RESULT
+        &GET_ITEM_RESULT
     }
 }
 
@@ -219,7 +219,7 @@ pub struct GetBalanceParams {
 
 impl DocExample for GetBalanceParams {
     fn doc_example() -> &'static Self {
-        &*GET_BALANCE_PARAMS
+        &GET_BALANCE_PARAMS
     }
 }
 
@@ -238,7 +238,7 @@ pub struct GetBalanceResult {
 
 impl DocExample for GetBalanceResult {
     fn doc_example() -> &'static Self {
-        &*GET_BALANCE_RESULT
+        &GET_BALANCE_RESULT
     }
 }
 
@@ -331,7 +331,7 @@ pub struct GetAuctionInfoParams {
 
 impl DocExample for GetAuctionInfoParams {
     fn doc_example() -> &'static Self {
-        &*GET_AUCTION_INFO_PARAMS
+        &GET_AUCTION_INFO_PARAMS
     }
 }
 
@@ -348,7 +348,7 @@ pub struct GetAuctionInfoResult {
 
 impl DocExample for GetAuctionInfoResult {
     fn doc_example() -> &'static Self {
-        &*GET_AUCTION_INFO_RESULT
+        &GET_AUCTION_INFO_RESULT
     }
 }
 
@@ -476,7 +476,7 @@ pub struct GetAccountInfoParams {
 
 impl DocExample for GetAccountInfoParams {
     fn doc_example() -> &'static Self {
-        &*GET_ACCOUNT_INFO_PARAMS
+        &GET_ACCOUNT_INFO_PARAMS
     }
 }
 
@@ -495,7 +495,7 @@ pub struct GetAccountInfoResult {
 
 impl DocExample for GetAccountInfoResult {
     fn doc_example() -> &'static Self {
-        &*GET_ACCOUNT_INFO_RESULT
+        &GET_ACCOUNT_INFO_RESULT
     }
 }
 
@@ -673,7 +673,7 @@ pub struct GetDictionaryItemParams {
 
 impl DocExample for GetDictionaryItemParams {
     fn doc_example() -> &'static Self {
-        &*GET_DICTIONARY_ITEM_PARAMS
+        &GET_DICTIONARY_ITEM_PARAMS
     }
 }
 
@@ -694,7 +694,7 @@ pub struct GetDictionaryItemResult {
 
 impl DocExample for GetDictionaryItemResult {
     fn doc_example() -> &'static Self {
-        &*GET_DICTIONARY_ITEM_RESULT
+        &GET_DICTIONARY_ITEM_RESULT
     }
 }
 
@@ -782,7 +782,7 @@ pub struct QueryGlobalStateParams {
 
 impl DocExample for QueryGlobalStateParams {
     fn doc_example() -> &'static Self {
-        &*QUERY_GLOBAL_STATE_PARAMS
+        &QUERY_GLOBAL_STATE_PARAMS
     }
 }
 
@@ -803,7 +803,7 @@ pub struct QueryGlobalStateResult {
 
 impl DocExample for QueryGlobalStateResult {
     fn doc_example() -> &'static Self {
-        &*QUERY_GLOBAL_STATE_RESULT
+        &QUERY_GLOBAL_STATE_RESULT
     }
 }
 
@@ -873,7 +873,7 @@ pub struct QueryBalanceParams {
 
 impl DocExample for QueryBalanceParams {
     fn doc_example() -> &'static Self {
-        &*QUERY_BALANCE_PARAMS
+        &QUERY_BALANCE_PARAMS
     }
 }
 
@@ -889,7 +889,7 @@ pub struct QueryBalanceResult {
 
 impl DocExample for QueryBalanceResult {
     fn doc_example() -> &'static Self {
-        &*QUERY_BALANCE_RESULT
+        &QUERY_BALANCE_RESULT
     }
 }
 
@@ -999,7 +999,7 @@ pub struct GetTrieParams {
 
 impl DocExample for GetTrieParams {
     fn doc_example() -> &'static Self {
-        &*GET_TRIE_PARAMS
+        &GET_TRIE_PARAMS
     }
 }
 
@@ -1020,7 +1020,7 @@ pub struct GetTrieResult {
 
 impl DocExample for GetTrieResult {
     fn doc_example() -> &'static Self {
-        &*GET_TRIE_RESULT
+        &GET_TRIE_RESULT
     }
 }
 

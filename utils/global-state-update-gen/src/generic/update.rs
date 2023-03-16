@@ -76,11 +76,19 @@ impl Update {
     }
 
     pub(crate) fn assert_total_supply<R: StateReader>(&self, reader: &mut R, supply: u64) {
+        let total = self
+            .entries
+            .get(&reader.get_total_supply_key())
+            .expect("should have total supply")
+            .as_cl_value()
+            .expect("total supply should be CLValue")
+            .clone()
+            .into_t::<U512>()
+            .expect("total supply should be a U512");
+        let expected = U512::from(supply);
         assert_eq!(
-            self.entries.get(&reader.get_total_supply_key()),
-            Some(&StoredValue::from(
-                CLValue::from_t(U512::from(supply)).expect("should convert U512 to CLValue")
-            ))
+            total, expected,
+            "total supply ({total}) not as expected ({expected})",
         );
     }
 
@@ -140,5 +148,25 @@ impl Update {
 
     pub(crate) fn assert_validators_unchanged(&self) {
         assert!(self.validators.is_none());
+    }
+
+    pub(crate) fn assert_withdraws_empty(&self, validator_key: &PublicKey) {
+        let withdraws = self
+            .entries
+            .get(&Key::Withdraw(validator_key.to_account_hash()))
+            .expect("should have withdraw purses")
+            .as_withdraw()
+            .expect("should be vec of withdraws");
+        assert!(withdraws.is_empty());
+    }
+
+    pub(crate) fn assert_unbonds_empty(&self, validator_key: &PublicKey) {
+        let unbonds = self
+            .entries
+            .get(&Key::Unbond(validator_key.to_account_hash()))
+            .expect("should have unbond purses")
+            .as_unbonding()
+            .expect("should be vec of unbonds");
+        assert!(unbonds.is_empty());
     }
 }

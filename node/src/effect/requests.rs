@@ -32,7 +32,8 @@ use casper_types::{
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, TrieAccumulatorError,
+            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
+            TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
@@ -293,6 +294,10 @@ pub(crate) enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
+    IsBlockStored {
+        block_hash: BlockHash,
+        responder: Responder<bool>,
+    },
     /// Retrieve the approvals hashes.
     GetApprovalsHashes {
         /// Hash of the block for which to retrieve approvals hashes.
@@ -372,6 +377,10 @@ pub(crate) enum StorageRequest {
         deploy_id: DeployId,
         responder: Responder<Option<Deploy>>,
     },
+    IsDeployStored {
+        deploy_id: DeployId,
+        responder: Responder<bool>,
+    },
     /// Store execution results for a set of deploys of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
@@ -419,6 +428,10 @@ pub(crate) enum StorageRequest {
     GetFinalitySignature {
         id: Box<FinalitySignatureId>,
         responder: Responder<Option<FinalitySignature>>,
+    },
+    IsFinalitySignatureStored {
+        id: Box<FinalitySignatureId>,
+        responder: Responder<bool>,
     },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
@@ -494,6 +507,9 @@ impl Display for StorageRequest {
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
             }
+            StorageRequest::IsBlockStored { block_hash, .. } => {
+                write!(formatter, "is block {} stored", block_hash)
+            }
             StorageRequest::GetApprovalsHashes { block_hash, .. } => {
                 write!(formatter, "get approvals hashes {}", block_hash)
             }
@@ -525,6 +541,9 @@ impl Display for StorageRequest {
             StorageRequest::GetDeploy { deploy_id, .. } => {
                 write!(formatter, "get deploy {}", deploy_id)
             }
+            StorageRequest::IsDeployStored { deploy_id, .. } => {
+                write!(formatter, "is deploy {} stored", deploy_id)
+            }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
             }
@@ -540,6 +559,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
+            }
+            StorageRequest::IsFinalitySignatureStored { id, .. } => {
+                write!(formatter, "is finality signature {} stored", id)
             }
             StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
                 write!(
@@ -1020,7 +1042,7 @@ pub(crate) struct TrieAccumulatorRequest {
     /// The peers to try to fetch from.
     pub(crate) peers: Vec<NodeId>,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<Result<Box<TrieRaw>, TrieAccumulatorError>>,
+    pub(crate) responder: Responder<Result<TrieAccumulatorResponse, TrieAccumulatorError>>,
 }
 
 impl Display for TrieAccumulatorRequest {
@@ -1033,9 +1055,9 @@ impl Display for TrieAccumulatorRequest {
 pub(crate) struct SyncGlobalStateRequest {
     pub(crate) block_hash: BlockHash,
     pub(crate) state_root_hash: Digest,
-    pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
-    pub(crate) responder: Responder<Result<Digest, GlobalStateSynchronizerError>>,
+    pub(crate) responder:
+        Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
 }
 
 impl Display for SyncGlobalStateRequest {
@@ -1119,6 +1141,7 @@ impl Display for ReactorStatusRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum BlockAccumulatorRequest {
     GetPeersForBlock {
         block_hash: BlockHash,
@@ -1128,7 +1151,11 @@ pub(crate) enum BlockAccumulatorRequest {
 
 impl Display for BlockAccumulatorRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "block accumulator request")
+        match self {
+            BlockAccumulatorRequest::GetPeersForBlock { block_hash, .. } => {
+                write!(f, "get peers for {}", block_hash)
+            }
+        }
     }
 }
 
@@ -1136,6 +1163,7 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
+    SyncGlobalStates(Vec<(BlockHash, Digest)>),
     Status {
         responder: Responder<BlockSynchronizerStatus>,
     },
@@ -1152,6 +1180,9 @@ impl Display for BlockSynchronizerRequest {
             }
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")
+            }
+            BlockSynchronizerRequest::SyncGlobalStates(_) => {
+                write!(f, "request to sync global states")
             }
         }
     }

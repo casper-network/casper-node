@@ -556,11 +556,11 @@ where
         let event_desc = event.description();
 
         // Create another span for tracing the processing of one event.
-        Span::current().record("ev", &self.current_event_id);
+        Span::current().record("ev", self.current_event_id);
 
         // If we know the ancestor of an event, record it.
         if let Some(ancestor) = ancestor {
-            Span::current().record("a", &ancestor.get());
+            Span::current().record("a", ancestor.get());
         }
 
         // Dispatch the event, then execute the resulting effect.

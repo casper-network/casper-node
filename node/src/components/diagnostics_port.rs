@@ -41,13 +41,13 @@ const COMPONENT_NAME: &str = "diagnostics_port";
 
 /// Diagnostics port configuration.
 #[derive(Clone, DataSize, Debug, Deserialize)]
-pub(crate) struct Config {
+pub struct Config {
     /// Whether or not the diagnostics port is enabled.
-    enabled: bool,
+    pub enabled: bool,
     /// Path to listen on.
-    socket_path: PathBuf,
+    pub socket_path: PathBuf,
     /// `umask` to apply before creating the socket.
-    socket_umask: u16,
+    pub socket_umask: u16,
 }
 
 impl Default for Config {
@@ -224,7 +224,7 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     // check-then-delete :).
     if socket_path.exists() {
         debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
-        match fs::remove_file(&socket_path) {
+        match fs::remove_file(socket_path) {
             Ok(_) => {
                 debug!("stale socket file removed");
             }

@@ -24,6 +24,7 @@ pub struct StateTracker<T> {
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
     bids_cache: Option<Bids>,
+    seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
 }
 
 impl<T: StateReader> StateTracker<T> {
@@ -48,6 +49,7 @@ impl<T: StateReader> StateTracker<T> {
             unbonds_cache: BTreeMap::new(),
             purses_cache: BTreeMap::new(),
             bids_cache: None,
+            seigniorage_recipients: None,
         }
     }
 
@@ -187,6 +189,10 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
     pub fn read_snapshot(&mut self) -> (Key, SeigniorageRecipientsSnapshot) {
+        if let Some(key_and_snapshot) = &self.seigniorage_recipients {
+            return key_and_snapshot.clone();
+        }
+
         // Read the key under which the snapshot is stored.
         let validators_key = self.reader.get_seigniorage_recipients_key();
 
@@ -196,7 +202,9 @@ impl<T: StateReader> StateTracker<T> {
             .as_cl_value()
             .cloned()
             .expect("should be cl value");
-        (validators_key, cl_value.into_t().expect("should convert"))
+        let snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
+        self.seigniorage_recipients = Some((validators_key, snapshot.clone()));
+        (validators_key, snapshot)
     }
 
     /// Reads the bids from the global state.
@@ -300,18 +308,27 @@ impl<T: StateReader> StateTracker<T> {
         }
     }
 
-    /// Generates the writes to the global state that will remove the pending withdraws of all the
-    /// old validators that will cease to be validators.
-    pub fn remove_withdraws(&mut self, removed: &BTreeSet<PublicKey>) {
-        let withdraws = self.reader.get_unbonds();
-        let withdraw_keys: BTreeSet<_> = withdraws.keys().collect();
-        for (key, value) in removed
-            .iter()
-            .map(PublicKey::to_account_hash)
-            .filter(|acc| withdraw_keys.contains(&acc))
-            .map(|acc| (Key::Withdraw(acc), StoredValue::Withdraw(vec![])))
-        {
-            self.write_entry(key, value);
+    /// Generates the writes to the global state that will remove the pending withdraws and unbonds
+    /// of all the old validators that will cease to be validators, and slashes their unbonding
+    /// purses.
+    pub fn remove_withdraws_and_unbonds(&mut self, removed: &BTreeSet<PublicKey>) {
+        let withdraws = self.reader.get_withdraws();
+        let unbonds = self.reader.get_unbonds();
+        for removed_validator in removed {
+            let acc = removed_validator.to_account_hash();
+            if let Some(withdraw_set) = withdraws.get(&acc) {
+                for withdraw in withdraw_set {
+                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
+            }
+
+            if let Some(unbond_set) = unbonds.get(&acc) {
+                for unbond in unbond_set {
+                    self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+            }
         }
     }
 

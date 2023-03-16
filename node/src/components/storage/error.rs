@@ -174,6 +174,12 @@ impl From<lmdb::Error> for FatalStorageError {
     }
 }
 
+impl From<Box<BlockValidationError>> for FatalStorageError {
+    fn from(err: Box<BlockValidationError>) -> Self {
+        Self::BlockValidation(*err)
+    }
+}
+
 /// An error that may occur when handling a get request.
 ///
 /// Wraps a fatal error, callers should check whether the variant is of the fatal or non-fatal kind.
@@ -192,7 +198,7 @@ pub(super) enum GetRequestError {
     )]
     FinalitySignatureIdMismatch {
         // the ID requested
-        requested_id: FinalitySignatureId,
+        requested_id: Box<FinalitySignatureId>,
         // the finality signature read from storage
         finality_signature: Box<FinalitySignature>,
     },

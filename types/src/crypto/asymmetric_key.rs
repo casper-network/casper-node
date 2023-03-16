@@ -143,8 +143,8 @@ where
 
         let (tag_hex, key_hex) = input.as_ref().split_at(2);
 
-        let tag = checksummed_hex::decode(&tag_hex)?;
-        let key_bytes = checksummed_hex::decode(&key_hex)?;
+        let tag = checksummed_hex::decode(tag_hex)?;
+        let key_bytes = checksummed_hex::decode(key_hex)?;
 
         match tag[0] {
             SYSTEM_TAG => {
@@ -439,7 +439,7 @@ impl SecretKey {
 
     /// Returns an example value for documentation purposes.
     pub fn doc_example() -> &'static Self {
-        &*ED25519_SECRET_KEY
+        &ED25519_SECRET_KEY
     }
 }
 
@@ -666,7 +666,7 @@ impl PublicKey {
 
     /// Returns an example value for documentation purposes.
     pub fn doc_example() -> &'static Self {
-        &*ED25519_PUBLIC_KEY
+        &ED25519_PUBLIC_KEY
     }
 }
 

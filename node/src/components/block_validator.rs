@@ -289,13 +289,13 @@ where
                             DeployOrTransferHash::Deploy(hash) => {
                                 state.appendable_block.add_deploy(
                                     DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &*deploy_info,
+                                    &deploy_info,
                                 )
                             }
                             DeployOrTransferHash::Transfer(hash) => {
                                 state.appendable_block.add_transfer(
                                     DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &*deploy_info,
+                                    &deploy_info,
                                 )
                             }
                         };

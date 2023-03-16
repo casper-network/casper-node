@@ -2,6 +2,8 @@ mod block_acceptor;
 mod config;
 mod error;
 mod event;
+mod leap_instruction;
+mod local_tip_identifier;
 mod metrics;
 mod sync_identifier;
 mod sync_instruction;
@@ -9,7 +11,6 @@ mod sync_instruction;
 mod tests;
 
 use std::{
-    cmp::Ordering,
     collections::{btree_map, BTreeMap, VecDeque},
     convert::TryInto,
     sync::Arc,
@@ -24,7 +25,16 @@ use tracing::{debug, error, info, warn};
 use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
-    components::{network::blocklist::BlocklistJustification, Component},
+    components::{
+        block_accumulator::{
+            block_acceptor::{BlockAcceptor, ShouldStore},
+            leap_instruction::LeapInstruction,
+            local_tip_identifier::LocalTipIdentifier,
+            metrics::Metrics,
+        },
+        network::blocklist::BlocklistJustification,
+        Component, ValidatorBoundComponent,
+    },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -35,51 +45,23 @@ use crate::{
     },
     fatal,
     types::{
-        BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
-        ValidatorMatrix,
+        ActivationPoint, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState,
+        NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
 
-use crate::components::ValidatorBoundComponent;
-use block_acceptor::{BlockAcceptor, ShouldStore};
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::Event;
 pub(crate) use sync_identifier::SyncIdentifier;
 pub(crate) use sync_instruction::SyncInstruction;
 
-use metrics::Metrics;
-
 const COMPONENT_NAME: &str = "block_accumulator";
 
 /// If a peer "informs" us about more than the expected number of new blocks times this factor,
 /// they are probably spamming, and we refuse to create new block acceptors for them.
 const PEER_RATE_LIMIT_MULTIPLIER: usize = 2;
-
-#[derive(Clone, Copy, DataSize, Debug, Eq, PartialEq)]
-struct LocalTipIdentifier {
-    height: u64,
-    era_id: EraId,
-}
-
-impl LocalTipIdentifier {
-    fn new(height: u64, era_id: EraId) -> Self {
-        Self { height, era_id }
-    }
-}
-
-impl PartialOrd for LocalTipIdentifier {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.height.partial_cmp(&other.height)
-    }
-}
-
-impl Ord for LocalTipIdentifier {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.height.cmp(&other.height)
-    }
-}
 
 /// A cache of pending blocks and finality signatures that are gossiped to this node.
 ///
@@ -105,6 +87,8 @@ pub(crate) struct BlockAccumulator {
     /// and to determine if this node is close enough to the perceived tip of the
     /// network to transition to executing block for itself.
     local_tip: Option<LocalTipIdentifier>,
+    /// Chainspec activation point.
+    activation_point: Option<ActivationPoint>,
     /// Configured setting for how close to perceived tip local tip must be for
     /// this node to attempt block execution for itself.
     attempt_execution_threshold: u64,
@@ -124,6 +108,9 @@ pub(crate) struct BlockAccumulator {
     peer_block_timestamps: BTreeMap<NodeId, VecDeque<(BlockHash, Timestamp)>>,
     /// The minimum time between a block and its child.
     min_block_time: TimeDiff,
+    /// The number of validator slots.
+    validator_slots: u32,
+    /// Metrics.
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -134,83 +121,46 @@ impl BlockAccumulator {
         validator_matrix: ValidatorMatrix,
         recent_era_interval: u64,
         min_block_time: TimeDiff,
+        validator_slots: u32,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Self {
             validator_matrix,
-            attempt_execution_threshold: config.attempt_execution_threshold(),
-            dead_air_interval: config.dead_air_interval(),
+            attempt_execution_threshold: config.attempt_execution_threshold,
+            dead_air_interval: config.dead_air_interval,
             block_acceptors: Default::default(),
             block_children: Default::default(),
             last_progress: Timestamp::now(),
-            purge_interval: config.purge_interval(),
+            purge_interval: config.purge_interval,
             local_tip: None,
+            activation_point: None,
             recent_era_interval,
             peer_block_timestamps: Default::default(),
             min_block_time,
+            validator_slots,
             metrics: Metrics::new(registry)?,
         })
     }
 
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
         let block_hash = sync_identifier.block_hash();
-        let block_height = match sync_identifier.block_height() {
-            Some(height) => height,
-            None => {
-                let maybe_height = {
-                    if let Some(block_acceptor) = self.block_acceptors.get(&block_hash) {
-                        block_acceptor.block_height()
-                    } else {
-                        None
-                    }
-                };
-                match maybe_height {
-                    Some(height) => height,
-                    None => {
-                        // we have no height for this block hash, so we must leap
-                        return SyncInstruction::Leap { block_hash };
-                    }
-                }
-            }
-        };
-
-        if let Some(new_local_tip) = self.maybe_new_local_tip(&sync_identifier) {
-            let had_no_local_tip = self.local_tip.is_none();
-            self.local_tip = Some(new_local_tip);
-            info!(local_tip=?self.local_tip, "new local tip detected");
-            if had_no_local_tip {
-                // force a leap when accumulator is starting cold.
-                return SyncInstruction::Leap { block_hash };
-            }
+        let leap_instruction = self.leap_instruction(&sync_identifier);
+        if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
+            self.register_local_tip(block_height, era_id);
         }
-
-        if self.should_leap(block_height) {
+        if leap_instruction.should_leap() {
             return SyncInstruction::Leap { block_hash };
         }
-
-        let block_hash_to_sync = match (
-            sync_identifier.is_held_locally(),
-            self.next_syncable_block_hash(block_hash),
-        ) {
-            (false, _) => Some(block_hash),
-            (true, Some(child_hash)) => {
-                // we know of the child of this synced block
-                Some(child_hash)
-            }
-            (true, None) => {
-                // the block we just finished syncing appears to have no perceived children
-                // and is either at tip or within execution range of tip
-                None
-            }
-        };
-
-        match block_hash_to_sync {
-            Some(block_hash) => {
-                self.last_progress = Timestamp::now();
-                SyncInstruction::BlockSync { block_hash }
+        match sync_identifier.block_hash_to_sync(self.next_synchable_block_hash(block_hash)) {
+            Some(block_hash_to_sync) => {
+                self.reset_last_progress();
+                SyncInstruction::BlockSync {
+                    block_hash: block_hash_to_sync,
+                }
             }
             None => {
-                if self.is_stalled() {
+                if self.is_stale() {
+                    debug!(%block_hash, "BlockAccumulator: leap because stale gossip");
                     SyncInstruction::Leap { block_hash }
                 } else {
                     SyncInstruction::CaughtUp { block_hash }
@@ -219,9 +169,14 @@ impl BlockAccumulator {
         }
     }
 
+    /// Register activation point from next protocol version chainspec.
+    pub(crate) fn register_activation_point(&mut self, activation_point: ActivationPoint) {
+        self.activation_point = Some(activation_point);
+    }
+
     /// Drops all old block acceptors and tracks new local block height;
     /// subsequent attempts to register a block lower than tip will be rejected.
-    pub(crate) fn register_local_tip(&mut self, height: u64, era_id: EraId) {
+    fn register_local_tip(&mut self, height: u64, era_id: EraId) {
         let new_local_tip = match self.local_tip {
             Some(current) => current.height < height && current.era_id <= era_id,
             None => true,
@@ -254,12 +209,13 @@ impl BlockAccumulator {
             btree_map::Entry::Vacant(entry) => entry,
         };
 
-        // The acceptor doesn't exist. Don't create it if the item's era is not provided, the local
-        // tip doesn't have an era or the item's era is older than the local tip era by more than
-        // `recent_era_interval`.
+        // The acceptor doesn't exist. Don't create it if the item's era is not
+        // provided or the item's era is older than the local tip era by more
+        // than `recent_era_interval`.
         match (maybe_era_id, self.local_tip) {
             (Some(era_id), Some(local_tip))
                 if era_id >= local_tip.era_id.saturating_sub(self.recent_era_interval) => {}
+            (Some(_), None) => {}
             _ => {
                 // If we created the event, it's safe to create the acceptor.
                 if maybe_sender.is_some() {
@@ -393,6 +349,14 @@ impl BlockAccumulator {
                     error!(%error, "failed to merge meta blocks, this is a bug");
                     Effects::new()
                 }
+                Error::TooManySignatures { peer, limit } => effect_builder
+                    .announce_block_peer_with_justification(
+                        peer,
+                        BlocklistJustification::SentTooManyFinalitySignatures {
+                            max_allowed: limit,
+                        },
+                    )
+                    .ignore(),
             },
         }
     }
@@ -410,7 +374,6 @@ impl BlockAccumulator {
             + From<FatalAnnouncement>
             + Send,
     {
-        debug!(%finality_signature, "registering finality signature");
         let block_hash = finality_signature.block_hash;
         let era_id = finality_signature.era_id;
         self.upsert_acceptor(block_hash, Some(era_id), sender);
@@ -419,10 +382,15 @@ impl BlockAccumulator {
             Some(acceptor) => acceptor,
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
-            None => return Effects::new(),
+            None => {
+                warn!(%finality_signature, "no acceptor to receive finality_signature");
+                return Effects::new();
+            }
         };
 
-        match acceptor.register_finality_signature(finality_signature, sender) {
+        debug!(%finality_signature, "registering finality signature");
+        match acceptor.register_finality_signature(finality_signature, sender, self.validator_slots)
+        {
             Ok(Some(finality_signature)) => self.store_block_and_finality_signatures(
                 effect_builder,
                 ShouldStore::SingleSignature(finality_signature),
@@ -439,60 +407,66 @@ impl BlockAccumulator {
                 }
                 None => Effects::new(),
             },
-            Err(error) => {
-                match error {
-                    Error::InvalidGossip(ref gossip_error) => {
-                        warn!(%gossip_error, "received invalid finality_signature");
-                        effect_builder
-                            .announce_block_peer_with_justification(
-                                gossip_error.peer(),
-                                BlocklistJustification::SentBadFinalitySignature { error },
-                            )
-                            .ignore()
-                    }
-                    Error::EraMismatch {
+            Err(error) => match error {
+                Error::InvalidGossip(ref gossip_error) => {
+                    warn!(%gossip_error, "received invalid finality_signature");
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            gossip_error.peer(),
+                            BlocklistJustification::SentBadFinalitySignature { error },
+                        )
+                        .ignore()
+                }
+                Error::EraMismatch {
+                    peer,
+                    block_hash,
+                    expected,
+                    actual,
+                } => {
+                    // the acceptor logic purges finality signatures that don't match
+                    // the era validators, so in this case we can continue to
+                    // use the acceptor
+                    warn!(
+                        "era mismatch from {} for {}; expected: {} and actual: {}",
+                        peer, block_hash, expected, actual
+                    );
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            peer,
+                            BlocklistJustification::SentBadFinalitySignature { error },
+                        )
+                        .ignore()
+                }
+                ref error @ Error::BlockHashMismatch { .. } => {
+                    error!(%error, "finality signature has mismatched block_hash; this is a bug");
+                    Effects::new()
+                }
+                ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
+                    error!(%error, "should not have sufficient finality without block");
+                    Effects::new()
+                }
+                Error::InvalidConfiguration => fatal!(
+                    effect_builder,
+                    "node has an invalid configuration, shutting down"
+                )
+                .ignore(),
+                Error::BogusValidator(_) => {
+                    error!(%error, "unexpected detection of bogus validator, this is a bug");
+                    Effects::new()
+                }
+                Error::MetaBlockMerge(error) => {
+                    error!(%error, "failed to merge meta blocks, this is a bug");
+                    Effects::new()
+                }
+                Error::TooManySignatures { peer, limit } => effect_builder
+                    .announce_block_peer_with_justification(
                         peer,
-                        block_hash,
-                        expected,
-                        actual,
-                    } => {
-                        // the acceptor logic purges finality signatures that don't match
-                        // the era validators, so in this case we can continue to
-                        // use the acceptor
-                        warn!(
-                            "era mismatch from {} for {}; expected: {} and actual: {}",
-                            peer, block_hash, expected, actual
-                        );
-                        effect_builder
-                            .announce_block_peer_with_justification(
-                                peer,
-                                BlocklistJustification::SentBadFinalitySignature { error },
-                            )
-                            .ignore()
-                    }
-                    ref error @ Error::BlockHashMismatch { .. } => {
-                        error!(%error, "finality signature has mismatched block_hash; this is a bug");
-                        Effects::new()
-                    }
-                    ref error @ Error::SufficientFinalityWithoutBlock { .. } => {
-                        error!(%error, "should not have sufficient finality without block");
-                        Effects::new()
-                    }
-                    Error::InvalidConfiguration => fatal!(
-                        effect_builder,
-                        "node has an invalid configuration, shutting down"
+                        BlocklistJustification::SentTooManyFinalitySignatures {
+                            max_allowed: limit,
+                        },
                     )
                     .ignore(),
-                    Error::BogusValidator(_) => {
-                        error!(%error, "unexpected detection of bogus validator, this is a bug");
-                        Effects::new()
-                    }
-                    Error::MetaBlockMerge(error) => {
-                        error!(%error, "failed to merge meta blocks, this is a bug");
-                        Effects::new()
-                    }
-                }
-            }
+            },
         }
     }
 
@@ -524,36 +498,13 @@ impl BlockAccumulator {
         effects
     }
 
-    fn highest_usable_block_height(&self) -> Option<u64> {
-        let mut ret = self.local_tip.map(|local_tip| local_tip.height);
-        for block_acceptor in self.block_acceptors.values() {
-            if false == block_acceptor.has_sufficient_finality() {
-                continue;
-            }
-            match block_acceptor.block_height() {
-                None => {
-                    continue;
-                }
-                Some(acceptor_height) => {
-                    if let Some(curr_height) = ret {
-                        if acceptor_height <= curr_height {
-                            continue;
-                        }
-                    }
-                    ret = Some(acceptor_height);
-                }
-            };
-        }
-        ret
-    }
-
     fn get_peers(&self, block_hash: BlockHash) -> Option<Vec<NodeId>> {
         self.block_acceptors
             .get(&block_hash)
             .map(|acceptor| acceptor.peers().iter().cloned().collect())
     }
 
-    fn is_stalled(&mut self) -> bool {
+    fn is_stale(&mut self) -> bool {
         // we expect to be receiving gossiped blocks from other nodes
         // if we haven't received any messages describing higher blocks
         // for more than the self.dead_air_interval config allows
@@ -565,36 +516,77 @@ impl BlockAccumulator {
         self.last_progress = Timestamp::now();
     }
 
-    fn should_leap(&self, from_block_height: u64) -> bool {
-        match self.highest_usable_block_height() {
-            Some(highest_usable_block_height) => {
-                let height_diff = highest_usable_block_height.saturating_sub(from_block_height);
-                height_diff > self.attempt_execution_threshold
+    fn leap_instruction(&self, sync_identifier: &SyncIdentifier) -> LeapInstruction {
+        let local_tip_height = match self.local_tip {
+            Some(local_tip) => local_tip.height,
+            None => {
+                // if the accumulator is unaware of local tip,
+                // leap to learn more about the network state
+                return LeapInstruction::UnsetLocalTip;
             }
-            None => true,
-        }
-    }
+        };
 
-    fn maybe_new_local_tip(&self, sync_identifier: &SyncIdentifier) -> Option<LocalTipIdentifier> {
-        match (sync_identifier.maybe_local_tip_identifier(), self.local_tip) {
-            (Some((block_height, era_id)), Some(local_tip)) => {
-                if local_tip.height < block_height && local_tip.era_id <= era_id {
-                    debug!(
-                        "new block({}) higher than local tip({})",
-                        block_height, local_tip.height
-                    );
-                    return Some(LocalTipIdentifier::new(block_height, era_id));
+        let sync_identifier_height = match sync_identifier.block_height() {
+            Some(block_height) => block_height,
+            None => {
+                if let Some(height) = self
+                    .block_acceptors
+                    .get(&sync_identifier.block_hash())
+                    .filter(|x| x.block_height().is_some())
+                    .map(|x| x.block_height().unwrap_or_default())
+                {
+                    height
+                } else {
+                    return LeapInstruction::UnknownBlockHeight;
                 }
             }
-            (Some((block_height, era_id)), None) => {
-                return Some(LocalTipIdentifier::new(block_height, era_id));
+        };
+
+        match self
+            .block_acceptors
+            .iter()
+            .filter(|(_, acceptor)| {
+                acceptor.has_sufficient_finality() && acceptor.block_height().is_some()
+            })
+            .max_by(|x, y| x.1.block_height().cmp(&y.1.block_height()))
+            .map(|(_, acceptor)| {
+                (
+                    acceptor.block_height().unwrap_or_default(),
+                    acceptor.is_upgrade_boundary(self.activation_point),
+                )
+            }) {
+            None => LeapInstruction::NoUsableBlockAcceptors,
+            Some((acceptor_height, is_upgrade_boundary)) => {
+                // the accumulator has heard about at least one usable block via gossiping
+                // if we've see chatter about a usable higher block, we can determine
+                // if we have local state at or near that highest usable block.
+                // if we have reason to believe we have fallen too far behind the network,
+                // we should switch to catchup mode and start the leap process
+                // otherwise, we should attempt to keep up with the network by
+                // executing our own blocks.
+
+                // This is a special case; if we have heard chatter about the last block
+                // before a protocol upgrade and have enough finality signatures to believe
+                // it, we want to be cautious about leaping, because other nodes on the
+                // network are starting to go down and come back up on the new protocol
+                // version and may or may not respond. Thus, it is best for the node to
+                // continue executing its own blocks to get to the upgrade point on its
+                // own (if able).
+                let is_upgrade_boundary = is_upgrade_boundary == Some(true);
+
+                let height = local_tip_height.max(sync_identifier_height);
+                let distance_from_highest_known_block = acceptor_height.saturating_sub(height);
+
+                LeapInstruction::from_execution_threshold(
+                    self.attempt_execution_threshold,
+                    distance_from_highest_known_block,
+                    is_upgrade_boundary,
+                )
             }
-            (None, _) => (),
         }
-        None
     }
 
-    fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+    fn next_synchable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
         let block_acceptor = self.block_acceptors.get(child_hash)?;
         if block_acceptor.has_sufficient_finality() {
@@ -608,7 +600,18 @@ impl BlockAccumulator {
         let now = Timestamp::now();
         let mut purged = vec![];
         let purge_interval = self.purge_interval;
+        let maybe_local_tip_height = self.local_tip.map(|local_tip| local_tip.height);
+        let attempt_execution_threshold = self.attempt_execution_threshold;
         self.block_acceptors.retain(|k, v| {
+            if let (Some(acceptor_height), Some(local_tip_height)) =
+                (v.block_height(), maybe_local_tip_height)
+            {
+                if acceptor_height >= local_tip_height.saturating_sub(attempt_execution_threshold)
+                    && acceptor_height <= local_tip_height
+                {
+                    return true;
+                }
+            }
             let expired = now.saturating_diff(v.last_progress()) > purge_interval;
             if expired {
                 purged.push(*k)
@@ -785,10 +788,11 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                let meta_block = MetaBlock::new(Arc::new(*block), vec![], MetaBlockState::new());
+                let meta_block = MetaBlock::new(block, vec![], MetaBlockState::new());
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {
+                debug!(%finality_signature, "BlockAccumulator: CreatedFinalitySignature");
                 self.register_finality_signature(effect_builder, *finality_signature, None)
             }
             Event::ReceivedFinalitySignature {

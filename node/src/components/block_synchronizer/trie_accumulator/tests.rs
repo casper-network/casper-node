@@ -1,32 +1,12 @@
 use super::*;
 use crate::{
+    components::block_synchronizer::tests::test_utils::test_chunks_with_proof,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::ValueOrChunk,
     utils,
 };
 use casper_types::testing::TestRng;
 use futures::channel::oneshot;
-use rand::Rng;
-
-fn test_chunks_with_proof(num_chunks: u64) -> (Vec<ChunkWithProof>, Vec<TrieOrChunkId>, Vec<u8>) {
-    let mut rng = rand::thread_rng();
-    let data: Vec<u8> = (0..ChunkWithProof::CHUNK_SIZE_BYTES * num_chunks as usize)
-        .into_iter()
-        .map(|_| rng.gen())
-        .collect();
-
-    let chunks: Vec<ChunkWithProof> = (0..num_chunks)
-        .into_iter()
-        .map(|index| ChunkWithProof::new(&data, index).unwrap())
-        .collect();
-
-    let chunk_ids: Vec<TrieOrChunkId> = (0..num_chunks)
-        .into_iter()
-        .map(|index| TrieOrChunkId(index, chunks[index as usize].proof().root_hash()))
-        .collect();
-
-    (chunks, chunk_ids, data)
-}
 
 /// Event for the mock reactor.
 #[derive(Debug)]
@@ -128,6 +108,7 @@ async fn try_download_chunk_generates_fetch_effect() {
         peers: vec![peer],
         responders: Default::default(),
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -159,6 +140,7 @@ async fn failed_fetch_retriggers_download_with_different_peer() {
         peers: peers.clone(),
         responders: Default::default(),
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -204,6 +186,7 @@ async fn fetched_chunk_triggers_download_of_missing_chunk() {
         peers: vec![peer],
         responders: Default::default(),
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -250,6 +233,7 @@ async fn trie_returned_when_all_chunks_fetched() {
         peers: vec![peer],
         responders: vec![responder],
         chunks: Default::default(),
+        unreliable_peers: Default::default(),
     };
 
     download_chunk_and_check(
@@ -282,6 +266,6 @@ async fn trie_returned_when_all_chunks_fetched() {
 
     // Validate the returned trie
     tokio::spawn(async move { effects.remove(0).await });
-    let result_trie = receiver.await.unwrap().expect("Expected trie");
+    let result_trie = receiver.await.unwrap().expect("Expected trie").trie;
     assert_eq!(*result_trie, TrieRaw::new(Bytes::from(data)));
 }

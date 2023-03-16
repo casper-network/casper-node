@@ -411,7 +411,7 @@ impl FromBytes for EraReport {
 
 impl DocExample for EraReport {
     fn doc_example() -> &'static Self {
-        &*ERA_REPORT
+        &ERA_REPORT
     }
 }
 
@@ -578,7 +578,7 @@ impl FinalizedBlock {
 
 impl DocExample for FinalizedBlock {
     fn doc_example() -> &'static Self {
-        &*FINALIZED_BLOCK
+        &FINALIZED_BLOCK
     }
 }
 
@@ -792,7 +792,7 @@ impl Display for EraEnd {
 
 impl DocExample for EraEnd {
     fn doc_example() -> &'static Self {
-        &*ERA_END
+        &ERA_END
     }
 }
 
@@ -905,7 +905,7 @@ impl BlockHeader {
         *self.block_hash.get_or_init(|| {
             let serialized_header = Self::serialize(self)
                 .unwrap_or_else(|error| panic!("should serialize block header: {}", error));
-            BlockHash::new(Digest::hash(&serialized_header))
+            BlockHash::new(Digest::hash(serialized_header))
         })
     }
 
@@ -1130,7 +1130,7 @@ impl BlockBody {
             let serialized_body = self
                 .to_bytes()
                 .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-            Digest::hash(&serialized_body)
+            Digest::hash(serialized_body)
         })
     }
 }
@@ -1246,6 +1246,10 @@ impl BlockSignatures {
         })
     }
 
+    pub(crate) fn has_finality_signature(&self, public_key: &PublicKey) -> bool {
+        self.proofs.contains_key(public_key)
+    }
+
     pub(crate) fn finality_signatures(&self) -> impl Iterator<Item = FinalitySignature> + '_ {
         self.proofs.iter().map(move |(public_key, signature)| {
             FinalitySignature::new(self.block_hash, self.era_id, *signature, public_key.clone())
@@ -1330,7 +1334,7 @@ impl Block {
     pub(crate) fn new_from_header_and_body(
         header: BlockHeader,
         body: BlockBody,
-    ) -> Result<Self, BlockValidationError> {
+    ) -> Result<Self, Box<BlockValidationError>> {
         let hash = header.block_hash();
         let block = Block { hash, header, body };
         block.verify()?;
@@ -1401,6 +1405,7 @@ impl Block {
     }
 
     /// Check the integrity of a block by hashing its body and header
+    #[allow(clippy::result_large_err)]
     pub fn verify(&self) -> Result<(), BlockValidationError> {
         let actual_block_header_hash = self.header().block_hash();
         if *self.hash() != actual_block_header_hash {
@@ -1557,7 +1562,7 @@ impl Block {
 
 impl DocExample for Block {
     fn doc_example() -> &'static Self {
-        &*BLOCK
+        &BLOCK
     }
 }
 
@@ -2031,7 +2036,7 @@ pub(crate) mod json_compatibility {
 
     impl DocExample for JsonBlockHeader {
         fn doc_example() -> &'static Self {
-            &*JSON_BLOCK_HEADER
+            &JSON_BLOCK_HEADER
         }
     }
 
@@ -2110,7 +2115,7 @@ pub(crate) mod json_compatibility {
 
     impl DocExample for JsonBlock {
         fn doc_example() -> &'static Self {
-            &*JSON_BLOCK
+            &JSON_BLOCK
         }
     }
 
@@ -2459,7 +2464,7 @@ mod tests {
         let mut rng = TestRng::new();
 
         let mut random_block = Block::random(&mut rng);
-        let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
+        let bogus_block_body_hash = Digest::hash([0xde, 0xad, 0xbe, 0xef]);
         random_block.header.body_hash = bogus_block_body_hash;
         random_block.hash = random_block.header.block_hash();
         let bogus_block_hash = random_block.hash;
@@ -2480,7 +2485,7 @@ mod tests {
         let mut rng = TestRng::new();
 
         let mut random_block = Block::random(&mut rng);
-        let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+        let bogus_block_hash: BlockHash = Digest::hash([0xde, 0xad, 0xbe, 0xef]).into();
         random_block.hash = bogus_block_hash;
 
         // No Eq trait for BlockValidationError, so pattern match

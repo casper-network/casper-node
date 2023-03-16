@@ -430,7 +430,7 @@ fn should_not_fund_once_exhausted() {
             .new_faucet_fund_request_builder()
             .with_user_account(user_account)
             .with_arg_fund_amount(user_fund_amount)
-            .with_block_time(1000 + i as u64)
+            .with_block_time(1000 + i)
             .with_payment_amount(U512::from(payment_amount))
             .build();
 

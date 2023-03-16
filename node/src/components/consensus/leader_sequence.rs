@@ -38,7 +38,7 @@ impl LeaderSequence {
         );
         let cumulative_w_leaders = weights
             .enumerate()
-            .map(|(idx, weight)| leaders[idx].then(|| *weight).unwrap_or(Weight(0)))
+            .map(|(idx, weight)| if leaders[idx] { *weight } else { Weight(0) })
             .fold(vec![], sums)
             .into();
         LeaderSequence {
