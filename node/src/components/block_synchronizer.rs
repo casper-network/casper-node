@@ -12,7 +12,7 @@ mod metrics;
 mod need_next;
 mod peer_list;
 mod signature_acquisition;
-mod trie_accumulator;
+mod trie_acquisition;
 
 #[cfg(test)]
 mod tests;
