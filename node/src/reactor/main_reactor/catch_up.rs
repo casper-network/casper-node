@@ -275,7 +275,7 @@ impl MainReactor {
         // otherwise block_synchronizer detects as Idle which can cause unnecessary churn
         // on subsequent cranks while leaper is awaiting responses.
         self.block_synchronizer
-            .register_block_by_hash(block_hash, true, true);
+            .register_block_by_hash(block_hash, true, true, false);
         let leap_status = self.sync_leaper.leap_status();
         info!(%block_hash, %leap_status, "CatchUp: status");
         match leap_status {
@@ -396,7 +396,7 @@ impl MainReactor {
     ) -> CatchUpInstruction {
         if self
             .block_synchronizer
-            .register_block_by_hash(block_hash, true, true)
+            .register_block_by_hash(block_hash, true, true, false)
         {
             // NeedNext will self perpetuate until nothing is needed for this block
             let mut effects = Effects::new();

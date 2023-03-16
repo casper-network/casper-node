@@ -3,12 +3,10 @@ use std::fmt::{self, Debug, Display, Formatter};
 use derive_more::From;
 use serde::Serialize;
 
-use casper_types::{system::auction::EraValidators, EraId};
-
 use crate::{
     components::{
         block_accumulator,
-        block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
+        block_synchronizer::{self},
         block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
         diagnostics_port, event_stream_server, fetcher, gossiper,
         network::{self, GossipedAddress},
@@ -35,7 +33,7 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
             ReactorStatusRequest, RestRequest, RpcRequest, SetNodeStopRequest, StorageRequest,
-            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            UpdateEraValidatorsRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -534,13 +532,6 @@ impl Display for MainEvent {
             MainEvent::UnexecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::UpdateEraValidatorsRequest(inner) => Display::fmt(inner, f),
         }
-}
-
-impl From<TrieAccumulatorEvent> for MainEvent {
-    fn from(event: TrieAccumulatorEvent) -> Self {
-        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            event.into(),
-        ))
     }
 }
 

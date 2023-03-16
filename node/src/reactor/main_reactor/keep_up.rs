@@ -5,22 +5,17 @@ use std::{
 };
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, Timestamp};
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
-        contract_runtime::EraValidatorsRequest,
         storage::HighestOrphanedBlockResult,
         sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
-    effect::{
-        requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
-    },
+    effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
     types::{ActivationPoint, BlockHash, SyncLeap, SyncLeapIdentifier},
     NodeRng,
@@ -38,24 +33,12 @@ pub(super) enum KeepUpInstruction {
 enum SyncBackInstruction {
     Sync {
         parent_hash: BlockHash,
-        maybe_parent_metadata: Option<ParentMetadata>,
+        get_evw_from_global_state: bool,
         era_id: EraId,
     },
     Syncing,
     TtlSynced,
     GenesisSynced,
-}
-
-// Additional data for syncing immediate switch blocks
-#[derive(Debug)]
-struct ParentMetadata {
-    // Global state and protocol version of the immediate switch block
-    global_state_hash: Digest,
-    protocol_version: ProtocolVersion,
-    // Hash, global state and protocol version of the parent of the immediate switch block
-    parent_hash: BlockHash,
-    parent_state_hash: Digest,
-    parent_protocol_version: ProtocolVersion,
 }
 
 impl Display for SyncBackInstruction {
@@ -260,7 +243,7 @@ impl MainReactor {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
                 if self
                     .block_synchronizer
-                    .register_block_by_hash(block_hash, false, true)
+                    .register_block_by_hash(block_hash, false, true, false)
                 {
                     info!(%block_hash, "KeepUp: BlockSync: registered block by hash");
                     Some(KeepUpInstruction::Do(
@@ -307,34 +290,29 @@ impl MainReactor {
                 }
                 SyncBackInstruction::Sync {
                     parent_hash,
-                    maybe_parent_metadata,
+                    get_evw_from_global_state,
                     era_id,
                 } => {
                     debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "historical: sync back instruction");
                     match (
                         self.validator_matrix.has_era(&era_id),
-                        maybe_parent_metadata,
+                        get_evw_from_global_state,
                     ) {
                         (true, _) => {
-                            Some(self.sync_back_register(effect_builder, rng, parent_hash))
+                            Some(self.sync_back_register(effect_builder, rng, parent_hash, false))
                         }
-                        (false, None) => {
+                        (false, false) => {
                             Some(self.sync_back_leap(effect_builder, rng, parent_hash))
                         }
-                        (false, Some(parent_metadata)) => {
+                        (false, true) => {
                             // The validators matrix doesn't have the validators _and_ we are trying
                             // to sync an immediate switch block; we
                             // need to read the validators from the
                             // global states of the block and its parent and compare them in order
                             // to decide which validators to use - might
                             // require syncing global states in
-                            // the process.
-                            Some(self.try_read_validators_for_immediate_switch_block(
-                                effect_builder,
-                                parent_hash,
-                                era_id,
-                                parent_metadata,
-                            ))
+                            // the process; this is handled by the block synchronizer.
+                            Some(self.sync_back_register(effect_builder, rng, parent_hash, true))
                         }
                     }
                 }
@@ -342,96 +320,6 @@ impl MainReactor {
             Ok(None) => None,
             Err(msg) => Some(KeepUpInstruction::Fatal(msg)),
         }
-    }
-
-    // Attempts to read the validators from the global states of the immediate switch block and its
-    // parent; initiates fetching of the missing global states, if any.
-    fn try_read_validators_for_immediate_switch_block(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        block_hash: BlockHash,
-        block_era_id: EraId,
-        parent_metadata: ParentMetadata,
-    ) -> KeepUpInstruction {
-        // We try to read the validator sets from global states of two blocks - if either returns
-        // `RootNotFound`, we'll initiate fetching of the corresponding global state.
-        let effects = async move {
-            // Send the requests to contract runtime.
-            let parent_era_validators_request = EraValidatorsRequest::new(
-                parent_metadata.parent_state_hash,
-                parent_metadata.parent_protocol_version,
-            );
-            let parent_era_validators_result = effect_builder
-                .get_era_validators_from_contract_runtime(parent_era_validators_request)
-                .await;
-            let block_era_validators_request = EraValidatorsRequest::new(
-                parent_metadata.global_state_hash,
-                parent_metadata.protocol_version,
-            );
-            let block_era_validators_result = effect_builder
-                .get_era_validators_from_contract_runtime(block_era_validators_request)
-                .await;
-
-            // Check the results.
-            // A return value of `Ok` means that validators were read successfully.
-            // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
-            // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            match (parent_era_validators_result, block_era_validators_result) {
-                // Both states were present - return the result.
-                (Ok(parent_era_validators), Ok(block_era_validators)) => {
-                    Ok((parent_era_validators, block_era_validators))
-                }
-                // Both were absent - fetch global states for both blocks.
-                (
-                    Err(GetEraValidatorsError::RootNotFound),
-                    Err(GetEraValidatorsError::RootNotFound),
-                ) => Err(vec![
-                    (
-                        parent_metadata.parent_hash,
-                        parent_metadata.parent_state_hash,
-                    ),
-                    (block_hash, parent_metadata.global_state_hash),
-                ]),
-                // The block's global state was missing - return the hashes.
-                (Ok(_), Err(GetEraValidatorsError::RootNotFound)) => {
-                    Err(vec![(block_hash, parent_metadata.global_state_hash)])
-                }
-                // The parent's global state was missing - return the hashes.
-                (Err(GetEraValidatorsError::RootNotFound), Ok(_)) => Err(vec![(
-                    parent_metadata.parent_hash,
-                    parent_metadata.parent_state_hash,
-                )]),
-                // We got some error other than `RootNotFound` - just log the error and don't
-                // synchronize anything.
-                (parent_result, block_result) => {
-                    error!(
-                        ?parent_result,
-                        ?block_result,
-                        "couldn't read era validators from global state in block"
-                    );
-                    Err(vec![])
-                }
-            }
-        }
-        .result(
-            // We got the era validators - just emit the event that will cause them to be compared,
-            // validators matrix to be updated and reactor to be cranked.
-            move |(parent_era_validators, block_era_validators)| {
-                MainEvent::GotImmediateSwitchBlockEraValidators(
-                    block_era_id,
-                    parent_era_validators,
-                    block_era_validators,
-                )
-            },
-            // A global state was missing - we ask the BlockSynchronizer to fetch what is needed.
-            |global_states_to_sync| {
-                MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::SyncGlobalStates(
-                    global_states_to_sync,
-                ))
-            },
-        );
-        // In either case, there are effects to be processed by the reactor.
-        KeepUpInstruction::Do(Duration::ZERO, effects)
     }
 
     fn sync_back_leap(
@@ -553,11 +441,14 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
         parent_hash: BlockHash,
+        get_evw_from_global_state: bool,
     ) -> KeepUpInstruction {
-        if self
-            .block_synchronizer
-            .register_block_by_hash(parent_hash, true, true)
-        {
+        if self.block_synchronizer.register_block_by_hash(
+            parent_hash,
+            true,
+            true,
+            get_evw_from_global_state,
+        ) {
             // sync the parent_hash block; we get a random sampling of peers to ask.
             // it is possible that we may get a random sampling that do not have the data
             // we need, but the synchronizer should (eventually) detect that and ask for
@@ -622,32 +513,27 @@ impl MainReactor {
                         // note: there is a special case here where the parent might be an
                         // immediate switch block - we check for that case by attempting to read
                         // its parent and seeing whether it is also a switch block; if it is, we
-                        // pass the parent metadata on in the Sync instruction, so that we can read
-                        // the correct set of validators if the validators matrix doesn't have the
-                        // validators for the parent's era yet
-                        let maybe_parent_metadata = self
+                        // pass get_evw_from_global_state on in the Sync instruction, so that we
+                        // can read the correct set of validators in the block synchronizer if the
+                        // validators matrix doesn't have the validators for the parent's era yet
+                        let get_evw_from_global_state = self
                             .storage
                             .read_block_header(parent_block_header.parent_hash())
                             .map_err(|err| err.to_string())?
                             .and_then(|grandparent_header| {
                                 (parent_block_header.is_switch_block()
                                     && grandparent_header.is_switch_block())
-                                .then(|| ParentMetadata {
-                                    global_state_hash: *parent_block_header.state_root_hash(),
-                                    protocol_version: parent_block_header.protocol_version(),
-                                    parent_hash: grandparent_header.block_hash(),
-                                    parent_state_hash: *grandparent_header.state_root_hash(),
-                                    parent_protocol_version: grandparent_header.protocol_version(),
-                                })
-                            });
+                                .then_some(true)
+                            })
+                            .unwrap_or(false);
                         debug!(
                             ?parent_block_header,
-                            ?maybe_parent_metadata,
+                            ?get_evw_from_global_state,
                             "historical: found parent block header in storage"
                         );
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: parent_block_header.block_hash(),
-                            maybe_parent_metadata,
+                            get_evw_from_global_state,
                             era_id: parent_block_header.era_id(),
                         }))
                     }
@@ -667,7 +553,7 @@ impl MainReactor {
                         };
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: *parent_hash,
-                            maybe_parent_metadata: None,
+                            get_evw_from_global_state: false,
                             era_id,
                         }))
                     }

@@ -34,10 +34,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
-            TrieAccumulatorError, TrieAccumulatorResponse,
-        },
+        block_synchronizer::BlockSynchronizerStatus,
         consensus::{ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor::Error,
@@ -1036,43 +1033,6 @@ impl<T: FetchItem> Display for FetcherRequest<T> {
     }
 }
 
-/// TrieAccumulator related requests.
-#[derive(Debug, Serialize, DataSize)]
-#[must_use]
-pub(crate) struct TrieAccumulatorRequest {
-    /// The hash of the trie node.
-    pub(crate) hash: Digest,
-    /// The peers to try to fetch from.
-    pub(crate) peers: Vec<NodeId>,
-    /// Responder to call with the result.
-    pub(crate) responder: Responder<Result<TrieAccumulatorResponse, TrieAccumulatorError>>,
-}
-
-impl Display for TrieAccumulatorRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "request trie by hash {}", self.hash)
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct SyncGlobalStateRequest {
-    pub(crate) block_hash: BlockHash,
-    pub(crate) state_root_hash: Digest,
-    #[serde(skip)]
-    pub(crate) responder:
-        Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
-}
-
-impl Display for SyncGlobalStateRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "request to sync global state at {}",
-            self.block_hash
-        )
-    }
-}
-
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
@@ -1166,7 +1126,6 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
-    SyncGlobalStates(Vec<(BlockHash, Digest)>),
     Status {
         responder: Responder<BlockSynchronizerStatus>,
     },
@@ -1183,9 +1142,6 @@ impl Display for BlockSynchronizerRequest {
             }
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")
-            }
-            BlockSynchronizerRequest::SyncGlobalStates(_) => {
-                write!(f, "request to sync global states")
             }
         }
     }

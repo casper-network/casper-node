@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 use tracing::{debug, info, warn};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{system::auction::ValidatorWeights, EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -16,6 +16,8 @@ use crate::{
     },
     NodeRng,
 };
+
+use super::global_state_acquisition::GlobalStateAcquisition;
 
 use super::block_acquisition::signatures_from_missing_validators;
 
@@ -117,16 +119,54 @@ impl BlockAcquisitionAction {
         }
     }
 
+    pub(super) fn get_block_header_from_storage(
+        needed_for_block: BlockHash,
+        block_hash: BlockHash,
+    ) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: Vec::new(),
+            need_next: NeedNext::BlockHeaderFromStorage(needed_for_block, block_hash),
+        }
+    }
+
+    pub(super) fn era_validators_from_contract_runtime(
+        request_data: Vec<(Digest, ProtocolVersion)>,
+    ) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: Vec::new(),
+            need_next: NeedNext::EraValidatorsFromContractRuntime(request_data),
+        }
+    }
+
+    pub(super) fn update_era_validators(
+        era_id: EraId,
+        validator_weights: ValidatorWeights,
+    ) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: Vec::new(),
+            need_next: NeedNext::UpdateEraValidators(era_id, validator_weights),
+        }
+    }
+
     pub(super) fn global_state(
         peer_list: &PeerList,
         rng: &mut NodeRng,
         block_hash: BlockHash,
-        root_hash: Digest,
+        state_root_hash: Digest,
+        global_state_acquisition: &mut GlobalStateAcquisition,
+        max_parallel_trie_fetches: usize,
     ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
+        let tries_to_store = global_state_acquisition.tries_to_store();
+        let tries_to_fetch = global_state_acquisition.tries_to_fetch(max_parallel_trie_fetches);
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::GlobalState(block_hash, root_hash),
+            need_next: NeedNext::GlobalState(
+                block_hash,
+                state_root_hash,
+                tries_to_store,
+                tries_to_fetch,
+            ),
         }
     }
 

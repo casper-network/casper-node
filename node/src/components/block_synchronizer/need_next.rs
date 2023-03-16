@@ -1,10 +1,13 @@
+use casper_execution_engine::storage::trie::TrieRaw;
 use datasize::DataSize;
 use derive_more::Display;
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{system::auction::ValidatorWeights, EraId, ProtocolVersion, PublicKey};
 
-use crate::types::{Block, BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId};
+use crate::types::{
+    Block, BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId, TrieOrChunkId,
+};
 
 use super::execution_results_acquisition::ExecutionResultsChecksum;
 
@@ -18,6 +21,12 @@ pub(crate) enum NeedNext {
     EraValidators(EraId),
     #[display(fmt = "need next for {}: block header", _0)]
     BlockHeader(BlockHash),
+    #[display(fmt = "need next: era validators from contract runtime")]
+    EraValidatorsFromContractRuntime(Vec<(Digest, ProtocolVersion)>),
+    #[display(fmt = "need next for era {}: update era validators", _0)]
+    UpdateEraValidators(EraId, ValidatorWeights),
+    #[display(fmt = "need next for {}: header of {} from storage", _0, _1)]
+    BlockHeaderFromStorage(BlockHash, BlockHash),
     #[display(fmt = "need next for {}: block body", _0)]
     BlockBody(BlockHash),
     #[display(fmt = "need next for {}: approvals hashes ({})", _0, _1)]
@@ -30,7 +39,12 @@ pub(crate) enum NeedNext {
     )]
     FinalitySignatures(BlockHash, EraId, Vec<PublicKey>),
     #[display(fmt = "need next for {}: global state (state root hash {})", _0, _1)]
-    GlobalState(BlockHash, Digest),
+    GlobalState(
+        BlockHash,
+        Digest,
+        Vec<(Digest, TrieRaw)>,
+        Vec<TrieOrChunkId>,
+    ),
     #[display(fmt = "need next for {}: deploy {}", _0, _1)]
     DeployByHash(BlockHash, DeployHash),
     #[display(fmt = "need next for {}: deploy {}", _0, _1)]

@@ -1,24 +1,61 @@
 use std::fmt::{self, Display, Formatter};
 
+use thiserror::Error;
+
 use casper_hashing::Digest;
+use casper_types::system::auction::EraValidators;
 use derive_more::From;
 use either::Either;
 use serde::Serialize;
 
-use casper_execution_engine::core::engine_state;
+use casper_execution_engine::{
+    core::engine_state::{self, GetEraValidatorsError},
+    storage::trie::TrieRaw,
+};
 
-use super::GlobalStateSynchronizerEvent;
 use crate::{
-    components::{
-        block_synchronizer::{GlobalStateSynchronizerError, GlobalStateSynchronizerResponse},
-        fetcher::FetchResult,
-    },
+    components::fetcher::FetchResult,
     effect::requests::BlockSynchronizerRequest,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap,
+        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
 };
+
+#[derive(Debug, Error, Serialize)]
+pub(crate) enum EraValidatorsGetError {
+    /// Invalid state hash was used to make this request
+    #[error("Invalid state hash")]
+    RootNotFound,
+    /// Engine state error
+    #[error("Engine state error")]
+    Other,
+    /// EraValidators missing
+    #[error("Era validators missing")]
+    EraValidatorsMissing,
+    /// Unexpected query failure.
+    #[error("Unexpected query failure")]
+    UnexpectedQueryFailure,
+    /// CLValue conversion error.
+    #[error("CLValue conversion error")]
+    CLValue,
+}
+
+impl From<GetEraValidatorsError> for EraValidatorsGetError {
+    fn from(get_era_validators_error: GetEraValidatorsError) -> Self {
+        match get_era_validators_error {
+            GetEraValidatorsError::RootNotFound => EraValidatorsGetError::RootNotFound,
+            GetEraValidatorsError::Other(_) => EraValidatorsGetError::Other,
+            GetEraValidatorsError::EraValidatorsMissing => {
+                EraValidatorsGetError::EraValidatorsMissing
+            }
+            GetEraValidatorsError::UnexpectedQueryFailure => {
+                EraValidatorsGetError::UnexpectedQueryFailure
+            }
+            GetEraValidatorsError::CLValue => EraValidatorsGetError::CLValue,
+        }
+    }
+}
 
 #[derive(From, Debug, Serialize)]
 pub(crate) enum Event {
@@ -47,11 +84,6 @@ pub(crate) enum Event {
     FinalitySignatureFetched(FetchResult<FinalitySignature>),
     #[from]
     SyncLeapFetched(FetchResult<SyncLeap>),
-    GlobalStateSynced {
-        block_hash: BlockHash,
-        #[serde(skip_serializing)]
-        result: Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>,
-    },
     GotExecutionResultsChecksum {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
@@ -65,11 +97,24 @@ pub(crate) enum Event {
         block_hash: BlockHash,
         result: FetchResult<BlockExecutionResultsOrChunk>,
     },
+    TrieOrChunkFetched {
+        block_hash: BlockHash,
+        state_root_hash: Digest,
+        trie_hash: Digest,
+        result: FetchResult<TrieOrChunk>,
+    },
+    PutTrieResult {
+        state_root_hash: Digest,
+        trie_hash: Digest,
+        trie_raw: Box<TrieRaw>,
+        #[serde(skip)]
+        put_trie_result: Result<Digest, engine_state::Error>,
+    },
     ExecutionResultsStored(BlockHash),
     AccumulatedPeers(BlockHash, Option<Vec<NodeId>>),
     NetworkPeers(BlockHash, Vec<NodeId>),
-    #[from]
-    GlobalStateSynchronizer(GlobalStateSynchronizerEvent),
+    EraValidatorsFromContractRuntime(Digest, Result<EraValidators, EraValidatorsGetError>),
+    BlockHeaderFromStorage(BlockHash, Option<BlockHeader>),
 }
 
 impl Display for Event {
@@ -77,17 +122,6 @@ impl Display for Event {
         match self {
             Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
                 write!(f, "block synchronizer need next request")
-            }
-            Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states)) => {
-                write!(f, "global states to be synced: [")?;
-                for (block_hash, global_state_hash) in global_states {
-                    write!(
-                        f,
-                        "(block {}, global state {}), ",
-                        block_hash, global_state_hash
-                    )?;
-                }
-                write!(f, "]")
             }
             Event::Request(_) => {
                 write!(f, "block synchronizer request from effect builder")
@@ -128,13 +162,6 @@ impl Display for Event {
             Event::SyncLeapFetched(Err(fetcher_error)) => {
                 write!(f, "{}", fetcher_error)
             }
-            Event::GlobalStateSynced {
-                block_hash: _,
-                result,
-            } => match result {
-                Ok(response) => write!(f, "synced global state under root {}", response.hash()),
-                Err(error) => write!(f, "failed to sync global state: {}", error),
-            },
             Event::GotExecutionResultsChecksum {
                 block_hash: _,
                 result,
@@ -160,9 +187,6 @@ impl Display for Event {
                 Err(fetcher_error) => write!(f, "{}", fetcher_error),
             },
             Event::ExecutionResultsStored { .. } => write!(f, "stored execution results"),
-            Event::GlobalStateSynchronizer(event) => {
-                write!(f, "{:?}", event)
-            }
             Event::NetworkPeers(..) => {
                 write!(f, "network peers")
             }
@@ -180,6 +204,44 @@ impl Display for Event {
             }
             Event::MarkBlockCompleted { .. } => {
                 write!(f, "mark block completed")
+            }
+            Event::TrieOrChunkFetched {
+                block_hash,
+                state_root_hash,
+                trie_hash,
+                result: _,
+            } => {
+                write!(
+                    f,
+                    "fetch response received syncing trie hash {} block {} with state root hash {}",
+                    trie_hash, block_hash, state_root_hash
+                )
+            }
+            Event::PutTrieResult {
+                state_root_hash,
+                trie_hash,
+                trie_raw: _,
+                put_trie_result: _,
+            } => {
+                write!(
+                    f,
+                    "put trie result for trie {} acquiring state root hash {}",
+                    trie_hash, state_root_hash
+                )
+            }
+            Event::EraValidatorsFromContractRuntime(root_hash, _) => {
+                write!(
+                    f,
+                    "era validators returned from contract runtime for root hash {}",
+                    root_hash
+                )
+            }
+            Event::BlockHeaderFromStorage(block_hash, _) => {
+                write!(
+                    f,
+                    "block header from storage response required for syncing block {}",
+                    block_hash
+                )
             }
         }
     }
