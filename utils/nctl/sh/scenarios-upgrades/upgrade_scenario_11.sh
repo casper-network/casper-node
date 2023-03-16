@@ -168,8 +168,10 @@ function _step_05()
         fi
     done
 
+    echo "CURRENT ERA: $(nctl-view-chain-era)"
     nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+    echo "CURRENT ERA: $(nctl-view-chain-era)"
 }
 
 # Step 06: Undelegate previous user
@@ -186,11 +188,13 @@ function _step_06()
             delegator="$ACCOUNT_ID" \
             validator="$NODE_ID"
 
+    echo "CURRENT ERA: $(nctl-view-chain-era)"
     nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
     nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
     nctl-view-chain-auction-info
+    echo "CURRENT ERA: $(nctl-view-chain-era)"
 }
 
 # Emergency Restart this bitch with a validator swap
@@ -238,11 +242,13 @@ function _step_07()
 function _step_08()
 {
     log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
+    echo "CURRENT ERA: $(nctl-view-chain-era)"
     nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
     nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
     nctl-view-chain-auction-info
+    echo "CURRENT ERA: $(nctl-view-chain-era)"
 }
 
 # Step 08: Assert USER_ID is NOT a delegatee
@@ -274,14 +280,14 @@ function _step_09()
 # Step 10: Run NCTL health checks
 function _step_10()
 {
-    # restarts=6 - Nodes that upgrade
+    # restarts=5 - Nodes that upgrade
     log_step_upgrades 10 "running health checks"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \
             equivocators='0' \
             doppels='0' \
             crashes=0 \
-            restarts=6 \
+            restarts=5 \
             ejections=0
 }
 
