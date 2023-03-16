@@ -165,6 +165,9 @@ pub enum ConnectionError {
     /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// Handshake did not complete in time.
+    #[error("could not complete handshake in time")]
+    HandshakeTimeout,
     /// Failed to encode our handshake.
     #[error("could not encode our handshake")]
     CouldNotEncodeOurHandshake(

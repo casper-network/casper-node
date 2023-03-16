@@ -238,8 +238,7 @@ where
     /// Our own public listening address.
     public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
-    #[allow(dead_code)] // TODO: Readd once handshake timeout is readded.
-    handshake_timeout: TimeDiff,
+    pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
     payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.

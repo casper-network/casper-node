@@ -716,7 +716,8 @@ where
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_) => None,
+            | ConnectionError::IncompatibleVersion(_)
+            | ConnectionError::HandshakeTimeout => None,
 
             // These errors are potential bugs on our side.
             ConnectionError::HandshakeSenderCrashed(_)
