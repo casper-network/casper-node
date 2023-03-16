@@ -452,7 +452,6 @@ dependencies = [
  "num-derive",
  "num-rational 0.4.1",
  "num-traits",
- "num_cpus",
  "once_cell",
  "parity-wasm",
  "proptest",
