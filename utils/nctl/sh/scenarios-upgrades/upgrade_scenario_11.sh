@@ -53,7 +53,6 @@ function _main()
     _step_09
     _step_10
     _step_11
-    _step_12
 }
 
 function _custom_validators_state_update_config()
