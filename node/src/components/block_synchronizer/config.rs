@@ -36,3 +36,26 @@ impl Default for Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl Config {
+        pub(crate) fn with_peer_refresh_interval(
+            mut self,
+            peer_refresh_interval: TimeDiff,
+        ) -> Self {
+            self.peer_refresh_interval = peer_refresh_interval;
+            self
+        }
+
+        pub(crate) fn with_max_parallel_trie_fetches(
+            mut self,
+            max_parallel_trie_fetches: u32,
+        ) -> Self {
+            self.max_parallel_trie_fetches = max_parallel_trie_fetches;
+            self
+        }
+    }
+}
