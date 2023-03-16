@@ -563,7 +563,6 @@ dependencies = [
  "fake_instant",
  "fs2",
  "futures",
- "futures-io",
  "hex-buffer-serde 0.3.0",
  "hex_fmt",
  "hostname",

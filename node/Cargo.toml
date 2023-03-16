@@ -34,7 +34,6 @@ enum-iterator = "0.6.0"
 erased-serde = "0.3.18"
 fs2 = "0.4.3"
 futures = { version = "0.3.21" }
-futures-io = "0.3.5"
 hex-buffer-serde = "0.3.0"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
