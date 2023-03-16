@@ -79,8 +79,7 @@ use rand::{
 };
 use strum::EnumCount;
 use tokio::{
-    io::ReadHalf,
-    io::WriteHalf,
+    io::{ReadHalf, WriteHalf},
     net::TcpStream,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
