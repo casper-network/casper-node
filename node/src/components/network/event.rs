@@ -159,6 +159,8 @@ where
 }
 
 /// Outcome of an incoming connection negotiation.
+// Note: `IncomingConnection` is typically used boxed anyway, so a larget variant is not an issue.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize)]
 pub(crate) enum IncomingConnection {
     /// The connection failed early on, before even a peer's [`NodeId`] could be determined.
