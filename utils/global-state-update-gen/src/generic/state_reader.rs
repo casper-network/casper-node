@@ -2,7 +2,7 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     account::{Account, AccountHash},
     system::{
-        auction::{Bids, UnbondingPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
+        auction::{Bids, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,
     },
     Key, StoredValue,
@@ -18,6 +18,8 @@ pub trait StateReader {
     fn get_account(&mut self, account_hash: AccountHash) -> Option<Account>;
 
     fn get_bids(&mut self) -> Bids;
+
+    fn get_withdraws(&mut self) -> WithdrawPurses;
 
     fn get_unbonds(&mut self) -> UnbondingPurses;
 }
@@ -44,6 +46,10 @@ where
 
     fn get_bids(&mut self) -> Bids {
         T::get_bids(self)
+    }
+
+    fn get_withdraws(&mut self) -> WithdrawPurses {
+        T::get_withdraws(self)
     }
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
@@ -80,6 +86,10 @@ impl StateReader for LmdbWasmTestBuilder {
 
     fn get_bids(&mut self) -> Bids {
         LmdbWasmTestBuilder::get_bids(self)
+    }
+
+    fn get_withdraws(&mut self) -> WithdrawPurses {
+        LmdbWasmTestBuilder::get_withdraw_purses(self)
     }
 
     fn get_unbonds(&mut self) -> UnbondingPurses {

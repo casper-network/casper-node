@@ -197,18 +197,18 @@ impl AuctionState {
 
 impl DocExample for AuctionState {
     fn doc_example() -> &'static Self {
-        &*AUCTION_INFO
+        &AUCTION_INFO
     }
 }
 
 impl DocExample for EraValidators {
     fn doc_example() -> &'static Self {
-        &*ERA_VALIDATORS
+        &ERA_VALIDATORS
     }
 }
 
 impl DocExample for Bids {
     fn doc_example() -> &'static Self {
-        &*BIDS
+        &BIDS
     }
 }

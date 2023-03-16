@@ -2,7 +2,6 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
-use tracing::debug;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
@@ -31,7 +30,7 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         self.get_from_peer_timeout
     }
 
-    async fn get_from_storage<REv: Send>(
+    async fn get_locally<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
         _id: SyncLeapIdentifier,
     ) -> Option<SyncLeap> {
@@ -43,10 +42,6 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         effect_builder: EffectBuilder<REv>,
         item: SyncLeap,
     ) -> StoringState<'a, SyncLeap> {
-        debug!(
-            ?item,
-            "SyncLeapFetcher: Attempted to put sync leap to storage"
-        );
         StoringState::Enqueued(
             async move {
                 for header in item.headers() {
@@ -62,5 +57,12 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
             }
             .boxed(),
         )
+    }
+
+    async fn announce_fetched_new_item<REv: Send>(
+        _effect_builder: EffectBuilder<REv>,
+        _item: SyncLeap,
+        _peer: NodeId,
+    ) {
     }
 }

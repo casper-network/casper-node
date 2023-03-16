@@ -13,9 +13,10 @@ use crate::{
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::main_reactor::{
-        catch_up::CatchUpInstruction, keep_up::KeepUpInstruction,
-        upgrade_shutdown::UpgradeShutdownInstruction, upgrading_instruction::UpgradingInstruction,
-        utils, validate::ValidateInstruction, MainEvent, MainReactor, ReactorState,
+        catch_up::CatchUpInstruction, genesis_instruction::GenesisInstruction,
+        keep_up::KeepUpInstruction, upgrade_shutdown::UpgradeShutdownInstruction,
+        upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
+        MainEvent, MainReactor, ReactorState,
     },
     types::{BlockHash, BlockPayload, FinalizedBlock, MetaBlockState},
     NodeRng,
@@ -87,12 +88,17 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
-                    Ok(effects) => {
+                    GenesisInstruction::Validator(duration, effects) => {
                         info!("CatchUp: switch to Validate at genesis");
                         self.state = ReactorState::Validate;
-                        (Duration::ZERO, effects)
+                        (duration, effects)
                     }
-                    Err(msg) => (
+                    GenesisInstruction::NonValidator(duration, effects) => {
+                        info!("CatchUp: switch to KeepUp at genesis");
+                        self.state = ReactorState::KeepUp;
+                        (duration, effects)
+                    }
+                    GenesisInstruction::Fatal(msg) => (
                         Duration::ZERO,
                         fatal!(effect_builder, "failed to commit genesis: {}", msg).ignore(),
                     ),
@@ -286,17 +292,14 @@ impl MainReactor {
         None
     }
 
-    fn commit_genesis(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-    ) -> Result<Effects<MainEvent>, String> {
+    fn commit_genesis(&mut self, effect_builder: EffectBuilder<MainEvent>) -> GenesisInstruction {
         let post_state_hash = match self.contract_runtime.commit_genesis(
             self.chainspec.clone().as_ref(),
             self.chainspec_raw_bytes.clone().as_ref(),
         ) {
             Ok(success) => success.post_state_hash,
             Err(error) => {
-                return Err(error.to_string());
+                return GenesisInstruction::Fatal(error.to_string());
             }
         };
 
@@ -307,7 +310,7 @@ impl MainReactor {
             .genesis_timestamp()
         {
             None => {
-                return Err("must have genesis timestamp".to_string());
+                return GenesisInstruction::Fatal("must have genesis timestamp".to_string());
             }
             Some(timestamp) => timestamp,
         };
@@ -325,7 +328,7 @@ impl MainReactor {
             post_state_hash,
             BlockHash::default(),
             Digest::default(),
-        )?;
+        );
 
         let finalized_block = FinalizedBlock::new(
             BlockPayload::default(),
@@ -336,13 +339,24 @@ impl MainReactor {
             PublicKey::System,
         );
 
-        Ok(effect_builder
+        let effects = effect_builder
             .enqueue_block_for_execution(
                 finalized_block,
                 vec![],
                 MetaBlockState::new_not_to_be_gossiped(),
             )
-            .ignore())
+            .ignore();
+
+        if self
+            .chainspec
+            .network_config
+            .accounts_config
+            .is_genesis_validator(self.validator_matrix.public_signing_key())
+        {
+            GenesisInstruction::Validator(Duration::ZERO, effects)
+        } else {
+            GenesisInstruction::NonValidator(Duration::ZERO, effects)
+        }
     }
 
     fn upgrading_instruction(&self) -> UpgradingInstruction {
@@ -385,7 +399,7 @@ impl MainReactor {
                         post_state_hash,
                         previous_block_header.block_hash(),
                         previous_block_header.accumulated_seed(),
-                    )?;
+                    );
 
                     let finalized_block = FinalizedBlock::new(
                         BlockPayload::default(),
@@ -455,7 +469,8 @@ impl MainReactor {
                     *state_root_hash,
                     block_hash,
                     accumulated_seed,
-                )
+                );
+                Ok(())
             }
             Ok(None) => {
                 Ok(()) // noop
@@ -470,7 +485,7 @@ impl MainReactor {
         pre_state_root_hash: Digest,
         parent_hash: BlockHash,
         parent_seed: Digest,
-    ) -> Result<(), String> {
+    ) {
         // a better approach might be to have an announcement for immediate switch block
         // creation, which the contract runtime handles and sets itself into
         // the proper state to handle the unexpected block.
@@ -481,10 +496,7 @@ impl MainReactor {
             parent_hash,
             parent_seed,
         );
-        self.contract_runtime
-            .set_initial_state(initial_pre_state)
-            .map_err(|err| err.to_string())?;
-        Ok(())
+        self.contract_runtime.set_initial_state(initial_pre_state);
     }
 
     pub(super) fn update_last_progress(

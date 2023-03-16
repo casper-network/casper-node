@@ -45,7 +45,7 @@ pub static RESOURCES_PATH: Lazy<PathBuf> =
 /// used instead.
 #[derive(Clone, DataSize, Eq, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
-pub(crate) enum External {
+pub enum External {
     /// Value that should be loaded from an external path.
     Path(PathBuf),
     /// The value has not been specified, but a default has been requested.

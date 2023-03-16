@@ -698,7 +698,7 @@ fn validate_query_proof_should_work() {
     // Bad proof hash
     assert_eq!(
         crate::core::validate_query_proof(
-            &Digest::hash(&[]),
+            &Digest::hash([]),
             &proofs,
             &main_account_key,
             path,

@@ -146,9 +146,9 @@ impl From<mint::Error> for Error {
     }
 }
 
-impl From<GenesisError> for Error {
-    fn from(genesis_error: GenesisError) -> Self {
-        Self::Genesis(Box::new(genesis_error))
+impl From<Box<GenesisError>> for Error {
+    fn from(genesis_error: Box<GenesisError>) -> Self {
+        Self::Genesis(genesis_error)
     }
 }
 

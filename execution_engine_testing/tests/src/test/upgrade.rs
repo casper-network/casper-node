@@ -130,7 +130,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
 fn should_upgrade_do_nothing_to_do_something_contract_call() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // Create contract package and store contract ver: 1.0.0
     {

@@ -252,7 +252,23 @@ impl FetchItem for SyncLeap {
         while let Some(hash) = verified.pop() {
             if let Some(header) = headers.remove(&hash) {
                 verified.push(*header.parent_hash());
-                if let Some(validator_weights) = header.next_era_validator_weights() {
+                if let Some(mut validator_weights) = header.next_era_validator_weights() {
+                    // If this is a switch block right before the upgrade to the current protocol
+                    // version, and if this upgrade changes the validator set, use the validator
+                    // weights from the chainspec.
+                    if header.next_block_era_id()
+                        == chainspec.protocol_config.activation_point.era_id()
+                    {
+                        if let Some(updated_weights) = chainspec
+                            .protocol_config
+                            .global_state_update
+                            .as_ref()
+                            .and_then(|update| update.validators.as_ref())
+                        {
+                            validator_weights = updated_weights
+                        }
+                    }
+
                     if let Some(era_sigs) = signatures.remove(&header.next_block_era_id()) {
                         for sigs in era_sigs {
                             if let Err(err) = utils::check_sufficient_block_signatures(

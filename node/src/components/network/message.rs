@@ -100,16 +100,18 @@ impl<P: Payload> Message<P> {
         self,
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
-    ) -> Result<(REv, BoxFuture<'static, Option<P>>), Self>
+    ) -> Result<(REv, BoxFuture<'static, Option<P>>), Box<Self>>
     where
         REv: FromIncoming<P> + Send,
     {
         match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => Err(self),
+            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
+                Err(self.into())
+            }
             Message::Payload(payload) => {
                 // Note: For now, the wrapping/unwrap of the payload is a bit unfortunate here.
                 REv::try_demand_from_incoming(effect_builder, sender, payload)
-                    .map_err(Message::Payload)
+                    .map_err(|err| Message::Payload(err).into())
             }
         }
     }

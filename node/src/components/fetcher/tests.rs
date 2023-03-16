@@ -104,9 +104,15 @@ enum Event {
     #[from]
     FetcherRequestDeploy(FetcherRequest<Deploy>),
     #[from]
+    BlockAccumulatorRequest(BlockAccumulatorRequest),
+    #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement),
     #[from]
     RpcServerAnnouncement(RpcServerAnnouncement),
+    #[from]
+    FetchedNewFinalitySignatureAnnouncement(FetchedNewFinalitySignatureAnnouncement),
+    #[from]
+    FetchedNewBlockAnnouncement(FetchedNewBlockAnnouncement),
     #[from]
     NetRequestIncoming(NetRequestIncoming),
     #[from]
@@ -238,6 +244,7 @@ impl ReactorTrait for Reactor {
             ),
             Event::TrieDemand(_)
             | Event::ContractRuntimeRequest(_)
+            | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)
             | Event::GossiperIncomingBlock(_)
@@ -248,6 +255,8 @@ impl ReactorTrait for Reactor {
             | Event::ConsensusMessageIncoming(_)
             | Event::ConsensusDemandIncoming(_)
             | Event::FinalitySignatureIncoming(_)
+            | Event::FetchedNewBlockAnnouncement(_)
+            | Event::FetchedNewFinalitySignatureAnnouncement(_)
             | Event::ControlAnnouncement(_)
             | Event::FatalAnnouncement(_) => panic!("unexpected: {}", event),
         }
@@ -266,7 +275,6 @@ impl ReactorTrait for Reactor {
 
         let storage = Storage::new(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
-            chainspec.core_config.finality_threshold_fraction,
             chainspec.hard_reset_to_start_of_era(),
             chainspec.protocol_config.version,
             &chainspec.network_config.name,

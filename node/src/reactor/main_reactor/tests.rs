@@ -656,8 +656,8 @@ async fn dont_upgrade_without_switch_block() {
             .expect("failed to read from storage")
             .expect("missing switch block")
             .take_header();
-        assert_eq!(EraId::from(1), header.era_id());
-        assert!(header.is_switch_block());
+        assert_eq!(EraId::from(1), header.era_id(), "era should be 1");
+        assert!(header.is_switch_block(), "header should be switch block");
     }
 }
 
@@ -702,15 +702,15 @@ async fn should_store_finalized_approvals() {
     let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
     let mut deploy_bob_alice = deploy_alice_bob.clone();
 
-    deploy_alice_bob.sign(&*alice_secret_key);
-    deploy_alice_bob.sign(&*bob_secret_key);
+    deploy_alice_bob.sign(&alice_secret_key);
+    deploy_alice_bob.sign(&bob_secret_key);
 
-    deploy_alice_bob_charlie.sign(&*alice_secret_key);
-    deploy_alice_bob_charlie.sign(&*bob_secret_key);
-    deploy_alice_bob_charlie.sign(&*charlie_secret_key);
+    deploy_alice_bob_charlie.sign(&alice_secret_key);
+    deploy_alice_bob_charlie.sign(&bob_secret_key);
+    deploy_alice_bob_charlie.sign(&charlie_secret_key);
 
-    deploy_bob_alice.sign(&*bob_secret_key);
-    deploy_bob_alice.sign(&*alice_secret_key);
+    deploy_bob_alice.sign(&bob_secret_key);
+    deploy_bob_alice.sign(&alice_secret_key);
 
     // We will be testing the correct sequence of approvals against the deploy signed by Bob and
     // Alice.
@@ -896,7 +896,11 @@ async fn empty_block_validation_regression() {
     let switch_blocks = SwitchBlocks::collect(net.nodes(), 2);
 
     // Nobody actually double-signed. The accusations should have had no effect.
-    assert_eq!(switch_blocks.equivocators(0), []);
+    assert_eq!(
+        switch_blocks.equivocators(0),
+        [],
+        "expected no equivocators"
+    );
     // If the malicious validator was the first proposer, all their Highway units might be invalid,
     // because they all refer to the invalid proposal, so they might get flagged as inactive. No
     // other validators should be considered inactive.

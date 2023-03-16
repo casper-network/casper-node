@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -23,9 +20,9 @@ use super::{
 };
 use crate::{
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, NodeId,
-        ValidatorMatrix,
+        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
+        BlockHash, BlockHeader, BlockSignatures, DeployHash, DeployId, EraValidatorWeights,
+        FinalitySignature, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -348,6 +345,7 @@ impl BlockBuilder {
         &mut self,
         rng: &mut NodeRng,
         max_simultaneous_peers: usize,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
@@ -370,21 +368,28 @@ impl BlockBuilder {
         }
         let era_id = match self.era_id {
             None => {
+                // if we don't have the era_id, we only have block_hash, thus get block_header
                 return BlockAcquisitionAction::block_header(&self.peer_list, rng, self.block_hash);
             }
             Some(era_id) => era_id,
         };
         let validator_weights = match &self.validator_weights {
             None => {
-                return BlockAcquisitionAction::era_validators(era_id);
+                return BlockAcquisitionAction::era_validators(&self.peer_list, rng, era_id);
             }
-            Some(validator_weights) => validator_weights,
+            Some(validator_weights) => {
+                if validator_weights.is_empty() {
+                    return BlockAcquisitionAction::era_validators(&self.peer_list, rng, era_id);
+                }
+                validator_weights
+            }
         };
         match self.acquisition_state.next_action(
             &self.peer_list,
             validator_weights,
             rng,
             self.should_fetch_execution_state,
+            legacy_required_finality,
             max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
@@ -621,5 +626,9 @@ impl BlockBuilder {
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
         self.in_flight_latch = None;
+    }
+
+    pub(crate) fn peer_list(&self) -> &PeerList {
+        &self.peer_list
     }
 }

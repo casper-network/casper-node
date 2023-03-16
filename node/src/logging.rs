@@ -42,19 +42,19 @@ static RELOAD_HANDLE: OnceCell<ReloadHandle> = OnceCell::new();
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     /// Output format for log.
-    format: LoggingFormat,
+    pub format: LoggingFormat,
 
     /// Colored output (has no effect if JSON format is enabled).
     ///
     /// If set, the logger will inject ANSI color codes into log messages.  This is useful if
     /// writing out to stdout or stderr on an ANSI terminal, but not so if writing to a logfile.
-    color: bool,
+    pub color: bool,
 
     /// Abbreviate module names (has no effect if JSON format is enabled).
     ///
     /// If set, human-readable formats will abbreviate module names, `foo::bar::baz::bizz` will
     /// turn into `f:b:b:bizz`.
-    abbreviate_modules: bool,
+    pub abbreviate_modules: bool,
 }
 
 impl LoggingConfig {

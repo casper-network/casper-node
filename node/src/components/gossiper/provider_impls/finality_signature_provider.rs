@@ -22,9 +22,11 @@ impl ItemProvider<FinalitySignature>
     async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         item_id: FinalitySignatureId,
-    ) -> Option<FinalitySignature> {
+    ) -> Option<Box<FinalitySignature>> {
+        // TODO: Make `get_finality_signature_from_storage` return a boxed copy instead.
         effect_builder
             .get_finality_signature_from_storage(item_id.clone())
             .await
+            .map(Box::new)
     }
 }

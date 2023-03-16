@@ -406,7 +406,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &temp_dir.path(),
+                temp_dir.path(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,

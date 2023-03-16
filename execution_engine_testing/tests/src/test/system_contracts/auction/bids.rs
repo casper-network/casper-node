@@ -3075,7 +3075,7 @@ fn check_validator_slots_for_accounts(accounts: usize) {
             let secret_key = {
                 let mut secret_key_bytes = [0; 32];
                 count.to_big_endian(&mut secret_key_bytes);
-                SecretKey::ed25519_from_bytes(&secret_key_bytes).expect("should create ed25519 key")
+                SecretKey::ed25519_from_bytes(secret_key_bytes).expect("should create ed25519 key")
             };
 
             let public_key = PublicKey::from(&secret_key);
@@ -3945,7 +3945,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 fn should_enforce_minimum_delegation_amount() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4026,7 +4026,7 @@ fn should_enforce_minimum_delegation_amount() {
 fn should_allow_delegations_with_minimal_floor_amount() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

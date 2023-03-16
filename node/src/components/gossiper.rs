@@ -434,13 +434,13 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
     /// the requester.
     fn got_from_storage<REv>(
         effect_builder: EffectBuilder<REv>,
-        item: T,
+        item: Box<T>,
         requester: NodeId,
     ) -> Effects<Event<T>>
     where
         REv: From<NetworkRequest<Message<T>>> + Send,
     {
-        let message = Message::Item(Box::new(item));
+        let message = Message::Item(item);
         effect_builder.send_message(requester, message).ignore()
     }
 

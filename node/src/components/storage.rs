@@ -60,7 +60,6 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
     WriteFlags,
 };
-use num_rational::Ratio;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -99,7 +98,7 @@ use crate::{
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
         FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
-    utils::{self, display_error, WithDir},
+    utils::{display_error, WithDir},
     NodeRng,
 };
 use disjoint_sequences::{DisjointSequences, Sequence};
@@ -211,8 +210,6 @@ pub struct Storage {
     /// the purpose of deciding how to respond to a `NetRequest::SyncLeap`.
     recent_era_count: u64,
     #[data_size(skip)]
-    fault_tolerance_fraction: Ratio<u64>,
-    #[data_size(skip)]
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: TimeDiff,
@@ -265,6 +262,13 @@ impl From<MakeBlockExecutableRequest> for Event {
     fn from(request: MakeBlockExecutableRequest) -> Self {
         Event::MakeBlockExecutableRequest(Box::new(request))
     }
+}
+
+pub(crate) enum HighestOrphanedBlockResult {
+    MissingHighestSequence,
+    MissingFromBlockHeightIndex(u64),
+    Orphan(BlockHeader),
+    MissingHeader(BlockHash),
 }
 
 impl<REv> Component<REv> for Storage
@@ -327,7 +331,6 @@ impl Storage {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
-        fault_tolerance_fraction: Ratio<u64>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
         network_name: &str,
@@ -484,7 +487,6 @@ impl Storage {
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
-            fault_tolerance_fraction,
             max_ttl,
             metrics,
         };
@@ -699,7 +701,7 @@ impl Storage {
                 if let Some(item) = opt_item.as_ref() {
                     if item.block_hash != id.block_hash || item.era_id != id.era_id {
                         return Err(GetRequestError::FinalitySignatureIdMismatch {
-                            requested_id: id,
+                            requested_id: Box::new(id),
                             finality_signature: Box::new(item.clone()),
                         });
                     }
@@ -761,7 +763,7 @@ impl Storage {
         // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
-                responder.respond(self.write_block(&*block)?).ignore()
+                responder.respond(self.write_block(&block)?).ignore()
             }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
@@ -769,7 +771,7 @@ impl Storage {
             } => {
                 let env = Rc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
-                let result = self.write_approvals_hashes(&mut txn, &*approvals_hashes)?;
+                let result = self.write_approvals_hashes(&mut txn, &approvals_hashes)?;
                 txn.commit()?;
                 responder.respond(result).ignore()
             }
@@ -829,7 +831,7 @@ impl Storage {
                     .ignore()
             }
             StorageRequest::PutDeploy { deploy, responder } => {
-                responder.respond(self.put_deploy(&*deploy)?).ignore()
+                responder.respond(self.put_deploy(&deploy)?).ignore()
             }
             StorageRequest::GetDeploys {
                 deploy_hashes,
@@ -868,7 +870,7 @@ impl Storage {
                     None => None,
                     Some(deploy_with_finalized_approvals) => {
                         let deploy = deploy_with_finalized_approvals.into_naive();
-                        (deploy.fetch_id() == deploy_id).then(|| deploy)
+                        (deploy.fetch_id() == deploy_id).then_some(deploy)
                     }
                 };
                 responder.respond(maybe_deploy).ignore()
@@ -897,7 +899,7 @@ impl Storage {
             } => {
                 let env = Rc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
-                self.write_execution_results(&mut txn, &*block_hash, execution_results)?;
+                self.write_execution_results(&mut txn, &block_hash, execution_results)?;
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
@@ -1118,13 +1120,9 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                let result = self.get_block_header_by_height_restricted(
-                    &mut txn,
-                    block_height,
-                    only_from_available_block_range,
-                )?;
-                responder.respond(result).ignore()
+                let maybe_header = self
+                    .read_block_header_by_height(block_height, only_from_available_block_range)?;
+                responder.respond(maybe_header).ignore()
             }
             StorageRequest::PutBlockHeader {
                 block_header,
@@ -1592,22 +1590,7 @@ impl Storage {
     pub fn read_block_header_by_height(
         &self,
         height: u64,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        self.block_height_index
-            .get(&height)
-            .and_then(|block_hash| {
-                self.get_single_block_header(&mut txn, block_hash)
-                    .transpose()
-            })
-            .transpose()
-    }
-
-    /// Retrieves a single block header by height from the available block
-    /// range by looking it up in the index and returning it.
-    pub fn read_complete_block_header_by_height(
-        &self,
-        height: u64,
+        only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         let res = self
@@ -1618,7 +1601,7 @@ impl Storage {
                     .transpose()
             })
             .transpose();
-        if !(self.should_return_block(height, true)?) {
+        if !(self.should_return_block(height, only_from_available_block_range)?) {
             return Ok(None);
         }
         res
@@ -1898,8 +1881,8 @@ impl Storage {
         Ok(Some(block_header))
     }
 
-    /// Returns block headers of the trusted block's ancestors, back to the most recent switch
-    /// block.
+    /// Returns headers of complete blocks of the trusted block's ancestors, back to the most
+    /// recent switch block.
     fn get_trusted_ancestor_headers<Tx: Transaction>(
         &self,
         txn: &mut Tx,
@@ -1908,6 +1891,7 @@ impl Storage {
         if trusted_block_header.is_genesis() {
             return Ok(Some(vec![]));
         }
+        let available_block_range = self.get_available_block_range();
         let mut result = vec![];
         let mut current_trusted_block_header = trusted_block_header.clone();
         loop {
@@ -1916,10 +1900,15 @@ impl Storage {
                 match txn.get_value(self.block_header_db, &parent_hash)? {
                     Some(block_header) => block_header,
                     None => {
-                        warn!(?parent_hash, "block header not found");
+                        warn!(%parent_hash, "block header not found");
                         return Ok(None);
                     }
                 };
+
+            if !available_block_range.contains(parent_block_header.height()) {
+                debug!(%parent_hash, "block header not complete");
+                return Ok(None);
+            }
 
             result.push(parent_block_header.clone());
             if parent_block_header.is_switch_block() || parent_block_header.is_genesis() {
@@ -1937,7 +1926,6 @@ impl Storage {
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
         highest_signed_block_header: &BlockHeaderWithMetadata,
-        mut switch_block: BlockHeader,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
         if trusted_block_header.block_hash()
             == highest_signed_block_header.block_header.block_hash()
@@ -1956,60 +1944,14 @@ impl Storage {
                 None => return Ok(None),
             };
 
-            let block = match self.get_single_block_header_with_metadata(txn, hash)? {
-                Some(block) => block,
+            match self.get_single_block_header_with_metadata(txn, hash)? {
+                Some(block) => result.push(block),
                 None => return Ok(None),
-            };
-
-            let next_era_validator_weights = match switch_block.next_era_validator_weights() {
-                Some(next_era_validator_weights) => next_era_validator_weights,
-                None => return Ok(None),
-            };
-
-            if utils::check_sufficient_block_signatures(
-                next_era_validator_weights,
-                self.fault_tolerance_fraction,
-                Some(&block.block_signatures),
-            )
-            .is_ok()
-            {
-                switch_block = block.block_header.clone();
-                result.push(block);
-            } else {
-                return Ok(Some(result));
             }
         }
-
-        let next_era_validator_weights = match switch_block.next_era_validator_weights() {
-            Some(next_era_validator_weights) => next_era_validator_weights,
-            None => return Ok(None),
-        };
-
-        if utils::check_sufficient_block_signatures(
-            next_era_validator_weights,
-            self.fault_tolerance_fraction,
-            Some(&highest_signed_block_header.block_signatures),
-        )
-        .is_ok()
-        {
-            result.push(highest_signed_block_header.clone());
-        }
+        result.push(highest_signed_block_header.clone());
 
         Ok(Some(result))
-    }
-
-    fn get_block_header_by_height_restricted<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_height: u64,
-        only_from_available_block_range: bool,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let block_hash = match self.block_height_index.get(&block_height) {
-            None => return Ok(None),
-            Some(block_hash) => block_hash,
-        };
-
-        self.get_single_block_header_restricted(txn, block_hash, only_from_available_block_range)
     }
 
     /// Retrieves a single block header in a given transaction from storage.
@@ -2313,18 +2255,20 @@ impl Storage {
         &self,
         sync_leap_identifier: SyncLeapIdentifier,
     ) -> Result<FetchResponse<SyncLeap, SyncLeapIdentifier>, FatalStorageError> {
-        let mut txn = self
-            .env
-            .begin_ro_txn()
-            .expect("could not create RO transaction");
-
         let block_hash = sync_leap_identifier.block_hash();
-        let trusted_block_header = match self.get_single_block_header(&mut txn, &block_hash)? {
+
+        let mut txn = self.env.begin_ro_txn()?;
+
+        let only_from_available_block_range = true;
+        let trusted_block_header = match self.get_single_block_header_restricted(
+            &mut txn,
+            &block_hash,
+            only_from_available_block_range,
+        )? {
             Some(trusted_block_header) => trusted_block_header,
             None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
         };
 
-        let trusted_ancestors_only = sync_leap_identifier.trusted_ancestor_only();
         let trusted_ancestor_headers =
             match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
@@ -2332,7 +2276,7 @@ impl Storage {
             };
 
         // highest block and signatures are not requested
-        if trusted_ancestors_only {
+        if sync_leap_identifier.trusted_ancestor_only() {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: true,
                 trusted_block_header,
@@ -2365,14 +2309,12 @@ impl Storage {
             }));
         }
 
+        // The `highest_complete_block_header` and `trusted_block_header` are both within the
+        // highest complete block range, thus so are all the switch blocks between them.
         if let Some(signed_block_headers) = self.get_signed_block_headers(
             &mut txn,
             &trusted_block_header,
             &highest_complete_block_header,
-            trusted_ancestor_headers
-                .last()
-                .cloned()
-                .unwrap_or_else(|| trusted_block_header.clone()),
         )? {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: false,
@@ -2439,19 +2381,27 @@ impl Storage {
         }
     }
 
-    pub(crate) fn get_highest_orphaned_block_header(&self) -> Option<BlockHeader> {
-        if let Some(seq) = self.completed_blocks.highest_sequence() {
-            if let Some(block_hash) = self.block_height_index.get(&seq.low()).cloned() {
-                let mut txn = self
-                    .env
-                    .begin_ro_txn()
-                    .expect("Could not start read only transaction for lmdb");
-                if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
-                    return Some(block.header().clone());
+    pub(crate) fn get_highest_orphaned_block_header(&self) -> HighestOrphanedBlockResult {
+        match self.completed_blocks.highest_sequence() {
+            None => HighestOrphanedBlockResult::MissingHighestSequence,
+            Some(seq) => {
+                let low = seq.low();
+                match self.block_height_index.get(&low).cloned() {
+                    None => HighestOrphanedBlockResult::MissingFromBlockHeightIndex(low),
+                    Some(block_hash) => {
+                        let mut txn = self
+                            .env
+                            .begin_ro_txn()
+                            .expect("Could not start read only transaction for lmdb");
+                        if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
+                            HighestOrphanedBlockResult::Orphan(block.header().clone())
+                        } else {
+                            HighestOrphanedBlockResult::MissingHeader(block_hash)
+                        }
+                    }
                 }
             }
         }
-        None
     }
 
     fn get_execution_results<Tx: Transaction>(
@@ -2737,23 +2687,23 @@ pub struct Config {
     /// The maximum size of the database to use for the block store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_block_store_size: usize,
+    pub max_block_store_size: usize,
     /// The maximum size of the database to use for the deploy store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_deploy_store_size: usize,
+    pub max_deploy_store_size: usize,
     /// The maximum size of the database to use for the deploy metadata store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_deploy_metadata_store_size: usize,
+    pub max_deploy_metadata_store_size: usize,
     /// The maximum size of the database to use for the component state store.
     ///
     /// The size should be a multiple of the OS page size.
-    max_state_store_size: usize,
+    pub max_state_store_size: usize,
     /// Whether or not memory deduplication is enabled.
-    enable_mem_deduplication: bool,
+    pub enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
-    mem_pool_prune_interval: u16,
+    pub mem_pool_prune_interval: u16,
 }
 
 impl Default for Config {

@@ -17,8 +17,9 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, DeployHash,
-        DeployId, EraValidatorWeights, FinalitySignature, SignatureWeight,
+        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
+        BlockHash, BlockHeader, DeployHash, DeployId, EraValidatorWeights, FinalitySignature,
+        SignatureWeight,
     },
     NodeRng,
 };
@@ -268,6 +269,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
+        legacy_required_finality: LegacyRequiredFinality,
         max_simultaneous_peers: usize,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
@@ -277,32 +279,16 @@ impl BlockAcquisitionState {
                 BlockAcquisitionAction::block_header(peer_list, rng, *block_hash),
             ),
             BlockAcquisitionState::HaveBlockHeader(block_header, signatures) => {
-                if validator_weights.is_empty() {
-                    Ok(BlockAcquisitionAction::era_validators(
-                        validator_weights.era_id(),
-                    ))
-                } else {
-                    // Collect signatures with Vacant state or which are currently missing from the
-                    // SignatureAcquisition.
-                    let mut missing_signatures: HashSet<PublicKey> = validator_weights
-                        .missing_validators(signatures.not_vacant())
-                        .cloned()
-                        .collect();
-                    // If there are too few, retry any in Pending state.
-                    if missing_signatures.len() < max_simultaneous_peers {
-                        missing_signatures.extend(
-                            validator_weights
-                                .missing_validators(signatures.not_pending())
-                                .cloned(),
-                        );
-                    }
-                    Ok(BlockAcquisitionAction::finality_signatures(
-                        peer_list,
-                        rng,
-                        block_header,
-                        missing_signatures.into_iter().collect(),
-                    ))
-                }
+                // Collect signatures with Vacant state or which are currently missing from the
+                // SignatureAcquisition.
+                Ok(signatures_from_missing_validators(
+                    validator_weights,
+                    signatures,
+                    max_simultaneous_peers,
+                    peer_list,
+                    rng,
+                    block_header,
+                ))
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Ok(
                 BlockAcquisitionAction::block_body(peer_list, rng, header.block_hash()),
@@ -327,6 +313,8 @@ impl BlockAcquisitionState {
                         validator_weights,
                         signatures,
                         is_historical,
+                        legacy_required_finality,
+                        max_simultaneous_peers,
                     ))
                 }
             }
@@ -353,6 +341,8 @@ impl BlockAcquisitionState {
                         validator_weights,
                         signatures,
                         is_historical,
+                        legacy_required_finality,
+                        max_simultaneous_peers,
                     ))
                 }
             }
@@ -377,6 +367,8 @@ impl BlockAcquisitionState {
                         signatures,
                         deploys.needs_deploy(),
                         is_historical,
+                        legacy_required_finality,
+                        max_simultaneous_peers,
                     ))
                 }
             }
@@ -392,6 +384,8 @@ impl BlockAcquisitionState {
                     signatures,
                     deploys.needs_deploy(),
                     is_historical,
+                    legacy_required_finality,
+                    max_simultaneous_peers,
                 ))
             }
             BlockAcquisitionState::HaveAllDeploys(block, signatures) => {
@@ -402,6 +396,8 @@ impl BlockAcquisitionState {
                     validator_weights,
                     signatures,
                     is_historical,
+                    legacy_required_finality,
+                    max_simultaneous_peers,
                 ))
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, ..) => {
@@ -633,7 +629,7 @@ impl BlockAcquisitionState {
                 return Ok(None)
             }
         };
-        let ret = currently_acquiring_sigs.then(|| acceptance);
+        let ret = currently_acquiring_sigs.then_some(acceptance);
         info!(
             signature=%cloned_sig,
             ?ret,
@@ -1127,4 +1123,32 @@ impl BlockAcquisitionState {
         );
         *self = new_state;
     }
+}
+
+pub(super) fn signatures_from_missing_validators(
+    validator_weights: &EraValidatorWeights,
+    signatures: &mut SignatureAcquisition,
+    max_simultaneous_peers: usize,
+    peer_list: &PeerList,
+    rng: &mut NodeRng,
+    block_header: &BlockHeader,
+) -> BlockAcquisitionAction {
+    let mut missing_signatures_in_random_order: HashSet<PublicKey> = validator_weights
+        .missing_validators(signatures.not_vacant())
+        .cloned()
+        .collect();
+    // If there are too few, retry any in Pending state.
+    if missing_signatures_in_random_order.len() < max_simultaneous_peers {
+        missing_signatures_in_random_order.extend(
+            validator_weights
+                .missing_validators(signatures.not_pending())
+                .cloned(),
+        );
+    }
+    BlockAcquisitionAction::finality_signatures(
+        peer_list,
+        rng,
+        block_header,
+        missing_signatures_in_random_order.into_iter().collect(),
+    )
 }

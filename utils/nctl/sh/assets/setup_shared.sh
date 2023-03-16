@@ -441,19 +441,15 @@ function setup_asset_node_configs()
 function setup_asset_global_state_toml_for_node() {
     local IDX=${1}
     local TARGET_PROTOCOL_VERSION=${2}
-    local STATE_ROOT_HASH
     local PATH_TO_NET="$(get_path_to_net)"
     local STORAGE_PATH="$PATH_TO_NET/nodes/node-$IDX/storage"
 
-    STATE_ROOT_HASH=$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')
-    log "... state root hash for node $IDX: $STATE_ROOT_HASH"
-
     if [ -f "$STORAGE_PATH/$(get_chain_name)/data.lmdb" ]; then
         GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$STORAGE_PATH"/"$(get_chain_name)")
+                migrate-into-system-contract-registry -d "$STORAGE_PATH"/"$(get_chain_name)")
     else
         GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                migrate-into-system-contract-registry -s $STATE_ROOT_HASH -d "$STORAGE_PATH")
+                migrate-into-system-contract-registry -d "$STORAGE_PATH")
     fi
 
     echo "$GLOBAL_STATE_VALIDATOR_OUTPUT" > "$PATH_TO_NET/nodes/node-$IDX/config/$TARGET_PROTOCOL_VERSION/global_state.toml"

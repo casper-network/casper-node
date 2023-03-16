@@ -47,8 +47,8 @@ impl Chainspec {
                 .to_string()
         };
 
-        let protocol_version = find_value(&*regex_data::chainspec_protocol_version::REGEX);
-        let current_activation_point = find_value(&*regex_data::chainspec_activation_point::REGEX);
+        let protocol_version = find_value(&regex_data::chainspec_protocol_version::REGEX);
+        let current_activation_point = find_value(&regex_data::chainspec_activation_point::REGEX);
         let current_protocol_version = SemVer::try_from(protocol_version.as_str())
             .expect("should parse current protocol version");
 

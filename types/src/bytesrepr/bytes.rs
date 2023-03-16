@@ -135,7 +135,7 @@ impl Index<Range<usize>> for Bytes {
     type Output = [u8];
 
     fn index(&self, index: Range<usize>) -> &[u8] {
-        let &Bytes(ref dat) = self;
+        let Bytes(dat) = self;
         &dat[index]
     }
 }
@@ -144,7 +144,7 @@ impl Index<RangeTo<usize>> for Bytes {
     type Output = [u8];
 
     fn index(&self, index: RangeTo<usize>) -> &[u8] {
-        let &Bytes(ref dat) = self;
+        let Bytes(dat) = self;
         &dat[index]
     }
 }
@@ -153,7 +153,7 @@ impl Index<RangeFrom<usize>> for Bytes {
     type Output = [u8];
 
     fn index(&self, index: RangeFrom<usize>) -> &[u8] {
-        let &Bytes(ref dat) = self;
+        let Bytes(dat) = self;
         &dat[index]
     }
 }
@@ -162,7 +162,7 @@ impl Index<RangeFull> for Bytes {
     type Output = [u8];
 
     fn index(&self, _: RangeFull) -> &[u8] {
-        let &Bytes(ref dat) = self;
+        let Bytes(dat) = self;
         &dat[..]
     }
 }
@@ -278,7 +278,7 @@ impl<'de> Deserialize<'de> for Bytes {
     {
         if deserializer.is_human_readable() {
             let hex_string = String::deserialize(deserializer)?;
-            checksummed_hex::decode(&hex_string)
+            checksummed_hex::decode(hex_string)
                 .map(Bytes)
                 .map_err(SerdeError::custom)
         } else {

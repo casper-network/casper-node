@@ -1,3 +1,5 @@
+pub(crate) mod test_utils;
+
 use std::{collections::HashSet, iter, rc::Rc, time::Duration};
 
 use casper_types::testing::TestRng;
@@ -22,6 +24,7 @@ enum MockReactorEvent {
     FinalitySignatureFetcherRequest(FetcherRequest<FinalitySignature>),
     TrieOrChunkFetcherRequest(FetcherRequest<TrieOrChunk>),
     BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest<BlockExecutionResultsOrChunk>),
+    SyncLeapFetcherRequest(FetcherRequest<SyncLeap>),
     NetworkInfoRequest(NetworkInfoRequest),
     BlockAccumulatorRequest(BlockAccumulatorRequest),
     PeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
@@ -73,7 +76,7 @@ fn random_peers(rng: &mut TestRng, num_random_peers: usize) -> HashSet<NodeId> {
         .collect()
 }
 
-fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) -> HashSet<NodeId> {
+fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) {
     assert!(matches!(
         event,
         MockReactorEvent::SyncGlobalStateRequest { .. }
@@ -87,8 +90,6 @@ fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) -> Hash
         global_sync_request.state_root_hash,
         *block.state_root_hash()
     );
-
-    global_sync_request.peers
 }
 
 #[tokio::test]
@@ -109,6 +110,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     // Create a block synchronizer with a maximum of 5 simultaneous peers
     let mut block_synchronizer = BlockSynchronizer::new(
         Config::default(),
+        Arc::new(Chainspec::random(&mut rng)),
         5,
         validator_matrix,
         prometheus::default_registry(),
@@ -122,7 +124,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     // Set up the synchronizer for the test block such that the next step is getting global state
     block_synchronizer.register_block_by_hash(*block.hash(), true, true);
     assert!(block_synchronizer.historical.is_some()); // we only get global state on historical sync
-    block_synchronizer.register_peers(*block.hash(), peers);
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
     let historical_builder = block_synchronizer.historical.as_mut().unwrap();
     assert!(historical_builder
         .register_block_header(block.header().clone(), None)
@@ -150,7 +152,8 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
 
     // Expect a `SyncGlobalStateRequest` for the `GlobalStateSynchronizer`
     // The peer list that the GlobalStateSynchronizer will use to fetch the tries
-    let first_peer_set = check_sync_global_state_event(event, &block);
+    let first_peer_set = peers.iter().copied().choose_multiple(&mut rng, 4);
+    check_sync_global_state_event(event, &block);
 
     // Wait for the latch to reset
     std::thread::sleep(Duration::from_secs(6));
@@ -160,7 +163,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     block_synchronizer.global_state_synced(
         *block.hash(),
         Err(GlobalStateSynchronizerError::TrieAccumulator(
-            first_peer_set.iter().cloned().collect(),
+            first_peer_set.to_vec(),
         )),
     );
 
@@ -170,13 +173,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     assert_eq!(effects.len(), 1);
     tokio::spawn(async move { effects.remove(0).await });
     let event = mock_reactor.crank().await;
-    let second_peer_set = check_sync_global_state_event(event, &block);
 
-    // Check if the peers are the same as the ones in the previous request;
-    // they should be different since we have enough peers registered that we have not tried
-    for peer in second_peer_set.iter() {
-        assert!(!first_peer_set.contains(peer))
-    }
+    let second_peer_set = peers.iter().copied().choose_multiple(&mut rng, 4);
+    check_sync_global_state_event(event, &block);
 
     // Wait for the latch to reset
     std::thread::sleep(Duration::from_secs(6));
@@ -187,7 +186,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     block_synchronizer.global_state_synced(
         *block.hash(),
         Ok(GlobalStateSynchronizerResponse::new(
-            *block.state_root_hash(),
+            (*block.state_root_hash()).into(),
             unreliable_peers.clone(),
         )),
     );

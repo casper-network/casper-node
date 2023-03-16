@@ -183,7 +183,7 @@ impl ExecutionResult {
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
-        &*EXECUTION_RESULT
+        &EXECUTION_RESULT
     }
 
     fn tag(&self) -> ExecutionResultTag {
