@@ -7,6 +7,7 @@ mod condition_check_reactor;
 mod fake_deploy_acceptor;
 pub(crate) mod filter_reactor;
 pub(crate) mod network;
+pub(crate) mod test_block_builder;
 pub(crate) mod test_clock;
 mod test_rng;
 
