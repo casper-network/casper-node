@@ -1,4 +1,5 @@
 use thiserror::Error;
+use tracing::error;
 
 use casper_types::{crypto, EraId};
 
@@ -61,4 +62,6 @@ pub(crate) enum Error {
     BogusValidator(Bogusness),
     #[error(transparent)]
     MetaBlockMerge(#[from] MetaBlockMergeError),
+    #[error("tried to insert a signature past the bounds")]
+    TooManySignatures { peer: NodeId, limit: u32 },
 }

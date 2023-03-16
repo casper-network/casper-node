@@ -184,7 +184,7 @@ fn fetch_received_from_storage() {
     let peers_to_ask = vec![peer_1];
     sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
 
-    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_storage(sync_leap));
+    let fetch_result: FetchResult<SyncLeap> = Ok(FetchedData::from_storage(Box::new(sync_leap)));
 
     let actual = sync_leaper
         .fetch_received(sync_leap_identifier, fetch_result)

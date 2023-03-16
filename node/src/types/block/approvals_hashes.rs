@@ -115,7 +115,7 @@ impl ApprovalsHashes {
 impl FetchItem for ApprovalsHashes {
     type Id = BlockHash;
     type ValidationError = ApprovalsHashesValidationError;
-    type ValidationMetadata = Block;
+    type ValidationMetadata = Box<Block>;
 
     const TAG: Tag = Tag::ApprovalsHashes;
 
@@ -123,7 +123,7 @@ impl FetchItem for ApprovalsHashes {
         self.block_hash
     }
 
-    fn validate(&self, block: &Block) -> Result<(), Self::ValidationError> {
+    fn validate(&self, block: &Box<Block>) -> Result<(), Self::ValidationError> {
         self.is_verified.get_or_init(|| self.verify(block)).clone()
     }
 }

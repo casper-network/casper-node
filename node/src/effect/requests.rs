@@ -1055,7 +1055,6 @@ impl Display for TrieAccumulatorRequest {
 pub(crate) struct SyncGlobalStateRequest {
     pub(crate) block_hash: BlockHash,
     pub(crate) state_root_hash: Digest,
-    pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
     pub(crate) responder:
         Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
@@ -1148,15 +1147,6 @@ pub(crate) enum BlockAccumulatorRequest {
         block_hash: BlockHash,
         responder: Responder<Option<Vec<NodeId>>>,
     },
-    GetBlock {
-        block_hash: BlockHash,
-        responder: Responder<Option<Arc<Block>>>,
-    },
-    GetFinalitySignature {
-        block_hash: BlockHash,
-        public_key: PublicKey,
-        responder: Responder<Option<FinalitySignature>>,
-    },
 }
 
 impl Display for BlockAccumulatorRequest {
@@ -1164,20 +1154,6 @@ impl Display for BlockAccumulatorRequest {
         match self {
             BlockAccumulatorRequest::GetPeersForBlock { block_hash, .. } => {
                 write!(f, "get peers for {}", block_hash)
-            }
-            BlockAccumulatorRequest::GetBlock { block_hash, .. } => {
-                write!(f, "get block for {}", block_hash)
-            }
-            BlockAccumulatorRequest::GetFinalitySignature {
-                block_hash,
-                public_key,
-                ..
-            } => {
-                write!(
-                    f,
-                    "get finality signature of {} for {}",
-                    public_key, block_hash
-                )
             }
         }
     }
@@ -1187,7 +1163,7 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
-    SyncGlobalStates(Vec<(BlockHash, Digest)>, Vec<NodeId>),
+    SyncGlobalStates(Vec<(BlockHash, Digest)>),
     Status {
         responder: Responder<BlockSynchronizerStatus>,
     },
@@ -1205,7 +1181,7 @@ impl Display for BlockSynchronizerRequest {
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")
             }
-            BlockSynchronizerRequest::SyncGlobalStates(_, _) => {
+            BlockSynchronizerRequest::SyncGlobalStates(_) => {
                 write!(f, "request to sync global states")
             }
         }

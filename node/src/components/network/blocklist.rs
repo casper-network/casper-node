@@ -55,6 +55,8 @@ pub(crate) enum BlocklistJustification {
     MissingChainspecHash,
     /// Peer is considered dishonest.
     DishonestPeer,
+    /// Peer sent too many finality signatures.
+    SentTooManyFinalitySignatures { max_allowed: u32 },
 }
 
 impl Display for BlocklistJustification {
@@ -99,6 +101,10 @@ impl Display for BlocklistJustification {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)
             }
             BlocklistJustification::DishonestPeer => f.write_str("dishonest peer"),
+            BlocklistJustification::SentTooManyFinalitySignatures { max_allowed } => write!(
+                f,
+                "sent too many finality signatures: maximum {max_allowed} signatures are allowed"
+            ),
         }
     }
 }

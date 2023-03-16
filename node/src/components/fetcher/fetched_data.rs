@@ -12,10 +12,8 @@ pub(crate) enum FetchedData<T> {
 }
 
 impl<T> FetchedData<T> {
-    pub(crate) fn from_storage(item: T) -> Self {
-        FetchedData::FromStorage {
-            item: Box::new(item),
-        }
+    pub(crate) fn from_storage(item: Box<T>) -> Self {
+        FetchedData::FromStorage { item }
     }
 
     pub(crate) fn from_peer(item: T, peer: NodeId) -> Self {

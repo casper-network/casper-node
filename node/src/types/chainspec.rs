@@ -37,7 +37,7 @@ pub use self::{
     accounts_config::{AccountConfig, AccountsConfig, ValidatorConfig},
     activation_point::ActivationPoint,
     chainspec_raw_bytes::ChainspecRawBytes,
-    core_config::{ConsensusProtocolName, CoreConfig},
+    core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality},
     deploy_config::DeployConfig,
     error::Error,
     global_state_update::GlobalStateUpdate,

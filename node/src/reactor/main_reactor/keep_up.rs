@@ -14,6 +14,8 @@ use crate::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::EraValidatorsRequest,
+        storage::HighestOrphanedBlockResult,
+        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
     },
     effect::{
@@ -140,6 +142,12 @@ impl MainReactor {
                 return None;
             }
         }
+
+        if self.block_synchronizer.forward_progress().is_active() {
+            debug!("KeepUp: still syncing a block");
+            return None;
+        }
+
         let queue_depth = self.contract_runtime.queue_depth();
         if queue_depth > 0 {
             debug!("KeepUp: should_validate queue_depth {}", queue_depth);
@@ -170,8 +178,8 @@ impl MainReactor {
             }
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 // for a synced forward block -> we have header, body, any referenced deploys,
-                // and sufficient finality (by weight) of signatures. this node will ultimately
-                // attempt to execute this block to produce global state and execution effects.
+                // sufficient finality (by weight) of signatures, associated global state and
+                // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
         }
@@ -345,9 +353,6 @@ impl MainReactor {
         block_era_id: EraId,
         parent_metadata: ParentMetadata,
     ) -> KeepUpInstruction {
-        let simultaneous_peer_requests =
-            self.chainspec.core_config.simultaneous_peer_requests as usize;
-
         // We try to read the validator sets from global states of two blocks - if either returns
         // `RootNotFound`, we'll initiate fetching of the corresponding global state.
         let effects = async move {
@@ -371,7 +376,7 @@ impl MainReactor {
             // A return value of `Ok` means that validators were read successfully.
             // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
             // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            let result = match (parent_era_validators_result, block_era_validators_result) {
+            match (parent_era_validators_result, block_era_validators_result) {
                 // Both states were present - return the result.
                 (Ok(parent_era_validators), Ok(block_era_validators)) => {
                     Ok((parent_era_validators, block_era_validators))
@@ -406,25 +411,6 @@ impl MainReactor {
                     );
                     Err(vec![])
                 }
-            };
-
-            match result {
-                // If we got `Err`, we initiate syncing of the global states.
-                Err(global_state_hashes) => {
-                    let peers_to_ask = effect_builder
-                        .get_fully_connected_peers(simultaneous_peer_requests)
-                        .await;
-                    if peers_to_ask.is_empty() {
-                        // If no peers, we do nothing - this should effectively wait and retry
-                        // later.
-                        Err((vec![], vec![]))
-                    } else {
-                        // Return the hashes and peers.
-                        Err((global_state_hashes, peers_to_ask))
-                    }
-                }
-                // Nothing to do with an `Ok` result.
-                Ok(res) => Ok(res),
             }
         }
         .result(
@@ -438,10 +424,9 @@ impl MainReactor {
                 )
             },
             // A global state was missing - we ask the BlockSynchronizer to fetch what is needed.
-            |(global_states_to_sync, peers_to_ask)| {
+            |global_states_to_sync| {
                 MainEvent::BlockSynchronizerRequest(BlockSynchronizerRequest::SyncGlobalStates(
                     global_states_to_sync,
-                    peers_to_ask,
                 ))
             },
         );
@@ -492,10 +477,8 @@ impl MainReactor {
         parent_hash: BlockHash,
         error: LeapActivityError,
     ) -> KeepUpInstruction {
-        self.attempts += 1;
         warn!(
             %error,
-            remaining_attempts = %self.max_attempts.saturating_sub(self.attempts),
             "historical: failed leap",
         );
         self.sync_back_leaper_idle(
@@ -524,9 +507,18 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
+
+        // latch accumulator progress to allow sync-leap time to do work
+        self.block_accumulator.reset_last_progress();
+
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(parent_hash);
-        let effects =
-            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
+
+        let effects = effect_builder.immediately().event(move |_| {
+            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                sync_leap_identifier,
+                peers_to_ask,
+            })
+        });
         KeepUpInstruction::Do(offset, effects)
     }
 
@@ -542,17 +534,12 @@ impl MainReactor {
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "historical: leap received");
 
-        self.last_sync_leap_highest_block_hash = Some(block_hash);
-
         let era_validator_weights =
             sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "historical: attempt to register validators for era");
-            if self
-                .validator_matrix
-                .register_era_validator_weights_and_infer_era_0(evw)
-            {
+            if self.validator_matrix.register_era_validator_weights(evw) {
                 info!(%era_id, "historical: got era");
             } else {
                 debug!(%era_id, "historical: era already present or is not relevant");
@@ -608,7 +595,7 @@ impl MainReactor {
             block_synchronizer_progress,
             BlockSynchronizerProgress::Syncing(_, _, _)
         ) {
-            debug!("historical: sync_back_instruction: still syncing");
+            debug!("historical: still syncing");
             return Ok(Some(SyncBackInstruction::Syncing));
         }
         // in this flow there is no significant difference between Idle & Synced, as unlike in
@@ -617,7 +604,7 @@ impl MainReactor {
         // note: for a synced historical block we have header, body, global state, any execution
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
         match self.storage.get_highest_orphaned_block_header() {
-            Some(block_header) => {
+            HighestOrphanedBlockResult::Orphan(block_header) => {
                 if block_header.is_genesis() {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }
@@ -666,19 +653,18 @@ impl MainReactor {
                     }
                     Ok(None) => {
                         debug!(%parent_hash, "historical: did not find block header in storage");
-                        let era_id = if block_header.era_id() == EraId::from(0) {
-                            // if the block is in era 0 its parent can only be in era 0
-                            EraId::from(0)
-                        } else {
-                            // we do not have the parent header and thus don't know what era
-                            // the parent block is in (it could be the same era or the previous
-                            // era). we assume the worst case and ask
-                            // for the earlier era's proof;
-                            // subtracting 1 here is safe since the case where era id is 0 is
-                            // handled above
-                            block_header.era_id().saturating_sub(1)
+                        let era_id = match block_header.era_id().predecessor() {
+                            None => EraId::from(0),
+                            Some(predecessor) => {
+                                // we do not have the parent header and thus don't know what era
+                                // the parent block is in (it could be the same era or the previous
+                                // era). we assume the worst case and ask for the earlier era's
+                                // proof; subtracting 1 here is safe
+                                // since the case where era id is 0 is
+                                // handled above
+                                predecessor
+                            }
                         };
-
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: *parent_hash,
                             maybe_parent_metadata: None,
@@ -688,9 +674,16 @@ impl MainReactor {
                     Err(err) => Err(err.to_string()),
                 }
             }
-            None => {
-                debug!("historical: did not find any orphaned block headers");
-                Ok(None)
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => Err(format!(
+                "historical: storage is missing block height index entry {}",
+                block_height
+            )),
+            HighestOrphanedBlockResult::MissingHeader(block_hash) => Err(format!(
+                "historical: storage is missing block header for {}",
+                block_hash
+            )),
+            HighestOrphanedBlockResult::MissingHighestSequence => {
+                Err("historical: storage is missing highest block sequence".to_string())
             }
         }
     }
