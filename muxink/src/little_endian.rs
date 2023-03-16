@@ -1,4 +1,4 @@
-/// Little-endian integer encoding.
+/// Little-endian integer codec.
 use std::{
     marker::PhantomData,
     pin::Pin,
@@ -9,7 +9,7 @@ use bytes::Bytes;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use thiserror::Error;
 
-/// Little endian integer encoder.
+/// Little endian integer codec.
 ///
 /// Integers encoded or decoded through this sink/stream wrapper are encoded/decoded as little
 /// endian integers (via `ImmediateFrame` when encoding) before being forwarded to the underlying
@@ -21,7 +21,7 @@ pub struct LittleEndian<T, S> {
     inner: S,
     /// Phantom data pinning the accepted type.
     ///
-    /// While an encoder would not need to restrict `T`, it still is limited to a single type
+    /// While an encoder would not need to restrict `T`, it still is limited to a single type for
     /// type safety.
     _type_pin: PhantomData<T>,
 }
