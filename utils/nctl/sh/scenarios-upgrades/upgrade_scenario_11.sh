@@ -189,6 +189,8 @@ function _step_06()
     nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
     nctl-view-chain-auction-info
+    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+    nctl-view-chain-auction-info
 }
 
 # Emergency Restart this bitch with a validator swap
@@ -236,7 +238,11 @@ function _step_07()
 function _step_08()
 {
     log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
-    nctl-await-n-eras offset='2' sleep_interval='2.0' timeout='300'
+    nctl-view-chain-auction-info
+    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+    nctl-view-chain-auction-info
+    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+    nctl-view-chain-auction-info
 }
 
 # Step 08: Assert USER_ID is NOT a delegatee
