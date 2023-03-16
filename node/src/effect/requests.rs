@@ -27,8 +27,9 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes,
+    system::auction::{EraValidators, ValidatorWeights},
+    EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use crate::{
@@ -1207,5 +1208,17 @@ impl Display for SetNodeStopRequest {
             None => f.write_str("clear node stop"),
             Some(stop_at) => write!(f, "set node stop to: {}", stop_at),
         }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct UpdateEraValidatorsRequest {
+    pub era_id: EraId,
+    pub validators_to_register: ValidatorWeights,
+}
+
+impl Display for UpdateEraValidatorsRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "request to update validators for era: {}", self.era_id)
     }
 }

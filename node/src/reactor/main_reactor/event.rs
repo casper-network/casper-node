@@ -238,7 +238,8 @@ pub(crate) enum MainEvent {
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
 
     // Event related to figuring out validators for immediate switch blocks.
-    GotImmediateSwitchBlockEraValidators(EraId, EraValidators, EraValidators),
+    #[from]
+    UpdateEraValidatorsRequest(UpdateEraValidatorsRequest),
 }
 
 impl ReactorEvent for MainEvent {
@@ -351,9 +352,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
             MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
             MainEvent::UnexecutedBlockAnnouncement(_) => "UnexecutedBlockAnnouncement",
-            MainEvent::GotImmediateSwitchBlockEraValidators(_, _, _) => {
-                "GotImmediateSwitchBlockEraValidators"
-            }
+            MainEvent::UpdateEraValidatorsRequest(_) => "UpdateEraValidatorsRequest",
         }
     }
 }
@@ -533,37 +532,8 @@ impl Display for MainEvent {
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
             MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::UnexecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
-            MainEvent::GotImmediateSwitchBlockEraValidators(era_id, _, _) => {
-                write!(
-                    f,
-                    "got immediate switch block era validators for era {}",
-                    era_id
-                )
-            }
+            MainEvent::UpdateEraValidatorsRequest(inner) => Display::fmt(inner, f),
         }
-    }
-}
-
-impl From<SyncGlobalStateRequest> for MainEvent {
-    fn from(request: SyncGlobalStateRequest) -> Self {
-        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            request.into(),
-        ))
-    }
-}
-
-impl From<TrieAccumulatorRequest> for MainEvent {
-    fn from(request: TrieAccumulatorRequest) -> Self {
-        MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            block_synchronizer::GlobalStateSynchronizerEvent::TrieAccumulatorEvent(request.into()),
-        ))
-    }
-}
-
-impl From<GlobalStateSynchronizerEvent> for MainEvent {
-    fn from(event: GlobalStateSynchronizerEvent) -> Self {
-        MainEvent::BlockSynchronizer(event.into())
-    }
 }
 
 impl From<TrieAccumulatorEvent> for MainEvent {
