@@ -654,14 +654,11 @@ impl BlockSynchronizer {
                 NeedNext::EnqueueForExecution(block_hash, _) => {
                     if false == builder.should_fetch_execution_state() {
                         builder.set_in_flight_latch();
-                        results.extend(
-                            effect_builder
-                                .make_block_executable(block_hash)
-                                .event(move |result| Event::MadeFinalizedBlock {
-                                    block_hash,
-                                    result,
-                                }),
-                        )
+                        if builder.execution_unattempted() {
+                            results.extend(effect_builder.make_block_executable(block_hash).event(
+                                move |result| Event::MadeFinalizedBlock { block_hash, result },
+                            ))
+                        }
                     }
                 }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
