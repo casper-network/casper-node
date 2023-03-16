@@ -15,6 +15,7 @@ mod node_id;
 pub mod peers_map;
 mod status_feed;
 mod sync_leap;
+mod trie_or_chunk;
 mod validator_matrix;
 mod value_or_chunk;
 
@@ -54,9 +55,9 @@ pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{SyncLeap, SyncLeapIdentifier};
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
-pub use value_or_chunk::{
-    ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
-};
+pub use value_or_chunk::{ChunkingError, ValueOrChunk};
+
+pub(crate) use trie_or_chunk::{TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}

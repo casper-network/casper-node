@@ -8,15 +8,10 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::{
-    ChunkWithProof, ChunkWithProofVerificationError, Digest, MerkleConstructionError,
-};
+use casper_hashing::{ChunkWithProof, Digest, MerkleConstructionError};
 
 use super::Chunkable;
-use crate::{
-    components::fetcher::{EmptyValidationMetadata, FetchItem, Tag},
-    utils::ds,
-};
+use crate::utils::ds;
 
 /// Represents a value or a chunk of data with attached proof.
 ///
@@ -136,7 +131,7 @@ impl Display for HashingTrieRaw {
 }
 
 impl HashingTrieRaw {
-    fn hash(&self) -> Digest {
+    pub(crate) fn hash(&self) -> Digest {
         *self.hash.get_or_init(|| Digest::hash(self.inner.inner()))
     }
 
@@ -146,71 +141,6 @@ impl HashingTrieRaw {
 
     pub fn into_inner(self) -> TrieRaw {
         self.inner
-    }
-}
-
-/// Represents an enum that can contain either a whole trie or a chunk of it.
-pub type TrieOrChunk = ValueOrChunk<HashingTrieRaw>;
-
-impl FetchItem for TrieOrChunk {
-    type Id = TrieOrChunkId;
-    type ValidationError = ChunkWithProofVerificationError;
-    type ValidationMetadata = EmptyValidationMetadata;
-
-    const TAG: Tag = Tag::TrieOrChunk;
-
-    fn fetch_id(&self) -> Self::Id {
-        match self {
-            TrieOrChunk::Value(trie_raw) => TrieOrChunkId(0, trie_raw.hash()),
-            TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
-                chunked_data.proof().index(),
-                chunked_data.proof().root_hash(),
-            ),
-        }
-    }
-
-    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        match self {
-            TrieOrChunk::Value(_) => Ok(()),
-            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
-        }
-    }
-}
-
-/// Represents the ID of a `TrieOrChunk` - containing the index and the root hash.
-/// The root hash is the hash of the trie node as a whole.
-/// The index is the index of a chunk if the node's size is too large and requires chunking. For
-/// small nodes, it's always 0.
-#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TrieOrChunkId(pub u64, pub Digest);
-
-impl TrieOrChunkId {
-    /// Returns the trie key part of the ID.
-    pub fn digest(&self) -> &Digest {
-        &self.1
-    }
-
-    /// Given a serialized ID, deserializes it for display purposes.
-    fn fmt_serialized(f: &mut Formatter, serialized_id: &[u8]) -> fmt::Result {
-        match bincode::deserialize::<Self>(serialized_id) {
-            Ok(ref trie_or_chunk_id) => Display::fmt(trie_or_chunk_id, f),
-            Err(_) => f.write_str("<invalid>"),
-        }
-    }
-}
-
-/// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
-pub struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
-
-impl<'a> Display for TrieOrChunkIdDisplay<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        TrieOrChunkId::fmt_serialized(f, self.0)
-    }
-}
-
-impl Display for TrieOrChunkId {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "({}, {})", self.0, self.1)
     }
 }
 

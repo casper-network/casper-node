@@ -1,5 +1,6 @@
 //! Errors in constructing and validating indexed Merkle proofs, chunks with indexed Merkle proofs.
 use casper_types::bytesrepr;
+use datasize::DataSize;
 
 use crate::{ChunkWithProof, Digest};
 
@@ -15,7 +16,7 @@ pub enum Error {
 }
 
 /// Error validating a Merkle proof of a chunk.
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[derive(thiserror::Error, Debug, PartialEq, Eq, DataSize, Clone)]
 #[non_exhaustive]
 pub enum MerkleVerificationError {
     /// Index out of bounds.
@@ -46,7 +47,7 @@ pub enum MerkleVerificationError {
 }
 
 /// Error validating a chunk with proof.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, DataSize, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ChunkWithProofVerificationError {
     /// Indexed Merkle proof verification error.
