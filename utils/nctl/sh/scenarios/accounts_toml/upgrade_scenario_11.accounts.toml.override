@@ -10,7 +10,7 @@ balance = "1000000000000000000000000000000000"
 
 [accounts.validator]
 bonded_amount = "1"
-delegation_rate = 1
+delegation_rate = 100
 
 # VALIDATOR 2.
 [[accounts]]
@@ -18,8 +18,8 @@ public_key = "PBK_V2"
 balance = "1000000000000000000000000000000000"
 
 [accounts.validator]
-bonded_amount = "1"
-delegation_rate = 2
+bonded_amount = "2"
+delegation_rate = 100
 
 # VALIDATOR 3.
 [[accounts]]
@@ -27,8 +27,8 @@ public_key = "PBK_V3"
 balance = "1000000000000000000000000000000000"
 
 [accounts.validator]
-bonded_amount = "1"
-delegation_rate = 3
+bonded_amount = "3"
+delegation_rate = 100
 
 # VALIDATOR 4.
 [[accounts]]
@@ -36,8 +36,8 @@ public_key = "PBK_V4"
 balance = "1000000000000000000000000000000000"
 
 [accounts.validator]
-bonded_amount = "1"
-delegation_rate = 4
+bonded_amount = "4"
+delegation_rate = 100
 
 # VALIDATOR 5.
 [[accounts]]
@@ -45,7 +45,7 @@ public_key = "PBK_V5"
 balance = "1000000000000000000000000000000000"
 
 [accounts.validator]
-bonded_amount = "1"
+bonded_amount = "5"
 delegation_rate = 100
 
 # VALIDATOR 6.
@@ -103,7 +103,7 @@ delegated_amount = "1"
 
 # USER 5.
 [[delegators]]
-validator_public_key = "PBK_V4"
+validator_public_key = "PBK_V5"
 delegator_public_key = "PBK_U5"
 balance = "1000000000000000000000000000000000"
 delegated_amount = "1"
