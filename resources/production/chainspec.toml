@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.4.8'
+version = '1.4.13'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 3000
+activation_point = 5900
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -134,8 +134,6 @@ const = 110
 local = 390
 # Global operations multiplier.
 global = 390
-# Control flow operations multiplier.
-control_flow = 440000
 # Integer operations multiplier.
 integer_comparison = 250
 # Conversion operations multiplier.
@@ -150,6 +148,27 @@ current_memory = 290
 grow_memory = 240_000
 # Regular opcode cost.
 regular = 210
+
+# Control flow operations multiplier.
+[wasm.opcode_costs.control_flow]
+block = 440
+loop = 440
+if = 440
+else = 440
+end = 440
+br = 440_000
+br_if = 440_000
+return = 440
+select = 440
+call = 440
+call_indirect = 440
+drop = 440
+
+[wasm.opcode_costs.control_flow.br_table]
+# Fixed cost per `br_table` opcode
+cost = 440_000
+# Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
+size_multiplier = 100
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm.host_function_costs]
@@ -204,9 +223,9 @@ wasmless_transfer_cost = 100_000_000
 get_era_validators = 10_000
 read_seigniorage_recipients = 10_000
 add_bid = 2_500_000_000
-withdraw_bid = 10_000
+withdraw_bid = 2_500_000_000
 delegate = 2_500_000_000
-undelegate = 10_000
+undelegate = 2_500_000_000
 run_auction = 10_000
 slash = 10_000
 distribute = 10_000
