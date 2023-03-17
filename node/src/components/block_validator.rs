@@ -272,10 +272,9 @@ where
                 // We register ourselves as someone interested in the ultimate validation result.
                 state.responders.push(responder);
 
-                let in_flight = &mut self.in_flight;
                 effects.extend(block_deploys.into_iter().flat_map(|(dt_hash, _)| {
                     // For every request, increase the number of in-flight...
-                    in_flight.inc(&dt_hash.into());
+                    self.in_flight.inc(&dt_hash.into());
                     // ...then request it.
                     fetch_deploy(effect_builder, dt_hash, sender.clone())
                 }));
