@@ -130,7 +130,7 @@ function _step_03()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$ACTIVATION_POINT"
+            era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
         echo ""
     done
 
@@ -267,7 +267,7 @@ function _step_09()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$ACTIVATION_POINT"
+            era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
         echo ""
         # add hash to upgrades config
         PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"

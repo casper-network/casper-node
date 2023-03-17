@@ -107,7 +107,7 @@ function _step_03()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$ACTIVATION_POINT"
+            era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
         echo ""
     done
 
@@ -207,7 +207,7 @@ function _stage_node_with_trusted_hash()
         stage="$STAGE_ID" \
         verbose=false \
         node="$NODE_ID" \
-        era="$ACTIVATION_POINT"
+        era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
     echo ""
 
     source "$NCTL/sh/node/start.sh" node="$NODE_ID" hash="$BLOCK_HASH"
