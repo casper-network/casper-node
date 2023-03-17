@@ -1,7 +1,4 @@
 //! Support for applying upgrades on the execution engine.
-#[doc(hidden)]
-pub mod migrations;
-
 use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
@@ -16,7 +13,9 @@ use casper_types::{
 };
 
 use crate::{
-    core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
+    core::{
+        engine_state::execution_effect::ExecutionEffect, execution, tracking_copy::TrackingCopy,
+    },
     shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
 };
@@ -163,7 +162,7 @@ pub enum ProtocolUpgradeError {
     FailedToCreateSystemRegistry,
     /// Failed to migrate global state.
     #[error("Failed to perform global state migration: {0}")]
-    Migration(migrations::Error),
+    MigrationRun(#[from] execution::Error),
 }
 
 impl From<bytesrepr::Error> for ProtocolUpgradeError {

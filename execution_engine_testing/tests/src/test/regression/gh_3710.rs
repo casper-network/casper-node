@@ -5,14 +5,13 @@ use casper_types::{EraId, Key, KeyTag, ProtocolVersion};
 
 use crate::lmdb_fixture;
 
-const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const FIXTURE_N_ERAS: usize = 10;
 
 const GH_3710_FIXTURE: &str = "gh_3710";
 
 #[ignore]
 #[test]
-fn gh_3710_should_delete_era_infos_at_upgrade_point() {
+fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
@@ -27,7 +26,9 @@ fn gh_3710_should_delete_era_infos_at_upgrade_point() {
         .try_into()
         .expect("auction delay should be positive");
 
-    let last_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
+    let last_expected_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
+    let first_era_after_protocol_upgrade = last_expected_era_info.successor();
+
     let pre_upgrade_state_root_hash = builder.get_post_state_hash();
 
     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
@@ -43,12 +44,18 @@ fn gh_3710_should_delete_era_infos_at_upgrade_point() {
     let era_info_keys_before_upgrade = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
+    dbg!(&era_info_keys_before_upgrade);
+
+    assert_eq!(
+        era_info_keys_before_upgrade.len(),
+        auction_delay as usize + 1 + FIXTURE_N_ERAS,
+    );
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(previous_protocol_version)
             .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_activation_point(first_era_after_protocol_upgrade)
             .build()
     };
 
@@ -65,19 +72,16 @@ fn gh_3710_should_delete_era_infos_at_upgrade_point() {
         "sanity check"
     );
 
-    let era_info_keys_after_upgrade = builder
+    let mut era_info_keys_after_upgrade = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
-    assert_eq!(
-        era_info_keys_before_upgrade.len(),
-        auction_delay as usize + 1 + FIXTURE_N_ERAS,
-    );
-    assert_eq!(era_info_keys_after_upgrade, Vec::new());
+
+    assert_eq!(era_info_keys_after_upgrade, era_info_keys_before_upgrade);
 
     let last_era_info_value = builder
         .query(
             Some(pre_upgrade_state_root_hash),
-            Key::EraInfo(last_era_info),
+            Key::EraInfo(last_expected_era_info),
             &[],
         )
         .expect("should query pre-upgrade stored value");
