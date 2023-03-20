@@ -37,7 +37,7 @@ The Casper MainNet is live.
 
 
 
-## Running a Validator casper-node from Source
+## Running a casper-node from source
 
 ### Pre-Requisites for Building
 
