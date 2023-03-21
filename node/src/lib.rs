@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_block_iter() {
+    fn should_create_valid_chain() {
         let mut rng = TestRng::new();
         let mut test_block = TestChainSpec::new(&mut rng, None, &[]);
         let mut block_batch = test_block.iter().take(100);
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn test_block_iter_creates_switch_blocks() {
+    fn should_create_switch_blocks() {
         let switch_block_indices = vec![0, 10, 76];
 
         let validators: Vec<_> = iter::repeat_with(crypto::generate_ed25519_keypair)
