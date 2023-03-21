@@ -75,6 +75,8 @@ function main() {
     log "------------------------------------------------------------"
     log "Upgrade after emergency upgrade test ends"
     log "------------------------------------------------------------"
+
+    nctl-assets-teardown
 }
 
 function log_step() {
