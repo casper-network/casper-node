@@ -1,22 +1,27 @@
-use bytesrepr_derive::ToBytes;
-use casper_types::bytesrepr::ToBytes;
+use std::fmt::Debug;
 
-#[derive(ToBytes, Debug)]
+use bytesrepr_derive::{FromBytes, ToBytes};
+use casper_types::bytesrepr::{FromBytes, ToBytes};
+
+#[derive(FromBytes, ToBytes, Debug, PartialEq)]
 struct MyNamedStruct {
     a: u64,
     b: u32,
     c: String,
 }
 
-#[derive(ToBytes, Debug)]
+#[derive(ToBytes, Debug, PartialEq)]
 struct MyUnnamedStruct(u64, u32, String);
 
 fn roundtrip_value<T>(value: T)
 where
-    T: ToBytes,
+    T: FromBytes + ToBytes + PartialEq + Debug,
 {
-    let encoded = value.to_bytes();
-    // TODO: Deserialize.
+    let encoded = value.to_bytes().expect("serialization failed");
+    let (decoded, remainder) =
+        <T as FromBytes>::from_bytes(&encoded).expect("deserialization failed");
+    assert_eq!(remainder.len(), 0);
+    assert_eq!(value, decoded);
 }
 
 #[test]
