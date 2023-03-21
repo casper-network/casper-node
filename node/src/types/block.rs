@@ -540,7 +540,30 @@ impl FinalizedBlock {
         let block_payload = BlockPayload::new(deploys, vec![], vec![], random_bit);
 
         let era_report = if is_switch {
-            Some(random_era_report(rng))
+            let equivocators_count = rng.gen_range(0..5);
+            let rewards_count = rng.gen_range(0..5);
+            let inactive_count = rng.gen_range(0..5);
+            Some(EraReport {
+                equivocators: iter::repeat_with(|| {
+                    PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
+                })
+                .take(equivocators_count)
+                .collect(),
+                rewards: iter::repeat_with(|| {
+                    let pub_key = PublicKey::from(
+                        &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+                    );
+                    let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
+                    (pub_key, reward)
+                })
+                .take(rewards_count)
+                .collect(),
+                inactive_validators: iter::repeat_with(|| {
+                    PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
+                })
+                .take(inactive_count)
+                .collect(),
+            })
         } else {
             None
         };
@@ -2538,34 +2561,5 @@ mod tests {
         };
         // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.is_verified().is_err());
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-pub fn random_era_report(rng: &mut TestRng) -> EraReport {
-    use std::iter;
-
-    let equivocators_count = rng.gen_range(0..5);
-    let rewards_count = rng.gen_range(0..5);
-    let inactive_count = rng.gen_range(0..5);
-    EraReport {
-        equivocators: iter::repeat_with(|| {
-            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
-        })
-        .take(equivocators_count)
-        .collect(),
-        rewards: iter::repeat_with(|| {
-            let pub_key =
-                PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
-            let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
-            (pub_key, reward)
-        })
-        .take(rewards_count)
-        .collect(),
-        inactive_validators: iter::repeat_with(|| {
-            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
-        })
-        .take(inactive_count)
-        .collect(),
     }
 }
