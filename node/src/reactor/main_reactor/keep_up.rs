@@ -6,8 +6,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, Timestamp};
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::{
@@ -22,7 +21,7 @@ use crate::{
         requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{ActivationPoint, BlockHash, SyncLeap, SyncLeapIdentifier},
+    types::{ActivationPoint, BlockHash, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
@@ -38,24 +37,11 @@ pub(super) enum KeepUpInstruction {
 enum SyncBackInstruction {
     Sync {
         parent_hash: BlockHash,
-        maybe_parent_metadata: Option<ParentMetadata>,
         era_id: EraId,
     },
     Syncing,
     TtlSynced,
     GenesisSynced,
-}
-
-// Additional data for syncing blocks immediately after upgrades
-#[derive(Debug)]
-struct ParentMetadata {
-    // Global state and protocol version of the block after upgrade
-    global_state_hash: Digest,
-    protocol_version: ProtocolVersion,
-    // Hash, global state and protocol version of the parent of the block after upgrade
-    parent_hash: BlockHash,
-    parent_state_hash: Digest,
-    parent_protocol_version: ProtocolVersion,
 }
 
 impl Display for SyncBackInstruction {
@@ -307,33 +293,13 @@ impl MainReactor {
                 }
                 SyncBackInstruction::Sync {
                     parent_hash,
-                    maybe_parent_metadata,
                     era_id,
                 } => {
                     debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "historical: sync back instruction");
-                    match (
-                        self.validator_matrix.has_era(&era_id),
-                        maybe_parent_metadata,
-                    ) {
-                        (true, _) => {
-                            Some(self.sync_back_register(effect_builder, rng, parent_hash))
-                        }
-                        (false, None) => {
-                            Some(self.sync_back_leap(effect_builder, rng, parent_hash))
-                        }
-                        (false, Some(parent_metadata)) => {
-                            // The validators matrix doesn't have the validators _and_ we are trying
-                            // to sync a block immediately after an upgrade; we need to read the
-                            // validators from the global states of the block and its parent and
-                            // compare them in order to decide which validators to use - might
-                            // require syncing global states in the process.
-                            Some(self.try_read_validators_for_block_after_upgrade(
-                                effect_builder,
-                                parent_hash,
-                                era_id,
-                                parent_metadata,
-                            ))
-                        }
+                    if self.validator_matrix.has_era(&era_id) {
+                        Some(self.sync_back_register(effect_builder, rng, parent_hash))
+                    } else {
+                        Some(self.sync_back_leap(effect_builder, rng, parent_hash))
                     }
                 }
             },
@@ -347,34 +313,32 @@ impl MainReactor {
     fn try_read_validators_for_block_after_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
-        block_hash: BlockHash,
-        block_era_id: EraId,
-        parent_metadata: ParentMetadata,
+        global_states_metadata: GlobalStatesMetadata,
     ) -> KeepUpInstruction {
         // We try to read the validator sets from global states of two blocks - if either returns
         // `RootNotFound`, we'll initiate fetching of the corresponding global state.
         let effects = async move {
             // Send the requests to contract runtime.
-            let parent_era_validators_request = EraValidatorsRequest::new(
-                parent_metadata.parent_state_hash,
-                parent_metadata.parent_protocol_version,
+            let before_era_validators_request = EraValidatorsRequest::new(
+                global_states_metadata.before_state_hash,
+                global_states_metadata.before_protocol_version,
             );
-            let parent_era_validators_result = effect_builder
-                .get_era_validators_from_contract_runtime(parent_era_validators_request)
+            let before_era_validators_result = effect_builder
+                .get_era_validators_from_contract_runtime(before_era_validators_request)
                 .await;
-            let block_era_validators_request = EraValidatorsRequest::new(
-                parent_metadata.global_state_hash,
-                parent_metadata.protocol_version,
+            let after_era_validators_request = EraValidatorsRequest::new(
+                global_states_metadata.after_state_hash,
+                global_states_metadata.after_protocol_version,
             );
-            let block_era_validators_result = effect_builder
-                .get_era_validators_from_contract_runtime(block_era_validators_request)
+            let after_era_validators_result = effect_builder
+                .get_era_validators_from_contract_runtime(after_era_validators_request)
                 .await;
 
             // Check the results.
             // A return value of `Ok` means that validators were read successfully.
             // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
             // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            match (parent_era_validators_result, block_era_validators_result) {
+            match (before_era_validators_result, after_era_validators_result) {
                 // Both states were present - return the result.
                 (Ok(parent_era_validators), Ok(block_era_validators)) => {
                     Ok((parent_era_validators, block_era_validators))
@@ -385,26 +349,30 @@ impl MainReactor {
                     Err(GetEraValidatorsError::RootNotFound),
                 ) => Err(vec![
                     (
-                        parent_metadata.parent_hash,
-                        parent_metadata.parent_state_hash,
+                        global_states_metadata.before_hash,
+                        global_states_metadata.before_state_hash,
                     ),
-                    (block_hash, parent_metadata.global_state_hash),
+                    (
+                        global_states_metadata.after_hash,
+                        global_states_metadata.after_state_hash,
+                    ),
                 ]),
-                // The block's global state was missing - return the hashes.
-                (Ok(_), Err(GetEraValidatorsError::RootNotFound)) => {
-                    Err(vec![(block_hash, parent_metadata.global_state_hash)])
-                }
-                // The parent's global state was missing - return the hashes.
+                // The after-block's global state was missing - return the hashes.
+                (Ok(_), Err(GetEraValidatorsError::RootNotFound)) => Err(vec![(
+                    global_states_metadata.after_hash,
+                    global_states_metadata.after_state_hash,
+                )]),
+                // The before-block's global state was missing - return the hashes.
                 (Err(GetEraValidatorsError::RootNotFound), Ok(_)) => Err(vec![(
-                    parent_metadata.parent_hash,
-                    parent_metadata.parent_state_hash,
+                    global_states_metadata.before_hash,
+                    global_states_metadata.before_state_hash,
                 )]),
                 // We got some error other than `RootNotFound` - just log the error and don't
                 // synchronize anything.
-                (parent_result, block_result) => {
+                (before_result, after_result) => {
                     error!(
-                        ?parent_result,
-                        ?block_result,
+                        ?before_result,
+                        ?after_result,
                         "couldn't read era validators from global state in block"
                     );
                     Err(vec![])
@@ -414,11 +382,11 @@ impl MainReactor {
         .result(
             // We got the era validators - just emit the event that will cause them to be compared,
             // validators matrix to be updated and reactor to be cranked.
-            move |(parent_era_validators, block_era_validators)| {
+            move |(before_era_validators, after_era_validators)| {
                 MainEvent::GotBlockAfterUpgradeEraValidators(
-                    block_era_id,
-                    parent_era_validators,
-                    block_era_validators,
+                    global_states_metadata.after_era_id,
+                    before_era_validators,
+                    after_era_validators,
                 )
             },
             // A global state was missing - we ask the BlockSynchronizer to fetch what is needed.
@@ -461,7 +429,7 @@ impl MainReactor {
                 best_available,
                 from_peers: _,
                 ..
-            } => self.sync_back_leap_received(*best_available),
+            } => self.sync_back_leap_received(effect_builder, *best_available),
             LeapState::Failed { error, .. } => {
                 self.sync_back_leap_failed(effect_builder, rng, parent_hash, error)
             }
@@ -520,7 +488,11 @@ impl MainReactor {
         KeepUpInstruction::Do(offset, effects)
     }
 
-    fn sync_back_leap_received(&mut self, sync_leap: SyncLeap) -> KeepUpInstruction {
+    fn sync_back_leap_received(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+        sync_leap: SyncLeap,
+    ) -> KeepUpInstruction {
         // use the leap response to update our recent switch block data (if relevant) and
         // era validator weights. if there are other processes which are holding on discovery
         // of relevant newly-seen era validator weights, they should naturally progress
@@ -543,7 +515,15 @@ impl MainReactor {
                 debug!(%era_id, "historical: era already present or is not relevant");
             }
         }
-        KeepUpInstruction::CheckLater("historical sync leap received".to_string(), Duration::ZERO)
+
+        if let Some(global_states_metadata) = sync_leap.global_states_for_sync_across_upgrade() {
+            self.try_read_validators_for_block_after_upgrade(effect_builder, global_states_metadata)
+        } else {
+            KeepUpInstruction::CheckLater(
+                "historical sync leap received".to_string(),
+                Duration::ZERO,
+            )
+        }
     }
 
     fn sync_back_register(
@@ -616,36 +596,13 @@ impl MainReactor {
                         // even if we don't have a complete block (all parts and dependencies)
                         // we may have the parent's block header; if we do we also
                         // know its era which allows us to know if we have the validator
-                        // set for that era or not;
-                        // note: there is a special case here where the parent might be an
-                        // block created immediately after an upgrade - we check for that case by
-                        // attempting to read its parent and seeing whether the protocol versions
-                        // differ; if they do, we pass the parent metadata on in the Sync
-                        // instruction, so that we can read the correct set of validators if the
-                        // validators matrix doesn't have the validators for the parent's era yet
-                        let maybe_parent_metadata = self
-                            .storage
-                            .read_block_header(parent_block_header.parent_hash())
-                            .map_err(|err| err.to_string())?
-                            .and_then(|grandparent_header| {
-                                (parent_block_header.protocol_version()
-                                    != grandparent_header.protocol_version())
-                                .then(|| ParentMetadata {
-                                    global_state_hash: *parent_block_header.state_root_hash(),
-                                    protocol_version: parent_block_header.protocol_version(),
-                                    parent_hash: grandparent_header.block_hash(),
-                                    parent_state_hash: *grandparent_header.state_root_hash(),
-                                    parent_protocol_version: grandparent_header.protocol_version(),
-                                })
-                            });
+                        // set for that era or not
                         debug!(
                             ?parent_block_header,
-                            ?maybe_parent_metadata,
                             "historical: found parent block header in storage"
                         );
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: parent_block_header.block_hash(),
-                            maybe_parent_metadata,
                             era_id: parent_block_header.era_id(),
                         }))
                     }
@@ -665,7 +622,6 @@ impl MainReactor {
                         };
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: *parent_hash,
-                            maybe_parent_metadata: None,
                             era_id,
                         }))
                     }

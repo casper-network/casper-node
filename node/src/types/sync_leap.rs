@@ -11,7 +11,8 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{crypto, EraId};
+use casper_hashing::Digest;
+use casper_types::{crypto, EraId, ProtocolVersion};
 use tracing::error;
 
 use crate::{
@@ -92,6 +93,20 @@ impl Display for SyncLeapIdentifier {
     }
 }
 
+// Additional data for syncing blocks immediately after upgrades
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GlobalStatesMetadata {
+    // Hash, era ID, global state and protocol version of the block after upgrade
+    pub(crate) after_hash: BlockHash,
+    pub(crate) after_era_id: EraId,
+    pub(crate) after_state_hash: Digest,
+    pub(crate) after_protocol_version: ProtocolVersion,
+    // Hash, global state and protocol version of the block before upgrade
+    pub(crate) before_hash: BlockHash,
+    pub(crate) before_state_hash: Digest,
+    pub(crate) before_protocol_version: ProtocolVersion,
+}
+
 /// Headers and signatures required to prove that if a given trusted block hash is on the correct
 /// chain, then so is a later header, which should be the most recent one according to the sender.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, DataSize)]
@@ -151,6 +166,34 @@ impl SyncLeap {
                         ))
                     }),
             )
+    }
+
+    pub(crate) fn global_states_for_sync_across_upgrade(&self) -> Option<GlobalStatesMetadata> {
+        let headers_by_height: HashMap<_, _> =
+            self.headers().map(|hdr| (hdr.height(), hdr)).collect();
+
+        let maybe_header_before_upgrade = self.switch_blocks().find(|header| {
+            headers_by_height
+                .get(&(header.height() + 1))
+                .map_or(false, |other_header| {
+                    other_header.protocol_version() != header.protocol_version()
+                })
+        });
+
+        maybe_header_before_upgrade.map(|before_header| {
+            let after_header = headers_by_height
+                .get(&(before_header.height() + 1))
+                .unwrap(); // safe, because it had to be Some when we checked it above
+            GlobalStatesMetadata {
+                after_hash: after_header.block_hash(),
+                after_era_id: after_header.era_id(),
+                after_state_hash: *after_header.state_root_hash(),
+                after_protocol_version: after_header.protocol_version(),
+                before_hash: before_header.block_hash(),
+                before_state_hash: *before_header.state_root_hash(),
+                before_protocol_version: before_header.protocol_version(),
+            }
+        })
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
