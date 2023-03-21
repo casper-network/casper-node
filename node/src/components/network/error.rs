@@ -1,7 +1,7 @@
 use std::{io, net::SocketAddr};
 
 use casper_hashing::Digest;
-use casper_types::{crypto, ProtocolVersion};
+use casper_types::{bytesrepr, crypto, ProtocolVersion};
 use datasize::DataSize;
 use muxink::{demux::DemultiplexerError, fragmented::DefragmentizerError};
 use openssl::{error::ErrorStack, ssl};
@@ -225,7 +225,7 @@ pub enum MessageReaderError {
     ReceiveError(DefragmentizerError<DemultiplexerError<io::Error>>),
     /// Error deserializing message.
     #[error("message deserialization error")]
-    DeserializationError(bincode::Error),
+    DeserializationError(bytesrepr::Error),
     /// Wrong channel for received message.
     #[error("received a {got} message on channel {expected}")]
     WrongChannel {

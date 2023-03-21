@@ -7,7 +7,10 @@ use std::{
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{
+    bytesrepr::{FromBytes, ToBytes},
+    crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature,
+};
 use datasize::DataSize;
 use futures::future::BoxFuture;
 use serde::{
@@ -122,6 +125,22 @@ impl<P: Payload> Message<P> {
             Message::Ping { .. } => Channel::Network,
             Message::Pong { .. } => Channel::Network,
         }
+    }
+}
+
+impl<P> FromBytes for Message<P> {
+    fn from_bytes(_bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+        todo!()
+    }
+}
+
+impl<P> ToBytes for Message<P> {
+    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+        todo!()
+    }
+
+    fn serialized_length(&self) -> usize {
+        todo!()
     }
 }
 
