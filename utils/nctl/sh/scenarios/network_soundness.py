@@ -70,7 +70,7 @@ def compile_node():
 
 def start_network():
     log("*** starting network ***")
-    command = "nctl-assets-teardown && NCTL_NODE_LOG_FORMAT=text nctl-assets-setup && RUST_LOG=debug nctl-start"
+    command = "nctl-assets-teardown && nctl-assets-setup && RUST_LOG=debug nctl-start"
     invoke(command)
 
 
