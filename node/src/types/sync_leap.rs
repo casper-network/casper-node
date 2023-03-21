@@ -340,9 +340,10 @@ mod tests {
         components::fetcher::FetchItem,
         tests::{TestBlockIterator, TestChainSpec, ValidatorSpec},
         types::{
-            chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError, ActivationPoint,
-            Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-            EraValidatorWeights, FinalitySignature, SyncLeapIdentifier, SyncLeapValidationMetaData,
+            chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError,
+            sync_leap_validation_metadata::SyncLeapValidationMetaData, ActivationPoint, Block,
+            BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights,
+            FinalitySignature, SyncLeapIdentifier,
         },
         utils::BlockSignatureError,
     };

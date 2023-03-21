@@ -54,8 +54,8 @@ use crate::{
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
         BlockSignatures, Chainspec, Deploy, FinalitySignature, FinalitySignatureId, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier,
-        SyncLeapValidationMetaData, TrieOrChunk, ValidatorMatrix,
+        MetaBlock, MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -698,7 +698,7 @@ impl BlockSynchronizer {
                             .fetch::<SyncLeap>(
                                 SyncLeapIdentifier::sync_to_historical(builder.block_hash()),
                                 node_id,
-                                SyncLeapValidationMetaData::from_chainspec(&chainspec),
+                                chainspec.as_ref().into(),
                             )
                             .event(Event::SyncLeapFetched)
                     }))

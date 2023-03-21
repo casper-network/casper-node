@@ -36,7 +36,7 @@ use crate::{
         AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
-        LegacyDeploy, SyncLeapIdentifier, SyncLeapValidationMetaData,
+        LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -1558,9 +1558,7 @@ fn should_get_sync_leap() {
         vec![7, 10, 12]
     );
 
-    sync_leap
-        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
-        .unwrap();
+    sync_leap.validate(&chainspec.into()).unwrap();
 }
 
 #[test]
@@ -1583,9 +1581,7 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     );
     assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
 
-    sync_leap
-        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
-        .unwrap();
+    sync_leap.validate(&chainspec.into()).unwrap();
 }
 
 #[test]
@@ -1608,9 +1604,7 @@ fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block()
     );
     assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
 
-    sync_leap
-        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
-        .unwrap();
+    sync_leap.validate(&chainspec.into()).unwrap();
 }
 
 #[test]

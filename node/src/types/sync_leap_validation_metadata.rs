@@ -28,8 +28,21 @@ impl SyncLeapValidationMetaData {
             finality_threshold_fraction,
         }
     }
+}
 
-    pub(crate) fn from_chainspec(chainspec: &Chainspec) -> Self {
+impl From<Chainspec> for SyncLeapValidationMetaData {
+    fn from(chainspec: Chainspec) -> Self {
+        Self {
+            recent_era_count: chainspec.core_config.recent_era_count(),
+            activation_point: chainspec.protocol_config.activation_point,
+            global_state_update: chainspec.protocol_config.global_state_update.clone(),
+            finality_threshold_fraction: chainspec.core_config.finality_threshold_fraction,
+        }
+    }
+}
+
+impl From<&Chainspec> for SyncLeapValidationMetaData {
+    fn from(chainspec: &Chainspec) -> Self {
         Self {
             recent_era_count: chainspec.core_config.recent_era_count(),
             activation_point: chainspec.protocol_config.activation_point,
