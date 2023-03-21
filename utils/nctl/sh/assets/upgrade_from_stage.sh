@@ -100,7 +100,7 @@ function _main()
                          "$PROTOCOL_VERSION"
         setup_asset_binaries "$PROTOCOL_VERSION" \
                              "$COUNT_NODES" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-client" \
+                             "$NCTL_CASPER_CLIENT_HOME/target/$NCTL_COMPILE_TARGET/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
