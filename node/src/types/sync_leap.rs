@@ -333,8 +333,9 @@ mod tests {
         iter,
     };
 
-    use casper_types::{crypto, testing::TestRng, Signature, U512};
+    use casper_types::{crypto, testing::TestRng, EraId, ProtocolVersion, Signature, U512};
     use num_rational::Ratio;
+    use rand::Rng;
 
     use crate::{
         components::fetcher::FetchItem,
@@ -349,6 +350,39 @@ mod tests {
     };
 
     use super::SyncLeap;
+
+    fn random_block_at_height(rng: &mut TestRng, height: u64) -> Block {
+        let era_id = rng.gen();
+        let protocol_version = ProtocolVersion::default();
+        let is_switch = rng.gen();
+
+        Block::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            protocol_version,
+            is_switch,
+            iter::empty(),
+        )
+    }
+
+    fn random_switch_block_at_height_and_era(
+        rng: &mut TestRng,
+        height: u64,
+        era_id: EraId,
+    ) -> Block {
+        let protocol_version = ProtocolVersion::default();
+        let is_switch = true;
+
+        Block::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            protocol_version,
+            is_switch,
+            iter::empty(),
+        )
+    }
 
     fn make_signed_block_header_from_height(
         height: usize,
@@ -517,8 +551,7 @@ mod tests {
         let validation_metadata = test_sync_leap_validation_metadata();
 
         // Trusted ancestors can't be empty when trusted block height is greater than 0.
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(1);
+        let block = random_block_at_height(&mut rng, 1);
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
@@ -534,8 +567,7 @@ mod tests {
 
         // When trusted block height is 0 and trusted ancestors are empty, validate
         // should yield a result different than `SyncLeapValidationError::MissingTrustedAncestors`.
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(0);
+        let block = random_block_at_height(&mut rng, 0);
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
@@ -560,8 +592,7 @@ mod tests {
         // Max allowed size should NOT trigger the `TooManySwitchBlocks` error.
         let generated_block_count = max_allowed_size;
 
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(0);
+        let block = random_block_at_height(&mut rng, 0);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
@@ -586,8 +617,7 @@ mod tests {
         // Generating one more block should trigger the `TooManySwitchBlocks` error.
         let generated_block_count = max_allowed_size + 1;
 
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(0);
+        let block = random_block_at_height(&mut rng, 0);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
@@ -619,8 +649,7 @@ mod tests {
         // expected to be sorted backwards (from the most recent ancestor back to the switch block).
         // Therefore, the generated blocks should cause the `TrustedAncestorsNotSorted` error to be
         // triggered.
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(0);
+        let block = random_block_at_height(&mut rng, 0);
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
 
@@ -643,8 +672,7 @@ mod tests {
 
         // Single trusted ancestor header it should never trigger the `TrustedAncestorsNotSorted`
         // error.
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(0);
+        let block = random_block_at_height(&mut rng, 0);
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
 
@@ -674,8 +702,7 @@ mod tests {
         // Make sure `TestBlockIterator` creates no switch blocks.
         let switch_blocks = None;
 
-        let mut block = Block::random(&mut rng);
-        block.header_mut().set_height(0);
+        let block = random_block_at_height(&mut rng, 0);
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, switch_blocks, Default::default());
 
@@ -1685,15 +1712,13 @@ mod tests {
         BlockHeaderWithMetadata,
         BlockHeaderWithMetadata,
     ) {
-        let mut signed_block_1 = Block::random_switch_block(&mut rng);
-        signed_block_1.header_mut().set_height(height_1);
-        signed_block_1.header_mut().set_era(era_1.into());
-        let mut signed_block_2 = Block::random_switch_block(&mut rng);
-        signed_block_2.header_mut().set_height(height_2);
-        signed_block_2.header_mut().set_era(era_2.into());
-        let mut signed_block_3 = Block::random_switch_block(&mut rng);
-        signed_block_3.header_mut().set_height(height_3);
-        signed_block_3.header_mut().set_era(era_3.into());
+        let signed_block_1 =
+            random_switch_block_at_height_and_era(&mut rng, height_1, era_1.into());
+        let signed_block_2 =
+            random_switch_block_at_height_and_era(&mut rng, height_2, era_2.into());
+        let signed_block_3 =
+            random_switch_block_at_height_and_era(&mut rng, height_3, era_3.into());
+
         let signed_block_header_with_metadata_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
         let signed_block_header_with_metadata_2 =

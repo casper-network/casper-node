@@ -853,18 +853,6 @@ impl BlockHeader {
         self.height
     }
 
-    /// Sets the height of this block.
-    #[cfg(any(feature = "testing", test))]
-    pub fn set_height(&mut self, height: u64) {
-        self.height = height;
-    }
-
-    /// Sets the era of this block.
-    #[cfg(any(feature = "testing", test))]
-    pub fn set_era(&mut self, era: EraId) {
-        self.era_id = era;
-    }
-
     /// Returns the protocol version of the network from when this block was created.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
@@ -1344,11 +1332,6 @@ impl Block {
         &self.header
     }
 
-    /// Returns the mutable reference to the header.
-    #[cfg(any(feature = "testing", test))]
-    pub fn header_mut(&mut self) -> &mut BlockHeader {
-        &mut self.header
-    }
     /// Returns the header, consuming the block.
     pub fn take_header(self) -> BlockHeader {
         self.header
