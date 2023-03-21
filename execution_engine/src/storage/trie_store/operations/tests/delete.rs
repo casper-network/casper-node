@@ -16,20 +16,27 @@ where
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
+    let _counter = TestValue::before_operation(TestOperation::Delete);
     let delete_result = operations::delete::<K, V, R, S, E>(
         correlation_id,
         environment,
         store,
         root,
         key_to_delete,
-    )?;
+    );
+    let counter = TestValue::after_operation(TestOperation::Delete);
+    assert_eq!(counter, 0, "Delete should never deserialize a value");
+    let delete_result = delete_result?;
+
     if let DeleteResult::Deleted(new_root) = delete_result {
-        operations::check_integrity::<_, _, _, _, E>(
+        let result = operations::check_integrity::<_, _, _, _, E>(
             correlation_id,
             environment,
             store,
             &[new_root],
-        )?;
+        );
+
+        result?;
     }
     Ok(delete_result)
 }
@@ -206,7 +213,7 @@ mod partial_tries {
 mod full_tries {
     use std::ops::RangeInclusive;
 
-    use proptest::{collection, proptest};
+    use proptest::{collection, prelude::*};
 
     use casper_types::{
         bytesrepr::{self, FromBytes, ToBytes},
@@ -223,7 +230,7 @@ mod full_tries {
                 operations::{
                     delete,
                     tests::{
-                        InMemoryTestContext, LmdbTestContext, TestKey, TestValue,
+                        InMemoryTestContext, LmdbTestContext, TestKey, TestOperation, TestValue,
                         TEST_TRIE_GENERATORS,
                     },
                     write, DeleteResult, WriteResult,
@@ -272,9 +279,12 @@ mod full_tries {
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
         for (key, _value) in pairs.iter().rev() {
-            if let DeleteResult::Deleted(new_root) =
-                delete::<K, V, _, _, E>(correlation_id, environment, store, &current_root, key)?
-            {
+            let _counter = TestValue::before_operation(TestOperation::Delete);
+            let delete_result =
+                delete::<K, V, _, _, E>(correlation_id, environment, store, &current_root, key);
+            let counter = TestValue::after_operation(TestOperation::Delete);
+            assert_eq!(counter, 0, "Delete should never deserialize a value");
+            if let DeleteResult::Deleted(new_root) = delete_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
             } else {
@@ -365,8 +375,12 @@ mod full_tries {
         }
 
         for key in keys_to_delete.iter() {
-            match delete::<K, V, _, _, E>(correlation_id, environment, store, &expected_root, key)?
-            {
+            let _counter = TestValue::before_operation(TestOperation::Delete);
+            let delete_result =
+                delete::<K, V, _, _, E>(correlation_id, environment, store, &expected_root, key);
+            let counter = TestValue::after_operation(TestOperation::Delete);
+            assert_eq!(counter, 0, "Delete should never deserialize a value");
+            match delete_result? {
                 DeleteResult::Deleted(new_root) => {
                     expected_root = new_root;
                 }

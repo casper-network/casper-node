@@ -461,16 +461,16 @@ where
                 None => todo!("cant find key"),
             };
 
-            let _ = tracking_copy
+            tracking_copy
                 .borrow_mut()
-                .force_write(Key::EraSummary, stored_value.clone());
+                .force_write(Key::EraSummary, stored_value);
         }
 
         let execution_effect = tracking_copy.borrow().effect();
 
         // commit
 
-        let mut post_state_hash = self
+        let post_state_hash = self
             .state
             .commit(
                 correlation_id,

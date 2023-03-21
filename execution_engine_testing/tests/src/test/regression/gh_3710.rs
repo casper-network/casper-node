@@ -72,7 +72,7 @@ fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
         "sanity check"
     );
 
-    let mut era_info_keys_after_upgrade = builder
+    let era_info_keys_after_upgrade = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
 
