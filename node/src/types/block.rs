@@ -1437,21 +1437,37 @@ impl Block {
     /// Generates a random switch block.
     #[cfg(any(feature = "testing", test))]
     pub fn random_switch_block(rng: &mut TestRng) -> Self {
-        let mut block = Block::random(rng);
-        let next_era_validator_weights = BTreeMap::<PublicKey, U512>::new();
-        block.header.era_end = Some(EraEnd::new(
-            random_era_report(rng),
-            next_era_validator_weights,
-        ));
-        block
+        use std::iter;
+
+        let era_id = rng.gen();
+        let height = rng.gen();
+
+        Block::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            ProtocolVersion::default(),
+            true,
+            iter::empty(),
+        )
     }
 
     /// Generates a random non-switch block.
     #[cfg(any(feature = "testing", test))]
     pub fn random_non_switch_block(rng: &mut TestRng) -> Self {
-        let mut block = Block::random(rng);
-        block.header.era_end = None;
-        block
+        use std::iter;
+
+        let era_id = rng.gen();
+        let height = rng.gen();
+
+        Block::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            ProtocolVersion::default(),
+            false,
+            iter::empty(),
+        )
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
