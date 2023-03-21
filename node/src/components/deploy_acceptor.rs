@@ -214,7 +214,7 @@ impl DeployAcceptor {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
-        debug!(%source, %deploy,  "checking acceptance");
+        debug!(%source, %deploy, "checking acceptance");
         let verification_start_timestamp = Timestamp::now();
         let acceptable_result = deploy.is_config_compliant(
             &self.chain_name,
