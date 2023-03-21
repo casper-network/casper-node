@@ -27,6 +27,7 @@ pub(super) struct BlockAcceptor {
     signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
     peers: BTreeSet<NodeId>,
     last_progress: Timestamp,
+    our_signature: Option<FinalitySignature>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -56,6 +57,7 @@ impl BlockAcceptor {
             signatures: BTreeMap::new(),
             peers: peers.into_iter().collect(),
             last_progress: Timestamp::now(),
+            our_signature: None,
         }
     }
 
@@ -369,6 +371,14 @@ impl BlockAcceptor {
 
     pub(super) fn last_progress(&self) -> Timestamp {
         self.last_progress
+    }
+
+    pub(super) fn our_signature(&self) -> Option<&FinalitySignature> {
+        self.our_signature.as_ref()
+    }
+
+    pub(super) fn set_our_signature(&mut self, signature: FinalitySignature) {
+        self.our_signature = Some(signature);
     }
 
     /// Removes finality signatures that have the wrong era ID or are signed by non-validators.
