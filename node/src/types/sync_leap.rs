@@ -333,23 +333,24 @@ mod tests {
         iter,
     };
 
-    use casper_types::{crypto, testing::TestRng, EraId, ProtocolVersion, Signature, U512};
+    use casper_types::{
+        crypto, testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey, Signature,
+        Timestamp, U512,
+    };
     use num_rational::Ratio;
     use rand::Rng;
 
+    use super::SyncLeap;
     use crate::{
         components::fetcher::FetchItem,
-        tests::{TestBlockIterator, TestChainSpec, ValidatorSpec},
         types::{
             chainspec::GlobalStateUpdate, sync_leap::SyncLeapValidationError,
             sync_leap_validation_metadata::SyncLeapValidationMetaData, ActivationPoint, Block,
             BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights,
-            FinalitySignature, SyncLeapIdentifier,
+            FinalitySignature, FinalizedBlock, SyncLeapIdentifier,
         },
         utils::BlockSignatureError,
     };
-
-    use super::SyncLeap;
 
     fn random_block_at_height(rng: &mut TestRng, height: u64) -> Block {
         let era_id = rng.gen();
@@ -1742,5 +1743,228 @@ mod tests {
         let sync_leap_identifier =
             SyncLeapIdentifier::sync_to_historical(BlockHash::random(&mut rng));
         assert!(sync_leap_identifier.trusted_ancestor_only());
+    }
+
+    // Describes a single item from the set of validators that will be used for switch blocks
+    // created by TestChainSpec.
+    pub(crate) struct ValidatorSpec {
+        pub(crate) secret_key: SecretKey,
+        pub(crate) public_key: PublicKey,
+        // If `None`, weight will be chosen randomly.
+        pub(crate) weight: Option<U512>,
+    }
+
+    // Utility struct that can be turned into an iterator that generates
+    // continuous and descending blocks (i.e. blocks that have consecutive height
+    // and parent hashes are correctly set). The height of the first block
+    // in a series is chosen randomly.
+    //
+    // Additionally, this struct allows to generate switch blocks at a specific location in the
+    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
+    // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
+    // the `validators` parameter.
+    pub(crate) struct TestChainSpec<'a> {
+        block: Block,
+        rng: &'a mut TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+        validators: &'a [ValidatorSpec],
+    }
+
+    impl<'a> TestChainSpec<'a> {
+        pub(crate) fn new(
+            test_rng: &'a mut TestRng,
+            switch_block_indices: Option<Vec<u64>>,
+            validators: &'a [ValidatorSpec],
+        ) -> Self {
+            let block = Block::random(test_rng);
+            Self {
+                block,
+                rng: test_rng,
+                switch_block_indices,
+                validators,
+            }
+        }
+
+        pub(crate) fn iter(&mut self) -> TestBlockIterator {
+            let block_height = self.block.height();
+
+            const DEFAULT_VALIDATOR_WEIGHT: u64 = 100;
+
+            TestBlockIterator::new(
+                self.block.clone(),
+                self.rng,
+                self.switch_block_indices
+                    .clone()
+                    .map(|switch_block_indices| {
+                        switch_block_indices
+                            .iter()
+                            .map(|index| index + block_height)
+                            .collect()
+                    }),
+                self.validators
+                    .iter()
+                    .map(
+                        |ValidatorSpec {
+                             secret_key: _,
+                             public_key,
+                             weight,
+                         }| {
+                            (
+                                public_key.clone(),
+                                weight.unwrap_or(DEFAULT_VALIDATOR_WEIGHT.into()),
+                            )
+                        },
+                    )
+                    .collect(),
+            )
+        }
+    }
+
+    pub(crate) struct TestBlockIterator<'a> {
+        block: Block,
+        rng: &'a mut TestRng,
+        switch_block_indices: Option<Vec<u64>>,
+        validators: Vec<(PublicKey, U512)>,
+        next_validator_index: usize,
+    }
+
+    impl<'a> TestBlockIterator<'a> {
+        pub fn new(
+            block: Block,
+            rng: &'a mut TestRng,
+            switch_block_indices: Option<Vec<u64>>,
+            validators: Vec<(PublicKey, U512)>,
+        ) -> Self {
+            Self {
+                block,
+                rng,
+                switch_block_indices,
+                validators,
+                next_validator_index: 0,
+            }
+        }
+    }
+
+    impl<'a> Iterator for TestBlockIterator<'a> {
+        type Item = Block;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let (is_switch_block, is_successor_of_switch_block, validators) =
+                match &self.switch_block_indices {
+                    Some(switch_block_heights)
+                        if switch_block_heights.contains(&self.block.height()) =>
+                    {
+                        let is_successor_of_switch_block =
+                            switch_block_heights.contains(&(self.block.height().saturating_sub(1)));
+                        (
+                            true,
+                            is_successor_of_switch_block,
+                            Some(self.validators.clone()),
+                        )
+                    }
+                    Some(switch_block_heights) => {
+                        let is_successor_of_switch_block =
+                            switch_block_heights.contains(&(self.block.height().saturating_sub(1)));
+                        (false, is_successor_of_switch_block, None)
+                    }
+                    None => (false, false, None),
+                };
+
+            let validators = if let Some(validators) = validators {
+                let first_validator = validators.get(self.next_validator_index).unwrap();
+                let second_validator = validators.get(self.next_validator_index + 1).unwrap();
+
+                // Put two validators in each switch block.
+                let mut validators_for_block = BTreeMap::new();
+                validators_for_block.insert(first_validator.0.clone(), first_validator.1);
+                validators_for_block.insert(second_validator.0.clone(), second_validator.1);
+                self.next_validator_index += 2;
+
+                // If we're out of validators, do round robin on the provided list.
+                if self.next_validator_index >= self.validators.len() {
+                    self.next_validator_index = 0;
+                }
+                Some(validators_for_block)
+            } else {
+                None
+            };
+
+            let next = Block::new(
+                *self.block.hash(),
+                self.block.header().accumulated_seed(),
+                *self.block.header().state_root_hash(),
+                FinalizedBlock::random_with_specifics(
+                    self.rng,
+                    if is_successor_of_switch_block {
+                        self.block.header().era_id().successor()
+                    } else {
+                        self.block.header().era_id()
+                    },
+                    self.block.header().height() + 1,
+                    is_switch_block,
+                    Timestamp::now(),
+                    iter::empty(),
+                ),
+                validators,
+                self.block.header().protocol_version(),
+            )
+            .unwrap();
+            self.block = next.clone();
+            Some(next)
+        }
+    }
+
+    #[test]
+    fn should_create_valid_chain() {
+        let mut rng = TestRng::new();
+        let mut test_block = TestChainSpec::new(&mut rng, None, &[]);
+        let mut block_batch = test_block.iter().take(100);
+        let mut parent_block: Block = block_batch.next().unwrap();
+        for current_block in block_batch {
+            assert_eq!(
+                current_block.header().height(),
+                parent_block.header().height() + 1,
+                "height should grow monotonically"
+            );
+            assert_eq!(
+                current_block.header().parent_hash(),
+                parent_block.hash(),
+                "block's parent should point at previous block"
+            );
+            parent_block = current_block;
+        }
+    }
+
+    #[test]
+    fn should_create_switch_blocks() {
+        let switch_block_indices = vec![0, 10, 76];
+
+        let validators: Vec<_> = iter::repeat_with(crypto::generate_ed25519_keypair)
+            .take(2)
+            .map(|(secret_key, public_key)| ValidatorSpec {
+                secret_key,
+                public_key,
+                weight: None,
+            })
+            .collect();
+
+        let mut rng = TestRng::new();
+        let mut test_block =
+            TestChainSpec::new(&mut rng, Some(switch_block_indices.clone()), &validators);
+        let block_batch: Vec<_> = test_block.iter().take(100).collect();
+
+        let base_height = block_batch.first().expect("should have block").height();
+
+        for block in block_batch {
+            if switch_block_indices
+                .iter()
+                .map(|index| index + base_height)
+                .any(|index| index == block.height())
+            {
+                assert!(block.header().is_switch_block())
+            } else {
+                assert!(!block.header().is_switch_block())
+            }
+        }
     }
 }
