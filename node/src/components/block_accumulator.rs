@@ -817,8 +817,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::ExecutedBlock { meta_block } => {
                 let height = meta_block.block.header().height();
                 let era_id = meta_block.block.header().era_id();
+                let effects = self.register_block(effect_builder, meta_block, None);
                 self.register_local_tip(height, era_id);
-                self.register_block(effect_builder, meta_block, None)
+                effects
             }
             Event::Stored {
                 maybe_meta_block,
