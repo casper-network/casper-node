@@ -6,6 +6,7 @@ use alloc::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     string::String,
+    sync::Arc,
     vec,
     vec::Vec,
 };
@@ -1244,6 +1245,31 @@ where
     }
 }
 
+impl<T> FromBytes for Arc<T>
+where
+    T: FromBytes,
+{
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        T::from_bytes(bytes).map(|(obj, remainder)| (Arc::new(obj), remainder))
+    }
+}
+
+impl<T> ToBytes for Arc<T>
+where
+    T: ToBytes,
+{
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        <Self as AsRef<T>>::as_ref(self).to_bytes()
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        <Self as AsRef<T>>::as_ref(self).serialized_length()
+    }
+}
+
 /// Serializes a slice of bytes with a length prefix.
 ///
 /// This function is serializing a slice of bytes with an addition of a 4 byte length prefix.
@@ -1356,6 +1382,7 @@ mod tests {
 mod proptests {
     use std::collections::VecDeque;
 
+    use alloc::sync::Arc;
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
@@ -1568,6 +1595,13 @@ mod proptests {
         #[test]
         fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
             bytesrepr::test_serialization_roundtrip(&t);
+        }
+
+        #[test]
+        fn test_arc_str(s in "\\PC*") {
+            let arc: Arc<String> = Arc::new(s);
+            bytesrepr::test_serialization_roundtrip(&arc);
+
         }
     }
 }

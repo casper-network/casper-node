@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.  The format
 * Extend asymmetric key functionality, available via feature "std".
 * Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature "std".
 * Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature "testing".
+* Add support for `Arc` in `bytesrepr` module.
 
 ### Changed
 * Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
