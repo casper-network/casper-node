@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DataEnum, DataStruct, Ident, LitInt};
+use syn::{DataEnum, DataStruct, Generics, Ident, LitInt};
 
 /// Top-level proc macro for `#[derive(ToBytes)]`.
 #[proc_macro_derive(ToBytes)]
@@ -9,8 +9,8 @@ pub fn derive_to_bytes(tokens: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(tokens).unwrap();
 
     match ast.data {
-        syn::Data::Struct(st) => derive_to_bytes_for_struct(ast.ident, st),
-        syn::Data::Enum(en) => derive_to_bytes_for_enum(ast.ident, en),
+        syn::Data::Struct(st) => derive_to_bytes_for_struct(ast.ident, st, ast.generics),
+        syn::Data::Enum(en) => derive_to_bytes_for_enum(ast.ident, en, ast.generics),
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
     }
 }
@@ -21,16 +21,58 @@ pub fn derive_from_bytes(tokens: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(tokens).unwrap();
 
     match ast.data {
-        syn::Data::Struct(st) => derive_from_bytes_for_struct(ast.ident, st),
-        syn::Data::Enum(en) => derive_from_bytes_for_enum(ast.ident, en),
+        syn::Data::Struct(st) => derive_from_bytes_for_struct(ast.ident, st, ast.generics),
+        syn::Data::Enum(en) => derive_from_bytes_for_enum(ast.ident, en, ast.generics),
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
     }
 }
 
+/// Given a set of generics, returns a vec of all idents.
+fn param_idents_from_generics(generics: &Generics) -> Vec<Ident> {
+    generics
+        .params
+        .iter()
+        .map(|p| match p {
+            syn::GenericParam::Lifetime(_) => {
+                panic!("lifetime generics are currently not supported by bytesrepr_derive")
+            }
+            syn::GenericParam::Type(ty) => ty.ident.clone(),
+            syn::GenericParam::Const(_) => {
+                panic!("const generics are currently not supported by bytesrepr_derive")
+            }
+        })
+        .collect()
+}
+
+fn generate_where_clause(generics: &Generics, extra_req: Ident) -> proc_macro2::TokenStream {
+    match &generics.where_clause {
+        Some(w) => {
+            let mut where_clause = quote!(#w);
+            for ident in param_idents_from_generics(generics) {
+                where_clause.extend(quote!(#ident: #extra_req,))
+            }
+            where_clause
+        }
+        None => Default::default(),
+    }
+}
+
+fn generate_generic_args(generics: &Generics) -> proc_macro2::TokenStream {
+    let idents = param_idents_from_generics(&generics);
+    if !idents.is_empty() {
+        quote!(<#(#idents),*>)
+    } else {
+        Default::default()
+    }
+}
+
 /// Proc macro for `#[derive(ToBytes)]` for `struct`s.
-fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
+fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics) -> TokenStream {
     let mut fields_serialization = proc_macro2::TokenStream::new();
     let mut length_calculation = proc_macro2::TokenStream::new();
+
+    let generic_idents = generate_generic_args(&generics);
+    let where_clause = generate_where_clause(&generics, Ident::new("ToBytes", st_name.span()));
 
     match st.fields {
         syn::Fields::Named(ref fields) => {
@@ -59,7 +101,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
     };
 
     let rv = quote! {
-        impl ::casper_types::bytesrepr::ToBytes for #st_name {
+        impl #generic_idents ::casper_types::bytesrepr::ToBytes for #st_name #generics #where_clause {
             fn to_bytes(&self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error> {
                 let mut buffer = ::casper_types::bytesrepr::allocate_buffer(self)?;
                 #fields_serialization
@@ -81,9 +123,12 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
 }
 
 /// Proc macro for `#[derive(FromBytes)]` for `struct`s.
-fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
+fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics) -> TokenStream {
     let mut fields_deserialization = proc_macro2::TokenStream::new();
     let mut fields_assignments = proc_macro2::TokenStream::new();
+
+    let generic_idents = generate_generic_args(&generics);
+    let where_clause = generate_where_clause(&generics, Ident::new("FromBytes", st_name.span()));
 
     let assignment = match st.fields {
         syn::Fields::Named(ref fields) => {
@@ -118,7 +163,7 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
     };
 
     let rv = quote! {
-        impl ::casper_types::bytesrepr::FromBytes for #st_name {
+        impl #generic_idents ::casper_types::bytesrepr::FromBytes for #st_name #generics #where_clause {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), ::casper_types::bytesrepr::Error> {
                 let remainder = bytes;
                 #fields_deserialization
@@ -132,10 +177,13 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
     rv.into()
 }
 
-/// Proc macro for `#[derive(ToBytes)]` for `struct`s.
-fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
+/// Proc macro for `#[derive(ToBytes)]` for `enum`s.
+fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) -> TokenStream {
     let mut to_bytes_variant_match = proc_macro2::TokenStream::new();
     let mut length_variant_match = proc_macro2::TokenStream::new();
+
+    let generic_idents = generate_generic_args(&generics);
+    let where_clause = generate_where_clause(&generics, Ident::new("ToBytes", en_name.span()));
 
     for (idx, variant) in en.variants.iter().enumerate() {
         assert!(
@@ -219,7 +267,7 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
     }
 
     let rv = quote!(
-        impl ::casper_types::bytesrepr::ToBytes for #en_name {
+        impl #generic_idents ::casper_types::bytesrepr::ToBytes for #en_name #generics #where_clause {
             fn to_bytes(&self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error> {
                 let mut buffer = ::casper_types::bytesrepr::allocate_buffer(self)?;
                 match self {
@@ -243,9 +291,12 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
     rv.into()
 }
 
-/// Proc macro for `#[derive(ToBytes)]` for `struct`s.
-fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
+/// Proc macro for `#[derive(FromBytes)]` for `enum`s.
+fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) -> TokenStream {
     let mut from_bytes_variant_match = proc_macro2::TokenStream::new();
+
+    let generic_idents = generate_generic_args(&generics);
+    let where_clause = generate_where_clause(&generics, Ident::new("FromBytes", en_name.span()));
 
     for (idx, variant) in en.variants.iter().enumerate() {
         assert!(
@@ -310,7 +361,7 @@ fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
     }
 
     let rv = quote!(
-        impl ::casper_types::bytesrepr::FromBytes for #en_name {
+        impl #generic_idents ::casper_types::bytesrepr::FromBytes for #en_name #generics #where_clause {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), ::casper_types::bytesrepr::Error> {
                 let (tag, remainder) = u8::from_bytes(bytes)?;
                 match tag {
