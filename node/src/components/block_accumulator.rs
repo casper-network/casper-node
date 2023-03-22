@@ -388,6 +388,10 @@ impl BlockAccumulator {
             }
         };
 
+        if sender.is_none() {
+            acceptor.set_our_signature(finality_signature.clone());
+        }
+
         debug!(%finality_signature, "registering finality signature");
         match acceptor.register_finality_signature(finality_signature, sender, self.validator_slots)
         {
@@ -606,8 +610,17 @@ impl BlockAccumulator {
             if let (Some(acceptor_height), Some(local_tip_height)) =
                 (v.block_height(), maybe_local_tip_height)
             {
+                // With `attempt_execution_threshold` being 3 as of this
+                // comment, we keep blocks in the range
+                // [(local_tip_height - 3), local_tip_height].
                 if acceptor_height >= local_tip_height.saturating_sub(attempt_execution_threshold)
                     && acceptor_height <= local_tip_height
+                {
+                    return true;
+                }
+                // Keep future blocks that we signed or are sufficiently signed.
+                if acceptor_height > local_tip_height
+                    && (v.our_signature().is_some() || v.has_sufficient_finality())
                 {
                     return true;
                 }
@@ -804,8 +817,9 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::ExecutedBlock { meta_block } => {
                 let height = meta_block.block.header().height();
                 let era_id = meta_block.block.header().era_id();
+                let effects = self.register_block(effect_builder, meta_block, None);
                 self.register_local_tip(height, era_id);
-                self.register_block(effect_builder, meta_block, None)
+                effects
             }
             Event::Stored {
                 maybe_meta_block,
