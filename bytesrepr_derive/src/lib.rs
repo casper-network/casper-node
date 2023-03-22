@@ -36,41 +36,27 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
                 let ident = field.ident.as_ref().unwrap();
                 fields_serialization.extend(quote!(
                     buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(&self.#ident)?);
-                ))
+                ));
+                length_calculation.extend(quote!(
+                    + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#ident)));
             }
 
             quote!(buffer.extend())
         }
         syn::Fields::Unnamed(ref fields) => {
             for idx in 0..(fields.unnamed.len()) {
+                let formatted = format!("{}", idx);
+                let lit = syn::LitInt::new(&formatted, st_name.span());
                 fields_serialization.extend(quote!(
-                    buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(&self.#idx)?);
-                ))
+                    buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(&self.#lit)?);
+                ));
+                length_calculation.extend(quote!(
+                    + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#lit)));
             }
 
             quote!(buffer.extend())
         }
         // TODO: Do we (want to) support zero-sized types?
-        syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
-    };
-
-    // Serialization length calculation.
-    match st.fields {
-        syn::Fields::Named(fields) => {
-            for field in fields.named {
-                let ident = field.ident.as_ref().unwrap();
-                length_calculation.extend(quote!(
-                    + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#ident)
-                ))
-            }
-        }
-        syn::Fields::Unnamed(ref fields) => {
-            for idx in 0..(fields.unnamed.len()) {
-                length_calculation.extend(quote!(
-                    + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#idx)
-                ))
-            }
-        }
         syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
     };
 
