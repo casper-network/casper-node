@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DataEnum, DataStruct, Ident};
+use syn::{DataEnum, DataStruct, Ident, LitInt};
 
 /// Top-level proc macro for `#[derive(ToBytes)]`.
 #[proc_macro_derive(ToBytes)]
@@ -22,7 +22,7 @@ pub fn derive_from_bytes(tokens: TokenStream) -> TokenStream {
 
     match ast.data {
         syn::Data::Struct(st) => derive_from_bytes_for_struct(ast.ident, st),
-        syn::Data::Enum(_) => panic!("enums are not supported by bytesrepr_derive"),
+        syn::Data::Enum(en) => derive_from_bytes_for_enum(ast.ident, en),
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
     }
 }
@@ -46,7 +46,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
         syn::Fields::Unnamed(ref fields) => {
             for idx in 0..(fields.unnamed.len()) {
                 let formatted = format!("{}", idx);
-                let lit = syn::LitInt::new(&formatted, st_name.span());
+                let lit = LitInt::new(&formatted, st_name.span());
                 fields_serialization.extend(quote!(
                     buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(&self.#lit)?);
                 ));
@@ -152,9 +152,14 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
         let mut fields_serialization = proc_macro2::TokenStream::new();
         let mut length_calculation = proc_macro2::TokenStream::new();
 
+        let discriminator = LitInt::new(&format!("{}u8", idx), variant.ident.span());
+
         let variant_ident = &variant.ident;
         match variant.fields {
             syn::Fields::Named(ref fields) => {
+                fields_serialization.extend(quote!(
+                        buffer.push(#discriminator);
+                ));
                 for field in &fields.named {
                     let ident = field.ident.as_ref().unwrap();
                     fields_serialization.extend(quote!(
@@ -178,6 +183,10 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
                 });
             }
             syn::Fields::Unnamed(ref fields) => {
+                fields_serialization.extend(quote!(
+                        buffer.push(#discriminator);
+                ));
+
                 let mut field_names = Vec::new();
                 for idx in 0..(fields.unnamed.len()) {
                     let idx_ident = Ident::new(&format!("field_{}", idx), en_name.span());
@@ -203,7 +212,9 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
                 });
             }
             // TODO: Do we (want to) support zero-sized types?
-            syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
+            syn::Fields::Unit => {
+                panic!("unit enum variants are not supported by bytesrepr_derive")
+            }
         }
     }
 
@@ -225,6 +236,88 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
 
             // TODO: into_bytes
             // TODO: write_bytes
+        }
+    );
+    eprintln!("{}", rv);
+
+    rv.into()
+}
+
+/// Proc macro for `#[derive(ToBytes)]` for `struct`s.
+fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
+    let mut from_bytes_variant_match = proc_macro2::TokenStream::new();
+
+    for (idx, variant) in en.variants.iter().enumerate() {
+        assert!(
+            idx <= u8::MAX as usize,
+            "cannot deserialize this many variants"
+        );
+
+        if variant.discriminant.is_some() {
+            // TODO: Decide whether we want to change the encoding based on these variant
+            //       assignments or not. For now, its best to not do either.
+            panic!("explicit discriminants are currently not supported by bytesrepr_derive");
+        }
+
+        let mut field_deserializations = proc_macro2::TokenStream::new();
+        let variant_ident = &variant.ident;
+        let discriminator = LitInt::new(&format!("{}u8", idx), variant.ident.span());
+
+        match variant.fields {
+            syn::Fields::Named(ref fields) => {
+                let mut field_assignments = proc_macro2::TokenStream::new();
+
+                for field in &fields.named {
+                    let ident = field.ident.as_ref().unwrap();
+                    let stack_ident = Ident::new(&format!("field_{}", ident), ident.span());
+                    field_deserializations.extend(quote!(
+                        let (#stack_ident, remainder) = ::casper_types::bytesrepr::FromBytes::from_bytes(remainder)?;
+                    ));
+                    field_assignments.extend(quote!(
+                        #ident: #stack_ident,
+                    ))
+                }
+
+                // Note: The `Formatting` error as a catch-all is a weirdness with precedent.
+                from_bytes_variant_match.extend(quote! {
+                    #discriminator => {
+                        #field_deserializations
+                        Ok((Self::#variant_ident { #field_assignments }, remainder))
+                    }
+                });
+            }
+            syn::Fields::Unnamed(ref fields) => {
+                let mut field_names = Vec::new();
+                for idx in 0..(fields.unnamed.len()) {
+                    let field_ident = Ident::new(&format!("field_{}", idx), en_name.span());
+                    field_deserializations.extend(quote!(
+                        let (#field_ident, remainder) = ::casper_types::bytesrepr::FromBytes::from_bytes(remainder)?;
+                    ));
+                    field_names.push(field_ident);
+                }
+
+                from_bytes_variant_match.extend(quote! {
+                    #discriminator => {
+                        #field_deserializations
+                        Ok((Self::#variant_ident ( #(#field_names,)* ), remainder))
+                    }
+                });
+            }
+            syn::Fields::Unit => {
+                panic!("unit enum variants are not supported by bytesrepr_derive")
+            }
+        }
+    }
+
+    let rv = quote!(
+        impl ::casper_types::bytesrepr::FromBytes for #en_name {
+            fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), ::casper_types::bytesrepr::Error> {
+                let (tag, remainder) = u8::from_bytes(bytes)?;
+                match tag {
+                    #from_bytes_variant_match
+                    _ => Err(::casper_types::bytesrepr::Error::Formatting)
+                }
+            }
         }
     );
     eprintln!("{}", rv);
