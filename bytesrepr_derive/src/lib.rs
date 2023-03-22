@@ -86,10 +86,8 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
                 0 #length_calculation
             }
 
-            // fn into_bytes(self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error>
-            // where Self: Sized {
-            //     todo!("macro implementation incomplete")
-            // }
+            // TODO: into_bytes
+            // TODO: write_bytes
         }
     };
 

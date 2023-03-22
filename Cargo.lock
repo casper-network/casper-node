@@ -374,7 +374,7 @@ checksum = "dfb24e866b15a1af2a1b663f10c6b6b8f397a84aadb828f12e5b289ec23a3a3c"
 name = "bytesrepr_derive"
 version = "0.1.0"
 dependencies = [
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "casper-types 1.5.0",
  "proc-macro2 1.0.52",
  "quote 1.0.26",
  "syn 2.0.4",

@@ -13,4 +13,4 @@ quote = "1.0.26"
 syn = "2.0.4"
 
 [dev-dependencies]
-casper-types = "1.5.0"
+casper-types = { version = "1.5.0", path = "../types", features = [] }
