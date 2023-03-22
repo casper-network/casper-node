@@ -10,7 +10,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
-use tracing::debug;
+use tracing::info;
 
 use casper_types::{EraId, PublicKey, SecretKey, U512};
 
@@ -110,7 +110,7 @@ impl ValidatorMatrix {
                 validators.validator_weights,
                 validators.finality_threshold_fraction,
             ));
-            debug!("Validator Matrix: Inferred validator weights for Era 0 from weights in Era 1");
+            info!("ValidatorMatrix: Inferred validator weights for Era 0 from weights in Era 1");
         }
         was_present
     }
