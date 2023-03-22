@@ -10,7 +10,7 @@ struct MyNamedStruct {
     c: String,
 }
 
-#[derive(ToBytes, Debug, PartialEq)]
+#[derive(FromBytes, ToBytes, Debug, PartialEq)]
 struct MyUnnamedStruct(u64, u32, String);
 
 fn roundtrip_value<T>(value: T)

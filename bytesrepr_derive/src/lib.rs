@@ -63,8 +63,6 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
                     + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#ident)
                 ))
             }
-
-            quote!(buffer.extend())
         }
         syn::Fields::Unnamed(ref fields) => {
             for idx in 0..(fields.unnamed.len()) {
@@ -72,8 +70,6 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
                     + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#idx)
                 ))
             }
-
-            quote!(buffer.extend())
         }
         syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
     };
@@ -106,7 +102,7 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
     let mut fields_deserialization = proc_macro2::TokenStream::new();
     let mut fields_assignments = proc_macro2::TokenStream::new();
 
-    match st.fields {
+    let assignment = match st.fields {
         syn::Fields::Named(ref fields) => {
             for field in &fields.named {
                 let ident = field.ident.as_ref().unwrap();
@@ -119,10 +115,20 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
                 ))
             }
 
-            quote!(buffer.extend())
+            quote!(Self { #fields_assignments })
         }
         syn::Fields::Unnamed(ref fields) => {
-            todo!()
+            for idx in 0..(fields.unnamed.len()) {
+                let stack_ident = Ident::new(&format!("field_{}", idx), st_name.span());
+                fields_deserialization.extend(quote!(
+                    let (#stack_ident, remainder) = ::casper_types::bytesrepr::FromBytes::from_bytes(remainder)?;
+                ));
+                fields_assignments.extend(quote!(
+                   #stack_ident,
+                ))
+            }
+
+            quote!(Self ( #fields_assignments ))
         }
         // TODO: Do we (want to) support zero-sized types?
         syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
@@ -133,9 +139,7 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct) -> TokenStream {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), ::casper_types::bytesrepr::Error> {
                 let remainder = bytes;
                 #fields_deserialization
-                Ok((Self {
-                    #fields_assignments
-                }, remainder))
+                Ok((#assignment, remainder))
             }
         }
     };
