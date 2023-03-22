@@ -1172,6 +1172,42 @@ fn accumulator_purge() {
 
     // Entries we modified earlier should be purged.
     block_accumulator.purge();
+    // Acceptors for blocks 1 and 2 should not have been purged because they
+    // have strict finality.
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_1.hash()));
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_2.hash()));
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_3.hash()));
+    // We should have kept only the timestamps for the first peer.
+    assert!(block_accumulator
+        .peer_block_timestamps
+        .contains_key(&peer_1));
+    assert!(!block_accumulator
+        .peer_block_timestamps
+        .contains_key(&peer_2));
+
+    {
+        // Modify the `strict_finality` flag in the acceptors for blocks 1 and
+        // 2.
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_1.hash())
+            .unwrap()
+            .set_sufficient_finality(false);
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_2.hash())
+            .unwrap()
+            .set_sufficient_finality(false);
+    }
+
+    // Entries we modified earlier should be purged.
+    block_accumulator.purge();
     // Acceptors for blocks 1 and 2 should have been purged.
     assert!(!block_accumulator
         .block_acceptors
@@ -1301,6 +1337,126 @@ fn accumulator_purge() {
         assert!(!block_accumulator
             .block_acceptors
             .contains_key(out_of_range_block.hash()));
+
+        // Now replace the local tip with something else (in this case we'll
+        // have no local tip) so that previously created blocks no longer have
+        // purge immunity.
+        block_accumulator.local_tip.take();
+        // Do the purge.
+        block_accumulator.purge();
+        // Block 3 is no longer the local tip, and given that it's old, the
+        // blocks should have been purged.
+        assert!(block_accumulator.block_acceptors.is_empty());
+    }
+
+    // Create a future block after block 3.
+    let future_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() + block_accumulator.attempt_execution_threshold,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let future_block_sig = FinalitySignature::create(
+        *future_block.hash(),
+        future_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the future block with sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *future_block.hash(),
+            Some(future_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(future_block.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(future_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(future_block_sig, Some(peer_1), VALIDATOR_SLOTS)
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Create a future block after block 3, but which will not have strict
+    // finality.
+    let future_unsigned_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() + block_accumulator.attempt_execution_threshold * 2,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let future_unsigned_block_sig = FinalitySignature::create(
+        *future_unsigned_block.hash(),
+        future_unsigned_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the future unsigned block without sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *future_unsigned_block.hash(),
+            Some(future_unsigned_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(future_unsigned_block.hash())
+            .unwrap();
+        let state = MetaBlockState::new();
+        let meta_block = MetaBlock::new(future_unsigned_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(future_unsigned_block_sig, Some(peer_1), VALIDATOR_SLOTS)
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Make sure block with sufficient finality doesn't get purged.
+    {
+        // Make block 3 the local tip again.
+        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
+            block_3.header().height(),
+            block_3.header().era_id(),
+        ));
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(future_block.hash()));
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(future_unsigned_block.hash()));
+
+        // Change the timestamps to old ones so that all blocks would normally
+        // get purged.
+        let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
+        for (_, acceptor) in block_accumulator.block_acceptors.iter_mut() {
+            acceptor.set_last_progress(last_progress);
+        }
+        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+            for (_, timestamp) in timestamps.iter_mut() {
+                *timestamp = last_progress;
+            }
+        }
+        // Do the purge.
+        block_accumulator.purge();
+        // Neither should the future block with sufficient finality.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(future_block.hash()));
+        // But the future block without sufficient finality should have been
+        // purged.
+        assert!(!block_accumulator
+            .block_acceptors
+            .contains_key(future_unsigned_block.hash()));
 
         // Now replace the local tip with something else (in this case we'll
         // have no local tip) so that previously created blocks no longer have
