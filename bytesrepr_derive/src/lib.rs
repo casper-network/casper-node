@@ -299,7 +299,7 @@ fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum) -> TokenStream {
                 from_bytes_variant_match.extend(quote! {
                     #discriminator => {
                         #field_deserializations
-                        Ok((Self::#variant_ident ( #(#field_names,)* ), remainder))
+                        Ok((Self::#variant_ident ( #(#field_names),* ), remainder))
                     }
                 });
             }
