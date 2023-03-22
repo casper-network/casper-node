@@ -48,16 +48,18 @@ fn generate_where_clause(
     generics: &Generics,
     extra_req: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    match &generics.where_clause {
+    let mut where_clause = match &generics.where_clause {
         Some(w) => {
-            let mut where_clause = quote!(#w);
-            for ident in param_idents_from_generics(generics) {
-                where_clause.extend(quote!(#ident: #extra_req,))
-            }
-            where_clause
+            quote!(#w)
         }
-        None => Default::default(),
+        None => {
+            quote!(where)
+        }
+    };
+    for ident in param_idents_from_generics(generics) {
+        where_clause.extend(quote!(#ident: #extra_req,))
     }
+    where_clause
 }
 
 fn generate_generic_args(generics: &Generics) -> proc_macro2::TokenStream {
