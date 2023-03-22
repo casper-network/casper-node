@@ -48,6 +48,30 @@ where
     assert_eq!(value, decoded);
 }
 
+mod inner {
+    use super::roundtrip_value;
+
+    // Ensure we can derive without importing the `ToBytes`/`FromBytes` traits.
+
+    use bytesrepr_derive::{FromBytes, ToBytes};
+
+    #[derive(Debug, ToBytes, FromBytes, PartialEq)]
+    struct Foo<T> {
+        a: T,
+    }
+
+    #[derive(Debug, ToBytes, FromBytes, PartialEq)]
+    enum Bar<T> {
+        Baz(T),
+    }
+
+    #[test]
+    fn roundtrip_inner() {
+        roundtrip_value(Foo { a: 123 });
+        roundtrip_value(Bar::Baz(123));
+    }
+}
+
 #[test]
 fn roundtrip_named() {
     roundtrip_value(MyNamedStruct {

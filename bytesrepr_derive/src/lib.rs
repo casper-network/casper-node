@@ -44,7 +44,10 @@ fn param_idents_from_generics(generics: &Generics) -> Vec<Ident> {
         .collect()
 }
 
-fn generate_where_clause(generics: &Generics, extra_req: Ident) -> proc_macro2::TokenStream {
+fn generate_where_clause(
+    generics: &Generics,
+    extra_req: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     match &generics.where_clause {
         Some(w) => {
             let mut where_clause = quote!(#w);
@@ -72,7 +75,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
     let mut length_calculation = proc_macro2::TokenStream::new();
 
     let generic_idents = generate_generic_args(&generics);
-    let where_clause = generate_where_clause(&generics, Ident::new("ToBytes", st_name.span()));
+    let where_clause = generate_where_clause(&generics, quote!(::casper_types::bytesrepr::ToBytes));
 
     match st.fields {
         syn::Fields::Named(ref fields) => {
@@ -128,7 +131,8 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generi
     let mut fields_assignments = proc_macro2::TokenStream::new();
 
     let generic_idents = generate_generic_args(&generics);
-    let where_clause = generate_where_clause(&generics, Ident::new("FromBytes", st_name.span()));
+    let where_clause =
+        generate_where_clause(&generics, quote!(::casper_types::bytesrepr::FromBytes));
 
     let assignment = match st.fields {
         syn::Fields::Named(ref fields) => {
@@ -183,7 +187,7 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
     let mut length_variant_match = proc_macro2::TokenStream::new();
 
     let generic_idents = generate_generic_args(&generics);
-    let where_clause = generate_where_clause(&generics, Ident::new("ToBytes", en_name.span()));
+    let where_clause = generate_where_clause(&generics, quote!(::casper_types::bytesrepr::ToBytes));
 
     for (idx, variant) in en.variants.iter().enumerate() {
         assert!(
@@ -296,7 +300,8 @@ fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) 
     let mut from_bytes_variant_match = proc_macro2::TokenStream::new();
 
     let generic_idents = generate_generic_args(&generics);
-    let where_clause = generate_where_clause(&generics, Ident::new("FromBytes", en_name.span()));
+    let where_clause =
+        generate_where_clause(&generics, quote!(::casper_types::bytesrepr::FromBytes));
 
     for (idx, variant) in en.variants.iter().enumerate() {
         assert!(
