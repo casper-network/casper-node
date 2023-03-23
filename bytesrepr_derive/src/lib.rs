@@ -74,6 +74,7 @@ fn generate_generic_args(generics: &Generics) -> proc_macro2::TokenStream {
 /// Proc macro for `#[derive(ToBytes)]` for `struct`s.
 fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics) -> TokenStream {
     let mut fields_serialization = proc_macro2::TokenStream::new();
+    let mut owned_fields_serialization = proc_macro2::TokenStream::new();
     let mut length_calculation = proc_macro2::TokenStream::new();
 
     let generic_idents = generate_generic_args(&generics);
@@ -81,17 +82,50 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
 
     match st.fields {
         syn::Fields::Named(ref fields) => {
-            for field in &fields.named {
+            for (idx, field) in fields.named.iter().enumerate() {
                 let ident = field.ident.as_ref().unwrap();
                 fields_serialization.extend(quote!(
                     ::casper_types::bytesrepr::ToBytes::write_bytes(&self.#ident, writer)?;
                 ));
+
+                // A little hack is required here to have optimal code; basically we do not want to
+                // construct an additional vec if we can just pass through the inner one unchanged.
+                if fields.named.len() != 1 {
+                    if idx == 0 {
+                        owned_fields_serialization.extend(quote!(
+                            let mut buffer = Vec::new();
+                        ));
+                    }
+                    owned_fields_serialization.extend(quote!(
+                        buffer.extend(::casper_types::bytesrepr::ToBytes::into_bytes(self.#ident)?);
+                    ));
+                } else {
+                    owned_fields_serialization.extend(quote!(
+                        let buffer = ::casper_types::bytesrepr::ToBytes::into_bytes(self.#ident)?;
+                    ));
+                }
+
                 length_calculation.extend(quote!(
                     + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#ident)));
             }
         }
         syn::Fields::Unnamed(ref fields) => {
             for idx in 0..(fields.unnamed.len()) {
+                if fields.unnamed.len() != 1 {
+                    if idx == 0 {
+                        owned_fields_serialization.extend(quote!(
+                            let mut buffer = Vec::new();
+                        ));
+                    }
+                    owned_fields_serialization.extend(quote!(
+                        buffer.extend(::casper_types::bytesrepr::ToBytes::into_bytes(self.#idx)?);
+                    ));
+                } else {
+                    owned_fields_serialization.extend(quote!(
+                        let buffer = ::casper_types::bytesrepr::ToBytes::into_bytes(self.0)?;
+                    ));
+                }
+
                 let formatted = format!("{}", idx);
                 let lit = LitInt::new(&formatted, st_name.span());
                 fields_serialization.extend(quote!(
@@ -102,7 +136,10 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
             }
         }
         syn::Fields::Unit => {
-            // Nothing to do, unit structs simply serialize to nothing.
+            // Nothing to do, just ensure we return an empty buffer later on.
+            owned_fields_serialization.extend(quote!(
+                let buffer = Vec::new();
+            ));
         }
     };
 
@@ -120,7 +157,16 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                 0 #length_calculation
             }
 
-            // TODO: into_bytes
+            /// Consumes `self` and serializes to a `Vec<u8>`.
+            #[inline]
+            fn into_bytes(self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error>
+            where
+                Self: Sized,
+            {
+                #owned_fields_serialization
+                return Ok(buffer)
+            }
+
 
             #[inline]
 
@@ -313,7 +359,8 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
                 }
             }
 
-            // TODO: into_bytes
+            // There is nothing to gain from implementing `into_bytes` for enums, as we always have
+            // to prefix with the discriminant, causing a memcopy/move.
 
             #[inline]
             fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), ::casper_types::bytesrepr::Error> {
