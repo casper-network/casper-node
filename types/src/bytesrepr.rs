@@ -1340,23 +1340,104 @@ impl FromBytes for Arc<[u8]> {
 
 #[cfg(feature = "std")]
 mod std_impls {
-    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
-    use super::{FromBytes, ToBytes, U16_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH};
+    use super::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+
+    impl ToBytes for Ipv4Addr {
+        #[inline]
+        fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), super::Error> {
+            self.octets().write_bytes(writer)?;
+            Ok(())
+        }
+
+        #[inline]
+        fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
+            let mut buffer = super::allocate_buffer(&self)?;
+            self.write_bytes(&mut buffer)?;
+            Ok(buffer)
+        }
+
+        #[inline]
+        fn serialized_length(&self) -> usize {
+            4 * U8_SERIALIZED_LENGTH
+        }
+    }
+
+    impl ToBytes for Ipv6Addr {
+        #[inline]
+        fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), super::Error> {
+            self.octets().write_bytes(writer)?;
+            Ok(())
+        }
+
+        #[inline]
+        fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
+            let mut buffer = super::allocate_buffer(&self)?;
+            self.write_bytes(&mut buffer)?;
+            Ok(buffer)
+        }
+
+        #[inline]
+        fn serialized_length(&self) -> usize {
+            16 * U8_SERIALIZED_LENGTH
+        }
+    }
+
+    impl ToBytes for SocketAddrV4 {
+        #[inline]
+        fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), super::Error> {
+            self.ip().write_bytes(writer)?;
+            self.port().write_bytes(writer)?;
+            Ok(())
+        }
+
+        #[inline]
+        fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
+            let mut buffer = super::allocate_buffer(&self)?;
+            self.write_bytes(&mut buffer)?;
+            Ok(buffer)
+        }
+
+        #[inline]
+        fn serialized_length(&self) -> usize {
+            self.ip().serialized_length() + self.port().serialized_length()
+        }
+    }
+
+    impl ToBytes for SocketAddrV6 {
+        #[inline]
+        fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), super::Error> {
+            self.ip().write_bytes(writer)?;
+            self.port().write_bytes(writer)?;
+            Ok(())
+        }
+
+        #[inline]
+        fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
+            let mut buffer = super::allocate_buffer(&self)?;
+            self.write_bytes(&mut buffer)?;
+            Ok(buffer)
+        }
+
+        #[inline]
+        fn serialized_length(&self) -> usize {
+            self.ip().serialized_length() + self.port().serialized_length()
+        }
+    }
 
     impl ToBytes for SocketAddr {
+        #[inline]
         fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
             let mut buffer = super::allocate_buffer(self)?;
             match self {
                 SocketAddr::V4(v4) => {
                     buffer.push(0u8);
-                    v4.port().write_bytes(&mut buffer)?;
-                    v4.ip().octets().write_bytes(&mut buffer)?;
+                    v4.write_bytes(&mut buffer)?;
                 }
                 SocketAddr::V6(v6) => {
                     buffer.push(1u8);
-                    v6.port().write_bytes(&mut buffer)?;
-                    v6.ip().octets().write_bytes(&mut buffer)?;
+                    v6.write_bytes(&mut buffer)?;
                 }
             }
             Ok(buffer)
@@ -1365,24 +1446,58 @@ mod std_impls {
         #[inline]
         fn serialized_length(&self) -> usize {
             match self {
-                SocketAddr::V4(_) => 1 + U16_SERIALIZED_LENGTH + 4 * U8_SERIALIZED_LENGTH,
-                SocketAddr::V6(_) => 1 + U16_SERIALIZED_LENGTH + 16 * U8_SERIALIZED_LENGTH,
+                SocketAddr::V4(v4) => 1 + v4.serialized_length(),
+                SocketAddr::V6(v6) => 1 + v6.serialized_length(),
             }
+        }
+    }
+
+    impl FromBytes for Ipv4Addr {
+        #[inline]
+        fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
+            let (octets, remainder) = <[u8; 4]>::from_bytes(bytes)?;
+            Ok((Self::from(octets), remainder))
+        }
+    }
+
+    impl FromBytes for Ipv6Addr {
+        #[inline]
+        fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
+            let (octets, remainder) = <[u8; 16]>::from_bytes(bytes)?;
+            Ok((Self::from(octets), remainder))
+        }
+    }
+
+    impl FromBytes for SocketAddrV4 {
+        #[inline]
+        fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
+            let (ip, remainder) = Ipv4Addr::from_bytes(bytes)?;
+            let (port, remainder) = u16::from_bytes(remainder)?;
+            Ok((Self::new(ip, port), remainder))
+        }
+    }
+
+    impl FromBytes for SocketAddrV6 {
+        #[inline]
+        fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
+            let (ip, remainder) = Ipv6Addr::from_bytes(bytes)?;
+            let (port, remainder) = u16::from_bytes(remainder)?;
+            Ok((Self::new(ip, port, 0, 0), remainder))
         }
     }
 
     impl FromBytes for SocketAddr {
         fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
             let (tag, remainder) = u8::from_bytes(bytes)?;
-            let (port, remainder) = u16::from_bytes(remainder)?;
+
             match tag {
                 0 => {
-                    let (octets, remainder) = <[u8; 4]>::from_bytes(remainder)?;
-                    Ok((SocketAddr::from((Ipv4Addr::from(octets), port)), remainder))
+                    let (v4, remainder) = SocketAddrV4::from_bytes(remainder)?;
+                    Ok((v4.into(), remainder))
                 }
                 1 => {
-                    let (octets, remainder) = <[u8; 16]>::from_bytes(remainder)?;
-                    Ok((SocketAddr::from((Ipv6Addr::from(octets), port)), remainder))
+                    let (v6, remainder) = SocketAddrV6::from_bytes(remainder)?;
+                    Ok((v6.into(), remainder))
                 }
                 // Note: `Formatting` has historically been used for invalid variant errors.
                 _ => Err(super::Error::Formatting),
