@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.  The format
 * Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "contract-package-". Parsing from the old format is still supported.
 * Applied `#[non_exhaustive]` to error enums.
 * Change Debug output of `DeployHash` to hex-encoded string rather than a list of integers.
+* Integer-primitive `FromBytes`/`ToBytes` implementations may now be inlined cross-crate.
 
 ### Deprecated
 * Deprecate "gens" feature (used for providing proptest helpers) in favor of new "testing" feature.

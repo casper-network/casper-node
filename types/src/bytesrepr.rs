@@ -232,14 +232,17 @@ impl FromBytes for bool {
 }
 
 impl ToBytes for u8 {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         Ok(vec![*self])
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
     }
 
+    #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.push(*self);
         Ok(())
@@ -247,6 +250,7 @@ impl ToBytes for u8 {
 }
 
 impl FromBytes for u8 {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         match bytes.split_first() {
             None => Err(Error::EarlyEndOfStream),
@@ -256,14 +260,17 @@ impl FromBytes for u8 {
 }
 
 impl ToBytes for i32 {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         Ok(self.to_le_bytes().to_vec())
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
         I32_SERIALIZED_LENGTH
     }
 
+    #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.extend_from_slice(&self.to_le_bytes());
         Ok(())
@@ -271,6 +278,7 @@ impl ToBytes for i32 {
 }
 
 impl FromBytes for i32 {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let mut result = [0u8; I32_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, I32_SERIALIZED_LENGTH)?;
@@ -280,14 +288,17 @@ impl FromBytes for i32 {
 }
 
 impl ToBytes for i64 {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         Ok(self.to_le_bytes().to_vec())
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
         I64_SERIALIZED_LENGTH
     }
 
+    #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.extend_from_slice(&self.to_le_bytes());
         Ok(())
@@ -295,6 +306,7 @@ impl ToBytes for i64 {
 }
 
 impl FromBytes for i64 {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let mut result = [0u8; I64_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, I64_SERIALIZED_LENGTH)?;
@@ -304,14 +316,17 @@ impl FromBytes for i64 {
 }
 
 impl ToBytes for u16 {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         Ok(self.to_le_bytes().to_vec())
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
         U16_SERIALIZED_LENGTH
     }
 
+    #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.extend_from_slice(&self.to_le_bytes());
         Ok(())
@@ -319,6 +334,7 @@ impl ToBytes for u16 {
 }
 
 impl FromBytes for u16 {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let mut result = [0u8; U16_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, U16_SERIALIZED_LENGTH)?;
@@ -328,14 +344,17 @@ impl FromBytes for u16 {
 }
 
 impl ToBytes for u32 {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         Ok(self.to_le_bytes().to_vec())
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
         U32_SERIALIZED_LENGTH
     }
 
+    #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.extend_from_slice(&self.to_le_bytes());
         Ok(())
@@ -343,6 +362,7 @@ impl ToBytes for u32 {
 }
 
 impl FromBytes for u32 {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let mut result = [0u8; U32_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, U32_SERIALIZED_LENGTH)?;
@@ -352,14 +372,17 @@ impl FromBytes for u32 {
 }
 
 impl ToBytes for u64 {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         Ok(self.to_le_bytes().to_vec())
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
         U64_SERIALIZED_LENGTH
     }
 
+    #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.extend_from_slice(&self.to_le_bytes());
         Ok(())
@@ -367,6 +390,7 @@ impl ToBytes for u64 {
 }
 
 impl FromBytes for u64 {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let mut result = [0u8; U64_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, U64_SERIALIZED_LENGTH)?;
