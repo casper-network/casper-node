@@ -1296,6 +1296,27 @@ where
     }
 }
 
+impl ToBytes for Box<[u8]> {
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        u8_slice_to_bytes(&self)
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        u8_slice_serialized_length(&self)
+    }
+}
+
+impl FromBytes for Box<[u8]> {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (size, remainder) = u32::from_bytes(bytes)?;
+        let (bstr_bytes, remainder) = safe_split_at(remainder, size as usize)?;
+        Ok((bstr_bytes.into(), remainder))
+    }
+}
+
 /// Serializes a slice of bytes with a length prefix.
 ///
 /// This function is serializing a slice of bytes with an addition of a 4 byte length prefix.
@@ -1633,6 +1654,13 @@ mod proptests {
         #[test]
         fn test_box_str(s in "\\PC*") {
             let bx: Box<String> = Box::new(s);
+            bytesrepr::test_serialization_roundtrip(&bx);
+
+        }
+
+        #[test]
+        fn test_box_u8(s in "\\PC*") {
+            let bx: Box<[u8]> = s.into_bytes().into();
             bytesrepr::test_serialization_roundtrip(&bx);
 
         }
