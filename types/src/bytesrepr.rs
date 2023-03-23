@@ -3,6 +3,7 @@ mod bytes;
 
 use alloc::{
     alloc::{alloc, Layout},
+    boxed::Box,
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     string::String,
@@ -1245,6 +1246,31 @@ where
     }
 }
 
+impl<T> FromBytes for Box<T>
+where
+    T: FromBytes,
+{
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        T::from_bytes(bytes).map(|(obj, remainder)| (Box::new(obj), remainder))
+    }
+}
+
+impl<T> ToBytes for Box<T>
+where
+    T: ToBytes,
+{
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        <Self as AsRef<T>>::as_ref(self).to_bytes()
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        <Self as AsRef<T>>::as_ref(self).serialized_length()
+    }
+}
+
 impl<T> FromBytes for Arc<T>
 where
     T: FromBytes,
@@ -1601,6 +1627,13 @@ mod proptests {
         fn test_arc_str(s in "\\PC*") {
             let arc: Arc<String> = Arc::new(s);
             bytesrepr::test_serialization_roundtrip(&arc);
+
+        }
+
+        #[test]
+        fn test_box_str(s in "\\PC*") {
+            let bx: Box<String> = Box::new(s);
+            bytesrepr::test_serialization_roundtrip(&bx);
 
         }
     }
