@@ -1192,7 +1192,7 @@ mod tests {
         let trusted_ancestor_headers = [4, 3];
         let signed_block_headers = [6, 9, 11];
         let add_proofs = true;
-        let sync_leap = make_test_sync_leap(
+        let valid_sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
@@ -1201,22 +1201,23 @@ mod tests {
             add_proofs,
         );
 
-        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
-        // it contains to generate SyncLeap structures as required for the test, because we know the
-        // heights of the blocks in the test chain as well as their sigs.
-        let highest_block = sync_leap
+        // `valid_sync_leap` created above is a well formed SyncLeap structure for the test chain.
+        // We can use the blocks it contains to generate SyncLeap structures as required for
+        // the test, because we know the heights of the blocks in the test chain as well as
+        // their sigs.
+        let highest_block = valid_sync_leap
             .signed_block_headers
             .last()
             .unwrap()
             .block_header
             .clone();
-        let lowest_blocks: Vec<_> = sync_leap
+        let lowest_blocks: Vec<_> = valid_sync_leap
             .trusted_ancestor_headers
             .iter()
             .take(2)
             .cloned()
             .collect();
-        let middle_blocks: Vec<_> = sync_leap
+        let middle_blocks: Vec<_> = valid_sync_leap
             .signed_block_headers
             .iter()
             .take(2)
@@ -1256,7 +1257,7 @@ mod tests {
         let trusted_ancestor_headers = [4, 3];
         let signed_block_headers = [6, 9, 11];
         let add_proofs = true;
-        let sync_leap = make_test_sync_leap(
+        let valid_sync_leap = make_test_sync_leap(
             &mut rng,
             &switch_blocks,
             query,
@@ -1265,22 +1266,23 @@ mod tests {
             add_proofs,
         );
 
-        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
-        // it contains to generate SyncLeap structures as required for the test, because we know the
-        // heights of the blocks in the test chain as well as their sigs.
-        let highest_block = sync_leap
+        // `valid_sync_leap` created above is a well formed SyncLeap structure for the test chain.
+        // We can use the blocks it contains to generate SyncLeap structures as required for
+        // the test, because we know the heights of the blocks in the test chain as well as
+        // their sigs.
+        let highest_block = valid_sync_leap
             .signed_block_headers
             .last()
             .unwrap()
             .block_header
             .clone();
-        let lowest_blocks: Vec<_> = sync_leap
+        let lowest_blocks: Vec<_> = valid_sync_leap
             .trusted_ancestor_headers
             .iter()
             .take(2)
             .cloned()
             .collect();
-        let middle_blocks: Vec<_> = sync_leap
+        let middle_blocks: Vec<_> = valid_sync_leap
             .signed_block_headers
             .iter()
             .take(2)
@@ -1329,9 +1331,10 @@ mod tests {
             add_proofs,
         );
 
-        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
-        // it contains to generate SyncLeap structures as required for the test, because we know the
-        // heights of the blocks in the test chain as well as their sigs.
+        // `valid_sync_leap` created above is a well formed SyncLeap structure for the test chain.
+        // We can use the blocks it contains to generate SyncLeap structures as required for
+        // the test, because we know the heights of the blocks in the test chain as well as
+        // their sigs.
         let highest_block = sync_leap.signed_block_headers.last().unwrap().clone();
         let lowest_blocks: Vec<_> = sync_leap
             .trusted_ancestor_headers
