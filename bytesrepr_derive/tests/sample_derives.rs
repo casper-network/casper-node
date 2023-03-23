@@ -17,6 +17,7 @@ struct MyUnnamedStruct(u64, u32, String);
 enum MyEnum {
     MyNamedVariant { a: u64, b: u32, c: String },
     MyUnnamedVariant(u64, u32, String),
+    MyUnitVariant,
 }
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
@@ -41,7 +42,10 @@ fn roundtrip_value<T>(value: T)
 where
     T: FromBytes + ToBytes + PartialEq + Debug,
 {
+    let expected_length = value.serialized_length();
     let encoded = value.to_bytes().expect("serialization failed");
+    assert_eq!(encoded.len(), expected_length);
+
     let (decoded, remainder) =
         <T as FromBytes>::from_bytes(&encoded).expect("deserialization failed");
     assert_eq!(remainder.len(), 0);
@@ -93,6 +97,11 @@ fn roundtrip_enum_named() {
         b: 456,
         c: "hello, world".to_owned(),
     });
+}
+
+#[test]
+fn roundtrip_enum_unit() {
+    roundtrip_value(MyEnum::MyUnitVariant);
 }
 
 #[test]

@@ -265,9 +265,22 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
                     }
                 });
             }
-            // TODO: Do we (want to) support zero-sized types?
             syn::Fields::Unit => {
-                panic!("unit enum variants are not supported by bytesrepr_derive")
+                fields_serialization.extend(quote!(
+                        buffer.push(#discriminator);
+                ));
+
+                to_bytes_variant_match.extend(quote! {
+                    Self::#variant_ident => {
+                        #fields_serialization
+                    }
+                });
+
+                length_variant_match.extend(quote! {
+                    Self::#variant_ident => {
+                        0
+                    }
+                });
             }
         }
     }
@@ -362,7 +375,11 @@ fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) 
                 });
             }
             syn::Fields::Unit => {
-                panic!("unit enum variants are not supported by bytesrepr_derive")
+                from_bytes_variant_match.extend(quote! {
+                    #discriminator => {
+                        Ok((Self::#variant_ident, remainder))
+                    }
+                });
             }
         }
     }
