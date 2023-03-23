@@ -321,7 +321,7 @@ impl BlockSynchronizer {
             }
         }
 
-        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        let (block_header, maybe_sigs) = sync_leap.highest_block_header_and_signatures();
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))
                 if builder.block_hash() == block_header.block_hash() =>
@@ -704,7 +704,7 @@ impl BlockSynchronizer {
                             .fetch::<SyncLeap>(
                                 SyncLeapIdentifier::sync_to_historical(builder.block_hash()),
                                 node_id,
-                                chainspec.clone(),
+                                chainspec.as_ref().into(),
                             )
                             .event(Event::SyncLeapFetched)
                     }))
