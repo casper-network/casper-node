@@ -112,6 +112,17 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
     Ok(Vec::with_capacity(serialized_length))
 }
 
+/// Reserves spaces in a `Vec<u8>` sufficient to hold `to_be_serialized` after serialization.
+/// Returns an error if the capacity would exceed `u32::max_value()`.
+#[inline]
+pub fn reserve_buffer<T: ToBytes>(buffer: &mut Vec<u8>, to_be_serialized: &T) -> Result<(), Error> {
+    let serialized_length = to_be_serialized.serialized_length();
+    if serialized_length > u32::max_value() as usize {
+        return Err(Error::OutOfMemory);
+    }
+    Ok(buffer.reserve(serialized_length))
+}
+
 /// Serialization and deserialization errors.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

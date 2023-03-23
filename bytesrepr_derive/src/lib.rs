@@ -84,7 +84,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
             for field in &fields.named {
                 let ident = field.ident.as_ref().unwrap();
                 fields_serialization.extend(quote!(
-                    buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(&self.#ident)?);
+                    ::casper_types::bytesrepr::ToBytes::write_bytes(&self.#ident, writer)?;
                 ));
                 length_calculation.extend(quote!(
                     + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#ident)));
@@ -95,7 +95,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                 let formatted = format!("{}", idx);
                 let lit = LitInt::new(&formatted, st_name.span());
                 fields_serialization.extend(quote!(
-                    buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(&self.#lit)?);
+                    ::casper_types::bytesrepr::ToBytes::write_bytes(&self.#lit, writer)?;
                 ));
                 length_calculation.extend(quote!(
                     + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#lit)));
@@ -108,18 +108,27 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
 
     let rv = quote! {
         impl #generic_idents ::casper_types::bytesrepr::ToBytes for #st_name #generics #where_clause {
+            #[inline]
             fn to_bytes(&self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error> {
-                let mut buffer = ::casper_types::bytesrepr::allocate_buffer(self)?;
-                #fields_serialization
+                let mut buffer = Vec::new();
+                self.write_bytes(&mut buffer)?;
                 Ok(buffer)
             }
 
+            #[inline]
             fn serialized_length(&self) -> usize {
                 0 #length_calculation
             }
 
             // TODO: into_bytes
-            // TODO: write_bytes
+
+            #[inline]
+
+            fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), ::casper_types::bytesrepr::Error> {
+                ::casper_types::bytesrepr::reserve_buffer(writer, &self)?;
+                #fields_serialization
+                Ok(())
+            }
         }
     };
 
@@ -188,7 +197,7 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generi
 
 /// Proc macro for `#[derive(ToBytes)]` for `enum`s.
 fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) -> TokenStream {
-    let mut to_bytes_variant_match = proc_macro2::TokenStream::new();
+    let mut write_bytes_variant_match = proc_macro2::TokenStream::new();
     let mut length_variant_match = proc_macro2::TokenStream::new();
 
     let generic_idents = generate_generic_args(&generics);
@@ -215,19 +224,19 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
         match variant.fields {
             syn::Fields::Named(ref fields) => {
                 fields_serialization.extend(quote!(
-                        buffer.push(#discriminator);
+                        writer.push(#discriminator);
                 ));
                 for field in &fields.named {
                     let ident = field.ident.as_ref().unwrap();
                     fields_serialization.extend(quote!(
-                        buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(#ident)?);
+                        ::casper_types::bytesrepr::ToBytes::write_bytes(#ident, writer)?;
                     ));
                     length_calculation.extend(quote!(
                         + ::casper_types::bytesrepr::ToBytes::serialized_length(#ident)));
                 }
 
                 let field_names: Vec<_> = fields.named.iter().map(|f| f.ident.clone()).collect();
-                to_bytes_variant_match.extend(quote! {
+                write_bytes_variant_match.extend(quote! {
                     Self::#variant_ident { #(#field_names),* } => {
                         #fields_serialization
                     }
@@ -241,14 +250,14 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
             }
             syn::Fields::Unnamed(ref fields) => {
                 fields_serialization.extend(quote!(
-                        buffer.push(#discriminator);
+                        writer.push(#discriminator);
                 ));
 
                 let mut field_names = Vec::new();
                 for idx in 0..(fields.unnamed.len()) {
                     let idx_ident = Ident::new(&format!("field_{}", idx), en_name.span());
                     fields_serialization.extend(quote!(
-                        buffer.extend(::casper_types::bytesrepr::ToBytes::to_bytes(#idx_ident)?);
+                        ::casper_types::bytesrepr::ToBytes::write_bytes(#idx_ident, writer)?;
                     ));
                     length_calculation.extend(quote!(
                         + ::casper_types::bytesrepr::ToBytes::serialized_length(#idx_ident)));
@@ -256,7 +265,7 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
                     field_names.push(idx_ident);
                 }
 
-                to_bytes_variant_match.extend(quote! {
+                write_bytes_variant_match.extend(quote! {
                     Self::#variant_ident ( #(#field_names),* ) => {
                         #fields_serialization
                     }
@@ -270,10 +279,10 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
             }
             syn::Fields::Unit => {
                 fields_serialization.extend(quote!(
-                        buffer.push(#discriminator);
+                        writer.push(#discriminator);
                 ));
 
-                to_bytes_variant_match.extend(quote! {
+                write_bytes_variant_match.extend(quote! {
                     Self::#variant_ident => {
                         #fields_serialization
                     }
@@ -290,14 +299,14 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
 
     let rv = quote!(
         impl #generic_idents ::casper_types::bytesrepr::ToBytes for #en_name #generics #where_clause {
+            #[inline]
             fn to_bytes(&self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error> {
-                let mut buffer = ::casper_types::bytesrepr::allocate_buffer(self)?;
-                match self {
-                    #to_bytes_variant_match
-                }
+                let mut buffer = Vec::new();
+                self.write_bytes(&mut buffer)?;
                 Ok(buffer)
             }
 
+             #[inline]
             fn serialized_length(&self) -> usize {
                 1 + match self {
                     #length_variant_match
@@ -305,7 +314,15 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
             }
 
             // TODO: into_bytes
-            // TODO: write_bytes
+
+            #[inline]
+            fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), ::casper_types::bytesrepr::Error> {
+                ::casper_types::bytesrepr::reserve_buffer(writer, &self)?;
+                match self {
+                    #write_bytes_variant_match
+                }
+                Ok(())
+            }
         }
     );
     eprintln!("{}", rv);
