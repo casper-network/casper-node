@@ -45,6 +45,7 @@ fn roundtrip_value<T>(value: T)
 where
     T: FromBytes + ToBytes + PartialEq + Debug,
 {
+    // Try `to_bytes` and roundtrip.
     let expected_length = value.serialized_length();
     let encoded = value.to_bytes().expect("serialization failed");
     assert_eq!(encoded.len(), expected_length);
@@ -53,6 +54,17 @@ where
         <T as FromBytes>::from_bytes(&encoded).expect("deserialization failed");
     assert_eq!(remainder.len(), 0);
     assert_eq!(value, decoded);
+
+    // Try with `write_bytes`.
+    let mut buffer = Vec::new();
+    value
+        .write_bytes(&mut buffer)
+        .expect("write_bytes serialization failed");
+    assert_eq!(buffer, encoded);
+
+    // Try with the owned conversion function.
+    let encoded2 = value.into_bytes().expect("owned serialization failed");
+    assert_eq!(encoded, encoded2);
 }
 
 mod inner {
