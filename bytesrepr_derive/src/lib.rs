@@ -101,8 +101,9 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                     + ::casper_types::bytesrepr::ToBytes::serialized_length(&self.#lit)));
             }
         }
-        // TODO: Do we (want to) support zero-sized types?
-        syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
+        syn::Fields::Unit => {
+            // Nothing to do, unit structs simply serialize to nothing.
+        }
     };
 
     let rv = quote! {
@@ -164,8 +165,10 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generi
 
             quote!(Self ( #fields_assignments ))
         }
-        // TODO: Do we (want to) support zero-sized types?
-        syn::Fields::Unit => panic!("unit structs are not supported by bytesrepr_derive"),
+        syn::Fields::Unit => {
+            // Nothing to do, unit structs deserialize from anything.
+            quote!(Self)
+        }
     };
 
     let rv = quote! {

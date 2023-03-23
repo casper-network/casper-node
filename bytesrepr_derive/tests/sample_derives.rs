@@ -14,6 +14,9 @@ struct MyNamedStruct {
 struct MyUnnamedStruct(u64, u32, String);
 
 #[derive(FromBytes, ToBytes, Debug, PartialEq)]
+struct MyUnitStruct;
+
+#[derive(FromBytes, ToBytes, Debug, PartialEq)]
 enum MyEnum {
     MyNamedVariant { a: u64, b: u32, c: String },
     MyUnnamedVariant(u64, u32, String),
@@ -88,6 +91,11 @@ fn roundtrip_named() {
 #[test]
 fn roundtrip_unnamed() {
     roundtrip_value(MyUnnamedStruct(123, 456, "hello, world".to_owned()));
+}
+
+#[test]
+fn roundtrip_unit_struct() {
+    roundtrip_value(MyUnitStruct);
 }
 
 #[test]
