@@ -22,7 +22,10 @@ use reactor::ReactorEvent;
 
 use crate::{
     components::{
-        consensus::tests::utils::{ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID},
+        consensus::tests::utils::{
+            ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID, BOB_PUBLIC_KEY,
+            BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
+        },
         network::Identity as NetworkIdentity,
         storage::{self, Storage},
     },
@@ -1899,5 +1902,192 @@ async fn block_accumulator_reactor_flow() {
         assert!(!block_accumulator
             .block_acceptors
             .contains_key(old_era_block.hash()));
+    }
+}
+
+#[tokio::test]
+async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
+    let mut rng = TestRng::new();
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let mut runner: Runner<MockReactor> = Runner::new(
+        (),
+        Arc::new(chainspec),
+        Arc::new(chainspec_raw_bytes),
+        &mut rng,
+    )
+    .await
+    .unwrap();
+
+    // Create 1 block.
+    let block_1 = generate_non_genesis_block(&mut rng);
+
+    // Also create 2 peers.
+    let peer_1 = NodeId::random(&mut rng);
+    let peer_2 = NodeId::random(&mut rng);
+
+    let fin_sig_bob = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &BOB_SECRET_KEY,
+        BOB_PUBLIC_KEY.clone(),
+    );
+
+    let fin_sig_carol = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &CAROL_SECRET_KEY,
+        CAROL_PUBLIC_KEY.clone(),
+    );
+
+    let fin_sig_alice = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    // Register the era in the validator matrix so the block is valid.
+    {
+        let mut validator_matrix = runner.reactor_mut().validator_matrix.clone();
+        let weights = EraValidatorWeights::new(
+            block_1.header().era_id(),
+            BTreeMap::from([
+                (ALICE_PUBLIC_KEY.clone(), 10.into()),
+                (BOB_PUBLIC_KEY.clone(), 100.into()),
+                (CAROL_PUBLIC_KEY.clone(), 100.into()),
+            ]),
+            Ratio::new(1, 3),
+        );
+        validator_matrix.register_era_validator_weights(weights);
+    }
+
+    // Register a signature for block 1.
+    {
+        let effect_builder = runner.effect_builder();
+        let reactor = runner.reactor_mut();
+
+        let block_accumulator = &mut reactor.block_accumulator;
+        block_accumulator.register_local_tip(0, 0.into());
+
+        let event = super::Event::ReceivedFinalitySignature {
+            finality_signature: Box::new(fin_sig_bob.clone()),
+            sender: peer_1,
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+    }
+
+    // Register a signature for block 1.
+    {
+        let effect_builder = runner.effect_builder();
+        let reactor = runner.reactor_mut();
+
+        let block_accumulator = &mut reactor.block_accumulator;
+
+        let event = super::Event::ReceivedFinalitySignature {
+            finality_signature: Box::new(fin_sig_carol.clone()),
+            sender: peer_1,
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+    }
+
+    // Register a signature for block 1.
+    {
+        let effect_builder = runner.effect_builder();
+        let reactor = runner.reactor_mut();
+
+        let block_accumulator = &mut reactor.block_accumulator;
+
+        let event = super::Event::CreatedFinalitySignature {
+            finality_signature: Box::new(fin_sig_alice.clone()),
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+    }
+
+    // Register block 1.
+    {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let event = super::Event::ReceivedBlock {
+                    block: Arc::new(block_1.clone()),
+                    sender: peer_2,
+                };
+                effect_builder
+                    .into_inner()
+                    .schedule(event, QueueKind::Validation)
+                    .ignore()
+            })
+            .await;
+        for _ in 0..6 {
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+                time::sleep(POLL_INTERVAL).await;
+            }
+        }
+        let expected_block = runner
+            .reactor()
+            .storage
+            .read_block(block_1.hash())
+            .unwrap()
+            .unwrap();
+        assert_eq!(expected_block, block_1);
+        let expected_block_signatures = runner
+            .reactor()
+            .storage
+            .get_finality_signatures_for_block(*block_1.hash());
+        assert_eq!(
+            expected_block_signatures
+                .and_then(|sigs| sigs.get_finality_signature(&fin_sig_alice.public_key))
+                .unwrap(),
+            fin_sig_alice
+        );
+    }
+
+    tokio::time::sleep(
+        Duration::from(runner.reactor().block_accumulator.purge_interval) + Duration::from_secs(1),
+    )
+    .await;
+
+    // Register block 1.
+    {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let mut meta_block_state = MetaBlockState::new_already_stored();
+                meta_block_state.register_as_executed();
+                let event = super::Event::ExecutedBlock {
+                    meta_block: MetaBlock::new(
+                        Arc::new(block_1.clone()),
+                        Vec::new(),
+                        meta_block_state,
+                    ),
+                };
+                effect_builder
+                    .into_inner()
+                    .schedule(event, QueueKind::Regular)
+                    .ignore()
+            })
+            .await;
+        let mut finished = false;
+        while !finished {
+            let mut retry_count = 5;
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+                retry_count -= 1;
+                if retry_count == 0 {
+                    finished = true;
+                    break;
+                }
+                time::sleep(POLL_INTERVAL).await;
+            }
+        }
+
+        let expected_block = runner
+            .reactor()
+            .storage
+            .read_highest_complete_block()
+            .unwrap()
+            .unwrap();
+        assert_eq!(expected_block.height(), block_1.height());
     }
 }
