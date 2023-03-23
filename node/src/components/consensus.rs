@@ -25,6 +25,7 @@ use std::{
     time::Duration,
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
@@ -69,7 +70,7 @@ pub(crate) use validator_change::ValidatorChange;
 const COMPONENT_NAME: &str = "consensus";
 
 /// A message to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, FromBytes, ToBytes)]
 pub(crate) enum EraMessage<C>
 where
     C: Context,
@@ -110,7 +111,9 @@ impl<C: Context> From<HighwayMessage<C>> for EraMessage<C> {
 }
 
 /// A request to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, From)]
+#[derive(
+    DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, From, FromBytes, ToBytes,
+)]
 pub(crate) enum EraRequest<C>
 where
     C: Context,
@@ -127,7 +130,7 @@ impl<C: Context> EraRequest<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize, FromBytes, ToBytes)]
 pub(crate) enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol {
@@ -140,7 +143,7 @@ pub(crate) enum ConsensusMessage {
 }
 
 /// A protocol request message, to be handled by the instance in the specified era.
-#[derive(DataSize, Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize, FromBytes, ToBytes)]
 pub(crate) struct ConsensusRequestMessage {
     era_id: EraId,
     payload: EraRequest<ClContext>,

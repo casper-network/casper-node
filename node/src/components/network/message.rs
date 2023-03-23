@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -29,7 +30,7 @@ fn default_protocol_version() -> ProtocolVersion {
     ProtocolVersion::V1_0_0
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, FromBytes, ToBytes)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
     Handshake {
@@ -128,22 +129,6 @@ impl<P: Payload> Message<P> {
     }
 }
 
-impl<P> FromBytes for Message<P> {
-    fn from_bytes(_bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
-        todo!()
-    }
-}
-
-impl<P> ToBytes for Message<P> {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
-        todo!()
-    }
-
-    fn serialized_length(&self) -> usize {
-        todo!()
-    }
-}
-
 /// A pair of secret keys used by consensus.
 pub(crate) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
@@ -175,7 +160,7 @@ impl NodeKeyPair {
 /// Note that this type has custom `Serialize` and `Deserialize` implementations to allow the
 /// `public_key` and `signature` fields to be encoded to all-lowercase hex, hence circumventing the
 /// checksummed-hex encoding used by `PublicKey` and `Signature` in versions 1.4.2 and 1.4.3.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, FromBytes, ToBytes)]
 pub(crate) struct ConsensusCertificate {
     public_key: PublicKey,
     signature: Signature,
@@ -407,7 +392,17 @@ pub enum Channel {
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
 pub(crate) trait Payload:
-    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + Unpin + 'static
+    Serialize
+    + DeserializeOwned
+    + Clone
+    + Debug
+    + Display
+    + Send
+    + Sync
+    + Unpin
+    + FromBytes
+    + ToBytes
+    + 'static
 {
     /// Classifies the payload based on its contents.
     fn message_kind(&self) -> MessageKind;

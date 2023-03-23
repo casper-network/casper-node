@@ -1,5 +1,6 @@
 use std::iter;
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -37,7 +38,9 @@ pub(crate) enum EvidenceError {
 }
 
 /// Evidence that a validator is faulty.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",

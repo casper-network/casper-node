@@ -5,6 +5,7 @@ use std::{
     sync::Arc,
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
@@ -30,7 +31,7 @@ use crate::{
 };
 
 /// Reactor message.
-#[derive(Clone, From, Serialize, Deserialize)]
+#[derive(Clone, From, Serialize, Deserialize, FromBytes, ToBytes)]
 pub(crate) enum Message {
     /// Consensus component message.
     #[from]

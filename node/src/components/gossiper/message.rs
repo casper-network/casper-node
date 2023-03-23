@@ -3,13 +3,17 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use serde::{Deserialize, Serialize};
 
 use super::GossipItem;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, FromBytes, ToBytes)]
 #[serde(bound = "for<'a> T: Deserialize<'a>")]
-pub(crate) enum Message<T: GossipItem> {
+pub(crate) enum Message<T>
+where
+    T: GossipItem,
+{
     /// Gossiped out to random peers to notify them of an item we hold.
     Gossip(T::Id),
     /// Response to a `Gossip` message.  If `is_already_held` is false, the recipient should treat

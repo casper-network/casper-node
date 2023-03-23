@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt::Debug};
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ use crate::components::consensus::{
 };
 
 /// The observed behavior of a validator at some point in time.
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",

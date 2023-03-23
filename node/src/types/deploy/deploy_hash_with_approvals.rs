@@ -1,12 +1,26 @@
 use std::collections::BTreeSet;
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use super::{Approval, Deploy, DeployHash};
 
 /// The hash of a deploy (or transfer) together with signatures approving it for execution.
-#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone,
+    DataSize,
+    Debug,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    FromBytes,
+    ToBytes,
+)]
 pub(crate) struct DeployHashWithApprovals {
     /// The hash of the deploy.
     deploy_hash: DeployHash,

@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +13,9 @@ use crate::components::consensus::{
 pub(crate) type IndexPanorama = ValidatorMap<IndexObservation>;
 
 /// The observed behavior of a validator at some point in time.
-#[derive(Clone, Copy, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone, Copy, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes,
+)]
 pub(crate) enum IndexObservation {
     /// We have evidence that the validator is faulty.
     Faulty,

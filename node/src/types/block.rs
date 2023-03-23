@@ -14,6 +14,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use derive_more::Into;
 use once_cell::sync::{Lazy, OnceCell};
@@ -220,7 +221,19 @@ impl From<TryFromSliceError> for Error {
 /// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
 #[derive(
-    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+    Clone,
+    DataSize,
+    Debug,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Default,
+    FromBytes,
+    ToBytes,
 )]
 pub(crate) struct BlockPayload {
     deploys: Vec<DeployHashWithApprovals>,
@@ -2190,6 +2203,45 @@ pub struct FinalitySignature {
     is_verified: OnceCell<Result<(), crypto::Error>>,
 }
 
+impl ToBytes for FinalitySignature {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(&self)?;
+
+        buffer.extend(self.block_hash.to_bytes()?);
+        buffer.extend(self.era_id.to_bytes()?);
+        buffer.extend(self.signature.to_bytes()?);
+        buffer.extend(self.public_key.to_bytes()?);
+
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block_hash.serialized_length()
+            + self.era_id.serialized_length()
+            + self.signature.serialized_length()
+            + self.public_key.serialized_length()
+    }
+}
+
+impl FromBytes for FinalitySignature {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_hash, remainder) = BlockHash::from_bytes(bytes)?;
+        let (era_id, remainder) = EraId::from_bytes(remainder)?;
+        let (signature, remainder) = Signature::from_bytes(remainder)?;
+        let (public_key, remainder) = PublicKey::from_bytes(remainder)?;
+        Ok((
+            Self {
+                block_hash,
+                era_id,
+                signature,
+                public_key,
+                is_verified: Default::default(),
+            },
+            remainder,
+        ))
+    }
+}
+
 impl FinalitySignature {
     /// Create an instance of `FinalitySignature`.
     pub fn create(
@@ -2364,7 +2416,9 @@ impl GossipItem for FinalitySignature {
 
 impl LargeGossipItem for FinalitySignature {}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, DataSize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, DataSize, FromBytes, ToBytes,
+)]
 pub(crate) struct FinalitySignatureId {
     pub(crate) block_hash: BlockHash,
     pub(crate) era_id: EraId,
@@ -2450,6 +2504,20 @@ mod tests {
             if let Some(data) = block.header.era_end {
                 bytesrepr::test_serialization_roundtrip(&data)
             }
+        }
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip_finality_signature() {
+        let mut rng = TestRng::new();
+        let loop_iterations = 50;
+        for _ in 0..loop_iterations {
+            let random_block = Block::random(&mut rng);
+            let sig = FinalitySignature::random_for_block(
+                *random_block.hash(),
+                random_block.header().era_id().value(),
+            );
+            bytesrepr::test_serialization_roundtrip(&sig)
         }
     }
 

@@ -3,16 +3,27 @@ use std::{
     hash::Hash,
 };
 
+use casper_types::bytesrepr::{FromBytes, ToBytes};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::effect::GossipTarget;
 
 /// A trait which allows an implementing type to be used by a gossiper component.
 pub(crate) trait GossipItem:
-    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
+    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq + FromBytes + ToBytes
 {
     /// The type of ID of the item.
-    type Id: Clone + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
+    type Id: Clone
+        + Eq
+        + Hash
+        + Serialize
+        + DeserializeOwned
+        + Send
+        + Sync
+        + Debug
+        + Display
+        + FromBytes
+        + ToBytes;
 
     /// Whether the item's ID _is_ the complete item or not.
     const ID_IS_COMPLETE_ITEM: bool;

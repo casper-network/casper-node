@@ -7,6 +7,7 @@ use std::{
     slice, vec,
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use derive_more::{AsRef, From};
 use itertools::Itertools;
@@ -18,7 +19,19 @@ use crate::utils::ds;
 
 /// The index of a validator, in a list of all validators, ordered by ID.
 #[derive(
-    Copy, Clone, DataSize, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize,
+    Copy,
+    Clone,
+    DataSize,
+    Debug,
+    Eq,
+    PartialEq,
+    Hash,
+    Ord,
+    PartialOrd,
+    Serialize,
+    Deserialize,
+    FromBytes,
+    ToBytes,
 )]
 pub(crate) struct ValidatorIndex(pub(crate) u32);
 
@@ -191,7 +204,9 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash, FromBytes, ToBytes,
+)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
 
 impl<T> fmt::Display for ValidatorMap<Option<T>>

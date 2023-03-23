@@ -12,6 +12,7 @@ use std::{
     path::PathBuf,
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::RngCore;
@@ -647,7 +648,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",

@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +18,9 @@ use crate::{
 /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
 /// which are somewhat decoupled from the rest of the protocol. These messages, along with the
 /// instance and round ID, are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize)]
+#[derive(
+    Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -53,7 +56,7 @@ impl<C: Context> Content<C> {
 }
 
 /// A vote or echo with a signature.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -136,7 +139,7 @@ impl<C: Context> SignedMessage<C> {
 ///
 /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
 /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -192,7 +195,7 @@ impl<C: Context> SyncRequest<C> {
 
 /// The response to a `SyncRequest`, containing proposals, signatures and evidence the requester is
 /// missing.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -220,7 +223,7 @@ where
 }
 
 /// All messages of the protocol.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",

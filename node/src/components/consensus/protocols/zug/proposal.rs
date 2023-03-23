@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, fmt};
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,9 @@ use crate::components::consensus::{
 };
 
 /// A proposal in the consensus protocol.
-#[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
+#[derive(
+    Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize, ToBytes, FromBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",

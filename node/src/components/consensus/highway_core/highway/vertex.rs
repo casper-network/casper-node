@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, fmt::Debug};
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -17,7 +18,20 @@ use crate::components::consensus::{
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-#[derive(DataSize, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    DataSize,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    FromBytes,
+    ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -42,7 +56,9 @@ impl<C: Context> Dependency<C> {
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -132,7 +148,9 @@ impl<C: Context> Vertex<C> {
     }
 }
 
-#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -166,7 +184,7 @@ impl<C: Context> SignedWireUnit<C> {
     }
 }
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, FromBytes, ToBytes)]
 pub(crate) struct HashedWireUnit<C>
 where
     C: Context,
@@ -217,7 +235,7 @@ impl<'de, C: Context> Deserialize<'de> for HashedWireUnit<C> {
 }
 
 /// A unit as it is sent over the wire, possibly containing a new block.
-#[derive(DataSize, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(DataSize, Clone, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -277,7 +295,9 @@ impl<C: Context> WireUnit<C> {
     }
 }
 
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -313,7 +333,9 @@ impl<C: Context> From<SignedEndorsement<C>> for Endorsements<C> {
 
 /// A ping sent by a validator to signal that it is online but has not created new units in a
 /// while.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",

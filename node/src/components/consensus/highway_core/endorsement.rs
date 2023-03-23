@@ -1,3 +1,4 @@
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -19,7 +20,9 @@ pub(crate) enum EndorsementError {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -51,7 +54,9 @@ impl<C: Context> Endorsement<C> {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, FromBytes, ToBytes,
+)]
 #[serde(bound(
     serialize = "C::Signature: Serialize",
     deserialize = "C::Signature: Deserialize<'de>",

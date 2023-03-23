@@ -9,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytesrepr_derive::{FromBytes, ToBytes};
 use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -89,7 +90,9 @@ impl TaggedTimestamp {
 //
 //       While we do check for consecutive ping nonces being generated, we still like the lower
 //       collision chance for repeated pings being sent.
-#[derive(Clone, Copy, DataSize, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, DataSize, Debug, Deserialize, Eq, Hash, PartialEq, Serialize, FromBytes, ToBytes,
+)]
 pub(crate) struct Nonce(u64);
 
 impl Display for Nonce {
