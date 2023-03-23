@@ -104,11 +104,17 @@
 //! tmp_dir.close().unwrap();
 //! ```
 use std::{
-    collections::HashMap,
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+    convert::TryFrom,
+    ops::Deref,
     sync::{Arc, Mutex},
 };
 
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self, Bytes, ToBytes},
+    Key, StoredValue,
+};
 use lmdb::{Database, DatabaseFlags, Transaction};
 
 use casper_hashing::Digest;
@@ -118,7 +124,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::Trie,
+    trie::{DescendantsIterator, Trie},
     trie_store::{self, TrieStore},
 };
 
@@ -176,7 +182,7 @@ impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
 /// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
 /// it was 2) A deserialized trie
-pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie<Key, StoredValue>)>>>;
+pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Bytes)>>>;
 
 /// Cached version of the trie store.
 #[derive(Clone)]
@@ -184,6 +190,18 @@ pub(crate) struct ScratchTrieStore {
     pub(crate) cache: Cache,
     pub(crate) store: Arc<LmdbTrieStore>,
     pub(crate) env: Arc<LmdbEnvironment>,
+}
+
+fn trie_bytes_iter_children(trie_bytes: &[u8]) -> Result<DescendantsIterator, bytesrepr::Error> {
+    match trie_bytes.first() {
+        Some(tag) if tag == &0 => Ok(DescendantsIterator::ZeroOrOne(None)),
+        Some(_tag) => {
+            // We can deserialize trie as we know this is either a node or an extension
+            let trie: Trie<Key, StoredValue> = bytesrepr::deserialize_from_slice(trie_bytes)?;
+            Ok(trie.iter_children())
+        }
+        None => Err(bytesrepr::Error::Formatting),
+    }
 }
 
 impl ScratchTrieStore {
@@ -213,7 +231,8 @@ impl ScratchTrieStore {
         }
 
         let mut txn = env.create_read_write_txn()?;
-        let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_children())];
+        let mut tries_to_visit =
+            vec![(state_root, root_trie, trie_bytes_iter_children(root_trie)?)];
 
         while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
             if let Some(descendant) = descendants_iterator.next() {
@@ -221,11 +240,16 @@ impl ScratchTrieStore {
                 // Only if a node is marked as dirty in the cache do we want to visit it's
                 // children.
                 if let Some((true, child_trie)) = cache.get(&descendant) {
-                    tries_to_visit.push((descendant, child_trie, child_trie.iter_children()));
+                    let children = trie_bytes_iter_children(child_trie)?;
+                    tries_to_visit.push((descendant, child_trie, children));
                 }
             } else {
-                // We can write this node since it has no children, or they were already written.
-                store.put(&mut txn, &digest, current_trie)?;
+                Store::<Digest, Trie<Key, StoredValue>>::put_raw(
+                    store.deref(),
+                    &mut txn,
+                    &digest.value(),
+                    Cow::Borrowed(current_trie),
+                )?;
             }
         }
 
@@ -243,63 +267,71 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         self.clone()
     }
 
-    /// Puts a `value` into the store at `key` within a transaction, potentially returning an
-    /// error of type `Self::Error` if that fails.
-    fn put<T>(
-        &self,
-        _txn: &mut T,
-        digest: &Digest,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error>
-    where
-        T: Writable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
-        self.cache
-            .lock()
-            .map_err(|_| error::Error::Poison)?
-            .insert(*digest, (true, trie.clone()));
-        Ok(())
-    }
-
-    /// Returns an optional value (may exist or not) as read through a transaction, or an error
-    /// of the associated `Self::Error` variety.
-    fn get<T>(
-        &self,
-        txn: &T,
-        digest: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
+    fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<Bytes>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
         Self::Error: From<T::Error>,
     {
-        let maybe_trie = {
-            self.cache
-                .lock()
-                .map_err(|_| error::Error::Poison)?
-                .get(digest)
-                .cloned()
-        };
+        let mut store = self.cache.lock().map_err(|_| error::Error::Poison)?;
+
+        let maybe_trie = store.get(key);
+
         match maybe_trie {
-            Some((_, cached)) => Ok(Some(cached)),
+            Some((_, trie_bytes)) => Ok(Some(trie_bytes.clone())),
             None => {
-                let raw = self.get_raw(txn, digest)?;
-                match raw {
-                    Some(bytes) => {
-                        let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
-                        {
-                            let store =
-                                &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
-                            if !store.contains_key(digest) {
-                                store.insert(*digest, (false, value.clone()));
+                let handle = self.handle();
+                match txn.read(handle, key.as_ref())? {
+                    Some(trie_bytes) => {
+                        match store.entry(*key) {
+                            Entry::Occupied(_) => {}
+                            Entry::Vacant(v) => {
+                                v.insert((false, trie_bytes.clone()));
                             }
                         }
-                        Ok(Some(value))
+                        Ok(Some(trie_bytes))
                     }
                     None => Ok(None),
                 }
             }
         }
+    }
+
+    fn put_raw<'a, T>(
+        &self,
+        _txn: &mut T,
+        key_bytes: &[u8],
+        value_bytes: Cow<'a, [u8]>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Self::Error: From<T::Error>,
+    {
+        debug_assert_eq!(
+            key_bytes.len(),
+            32,
+            "Should only use Digest bytes in this impl"
+        );
+        let key = Digest::try_from(key_bytes).unwrap(); // SAFETY: we're inside impl Store<Digest, ...>
+        self.cache
+            .lock()
+            .map_err(|_| error::Error::Poison)?
+            .insert(key, (true, Bytes::from(value_bytes.into_owned())));
+        Ok(())
+    }
+
+    fn put<T>(
+        &self,
+        txn: &mut T,
+        key: &Digest,
+        value: &Trie<Key, StoredValue>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Trie<Key, StoredValue>: ToBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.put_raw(txn, key.as_ref(), Cow::Owned(value.to_bytes()?))
     }
 }
 

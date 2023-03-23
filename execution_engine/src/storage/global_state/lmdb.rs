@@ -293,16 +293,17 @@ impl StateProvider for LmdbGlobalState {
         mut state_root_hash: Digest,
         keys: &[Key],
     ) -> Result<DeleteResult, Self::Error> {
-        let scratch = self.get_scratch_store();
+        let scratch_trie_store = self.get_scratch_store();
 
         for key in keys {
-            match delete::<Key, StoredValue, _, _, Self::Error>(
+            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
                 correlation_id,
-                &scratch,
-                &scratch,
+                &scratch_trie_store,
+                &scratch_trie_store,
                 &state_root_hash,
                 key,
-            )? {
+            );
+            match delete_result? {
                 DeleteResult::Deleted(root) => {
                     state_root_hash = root;
                 }
@@ -310,7 +311,7 @@ impl StateProvider for LmdbGlobalState {
             }
         }
 
-        scratch.write_root_to_db(state_root_hash)?;
+        scratch_trie_store.write_root_to_db(state_root_hash)?;
         Ok(DeleteResult::Deleted(state_root_hash))
     }
 }

@@ -451,22 +451,27 @@ where
             let highest_era_info_id = activation_point.saturating_sub(2);
 
             // Start of the copy
-
             let highest_era_info_key = Key::EraInfo(highest_era_info_id);
-            dbg!(&highest_era_info_key);
-            let stored_value = match tracking_copy
+
+            let get_result = tracking_copy
                 .borrow_mut()
                 .get(correlation_id, &highest_era_info_key)
-                .map_err(|error| Error::Exec(error.into()))?
-            {
-                Some(stored_value @ StoredValue::EraInfo(_)) => stored_value,
-                Some(other_stored_value) => todo!("this is not EraInfo: {:?}", other_stored_value),
-                None => todo!("cant find key"),
-            };
+                .map_err(|error| Error::Exec(error.into()))?;
 
-            tracking_copy
-                .borrow_mut()
-                .force_write(Key::EraSummary, stored_value);
+            match get_result {
+                Some(stored_value @ StoredValue::EraInfo(_)) => {
+                    tracking_copy
+                        .borrow_mut()
+                        .force_write(Key::EraSummary, stored_value);
+                }
+                Some(_other_stored_value) => {
+                    // This should not happen as we only write EraInfo variants.
+                }
+                None => {
+                    // Can't find key
+                    // Most likely this chain did not yet ran an auction
+                }
+            };
         }
 
         let execution_effect = tracking_copy.borrow().effect();

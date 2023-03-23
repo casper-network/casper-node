@@ -1,11 +1,10 @@
 //! Core types for a Merkle Trie
 
 use std::{
+    collections::VecDeque,
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
-    iter::Flatten,
     mem::MaybeUninit,
-    slice,
 };
 
 use serde::{
@@ -419,35 +418,36 @@ impl<K, V> Trie<K, V> {
     pub fn iter_children(&self) -> DescendantsIterator {
         match self {
             Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
-            Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
-                iter: pointer_block.0.iter().flatten(),
-            },
+            Trie::Node { pointer_block } => {
+                let iter: VecDeque<Pointer> = pointer_block.0.iter().flatten().copied().collect();
+                DescendantsIterator::PointerBlock { iter }
+            }
             Trie::Extension { pointer, .. } => {
                 DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
             }
         }
     }
 }
-
 /// An iterator over the descendants of a trie node.
-pub enum DescendantsIterator<'a> {
+pub enum DescendantsIterator {
     /// A leaf (zero descendants) or extension (one descendant) being iterated.
     ZeroOrOne(Option<Digest>),
     /// A pointer block being iterated.
     PointerBlock {
         /// An iterator over the non-None entries of the `PointerBlock`.
-        iter: Flatten<slice::Iter<'a, Option<Pointer>>>,
+        // iter: Flatten<slice::Iter<'a, Option<Pointer>>>,
+        iter: VecDeque<Pointer>,
     },
 }
 
-impl<'a> Iterator for DescendantsIterator<'a> {
+impl Iterator for DescendantsIterator {
     type Item = Digest;
 
     fn next(&mut self) -> Option<Self::Item> {
         match *self {
             DescendantsIterator::ZeroOrOne(ref mut maybe_digest) => maybe_digest.take(),
             DescendantsIterator::PointerBlock { ref mut iter } => {
-                iter.next().map(|pointer| *pointer.hash())
+                iter.pop_front().map(|pointer| *pointer.hash())
             }
         }
     }
