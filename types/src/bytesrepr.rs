@@ -1366,6 +1366,8 @@ impl FromBytes for Arc<[u8]> {
 mod std_impls {
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
+    use either::Either;
+
     use super::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
     impl ToBytes for Ipv4Addr {
@@ -1528,6 +1530,64 @@ mod std_impls {
             }
         }
     }
+
+    impl<L, R> ToBytes for Either<L, R>
+    where
+        L: ToBytes,
+        R: ToBytes,
+    {
+        #[inline]
+        fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
+            let mut buffer = super::allocate_buffer(&self)?;
+            self.write_bytes(&mut buffer)?;
+            Ok(buffer)
+        }
+
+        #[inline]
+        fn serialized_length(&self) -> usize {
+            match self {
+                Either::Left(l) => 1 + l.serialized_length(),
+                Either::Right(r) => 1 + r.serialized_length(),
+            }
+        }
+
+        #[inline]
+        fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), super::Error> {
+            match self {
+                Either::Left(l) => {
+                    writer.push(0);
+                    l.write_bytes(writer)?;
+                }
+                Either::Right(r) => {
+                    writer.push(1);
+                    r.write_bytes(writer)?;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl<L, R> FromBytes for Either<L, R>
+    where
+        L: FromBytes,
+        R: FromBytes,
+    {
+        fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
+            let (tag, remainder) = u8::from_bytes(bytes)?;
+            match tag {
+                0 => {
+                    let (l, remainder) = L::from_bytes(remainder)?;
+                    Ok((Either::Left(l), remainder))
+                }
+                1 => {
+                    let (r, remainder) = R::from_bytes(remainder)?;
+                    Ok((Either::Right(r), remainder))
+                }
+                // Note: `Formatting` has historically been used for invalid variant errors.
+                _ => Err(super::Error::Formatting),
+            }
+        }
+    }
 }
 
 /// Serializes a slice of bytes with a length prefix.
@@ -1649,6 +1709,16 @@ mod proptests {
         bytesrepr::{self, bytes::gens::bytes_arb, ToBytes},
         gens::*,
     };
+
+    #[cfg(feature = "std")]
+    fn either_strategy() -> impl Strategy<Value = either::Either<u32, u8>> {
+        use either::Either;
+
+        prop_oneof![
+            proptest::num::u32::ANY.prop_map(Either::Left),
+            proptest::num::u8::ANY.prop_map(Either::Right)
+        ]
+    }
 
     proptest! {
         #[test]
@@ -1893,6 +1963,12 @@ mod proptests {
                 v6.set_scope_id(0);
             }
             bytesrepr::test_serialization_roundtrip(&addr);
+        }
+
+        #[cfg(feature = "std")]
+        #[test]
+        fn test_either(e in either_strategy()) {
+            bytesrepr::test_serialization_roundtrip(&e);
         }
     }
 }
