@@ -566,8 +566,8 @@ mod tests {
             Err(SyncLeapValidationError::MissingTrustedAncestors)
         ));
 
-        // When trusted block height is 0 and trusted ancestors are empty, validate
-        // should yield a result different than `SyncLeapValidationError::MissingTrustedAncestors`.
+        // When trusted block height is 0, validation should not fail due trusted ancestors being
+        // empty.
         let block = random_block_at_height(&mut rng, 0);
 
         let sync_leap = SyncLeap {
@@ -581,6 +581,7 @@ mod tests {
             result,
             Err(SyncLeapValidationError::MissingTrustedAncestors)
         ));
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -598,7 +599,7 @@ mod tests {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
             trusted_ancestor_headers: Default::default(),
-            signed_block_headers: std::iter::repeat_with(|| {
+            signed_block_headers: iter::repeat_with(|| {
                 let block = Block::random(&mut rng);
                 let hash = block.hash();
                 BlockHeaderWithMetadata {
@@ -623,7 +624,7 @@ mod tests {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
             trusted_ancestor_headers: Default::default(),
-            signed_block_headers: std::iter::repeat_with(|| {
+            signed_block_headers: iter::repeat_with(|| {
                 let block = Block::random(&mut rng);
                 let hash = block.hash();
                 BlockHeaderWithMetadata {
@@ -1388,29 +1389,6 @@ mod tests {
             add_proofs,
         );
 
-        // `sync_leap` is a well formed SyncLeap structure for the test chain. We can use the blocks
-        // it contains to generate SyncLeap structures as required for the test, because we know the
-        // heights of the blocks in the test chain as well as their sigs.
-        let highest_block = sync_leap.signed_block_headers.last().unwrap().clone();
-        let lowest_blocks: Vec<_> = sync_leap
-            .trusted_ancestor_headers
-            .iter()
-            .take(2)
-            .cloned()
-            .collect();
-        let middle_blocks: Vec<_> = sync_leap
-            .signed_block_headers
-            .iter()
-            .take(2)
-            .cloned()
-            .map(|block_header_with_metadata| block_header_with_metadata.block_header)
-            .collect();
-        let sync_leap = SyncLeap {
-            trusted_ancestor_only: false,
-            trusted_block_header: lowest_blocks.first().unwrap().clone(),
-            trusted_ancestor_headers: middle_blocks,
-            signed_block_headers: vec![highest_block],
-        };
         assert!(sync_leap.highest_block_header_and_signatures().1.is_some());
     }
 
@@ -1500,8 +1478,8 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        let mut switch_block_iter = sync_leap.signed_block_headers.iter();
-        let first_switch_block = switch_block_iter.next().unwrap().clone();
+        let mut block_iter = sync_leap.signed_block_headers.iter();
+        let first_switch_block = block_iter.next().unwrap().clone();
         let validator_1 = validators
             .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET)
             .unwrap();
@@ -1523,7 +1501,7 @@ mod tests {
             fault_tolerance_fraction,
         );
 
-        let second_switch_block = switch_block_iter.next().unwrap().clone();
+        let second_switch_block = block_iter.next().unwrap().clone();
         let validator_1 = validators
             .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 2)
             .unwrap();
@@ -1545,7 +1523,7 @@ mod tests {
             fault_tolerance_fraction,
         );
 
-        let third_switch_block = switch_block_iter.next().unwrap().clone();
+        let third_block = block_iter.next().unwrap().clone();
         let validator_1 = validators
             .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 4)
             .unwrap();
@@ -1553,7 +1531,7 @@ mod tests {
             .get(FIRST_SIGNED_BLOCK_HEADER_VALIDATOR_OFFSET + 5)
             .unwrap();
         let third_era_validator_weights = EraValidatorWeights::new(
-            third_switch_block.block_header.era_id(),
+            third_block.block_header.era_id(),
             [validator_1, validator_2]
                 .iter()
                 .map(
@@ -1673,7 +1651,7 @@ mod tests {
             signed_block_header_with_metadata_1,
             signed_block_header_with_metadata_2,
             signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height(rng, (0, 0), (2, 20), (3, 30));
+        ) = make_three_switch_blocks_at_era_and_height(rng, (0, 0), (1, 10), (2, 20));
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
@@ -1699,7 +1677,7 @@ mod tests {
         let mut expected_eras: BTreeSet<u64> = BTreeSet::new();
         // Expect genesis era id and its successor as well as the successors of the eras of
         // non-genesis switch blocks.
-        expected_eras.extend([0, 1, 3, 4]);
+        expected_eras.extend([0, 1, 2, 3]);
         assert_eq!(expected_eras, actual_eras);
     }
 
@@ -1760,7 +1738,7 @@ mod tests {
     // in a series is chosen randomly.
     //
     // Additionally, this struct allows to generate switch blocks at a specific location in the
-    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
+    // chain, for example: Setting `switch_block_indices` to [1, 3] and generating 5 blocks will
     // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
     // the `validators` parameter.
     pub(crate) struct TestChainSpec<'a> {
