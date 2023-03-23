@@ -24,6 +24,7 @@ use casper_execution_engine::{
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
+            purge::{PurgeConfig, PurgeResult},
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
@@ -99,6 +100,7 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
+    purge_results: Vec<Result<PurgeResult, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
@@ -137,6 +139,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             engine_state: Rc::clone(&self.engine_state),
             exec_results: self.exec_results.clone(),
             upgrade_results: self.upgrade_results.clone(),
+            purge_results: self.purge_results.clone(),
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
@@ -159,9 +162,10 @@ impl InMemoryWasmTestBuilder {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
+            engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            engine_state: Rc::new(engine_state),
+            purge_results: Vec::new(),
             genesis_hash: maybe_post_state_hash,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
@@ -236,6 +240,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            purge_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
@@ -335,6 +340,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            purge_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
@@ -1295,5 +1301,44 @@ where
             .config()
             .system_config()
             .handle_payment_costs()
+    }
+
+    /// Commit a purge of leaf nodes from the tip of the merkle trie.
+    pub fn commit_purge(&mut self, purge_config: PurgeConfig) -> &mut Self {
+        let result = self
+            .engine_state
+            .commit_purge(CorrelationId::new(), purge_config);
+
+        if let Ok(PurgeResult::Success { post_state_hash }) = &result {
+            self.post_state_hash = Some(*post_state_hash);
+        }
+
+        self.purge_results.push(result);
+        self
+    }
+    /// Returns a `Result` containing an [`PurgeResult`].
+    pub fn get_purge_result(
+        &self,
+        index: usize,
+    ) -> Option<&Result<PurgeResult, engine_state::Error>> {
+        self.purge_results.get(index)
+    }
+    /// Expects a purge success.
+    pub fn expect_purge_success(&mut self) -> &mut Self {
+        // Check first result, as only first result is interesting for a simple test
+        let result = self
+            .purge_results
+            .last()
+            .expect("Expected to be called after a system upgrade.")
+            .as_ref();
+
+        let purge_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
+        match purge_result {
+            PurgeResult::RootNotFound => panic!("Root not found"),
+            PurgeResult::DoesNotExist => panic!("Does not exists"),
+            PurgeResult::Success { .. } => {}
+        }
+
+        self
     }
 }

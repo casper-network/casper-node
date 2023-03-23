@@ -11,6 +11,7 @@ pub mod execution_result;
 pub mod genesis;
 pub mod get_bids;
 pub mod op;
+pub mod purge;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -49,6 +50,7 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
+use self::purge::{PurgeConfig, PurgeResult};
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -84,6 +86,7 @@ use crate::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
         trie::Trie,
+        trie_store::operations::DeleteResult,
     },
 };
 
@@ -2108,5 +2111,40 @@ where
     fn get_new_system_call_stack(&self) -> RuntimeStack {
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
+    }
+
+    /// Commit a purge of leaf nodes from the tip of the merkle trie.
+    pub fn commit_purge(
+        &self,
+        correlation_id: CorrelationId,
+        purge_config: PurgeConfig,
+    ) -> Result<PurgeResult, Error> {
+        let state_root_hash = purge_config.pre_state_hash();
+
+        // Validate the state root hash just to make sure we can safely short circuit in case the
+        // list of keys is empty.
+        match self.tracking_copy(state_root_hash)? {
+            None => return Ok(PurgeResult::RootNotFound),
+            Some(_tracking_copy) => {}
+        };
+
+        let keys_to_delete = purge_config.keys_to_delete();
+        if keys_to_delete.is_empty() {
+            return Ok(PurgeResult::Success {
+                post_state_hash: state_root_hash,
+            });
+        }
+
+        match self
+            .state
+            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
+        {
+            Ok(DeleteResult::Deleted(post_state_hash)) => {
+                Ok(PurgeResult::Success { post_state_hash })
+            }
+            Ok(DeleteResult::DoesNotExist) => Ok(PurgeResult::DoesNotExist),
+            Ok(DeleteResult::RootNotFound) => Ok(PurgeResult::RootNotFound),
+            Err(error) => Err(Error::Exec(error.into())),
+        }
     }
 }

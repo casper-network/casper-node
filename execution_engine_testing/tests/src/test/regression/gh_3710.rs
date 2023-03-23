@@ -1,6 +1,8 @@
-use std::convert::TryInto;
+use std::{collections::BTreeSet, convert::TryInto, iter::FromIterator};
 
 use casper_engine_test_support::UpgradeRequestBuilder;
+use casper_execution_engine::core::engine_state::purge::{PurgeConfig, PurgeResult};
+use casper_hashing::Digest;
 use casper_types::{EraId, Key, KeyTag, ProtocolVersion};
 
 use crate::lmdb_fixture;
@@ -91,6 +93,114 @@ fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
         .expect("should query stable key after the upgrade");
 
     assert_eq!(last_era_info_value, era_summary);
+}
+
+#[ignore]
+#[test]
+fn gh_3710_commit_purge_with_empty_keys_should_be_noop() {
+    let (mut builder, _lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
+
+    let purge_config = PurgeConfig::new(builder.get_post_state_hash(), Vec::new());
+
+    builder.commit_purge(purge_config).expect_purge_success();
+}
+
+#[ignore]
+#[test]
+fn gh_3710_commit_purge_should_validate_state_root_hash() {
+    let (mut builder, _lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
+
+    let purge_config = PurgeConfig::new(Digest::hash("foobar"), Vec::new());
+
+    builder.commit_purge(purge_config);
+
+    let purge_result = builder
+        .get_purge_result(0)
+        .expect("should have purge result");
+    assert!(builder.get_purge_result(1).is_none());
+
+    assert!(
+        matches!(purge_result, Ok(PurgeResult::RootNotFound)),
+        "{:?}",
+        purge_result
+    );
+}
+
+#[ignore]
+#[test]
+fn gh_3710_commit_purge_should_delete_values() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
+
+    let auction_delay: u64 = lmdb_fixture_state
+        .genesis_request
+        .get("ee_config")
+        .expect("should have ee_config")
+        .get("auction_delay")
+        .expect("should have auction delay")
+        .as_i64()
+        .expect("auction delay should be integer")
+        .try_into()
+        .expect("auction delay should be positive");
+
+    let keys_before_purge = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should obtain all given keys");
+
+    assert_eq!(
+        keys_before_purge.len(),
+        FIXTURE_N_ERAS + 1 + auction_delay as usize
+    );
+
+    let batch_1: Vec<Key> = (0..FIXTURE_N_ERAS)
+        .map(|i| EraId::new(i.try_into().unwrap()))
+        .map(Key::EraInfo)
+        .collect();
+
+    let batch_2: Vec<Key> = (FIXTURE_N_ERAS..FIXTURE_N_ERAS + 1 + auction_delay as usize)
+        .map(|i| EraId::new(i.try_into().unwrap()))
+        .map(Key::EraInfo)
+        .collect();
+
+    assert_eq!(
+        BTreeSet::from_iter(batch_1.iter())
+            .union(&BTreeSet::from_iter(batch_2.iter()))
+            .collect::<BTreeSet<_>>()
+            .len(),
+        keys_before_purge.len(),
+        "sanity check"
+    );
+
+    // Process purge of first batch
+    let pre_state_hash = builder.get_post_state_hash();
+
+    let purge_config_1 = PurgeConfig::new(pre_state_hash, batch_1);
+
+    builder.commit_purge(purge_config_1).expect_purge_success();
+    let post_state_hash_batch_1 = builder.get_post_state_hash();
+    assert_ne!(pre_state_hash, post_state_hash_batch_1);
+
+    let keys_after_batch_1_purge = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should obtain all given keys");
+
+    assert_eq!(keys_after_batch_1_purge.len(), 2);
+
+    // Process purge of second batch
+    let pre_state_hash = builder.get_post_state_hash();
+
+    let purge_config_2 = PurgeConfig::new(pre_state_hash, batch_2);
+    builder.commit_purge(purge_config_2).expect_purge_success();
+    let post_state_hash_batch_2 = builder.get_post_state_hash();
+    assert_ne!(pre_state_hash, post_state_hash_batch_2);
+
+    let keys_after_batch_2_purge = builder
+        .get_keys(KeyTag::EraInfo)
+        .expect("should obtain all given keys");
+
+    assert_eq!(keys_after_batch_2_purge.len(), 0);
 }
 
 #[cfg(feature = "fixture-generators")]
