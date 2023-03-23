@@ -24,8 +24,8 @@ All notable changes to this project will be documented in this file.  The format
 * Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature "std".
 * Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature "testing".
 * Add support for `Arc<T: Sized>`, `Box<T: Sized>`, `Arc<[u8]>` and `Box<[u8]>` in `bytesrepr` module.
-* Add support for `std::net::SocketAddr` and related types, provided the `std` feature is enabled.
-* Add support for `either::Either`, provided the `std` feature is enabled.
+* Add support for `std::net::SocketAddr` and related types in `bytesrepr` module, provided the `std` feature is enabled.
+* Add support for `either::Either` in `bytesrepr` module, provided the `std` feature is enabled.
 
 ### Changed
 * Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
