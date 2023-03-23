@@ -1338,6 +1338,59 @@ impl FromBytes for Arc<[u8]> {
     }
 }
 
+#[cfg(feature = "std")]
+mod std_impls {
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+
+    use super::{FromBytes, ToBytes, U16_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH};
+
+    impl ToBytes for SocketAddr {
+        fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
+            let mut buffer = super::allocate_buffer(self)?;
+            match self {
+                SocketAddr::V4(v4) => {
+                    buffer.push(0u8);
+                    v4.port().write_bytes(&mut buffer)?;
+                    v4.ip().octets().write_bytes(&mut buffer)?;
+                }
+                SocketAddr::V6(v6) => {
+                    buffer.push(1u8);
+                    v6.port().write_bytes(&mut buffer)?;
+                    v6.ip().octets().write_bytes(&mut buffer)?;
+                }
+            }
+            Ok(buffer)
+        }
+
+        #[inline]
+        fn serialized_length(&self) -> usize {
+            match self {
+                SocketAddr::V4(_) => 1 + U16_SERIALIZED_LENGTH + 4 * U8_SERIALIZED_LENGTH,
+                SocketAddr::V6(_) => 1 + U16_SERIALIZED_LENGTH + 16 * U8_SERIALIZED_LENGTH,
+            }
+        }
+    }
+
+    impl FromBytes for SocketAddr {
+        fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), super::Error> {
+            let (tag, remainder) = u8::from_bytes(bytes)?;
+            let (port, remainder) = u16::from_bytes(remainder)?;
+            match tag {
+                0 => {
+                    let (octets, remainder) = <[u8; 4]>::from_bytes(remainder)?;
+                    Ok((SocketAddr::from((Ipv4Addr::from(octets), port)), remainder))
+                }
+                1 => {
+                    let (octets, remainder) = <[u8; 16]>::from_bytes(remainder)?;
+                    Ok((SocketAddr::from((Ipv6Addr::from(octets), port)), remainder))
+                }
+                // Note: `Formatting` has historically been used for invalid variant errors.
+                _ => Err(super::Error::Formatting),
+            }
+        }
+    }
+}
+
 /// Serializes a slice of bytes with a length prefix.
 ///
 /// This function is serializing a slice of bytes with an addition of a 4 byte length prefix.
@@ -1691,6 +1744,16 @@ mod proptests {
             let arc: Arc<[u8]> = s.into_bytes().into();
             bytesrepr::test_serialization_roundtrip(&arc);
 
+        }
+
+        #[cfg(feature = "std")]
+        #[test]
+        fn test_socketaddr(mut addr: std::net::SocketAddr) {
+            if let std::net::SocketAddr::V6(ref mut v6) = addr {
+                v6.set_flowinfo(0);
+                v6.set_scope_id(0);
+            }
+            bytesrepr::test_serialization_roundtrip(&addr);
         }
     }
 }
