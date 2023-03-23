@@ -36,6 +36,8 @@ pub const BOOL_SERIALIZED_LENGTH: usize = 1;
 pub const I32_SERIALIZED_LENGTH: usize = mem::size_of::<i32>();
 /// The number of bytes in a serialized `i64`.
 pub const I64_SERIALIZED_LENGTH: usize = mem::size_of::<i64>();
+/// The number of bytes in a serialized `i128`.
+pub const I128_SERIALIZED_LENGTH: usize = mem::size_of::<i128>();
 /// The number of bytes in a serialized `u8`.
 pub const U8_SERIALIZED_LENGTH: usize = mem::size_of::<u8>();
 /// The number of bytes in a serialized `u16`.
@@ -396,6 +398,62 @@ impl FromBytes for u64 {
         let (bytes, remainder) = safe_split_at(bytes, U64_SERIALIZED_LENGTH)?;
         result.copy_from_slice(bytes);
         Ok((<u64>::from_le_bytes(result), remainder))
+    }
+}
+
+impl ToBytes for u128 {
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        Ok(self.to_le_bytes().to_vec())
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        U128_SERIALIZED_LENGTH
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
+}
+
+impl FromBytes for u128 {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut result = [0u8; U128_SERIALIZED_LENGTH];
+        let (bytes, remainder) = safe_split_at(bytes, U128_SERIALIZED_LENGTH)?;
+        result.copy_from_slice(bytes);
+        Ok((<u128>::from_le_bytes(result), remainder))
+    }
+}
+
+impl ToBytes for i128 {
+    #[inline]
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        Ok(self.to_le_bytes().to_vec())
+    }
+
+    #[inline]
+    fn serialized_length(&self) -> usize {
+        I128_SERIALIZED_LENGTH
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
+}
+
+impl FromBytes for i128 {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut result = [0u8; U128_SERIALIZED_LENGTH];
+        let (bytes, remainder) = safe_split_at(bytes, U128_SERIALIZED_LENGTH)?;
+        result.copy_from_slice(bytes);
+        Ok((<i128>::from_le_bytes(result), remainder))
     }
 }
 
@@ -1752,7 +1810,17 @@ mod proptests {
         }
 
         #[test]
+        fn test_u128(u in any::<u128>()) {
+            bytesrepr::test_serialization_roundtrip(&u);
+        }
+
+        #[test]
         fn test_i64(u in any::<i64>()) {
+            bytesrepr::test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_i128(u in any::<i128>()) {
             bytesrepr::test_serialization_roundtrip(&u);
         }
 

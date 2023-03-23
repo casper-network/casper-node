@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add support for `Arc<T: Sized>`, `Box<T: Sized>`, `Arc<[u8]>` and `Box<[u8]>` in `bytesrepr` module.
 * Add support for `std::net::SocketAddr` and related types in `bytesrepr` module, provided the `std` feature is enabled.
 * Add support for `either::Either` in `bytesrepr` module, provided the `std` feature is enabled.
+* Add support for `u128` (not to be confused with `U128`) and `i128` in `bytesrepr` module.
 
 ### Changed
 * Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
