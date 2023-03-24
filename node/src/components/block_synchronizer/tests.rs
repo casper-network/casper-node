@@ -209,3 +209,76 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
             .is_peer_unreliable(peer));
     }
 }
+
+#[tokio::test]
+async fn should_not_stall_after_registering_new_era_validator_weights() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let peer_count = 5;
+
+    // Set up an empty validator matrix.
+    let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+
+    // Create a block synchronizer with a maximum of 5 simultaneous peers.
+    let mut block_synchronizer = BlockSynchronizer::new(
+        Config::default(),
+        Arc::new(Chainspec::random(&mut rng)),
+        peer_count,
+        validator_matrix.clone(),
+        prometheus::default_registry(),
+    )
+    .unwrap();
+
+    let peers: Vec<NodeId> = random_peers(&mut rng, peer_count as usize)
+        .iter()
+        .cloned()
+        .collect();
+
+    // Set up the synchronizer for the test block such that the next step is getting era validators.
+    let block = Block::random(&mut rng);
+    block_synchronizer.register_block_by_hash(*block.hash(), true, true);
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+    block_synchronizer
+        .historical
+        .as_mut()
+        .expect("should have historical builder")
+        .register_block_header(block.header().clone(), None)
+        .expect("should register block header");
+
+    // At this point, the next step the synchronizer takes should be to get era validators.
+    let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    assert_eq!(effects.len(), peer_count as usize);
+    for effect in effects {
+        tokio::spawn(async move { effect.await });
+        let event = mock_reactor.crank().await;
+        match event {
+            MockReactorEvent::SyncLeapFetcherRequest(_) => (),
+            _ => panic!("unexpected event: {:?}", event),
+        };
+    }
+
+    // Ensure the in-flight latch has been set.
+    let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    assert!(effects.is_empty());
+
+    // Update the validator matrix to now have an entry for the era of our random block.
+    validator_matrix.register_validator_weights(
+        block.header().era_id(),
+        iter::once((ALICE_PUBLIC_KEY.clone(), 100.into())).collect(),
+    );
+
+    block_synchronizer
+        .historical
+        .as_mut()
+        .expect("should have historical builder")
+        .register_era_validator_weights(&validator_matrix);
+
+    let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    assert_eq!(effects.len(), 1);
+    tokio::spawn(async move { effects.remove(0).await });
+    let event = mock_reactor.crank().await;
+    match event {
+        MockReactorEvent::FinalitySignatureFetcherRequest(_) => (),
+        _ => panic!("unexpected event: {:?}", event),
+    };
+}
