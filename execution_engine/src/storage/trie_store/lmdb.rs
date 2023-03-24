@@ -267,6 +267,59 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         self.clone()
     }
 
+    fn get<T>(&self, txn: &T, key: &Digest) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: ToBytes,
+        Trie<Key, StoredValue>: bytesrepr::FromBytes,
+        Self::Error: From<T::Error>,
+    {
+        match self.get_raw(txn, key)? {
+            None => Ok(None),
+            Some(value_bytes) => {
+                let value = bytesrepr::deserialize(value_bytes.into())?;
+                Ok(Some(value))
+            }
+        }
+    }
+
+    fn put<T>(
+        &self,
+        txn: &mut T,
+        key: &Digest,
+        value: &Trie<Key, StoredValue>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Trie<Key, StoredValue>: ToBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.put_raw(txn, key.as_ref(), Cow::Owned(value.to_bytes()?))
+    }
+
+    fn put_raw<'a, T>(
+        &self,
+        _txn: &mut T,
+        key_bytes: &[u8],
+        value_bytes: Cow<'a, [u8]>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Self::Error: From<T::Error>,
+    {
+        debug_assert_eq!(
+            key_bytes.len(),
+            32,
+            "Should only use Digest bytes in this impl"
+        );
+        let key = Digest::try_from(key_bytes).unwrap(); // SAFETY: we're inside impl Store<Digest, ...>
+        self.cache
+            .lock()
+            .map_err(|_| error::Error::Poison)?
+            .insert(key, (true, Bytes::from(value_bytes.into_owned())));
+        Ok(())
+    }
+
     fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<Bytes>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
@@ -295,43 +348,6 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
                 }
             }
         }
-    }
-
-    fn put_raw<'a, T>(
-        &self,
-        _txn: &mut T,
-        key_bytes: &[u8],
-        value_bytes: Cow<'a, [u8]>,
-    ) -> Result<(), Self::Error>
-    where
-        T: Writable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
-        debug_assert_eq!(
-            key_bytes.len(),
-            32,
-            "Should only use Digest bytes in this impl"
-        );
-        let key = Digest::try_from(key_bytes).unwrap(); // SAFETY: we're inside impl Store<Digest, ...>
-        self.cache
-            .lock()
-            .map_err(|_| error::Error::Poison)?
-            .insert(key, (true, Bytes::from(value_bytes.into_owned())));
-        Ok(())
-    }
-
-    fn put<T>(
-        &self,
-        txn: &mut T,
-        key: &Digest,
-        value: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error>
-    where
-        T: Writable<Handle = Self::Handle>,
-        Trie<Key, StoredValue>: ToBytes,
-        Self::Error: From<T::Error>,
-    {
-        self.put_raw(txn, key.as_ref(), Cow::Owned(value.to_bytes()?))
     }
 }
 
