@@ -279,7 +279,7 @@ where
                                 .fetch::<SyncLeap>(
                                     sync_leap_identifier,
                                     peer,
-                                    self.chainspec.clone(),
+                                    self.chainspec.as_ref().into(),
                                 )
                                 .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                                     sync_leap_identifier,

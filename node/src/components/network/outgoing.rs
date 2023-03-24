@@ -558,7 +558,7 @@ where
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Occupied(_) => {
-                    debug!("ignoring already known address");
+                    trace!("ignoring already known address");
                     None
                 }
                 Entry::Vacant(_vacant) => {
@@ -789,7 +789,7 @@ where
                             // Nothing to do.
                         }
                         HealthCheckOutcome::SendPing(nonce) => {
-                            debug!(%nonce, "sending ping");
+                            trace!(%nonce, "sending ping");
                             to_ping.push((peer_id, addr, nonce));
                         }
                         HealthCheckOutcome::GiveUp => {
