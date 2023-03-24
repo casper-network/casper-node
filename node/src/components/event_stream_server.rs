@@ -31,10 +31,7 @@ mod tests;
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use datasize::DataSize;
-use tokio::sync::{
-    mpsc::{self, UnboundedSender},
-    oneshot,
-};
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::{error, info, warn};
 use warp::Filter;
 
@@ -46,7 +43,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::main_reactor::MainEvent,
     types::JsonBlock,
-    utils::{self, ListeningError},
+    utils::{self, ListeningError, ObservableFuse},
     NodeRng,
 };
 pub use config::Config;
@@ -127,13 +124,14 @@ impl EventStreamServer {
             self.config.max_concurrent_subscribers,
         );
 
-        let (server_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+        let shutdown_fuse = ObservableFuse::new();
 
         let (listening_address, server_with_shutdown) =
             warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
-                .try_bind_with_graceful_shutdown(required_address, async {
-                    shutdown_receiver.await.ok();
-                })
+                .try_bind_with_graceful_shutdown(
+                    required_address,
+                    shutdown_fuse.clone().wait_owned(),
+                )
                 .map_err(|error| ListeningError::Listen {
                     address: required_address,
                     error: Box::new(error),
@@ -147,7 +145,7 @@ impl EventStreamServer {
             self.config.clone(),
             self.api_version,
             server_with_shutdown,
-            server_shutdown_sender,
+            shutdown_fuse,
             sse_data_receiver,
             event_broadcaster,
             new_subscriber_info_receiver,

@@ -108,6 +108,13 @@ impl ObservableFuse {
 
         notified.await;
     }
+
+    /// Owned wait function.
+    ///
+    /// Like wait, but owns `self`, thus it can be called and passed around with a static lifetime.
+    pub(crate) async fn wait_owned(self) {
+        self.wait().await;
+    }
 }
 
 impl Fuse for ObservableFuse {
