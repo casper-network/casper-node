@@ -448,7 +448,8 @@ where
         // Perform global state migrations that require state.
 
         if let Some(activation_point) = upgrade_config.activation_point() {
-            let highest_era_info_id = activation_point.saturating_sub(2);
+            // Activation point is set to the next era after the current one.
+            let highest_era_info_id = activation_point.saturating_sub(1);
 
             // Start of the copy
             let highest_era_info_key = Key::EraInfo(highest_era_info_id);

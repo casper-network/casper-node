@@ -422,9 +422,10 @@ impl LmdbWasmTestBuilder {
     pub fn write_scratch_to_db(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         if let Some(scratch) = self.scratch_engine_state.take() {
+            let scratch_global_state = scratch.into_inner();
             let new_state_root = self
                 .engine_state
-                .write_scratch_to_db(prestate_hash, scratch.into_inner())
+                .write_scratch_to_db(prestate_hash, scratch_global_state)
                 .unwrap();
             self.post_state_hash = Some(new_state_root);
         }

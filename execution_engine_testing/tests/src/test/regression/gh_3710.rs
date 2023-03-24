@@ -46,7 +46,6 @@ fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
     let era_info_keys_before_upgrade = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should return all the era info keys");
-    dbg!(&era_info_keys_before_upgrade);
 
     assert_eq!(
         era_info_keys_before_upgrade.len(),
@@ -214,8 +213,8 @@ mod fixture {
     use casper_execution_engine::core::engine_state::RewardItem;
     use casper_types::{
         runtime_args,
-        system::auction::{self, DelegationRate},
-        EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, U512,
+        system::auction::{self, DelegationRate, EraInfo, SeigniorageAllocation},
+        EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, StoredValue, U512,
     };
 
     use super::{FIXTURE_N_ERAS, GH_3710_FIXTURE};
@@ -262,14 +261,12 @@ mod fixture {
 
             let current_era_id = builder.get_era();
             for era_counter in current_era_id.iter(FIXTURE_N_ERAS as u64) {
+                let value = era_counter.value() * 1_000_000u64;
                 let step_request = StepRequestBuilder::new()
                     .with_parent_state_hash(builder.get_post_state_hash())
                     .with_protocol_version(ProtocolVersion::V1_0_0)
                     .with_next_era_id(era_counter)
-                    .with_reward_item(RewardItem::new(
-                        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-                        1_000_000u64,
-                    ))
+                    .with_reward_item(RewardItem::new(DEFAULT_ACCOUNT_PUBLIC_KEY.clone(), value))
                     .build();
                 builder.step(step_request).unwrap();
             }
@@ -287,6 +284,43 @@ mod fixture {
 
             assert!(keys_lookup.contains_key(&last_era_info_key));
             assert_eq!(keys_lookup.keys().last().copied(), Some(&last_era_info_key));
+
+            // all era infos should have unique rewards that are in increasing order
+            let stored_values: Vec<StoredValue> = keys_lookup
+                .keys()
+                .map(|key| builder.query(None, **key, &[]).unwrap())
+                .collect();
+
+            let era_infos: Vec<&EraInfo> = stored_values
+                .iter()
+                .filter_map(StoredValue::as_era_info)
+                .collect();
+
+            let rewards: Vec<&U512> = era_infos
+                .iter()
+                .flat_map(|era_info| era_info.seigniorage_allocations())
+                .filter_map(|seigniorage| match seigniorage {
+                    SeigniorageAllocation::Validator {
+                        validator_public_key,
+                        amount,
+                    } if validator_public_key == &*DEFAULT_ACCOUNT_PUBLIC_KEY => Some(amount),
+                    SeigniorageAllocation::Validator { .. } => panic!("Unexpected validator"),
+                    SeigniorageAllocation::Delegator { .. } => panic!("No delegators"),
+                })
+                .collect();
+
+            let sorted_rewards = {
+                let mut vec = rewards.clone();
+                vec.sort();
+                vec
+            };
+            assert_eq!(rewards, sorted_rewards);
+
+            assert!(
+                rewards.first().unwrap() < rewards.last().unwrap(),
+                "{:?}",
+                rewards
+            );
         })
         .unwrap();
     }
