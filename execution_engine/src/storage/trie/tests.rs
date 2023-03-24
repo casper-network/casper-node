@@ -8,6 +8,8 @@ fn radix_is_256() {
 }
 
 mod pointer_block {
+    use casper_types::U256;
+
     use crate::storage::trie::*;
 
     /// A defense against changes to [`RADIX`](history::trie::RADIX).
@@ -43,6 +45,49 @@ mod pointer_block {
     fn indexing_off_end() {
         let pointer_block = PointerBlock::new();
         let _val = pointer_block[RADIX];
+    }
+
+    #[test]
+    fn trie_node_descendants_iterator() {
+        fn digest_from_value<T: Into<U256>>(value: T) -> Digest {
+            let mut value_bytes = [0; Digest::LENGTH];
+            let u256: U256 = value.into();
+            u256.to_big_endian(&mut value_bytes);
+            Digest::from(value_bytes)
+        }
+
+        let pointers: Vec<_> = (0..=255u8)
+            .rev()
+            .filter_map(|index| {
+                let hash = digest_from_value(index);
+                if index % 3 == 0 {
+                    Some((index, Pointer::NodePointer(hash)))
+                } else if index % 3 == 1 {
+                    Some((index, Pointer::LeafPointer(hash)))
+                } else if index % 3 == 2 {
+                    None
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect();
+
+        let trie = Trie::<(), ()>::Node {
+            pointer_block: Box::new(PointerBlock::from_indexed_pointers(pointers.as_slice())),
+        };
+        let mut descendants = trie.iter_children();
+        let hashes: Vec<Digest> = descendants.by_ref().collect();
+        assert_eq!(
+            hashes,
+            pointers
+                .into_iter()
+                .rev() // reverse again for correct order
+                .map(|(_idx, pointer)| *pointer.hash())
+                .collect::<Vec<Digest>>()
+        );
+
+        assert_eq!(descendants.next(), None);
+        assert_eq!(descendants.next(), None);
     }
 }
 
