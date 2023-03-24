@@ -5,6 +5,7 @@ use std::{
 };
 
 use derive_more::From;
+use muxink::backpressured::Ticket;
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
@@ -48,6 +49,9 @@ where
         msg: Box<Message<P>>,
         #[serde(skip)]
         span: Span,
+        /// The backpressure-related ticket for the message.
+        #[serde(skip)]
+        ticket: Ticket,
     },
 
     /// Incoming connection closed.
@@ -127,6 +131,7 @@ where
                 peer_id: node_id,
                 msg,
                 span: _,
+                ticket: _,
             } => write!(f, "msg from {}: {}", node_id, msg),
             Event::IncomingClosed { peer_addr, .. } => {
                 write!(f, "closed connection from {}", peer_addr)
@@ -154,6 +159,8 @@ where
 }
 
 /// Outcome of an incoming connection negotiation.
+// Note: `IncomingConnection` is typically used boxed anyway, so a larget variant is not an issue.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize)]
 pub(crate) enum IncomingConnection {
     /// The connection failed early on, before even a peer's [`NodeId`] could be determined.

@@ -15,7 +15,7 @@ use super::{DecodeResult, FrameDecoder, FrameEncoder};
 use crate::ImmediateFrame;
 
 /// Lenght of the prefix that describes the length of the following frame.
-const LENGTH_MARKER_SIZE: usize = std::mem::size_of::<u16>();
+const LENGTH_MARKER_SIZE: usize = (<u16>::BITS / 8) as usize;
 
 /// Two-byte length delimited frame encoder and frame decoder.
 #[derive(Debug)]

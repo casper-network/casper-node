@@ -12,6 +12,7 @@ use std::{
 
 use derive_more::From;
 use futures::FutureExt;
+use muxink::backpressured::Ticket;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
@@ -123,11 +124,13 @@ impl From<ContractRuntimeRequest> for Event {
 }
 
 impl FromIncoming<Message> for Event {
-    fn from_incoming(sender: NodeId, payload: Message) -> Self {
+    fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
         match payload {
-            Message::AddressGossiper(message) => {
-                Event::AddressGossiperIncoming(GossiperIncoming { sender, message })
-            }
+            Message::AddressGossiper(message) => Event::AddressGossiperIncoming(GossiperIncoming {
+                sender,
+                message,
+                ticket: Arc::new(ticket),
+            }),
         }
     }
 }

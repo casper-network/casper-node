@@ -10,6 +10,7 @@ use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
 use futures::future::BoxFuture;
+use muxink::backpressured::Ticket;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -410,7 +411,7 @@ pub(crate) trait Payload:
 /// Network message conversion support.
 pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
-    fn from_incoming(sender: NodeId, payload: P) -> Self;
+    fn from_incoming(sender: NodeId, payload: P, ticket: Ticket) -> Self;
 
     /// Tries to convert a payload into a demand.
     ///

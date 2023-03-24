@@ -3,7 +3,10 @@ use std::{io, net::SocketAddr};
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion};
 use datasize::DataSize;
-use muxink::{demux::DemultiplexerError, fragmented::DefragmentizerError};
+use muxink::{
+    backpressured::BackpressuredStreamError, demux::DemultiplexerError,
+    fragmented::DefragmentizerError, mux::MultiplexerError,
+};
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -162,6 +165,9 @@ pub enum ConnectionError {
     /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// Handshake did not complete in time.
+    #[error("could not complete handshake in time")]
+    HandshakeTimeout,
     /// Failed to encode our handshake.
     #[error("could not encode our handshake")]
     CouldNotEncodeOurHandshake(
@@ -220,9 +226,13 @@ pub enum MessageReaderError {
     #[allow(dead_code)] // TODO: Re-add if necessary, if backpressure requires this still.
     UnexpectedSemaphoreClose,
     /// The message receival stack returned an error.
-    // These errors can get fairly and complicated and are boxed here for that reason.
     #[error("message receive error")]
-    ReceiveError(DefragmentizerError<DemultiplexerError<io::Error>>),
+    ReceiveError(
+        BackpressuredStreamError<
+            DefragmentizerError<DemultiplexerError<io::Error>>,
+            MultiplexerError<io::Error>,
+        >,
+    ),
     /// Error deserializing message.
     #[error("message deserialization error")]
     DeserializationError(bincode::Error),

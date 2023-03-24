@@ -12,6 +12,7 @@
 //! * [`length_delimited`]: Transforms byte-like values into self-contained frames with a
 //!   length-prefix.
 
+pub mod fixed_size;
 pub mod length_delimited;
 
 use std::fmt::Debug;
@@ -38,10 +39,7 @@ pub trait FrameDecoder {
 /// Frame encoder.
 ///
 /// A frame encoder encodes a frame into a representation suitable for writing to a bytestream.
-pub trait FrameEncoder<T>
-where
-    T: Buf,
-{
+pub trait FrameEncoder<T> {
     /// Encoding error.
     type Error: std::error::Error + Send + Sync + 'static;
 

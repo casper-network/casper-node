@@ -112,6 +112,25 @@ pub(super) async fn negotiate_handshake<P, REv>(
 where
     P: Payload,
 {
+    tokio::time::timeout(
+        context.handshake_timeout.into(),
+        do_negotiate_handshake::<P, REv>(context, transport, connection_id),
+    )
+    .await
+    .unwrap_or_else(|_elapsed| Err(ConnectionError::HandshakeTimeout))
+}
+
+/// Performs a handshake.
+///
+/// This function is cancellation safe.
+async fn do_negotiate_handshake<P, REv>(
+    context: &NetworkContext<REv>,
+    transport: Transport,
+    connection_id: ConnectionId,
+) -> Result<HandshakeOutcome, ConnectionError>
+where
+    P: Payload,
+{
     // Manually encode a handshake.
     let handshake_message = context.chain_info().create_handshake::<P>(
         context.public_addr().expect("TODO: What to do?"),

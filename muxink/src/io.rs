@@ -46,7 +46,6 @@ pub struct FrameReader<D, R> {
 pub struct FrameWriter<F, E, W>
 where
     E: FrameEncoder<F>,
-    F: Buf,
 {
     /// The encoder used to encode outgoing frames.
     encoder: E,
@@ -122,7 +121,6 @@ impl<F, E, W> FrameWriter<F, E, W>
 where
     E: FrameEncoder<F>,
     <E as FrameEncoder<F>>::Output: Buf,
-    F: Buf,
 {
     /// Creates a new frame writer with the given encoder.
     pub fn new(encoder: E, stream: W) -> Self {
@@ -177,7 +175,6 @@ where
     Self: Unpin,
     E: FrameEncoder<F>,
     <E as FrameEncoder<F>>::Output: Buf,
-    F: Buf,
     W: AsyncWrite + Unpin,
 {
     type Error = io::Error;
@@ -229,7 +226,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{mem, pin::Pin};
+    use std::pin::Pin;
 
     use bytes::Bytes;
     use futures::{
@@ -362,7 +359,7 @@ mod tests {
                 MAX_READ_BUF_INCREMENT,
                 MAX_READ_BUF_INCREMENT,
                 MAX_READ_BUF_INCREMENT,
-                MAX_READ_BUF_INCREMENT - mem::size_of::<u16>()
+                MAX_READ_BUF_INCREMENT - (<u16>::BITS / 8) as usize
             ]
         );
     }
@@ -469,7 +466,7 @@ mod tests {
 
         let (_, received) = tokio::join!(send_fut, recv_fut);
         assert_eq!(
-            &received[FRAME.len() + mem::size_of::<u16>()..],
+            &received[FRAME.len() + (<u16>::BITS / 8) as usize..],
             0u16.to_le_bytes()
         );
     }

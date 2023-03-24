@@ -108,6 +108,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use muxink::backpressured::Ticket;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -816,15 +817,26 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces an incoming network message.
-    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P)
+    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P, ticket: Ticket)
     where
-        REv: FromIncoming<P>,
+        REv: FromIncoming<P> + Send,
+        P: 'static,
     {
+        // TODO: Remove demands entirely as they are no longer needed with tickets.
+        let reactor_event =
+            match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload) {
+                Ok((rev, demand_has_been_satisfied)) => {
+                    tokio::spawn(async move {
+                        demand_has_been_satisfied.await;
+                        drop(ticket);
+                    });
+                    rev
+                }
+                Err(payload) => <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket),
+            };
+
         self.event_queue
-            .schedule(
-                <REv as FromIncoming<P>>::from_incoming(sender, payload),
-                QueueKind::NetworkIncoming,
-            )
+            .schedule(reactor_event, QueueKind::NetworkIncoming)
             .await
     }
 

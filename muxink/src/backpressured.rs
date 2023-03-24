@@ -69,7 +69,7 @@ pub struct BackpressuredSink<S, A, Item> {
 
 /// A backpressure error.
 #[derive(Debug, Error)]
-pub enum BackpressureError<SinkErr, AckErr>
+pub enum BackpressuredSinkError<SinkErr, AckErr>
 where
     SinkErr: std::error::Error,
     AckErr: std::error::Error,
@@ -119,20 +119,20 @@ impl<S, A, Item> BackpressuredSink<S, A, Item> {
     fn validate_ack<SinkErr, AckErr>(
         &mut self,
         ack_received: u64,
-    ) -> Result<(), BackpressureError<SinkErr, AckErr>>
+    ) -> Result<(), BackpressuredSinkError<SinkErr, AckErr>>
     where
         SinkErr: std::error::Error,
         AckErr: std::error::Error,
     {
         if ack_received > self.last_request {
-            return Err(BackpressureError::UnexpectedAck {
+            return Err(BackpressuredSinkError::UnexpectedAck {
                 actual: ack_received,
                 items_sent: self.last_request,
             });
         }
 
         if ack_received + self.window_size < self.last_request {
-            return Err(BackpressureError::DuplicateAck {
+            return Err(BackpressuredSinkError::DuplicateAck {
                 ack_received,
                 highest: self.received_ack,
             });
@@ -154,7 +154,7 @@ where
     AckErr: std::error::Error,
     <S as Sink<Item>>::Error: std::error::Error,
 {
-    type Error = BackpressureError<<S as Sink<Item>>::Error, AckErr>;
+    type Error = BackpressuredSinkError<<S as Sink<Item>>::Error, AckErr>;
 
     #[inline]
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -164,14 +164,14 @@ where
         loop {
             match self_mut.ack_stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Err(ack_err))) => {
-                    return Poll::Ready(Err(BackpressureError::AckStreamError(ack_err)))
+                    return Poll::Ready(Err(BackpressuredSinkError::AckStreamError(ack_err)))
                 }
                 Poll::Ready(Some(Ok(ack_received))) => {
                     try_ready!(self_mut.validate_ack(ack_received));
                     self_mut.received_ack = max(self_mut.received_ack, ack_received);
                 }
                 Poll::Ready(None) => {
-                    return Poll::Ready(Err(BackpressureError::AckStreamClosed));
+                    return Poll::Ready(Err(BackpressuredSinkError::AckStreamClosed));
                 }
                 Poll::Pending => {
                     // Invariant: `received_ack` is always <= `last_request`.
@@ -192,7 +192,7 @@ where
         self_mut
             .inner
             .poll_ready_unpin(cx)
-            .map_err(BackpressureError::Sink)
+            .map_err(BackpressuredSinkError::Sink)
     }
 
     #[inline]
@@ -205,7 +205,7 @@ where
         self_mut
             .inner
             .start_send_unpin(item)
-            .map_err(BackpressureError::Sink)
+            .map_err(BackpressuredSinkError::Sink)
     }
 
     #[inline]
@@ -213,7 +213,7 @@ where
         self.get_mut()
             .inner
             .poll_flush_unpin(cx)
-            .map_err(BackpressureError::Sink)
+            .map_err(BackpressuredSinkError::Sink)
     }
 
     #[inline]
@@ -221,7 +221,7 @@ where
         self.get_mut()
             .inner
             .poll_close_unpin(cx)
-            .map_err(BackpressureError::Sink)
+            .map_err(BackpressuredSinkError::Sink)
     }
 }
 
@@ -240,6 +240,12 @@ impl Ticket {
     /// Creates a new ticket with the cloned `Sender` from the original
     /// [`BackpressuredStream`].
     pub fn new(sender: Sender<()>) -> Self {
+        Self { sender }
+    }
+
+    /// Creates a dummy ticket that will have no effect when dropped.
+    pub fn create_dummy() -> Self {
+        let (sender, _receiver) = futures::channel::mpsc::channel(1);
         Self { sender }
     }
 }
@@ -456,7 +462,7 @@ mod tests {
         fixtures::{OneWayFixtures, TwoWayFixtures, WINDOW_SIZE},
     };
 
-    use super::{BackpressureError, BackpressuredStream, BackpressuredStreamError};
+    use super::{BackpressuredSinkError, BackpressuredStream, BackpressuredStreamError};
 
     #[test]
     fn backpressured_sink_lifecycle() {
@@ -499,7 +505,7 @@ mod tests {
 
         assert!(matches!(
             bp.encode_and_send('I').now_or_never(),
-            Some(Err(BackpressureError::AckStreamClosed))
+            Some(Err(BackpressuredSinkError::AckStreamClosed))
         ));
 
         // Check all data was received correctly.
@@ -713,7 +719,7 @@ mod tests {
 
         assert!(matches!(
             bp.encode_and_send('C').now_or_never(),
-            Some(Err(BackpressureError::UnexpectedAck {
+            Some(Err(BackpressuredSinkError::UnexpectedAck {
                 items_sent: 2,
                 actual: 3
             }))
@@ -749,7 +755,7 @@ mod tests {
 
         assert!(matches!(
             bp.encode_and_send('F').now_or_never(),
-            Some(Err(BackpressureError::DuplicateAck {
+            Some(Err(BackpressuredSinkError::DuplicateAck {
                 ack_received: 1,
                 highest: 2
             }))
@@ -855,7 +861,7 @@ mod tests {
                     client.flush().await.unwrap();
                     // After flushing, the sink must be able to accept new items.
                     match client.feed(item.encode()).await {
-                        Err(BackpressureError::AckStreamClosed) => {
+                        Err(BackpressuredSinkError::AckStreamClosed) => {
                             return client;
                         }
                         Ok(_) => {}

@@ -285,6 +285,7 @@ use std::{
 };
 
 use casper_types::testing::TestRng;
+use muxink::backpressured::Ticket;
 use rand::seq::IteratorRandom;
 use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
@@ -608,7 +609,8 @@ async fn receiver_task<REv, P>(
     P: 'static + Send,
 {
     while let Some((sender, payload)) = receiver.recv().await {
-        let announce: REv = REv::from_incoming(sender, payload);
+        // We do not use backpressure in the in-memory network, so provide a dummy ticket.
+        let announce: REv = REv::from_incoming(sender, payload, Ticket::create_dummy());
 
         event_queue
             .schedule(announce, QueueKind::NetworkIncoming)

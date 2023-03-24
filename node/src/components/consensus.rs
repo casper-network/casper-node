@@ -259,7 +259,11 @@ impl Display for ConsensusRequestMessage {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+            Event::Incoming(ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket: _,
+            }) => {
                 write!(f, "message from {:?}: {}", sender, message)
             }
             Event::DemandIncoming(demand) => {
@@ -386,8 +390,14 @@ where
             Event::Action { era_id, action_id } => {
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
-            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
-                self.handle_message(effect_builder, rng, sender, message)
+            Event::Incoming(ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket,
+            }) => {
+                let rv = self.handle_message(effect_builder, rng, sender, message);
+                drop(ticket);
+                rv
             }
             Event::DemandIncoming(ConsensusDemand {
                 sender,

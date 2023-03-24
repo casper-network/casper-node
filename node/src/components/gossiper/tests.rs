@@ -8,6 +8,7 @@ use std::{
 };
 
 use derive_more::{Display, From};
+use muxink::backpressured::Ticket;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -634,6 +635,7 @@ async fn should_not_gossip_old_stored_item_again() {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message: Message::Gossip(deploy.gossip_id()),
+                ticket: Arc::new(Ticket::create_dummy()),
             });
             effect_builder
                 .into_inner()
@@ -706,6 +708,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message,
+                ticket: Arc::new(Ticket::create_dummy()),
             });
             effect_builder
                 .into_inner()

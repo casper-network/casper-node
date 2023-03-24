@@ -29,6 +29,7 @@ pub mod demux;
 pub mod fragmented;
 pub mod framing;
 pub mod io;
+pub mod little_endian;
 pub mod mux;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -66,8 +67,10 @@ impl<A> ImmediateFrame<A> {
 
 /// Implements conversion functions to immediate types for atomics like `u8`, etc.
 macro_rules! impl_immediate_frame_le {
-    ($t:ty) => {
-        impl From<$t> for ImmediateFrame<[u8; ::std::mem::size_of::<$t>()]> {
+    ($frame_type_name:ident, $t:ty) => {
+        pub type $frame_type_name = ImmediateFrame<[u8; (<$t>::BITS / 8) as usize]>;
+
+        impl From<$t> for $frame_type_name {
             #[inline]
             fn from(value: $t) -> Self {
                 ImmediateFrame::new(value.to_le_bytes())
@@ -76,9 +79,16 @@ macro_rules! impl_immediate_frame_le {
     };
 }
 
-impl_immediate_frame_le!(u8);
-impl_immediate_frame_le!(u16);
-impl_immediate_frame_le!(u32);
+impl_immediate_frame_le!(ImmediateFrameU8, u8);
+impl_immediate_frame_le!(ImmediateFrameU16, u16);
+impl_immediate_frame_le!(ImmediateFrameU32, u32);
+impl_immediate_frame_le!(ImmediateFrameU64, u64);
+impl_immediate_frame_le!(ImmediateFrameU128, u128);
+impl_immediate_frame_le!(ImmediateFrameI8, i8);
+impl_immediate_frame_le!(ImmediateFrameI16, i16);
+impl_immediate_frame_le!(ImmediateFrameI32, i32);
+impl_immediate_frame_le!(ImmediateFrameI64, i64);
+impl_immediate_frame_le!(ImmediateFrameI128, i128);
 
 impl<A> Buf for ImmediateFrame<A>
 where

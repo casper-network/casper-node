@@ -1,6 +1,7 @@
 //! Tasks run by the component.
 
 use std::{
+    convert::Infallible,
     fmt::Display,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -18,8 +19,10 @@ use futures::{
 };
 
 use muxink::{
+    backpressured::{BackpressuredSink, BackpressuredStream},
     demux::Demultiplexer,
     fragmented::{Defragmentizer, Fragmentizer},
+    little_endian::LittleEndian,
 };
 use openssl::{
     pkey::{PKey, Private},
@@ -45,8 +48,9 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     limiter::LimiterHandle,
     message::NodeKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingCarrier, IncomingChannel,
-    Message, Metrics, OutgoingCarrier, OutgoingCarrierError, OutgoingChannel, Payload, Transport,
+    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingAckCarrier, IncomingCarrier,
+    IncomingChannel, Message, Metrics, OutgoingAckCarrier, OutgoingAckChannel, OutgoingCarrier,
+    OutgoingChannel, OutgoingChannelError, Payload, Transport, BACKPRESSURE_WINDOW_SIZE,
     MESSAGE_FRAGMENT_SIZE,
 };
 
@@ -54,7 +58,7 @@ use crate::{
     components::network::{
         deserialize_network_message,
         handshake::{negotiate_handshake, HandshakeOutcome},
-        Config,
+        Config, IncomingAckChannel,
     },
     effect::{
         announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
@@ -234,8 +238,7 @@ where
     /// Our own public listening address.
     public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
-    #[allow(dead_code)] // TODO: Readd once handshake timeout is readded.
-    handshake_timeout: TimeDiff,
+    pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
     payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.
@@ -518,6 +521,7 @@ pub(super) async fn server<P, REv>(
 pub(super) async fn multi_channel_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     carrier: Arc<Mutex<IncomingCarrier>>,
+    ack_carrier: OutgoingAckCarrier,
     limiter: LimiterHandle,
     shutdown: ObservableFuse,
     peer_id: NodeId,
@@ -534,13 +538,22 @@ where
     // We create a single select that returns items from all the streams.
     let mut select = SelectAll::new();
     for channel in Channel::iter() {
-        let demuxer =
+        let demux_handle =
             Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
                 .expect("mutex poisoned");
-        let incoming: IncomingChannel = Defragmentizer::new(
-            context.chain_info.maximum_net_message_size as usize,
-            demuxer,
+
+        let ack_sink: OutgoingAckChannel =
+            LittleEndian::new(ack_carrier.create_channel_handle(channel as u8));
+
+        let incoming: IncomingChannel = BackpressuredStream::new(
+            Defragmentizer::new(
+                context.chain_info.maximum_net_message_size as usize,
+                demux_handle,
+            ),
+            ack_sink,
+            BACKPRESSURE_WINDOW_SIZE,
         );
+
         select.push(incoming.map(move |frame| (channel, frame)));
     }
 
@@ -551,7 +564,7 @@ where
         pin_mut!(next_item);
         pin_mut!(wait_for_close_incoming);
 
-        let (channel, frame) = match future::select(next_item, wait_for_close_incoming)
+        let (channel, (frame, ticket)) = match future::select(next_item, wait_for_close_incoming)
             .await
             .peel()
         {
@@ -572,9 +585,8 @@ where
 
         let msg: Message<P> = deserialize_network_message(&frame)
             .map_err(MessageReaderError::DeserializationError)?;
-        trace!(%msg, %channel, "message received");
 
-        // TODO: Re-add support for demands when backpressure is added.
+        trace!(%msg, %channel, "message received");
 
         // The limiter stops _all_ channels, as they share a resource pool anyway.
         limiter
@@ -582,6 +594,7 @@ where
             .await;
 
         // Ensure the peer did not try to sneak in a message on a different channel.
+        // TODO: Verify we still need this.
         let msg_channel = msg.get_channel();
         if msg_channel != channel {
             return Err(MessageReaderError::WrongChannel {
@@ -604,6 +617,7 @@ where
                     peer_id: Box::new(peer_id),
                     msg: Box::new(msg),
                     span: span.clone(),
+                    ticket,
                 },
                 queue_kind,
             )
@@ -624,8 +638,9 @@ where
 pub(super) async fn encoded_message_sender(
     queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
     carrier: OutgoingCarrier,
+    ack_carrier: Arc<Mutex<IncomingAckCarrier>>,
     limiter: LimiterHandle,
-) -> Result<(), OutgoingCarrierError> {
+) -> Result<(), OutgoingChannelError> {
     // TODO: Once the necessary methods are stabilized, setup const fns to initialize
     // `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
     let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
@@ -635,10 +650,25 @@ pub(super) async fn encoded_message_sender(
 
     for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
         let mux_handle = carrier.create_channel_handle(channel as u8);
-        let channel: OutgoingChannel = Fragmentizer::new(fragment_size, mux_handle);
+
+        // Note: We use `Infallibe` here, since we do not care about the actual API.
+        // TODO: The `muxink` API could probably be improved here to not require an `E` parameter.
+        let ack_demux_handle =
+            Demultiplexer::create_handle::<Infallible>(ack_carrier.clone(), channel as u8)
+                .expect("handle creation should not fail");
+
+        let ack_stream: IncomingAckChannel = LittleEndian::new(ack_demux_handle);
+
+        let outgoing: OutgoingChannel = BackpressuredSink::new(
+            Fragmentizer::new(fragment_size, mux_handle),
+            ack_stream,
+            BACKPRESSURE_WINDOW_SIZE,
+        );
+
         boiler_room.push(shovel_data(
-            queue,
             channel,
+            queue,
+            outgoing,
             local_stop.clone(),
             limiter.clone(),
         ));
@@ -668,6 +698,7 @@ pub(super) async fn encoded_message_sender(
 ///
 /// Will loop forever, until either told to stop through the `stop` flag, or a send error occurs.
 async fn shovel_data<S>(
+    channel: Channel,
     mut source: UnboundedReceiver<EncodedMessage>,
     mut dest: S,
     stop: ObservableFuse,
@@ -676,6 +707,7 @@ async fn shovel_data<S>(
 where
     S: Sink<Bytes> + Unpin,
 {
+    trace!(%channel, "starting data shoveller for channel");
     loop {
         let recv = source.recv();
         pin_mut!(recv);
@@ -688,6 +720,9 @@ where
                 send_finished,
                 send_token,
             })) => {
+                let encoded_size = data.len();
+                let has_responder = send_finished.is_some();
+                trace!(%channel, encoded_size, has_responder, "attempting to send payload");
                 limiter.request_allowance(data.len() as u32).await;
                 // Note: It may be tempting to use `feed()` instead of `send()` when no responder
                 //       is present, since after all the sender is only guaranteed an eventual
@@ -700,6 +735,7 @@ where
                     responder.respond(()).await;
                 }
 
+                trace!(%channel, encoded_size, has_responder, "finished sending payload");
                 // We only drop the token once the message is sent or at least buffered.
                 drop(send_token);
             }

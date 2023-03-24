@@ -386,9 +386,11 @@ impl reactor::Reactor for MainReactor {
                 self.storage
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::NetworkPeerProvidingData(NetResponseIncoming { sender, message }) => {
-                reactor::handle_get_response(self, effect_builder, rng, sender, message)
-            }
+            MainEvent::NetworkPeerProvidingData(NetResponseIncoming {
+                sender,
+                message,
+                ticket: _, // TODO: Properly handle ticket.
+            }) => reactor::handle_get_response(self, effect_builder, rng, sender, message),
             MainEvent::AddressGossiper(event) => reactor::wrap_effects(
                 MainEvent::AddressGossiper,
                 self.address_gossiper
@@ -837,15 +839,17 @@ impl reactor::Reactor for MainReactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, demand.into()),
             ),
-            MainEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
-                reactor::handle_fetch_response::<Self, TrieOrChunk>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    &message.0,
-                )
-            }
+            MainEvent::TrieResponseIncoming(TrieResponseIncoming {
+                sender,
+                message,
+                ticket: _, // TODO: Sensibly process ticket.
+            }) => reactor::handle_fetch_response::<Self, TrieOrChunk>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                &message.0,
+            ),
 
             // STORAGE
             MainEvent::Storage(event) => reactor::wrap_effects(

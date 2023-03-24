@@ -48,6 +48,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
+    io,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
     sync::{Arc, Mutex},
@@ -61,11 +62,14 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use muxink::{
-    demux::{Demultiplexer, DemultiplexerHandle},
+    backpressured::{BackpressuredSink, BackpressuredSinkError, BackpressuredStream, Ticket},
+    demux::{Demultiplexer, DemultiplexerError, DemultiplexerHandle},
     fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
-    framing::length_delimited::LengthDelimited,
+    framing::{fixed_size::FixedSize, length_delimited::LengthDelimited},
     io::{FrameReader, FrameWriter},
+    little_endian::{DecodeError, LittleEndian},
     mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
+    ImmediateFrameU64,
 };
 
 use prometheus::Registry;
@@ -75,6 +79,7 @@ use rand::{
 };
 use strum::EnumCount;
 use tokio::{
+    io::{ReadHalf, WriteHalf},
     net::TcpStream,
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
@@ -144,6 +149,9 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 /// The size of a single message fragment sent over the wire.
 const MESSAGE_FRAGMENT_SIZE: usize = 4096;
 
+/// How many bytes of ACKs to read in one go.
+const ACK_BUFFER_SIZE: usize = 1024;
+
 /// How often to send a ping down a healthy connection.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -157,6 +165,10 @@ const PING_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// How many pings to send before giving up and dropping the connection.
 const PING_RETRIES: u16 = 5;
+
+/// How many items to buffer before backpressuring.
+// TODO: This should probably be configurable on a per-channel basis.
+const BACKPRESSURE_WINDOW_SIZE: u64 = 20;
 
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle {
@@ -492,7 +504,7 @@ where
                 // The `AutoClosingResponder` will respond by itself.
                 return;
             };
-            trace!(%msg, encoded_size=payload.len(), %channel, "enqueued message for sending");
+            trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
             let send_token = TokenizedCount::new(self.net_metrics.queued_messages.clone());
 
@@ -611,18 +623,26 @@ where
                 // TODO: Removal of `CountingTransport` here means some functionality has to be
                 // restored.
 
+                let (read_half, write_half) = tokio::io::split(transport);
+
+                // Setup a multiplexed delivery for ACKs (we use the send direction of the incoming
+                // connection for sending ACKs only).
+                let write_compat: Compat<WriteHalf<SslStream<TcpStream>>> =
+                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
+
+                let ack_writer: AckFrameWriter =
+                    FrameWriter::new(FixedSize::new(ACK_FRAME_SIZE), write_compat);
+                let ack_carrier = Multiplexer::new(ack_writer);
+
                 // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
                 // tokio built-in version instead). The compat layer fixes that.
-                let compat_transport =
-                    tokio_util::compat::TokioAsyncReadCompatExt::compat(transport);
+                let read_compat: Compat<ReadHalf<SslStream<TcpStream>>> =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
 
-                // TODO: We need to split the stream here eventually. Right now, this is safe since
-                //       the reader only uses one direction.
-                let carrier = Arc::new(Mutex::new(Demultiplexer::new(FrameReader::new(
-                    LengthDelimited,
-                    compat_transport,
-                    MESSAGE_FRAGMENT_SIZE,
-                ))));
+                let frame_reader: IncomingFrameReader =
+                    FrameReader::new(LengthDelimited, read_compat, MESSAGE_FRAGMENT_SIZE);
+
+                let carrier = Arc::new(Mutex::new(Demultiplexer::new(frame_reader)));
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
@@ -630,6 +650,7 @@ where
                     tasks::multi_channel_message_receiver(
                         self.context.clone(),
                         carrier,
+                        ack_carrier,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_fuse.inner().clone(),
@@ -694,7 +715,8 @@ where
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_) => None,
+            | ConnectionError::IncompatibleVersion(_)
+            | ConnectionError::HandshakeTimeout => None,
 
             // These errors are potential bugs on our side.
             ConnectionError::HandshakeSenderCrashed(_)
@@ -809,15 +831,25 @@ where
 
                 // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
                 // tokio built-in version instead). The compat layer fixes that.
-                let compat_transport =
-                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(transport);
+
+                let (read_half, write_half) = tokio::io::split(transport);
+
+                let read_compat = tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
+
+                let ack_reader: AckFrameReader =
+                    FrameReader::new(FixedSize::new(ACK_FRAME_SIZE), read_compat, ACK_BUFFER_SIZE);
+                let ack_carrier = Arc::new(Mutex::new(Demultiplexer::new(ack_reader)));
+
+                let write_compat =
+                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
                 let carrier: OutgoingCarrier =
-                    Multiplexer::new(FrameWriter::new(LengthDelimited, compat_transport));
+                    Multiplexer::new(FrameWriter::new(LengthDelimited, write_compat));
 
                 effects.extend(
                     tasks::encoded_message_sender(
                         receivers,
                         carrier,
+                        ack_carrier,
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                     )
@@ -953,11 +985,13 @@ where
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
         msg: Message<P>,
+        ticket: Ticket,
         span: Span,
     ) -> Effects<Event<P>>
     where
         REv: FromIncoming<P> + From<PeerBehaviorAnnouncement>,
     {
+        // Note: For non-payload channels, we drop the `Ticket` implicitly at end of scope.
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
                 // We should never receive a handshake message on an established connection. Simply
@@ -986,9 +1020,9 @@ where
                     Effects::new()
                 }
             }
-            Message::Payload(payload) => {
-                effect_builder.announce_incoming(peer_id, payload).ignore()
-            }
+            Message::Payload(payload) => effect_builder
+                .announce_incoming(peer_id, payload, ticket)
+                .ignore(),
         })
     }
 
@@ -1197,9 +1231,12 @@ where
                 Event::IncomingConnection { incoming, span } => {
                     self.handle_incoming_connection(incoming, span)
                 }
-                Event::IncomingMessage { peer_id, msg, span } => {
-                    self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
-                }
+                Event::IncomingMessage {
+                    peer_id,
+                    msg,
+                    span,
+                    ticket,
+                } => self.handle_incoming_message(effect_builder, *peer_id, *msg, ticket, span),
                 Event::IncomingClosed {
                     result,
                     peer_id,
@@ -1348,26 +1385,60 @@ fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [Unbound
 type Transport = SslStream<TcpStream>;
 
 /// The writer for outgoing length-prefixed frames.
-type OutgoingFrameWriter =
-    FrameWriter<ChannelPrefixedFrame<SingleFragment>, LengthDelimited, Compat<Transport>>;
+type OutgoingFrameWriter = FrameWriter<
+    ChannelPrefixedFrame<SingleFragment>,
+    LengthDelimited,
+    Compat<WriteHalf<Transport>>,
+>;
 
 /// The multiplexer to send fragments over an underlying frame writer.
 type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
 
-/// The error type associated with the primary sink implementation of `OutgoingCarrier`.
-type OutgoingCarrierError = MultiplexerError<std::io::Error>;
+/// The error type associated with the primary sink implementation.
+type OutgoingChannelError =
+    BackpressuredSinkError<MultiplexerError<io::Error>, DecodeError<DemultiplexerError<io::Error>>>;
 
 /// An instance of a channel on an outgoing carrier.
-type OutgoingChannel = Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>;
+type OutgoingChannel = BackpressuredSink<
+    Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>,
+    IncomingAckChannel,
+    Bytes,
+>;
 
 /// The reader for incoming length-prefixed frames.
-type IncomingFrameReader = FrameReader<LengthDelimited, Compat<Transport>>;
+type IncomingFrameReader = FrameReader<LengthDelimited, Compat<ReadHalf<Transport>>>;
 
 /// The demultiplexer that seperates channels sent through the underlying frame reader.
 type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
 
 /// An instance of a channel on an incoming carrier.
-type IncomingChannel = Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>;
+type IncomingChannel = BackpressuredStream<
+    Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>,
+    OutgoingAckChannel,
+    Bytes,
+>;
+
+/// Frame writer for ACKs, sent back over the incoming connection.
+type AckFrameWriter =
+    FrameWriter<ChannelPrefixedFrame<ImmediateFrameU64>, FixedSize, Compat<WriteHalf<Transport>>>;
+
+/// ACK frames are 9 bytes (channel prefix + `u64`).
+const ACK_FRAME_SIZE: usize = 9;
+
+/// Frame reader for ACKs, received through an outgoing connection.
+type AckFrameReader = FrameReader<FixedSize, Compat<ReadHalf<Transport>>>;
+
+/// Multiplexer sending ACKs for various channels over an `AckFrameWriter`.
+type OutgoingAckCarrier = Multiplexer<AckFrameWriter>;
+
+/// Outgoing ACK sink.
+type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckFrameWriter>>;
+
+/// Demultiplexer receiving ACKs for various channels over an `AckFrameReader`.
+type IncomingAckCarrier = Demultiplexer<AckFrameReader>;
+
+/// Incoming ACK stream.
+type IncomingAckChannel = LittleEndian<u64, DemultiplexerHandle<AckFrameReader>>;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
