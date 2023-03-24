@@ -48,6 +48,7 @@ pub(crate) struct ValidatorMatrix {
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
     auction_delay: u64,
+    retrograde_latch: Option<EraId>,
 }
 
 impl ValidatorMatrix {
@@ -68,6 +69,7 @@ impl ValidatorMatrix {
             secret_signing_key,
             public_signing_key,
             auction_delay,
+            retrograde_latch: None,
         }
     }
 
@@ -89,8 +91,14 @@ impl ValidatorMatrix {
             finality_threshold_fraction,
             public_signing_key,
             secret_signing_key,
-            auction_delay: 2,
+            auction_delay: 1,
+            retrograde_latch: None,
         }
+    }
+
+    // Register the era of the highest orphaned block.
+    pub(crate) fn register_retrograde_latch(&mut self, latch_era: Option<EraId>) {
+        self.retrograde_latch = latch_era;
     }
 
     // When the chain starts, the validator weights will be the same until the unbonding delay is
@@ -122,17 +130,21 @@ impl ValidatorMatrix {
             .write()
             .expect("poisoned lock on validator matrix");
         let is_new = guard.insert(era_id, validators).is_none();
-        if guard.len() > MAX_VALIDATOR_MATRIX_ENTRIES {
-            // Safe to unwrap because we check above that we have sufficient entries.
-            let median_key = guard
-                .keys()
-                .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
-                .copied()
-                .unwrap();
-            guard.remove(&median_key);
-            return median_key != era_id;
+        if guard.len() <= MAX_VALIDATOR_MATRIX_ENTRIES || self.retrograde_latch.is_none() {
+            return is_new;
         }
-        is_new
+        let latch_era = self.retrograde_latch.unwrap_or_default(); // none checked above
+        let median_era = guard
+            .keys()
+            .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
+            .copied()
+            .unwrap();
+        if median_era <= latch_era {
+            is_new
+        } else {
+            guard.remove(&median_era);
+            median_era != era_id
+        }
     }
 
     pub(crate) fn register_validator_weights(
@@ -410,7 +422,10 @@ mod tests {
             .skip(1)
             .cloned()
         {
-            assert!(validator_matrix.register_era_validator_weights(evw));
+            assert!(
+                validator_matrix.register_era_validator_weights(evw),
+                "register_era_validator_weights"
+            );
         }
         // For a `MAX_VALIDATOR_MATRIX_ENTRIES` value of 6, the validator
         // matrix should contain eras 0 through 5 inclusive.
@@ -427,42 +442,56 @@ mod tests {
         // Now that we have 6 entries in the validator matrix, try adding more.
         // We should have an entry for era 3 (we have eras 0 through 5
         // inclusive).
-        assert!(validator_matrix.has_era(&(MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2).into()));
+        let median = MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2;
+        assert!(
+            validator_matrix.has_era(&(median).into()),
+            "should have median era {}",
+            median
+        );
         // Add era 7, which would be the 7th entry in the matrix. Skipping era
         // 6 should have no effect on the pruning.
         era_validator_weights.push(empty_era_validator_weights(
             (MAX_VALIDATOR_MATRIX_ENTRIES as u64 + 1).into(),
         ));
+
+        // set retrograde latch to simulate a fully sync'd node
+        validator_matrix.register_retrograde_latch(Some(EraId::new(0)));
+
         // Now the entry for era 3 should be dropped and we should be left with
         // the 3 lowest eras [0, 1, 2] and 3 highest eras [4, 5, 7].
         assert!(validator_matrix
             .register_era_validator_weights(era_validator_weights.last().cloned().unwrap()));
-        assert!(!validator_matrix.has_era(&(MAX_VALIDATOR_MATRIX_ENTRIES as u64 / 2).into()));
-        assert_eq!(
-            validator_matrix.read_inner().len(),
-            MAX_VALIDATOR_MATRIX_ENTRIES
+        assert!(
+            !validator_matrix.has_era(&(median).into()),
+            "should not have median era {}",
+            median
         );
+        let len = validator_matrix.read_inner().len();
         assert_eq!(
-            vec![0u64, 1, 2, 4, 5, 7],
-            validator_matrix
-                .read_inner()
-                .keys()
-                .copied()
-                .map(EraId::value)
-                .collect::<Vec<u64>>()
+            len, MAX_VALIDATOR_MATRIX_ENTRIES,
+            "expected entries {} actual entries: {}",
+            MAX_VALIDATOR_MATRIX_ENTRIES, len
         );
+        let expected = vec![0u64, 1, 2, 4, 5, 7];
+        let actual = validator_matrix
+            .read_inner()
+            .keys()
+            .copied()
+            .map(EraId::value)
+            .collect::<Vec<u64>>();
+        assert_eq!(expected, actual, "{:?} {:?}", expected, actual);
 
         // Adding existing eras shouldn't change the state.
         let old_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
-        assert!(!validator_matrix
-            .register_era_validator_weights(era_validator_weights.last().cloned().unwrap()));
+        let repeat = era_validator_weights
+            .last()
+            .cloned()
+            .expect("should have last entry");
+        assert!(
+            !validator_matrix.register_era_validator_weights(repeat),
+            "should not re-register already registered era"
+        );
         let new_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
-        assert_eq!(old_state, new_state);
-
-        // Adding an entry greater than the 3 lowest ones but less than the 3
-        // highest ones should not change state.
-        assert!(!validator_matrix.register_era_validator_weights(era_validator_weights[3].clone()));
-        let new_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
-        assert_eq!(old_state, new_state);
+        assert_eq!(old_state, new_state, "state should be unchanged");
     }
 }
