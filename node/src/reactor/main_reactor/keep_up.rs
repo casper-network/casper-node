@@ -340,8 +340,8 @@ impl MainReactor {
             // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
             match (before_era_validators_result, after_era_validators_result) {
                 // Both states were present - return the result.
-                (Ok(parent_era_validators), Ok(block_era_validators)) => {
-                    Ok((parent_era_validators, block_era_validators))
+                (Ok(before_era_validators), Ok(after_era_validators)) => {
+                    Ok((before_era_validators, after_era_validators))
                 }
                 // Both were absent - fetch global states for both blocks.
                 (

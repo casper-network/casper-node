@@ -22,7 +22,7 @@ set -e
 #######################################
 function main() {
     log "------------------------------------------------------------"
-    log "Upgrade after emergency upgrade test begins"
+    log "Upgrade after emergency upgrade test pre-1.5 begins"
     log "------------------------------------------------------------"
 
     do_prepare_stage
