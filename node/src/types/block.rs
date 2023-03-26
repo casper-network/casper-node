@@ -2361,18 +2361,21 @@ impl Display for FinalitySignature {
 }
 
 impl FetchItem for FinalitySignature {
-    type Id = FinalitySignatureId;
+    type Id = Box<FinalitySignatureId>;
     type ValidationError = crypto::Error;
     type ValidationMetadata = EmptyValidationMetadata;
 
     const TAG: Tag = Tag::FinalitySignature;
 
     fn fetch_id(&self) -> Self::Id {
-        FinalitySignatureId {
+        // Note: Unfortunately this is somewhat of a mismatch, as finality signature IDs are fairly
+        //       large, while the `FetchItem` trait expects them to be reasonably small (~ 64 bytes
+        //       or less). The included `public_key` bloats these IDs greatly.
+        Box::new(FinalitySignatureId {
             block_hash: self.block_hash,
             era_id: self.era_id,
             public_key: self.public_key.clone(),
-        }
+        })
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
@@ -2381,17 +2384,20 @@ impl FetchItem for FinalitySignature {
 }
 
 impl GossipItem for FinalitySignature {
-    type Id = FinalitySignatureId;
+    type Id = Box<FinalitySignatureId>;
 
     const ID_IS_COMPLETE_ITEM: bool = false;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn gossip_id(&self) -> Self::Id {
-        FinalitySignatureId {
+        // Note: Unfortunately this is somewhat of a mismatch, as finality signature IDs are fairly
+        //       large, while the `GossipItem` trait expects them to be reasonably small (~ 64
+        //       bytes or less). The included `public_key` bloats these IDs greatly.
+        Box::new(FinalitySignatureId {
             block_hash: self.block_hash,
             era_id: self.era_id,
             public_key: self.public_key.clone(),
-        }
+        })
     }
 
     fn gossip_target(&self) -> GossipTarget {

@@ -578,11 +578,11 @@ impl BlockSynchronizer {
                     {
                         debug!(%validator, %peer, "attempting to fetch FinalitySignature");
                         builder.register_finality_signature_pending(validator.clone());
-                        let id = FinalitySignatureId {
+                        let id = Box::new(FinalitySignatureId {
                             block_hash,
                             era_id,
                             public_key: validator,
-                        };
+                        });
                         results.extend(
                             effect_builder
                                 .fetch::<FinalitySignature>(id, peer, EmptyValidationMetadata)

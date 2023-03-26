@@ -1602,30 +1602,24 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested finality signature from storage.
     pub(crate) async fn get_finality_signature_from_storage(
         self,
-        id: FinalitySignatureId,
+        id: Box<FinalitySignatureId>,
     ) -> Option<FinalitySignature>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetFinalitySignature {
-                id: Box::new(id),
-                responder,
-            },
+            |responder| StorageRequest::GetFinalitySignature { id, responder },
             QueueKind::FromStorage,
         )
         .await
     }
 
-    pub(crate) async fn is_finality_signature_stored(self, id: FinalitySignatureId) -> bool
+    pub(crate) async fn is_finality_signature_stored(self, id: Box<FinalitySignatureId>) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::IsFinalitySignatureStored {
-                id: Box::new(id),
-                responder,
-            },
+            |responder| StorageRequest::IsFinalitySignatureStored { id, responder },
             QueueKind::FromStorage,
         )
         .await

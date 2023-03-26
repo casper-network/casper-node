@@ -701,7 +701,7 @@ impl Storage {
                 if let Some(item) = opt_item.as_ref() {
                     if item.block_hash != id.block_hash || item.era_id != id.era_id {
                         return Err(GetRequestError::FinalitySignatureIdMismatch {
-                            requested_id: Box::new(id),
+                            requested_id: id,
                             finality_signature: Box::new(item.clone()),
                         });
                     }
