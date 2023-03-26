@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 mod event;
 mod metrics;
 mod tests;

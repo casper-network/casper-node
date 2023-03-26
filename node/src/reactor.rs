@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 //! Reactor core.
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are

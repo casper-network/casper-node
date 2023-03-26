@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 //! The `FakeDeployAcceptor` behaves as per the real `DeployAcceptor` but without any deploy
 //! verification being performed.
 //!

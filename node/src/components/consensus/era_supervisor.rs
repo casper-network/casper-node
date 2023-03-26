@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 //! Consensus service is a component that will be communicating with the reactor.
 //! It will receive events (like incoming message event or create new message event)
 //! and propagate them to the underlying consensus protocol.
