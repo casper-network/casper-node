@@ -405,7 +405,7 @@ where
             Message::GetRequest { tag, serialized_id } if tag == Tag::TrieOrChunk => {
                 let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
                     sender,
-                    request_msg: TrieRequest(serialized_id),
+                    request_msg: Box::new(TrieRequest(serialized_id)),
                     auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                 });
 
@@ -415,7 +415,7 @@ where
                 let (ev, fut) =
                     effect_builder.create_request_parts(move |responder| ConsensusDemand {
                         sender,
-                        request_msg,
+                        request_msg: Box::new(request_msg),
                         auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                     });
 

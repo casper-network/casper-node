@@ -40,7 +40,7 @@ pub struct DemandIncoming<M> {
     /// The sender from which the demand originated.
     pub(crate) sender: NodeId,
     /// The wrapped demand.
-    pub(crate) request_msg: M,
+    pub(crate) request_msg: Box<M>,
     /// Responder to send the answer down through.
     pub(crate) auto_closing_responder: AutoClosingResponder<Message>,
 }

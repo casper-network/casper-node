@@ -290,11 +290,12 @@ impl ContractRuntime {
     fn handle_trie_demand(
         &self,
         TrieDemand {
-            request_msg: TrieRequest(ref serialized_id),
+            request_msg,
             auto_closing_responder,
             ..
         }: TrieDemand,
     ) -> Effects<Event> {
+        let TrieRequest(ref serialized_id) = *request_msg;
         let fetch_response = match self.get_trie(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {
