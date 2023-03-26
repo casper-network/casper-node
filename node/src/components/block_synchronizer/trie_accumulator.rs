@@ -39,7 +39,9 @@ const COMPONENT_NAME: &str = "trie_accumulator";
 #[derive(Debug, From, Error, Clone, Serialize)]
 pub(crate) enum Error {
     #[error("trie accumulator ran out of peers trying to fetch item with error: {0}; unreliable peers: {}", DisplayIter::new(.1))]
-    PeersExhausted(FetcherError<TrieOrChunk>, Vec<NodeId>),
+    // Note: Due to being a thrice nested component, this error type tighter size constraints. For
+    //       this reason, we have little choice but to box the `FetcherError`.
+    PeersExhausted(Box<FetcherError<TrieOrChunk>>, Vec<NodeId>),
     #[error("trie accumulator couldn't fetch trie chunk ({0}, {1}); unreliable peers: {}", DisplayIter::new(.2))]
     Absent(Digest, u64, Vec<NodeId>),
     #[error("request contained no peers; trie = {0}")]
@@ -315,8 +317,10 @@ where
                                 None => {
                                     warn!(%id, "couldn't fetch chunk");
                                     let faulty_peers = partial_chunks.unreliable_peers.clone();
-                                    partial_chunks
-                                        .respond(Err(Error::PeersExhausted(error, faulty_peers)))
+                                    partial_chunks.respond(Err(Error::PeersExhausted(
+                                        Box::new(error),
+                                        faulty_peers,
+                                    )))
                                 }
                             }
                         }
