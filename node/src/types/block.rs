@@ -1564,7 +1564,7 @@ impl Block {
             deploys_iter,
         );
         if !validator_weights.is_empty() {
-            finalized_block.era_report = Some(Box::new(EraReport::default()));
+            finalized_block.era_report = Some(Default::default());
         }
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = if validator_weights.is_empty() {
