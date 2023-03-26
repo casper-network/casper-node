@@ -637,7 +637,7 @@ impl Storage {
             }
         }
 
-        match incoming.message {
+        match *(incoming.message) {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;

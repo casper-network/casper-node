@@ -305,7 +305,7 @@ impl Reactor {
         rng: &mut NodeRng,
         response: NetResponseIncoming,
     ) -> Effects<Event> {
-        match response.message {
+        match *response.message {
             NetResponse::Deploy(ref serialized_item) => {
                 let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
                     serialized_item,
