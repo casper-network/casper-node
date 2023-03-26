@@ -428,7 +428,7 @@ pub struct FinalizedBlock {
     transfer_hashes: Vec<DeployHash>,
     timestamp: Timestamp,
     random_bit: bool,
-    era_report: Box<Option<EraReport>>,
+    era_report: Option<Box<EraReport>>,
     era_id: EraId,
     height: u64,
     proposer: Box<PublicKey>,
@@ -448,7 +448,7 @@ impl FinalizedBlock {
             transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
             timestamp,
             random_bit: block_payload.random_bit,
-            era_report: Box::new(era_report),
+            era_report: era_report.map(Box::new),
             era_id,
             height,
             proposer: Box::new(proposer),
@@ -463,7 +463,7 @@ impl FinalizedBlock {
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
     /// its era.
     pub(crate) fn era_report(&self) -> Option<&EraReport> {
-        (*self.era_report).as_ref()
+        self.era_report.as_deref()
     }
 
     /// Returns the ID of the era this block belongs to.
@@ -594,7 +594,10 @@ impl From<Block> for FinalizedBlock {
             transfer_hashes: block.body.transfer_hashes,
             timestamp: block.header.timestamp,
             random_bit: block.header.random_bit,
-            era_report: Box::new(block.header.era_end.map(|era_end| era_end.era_report)),
+            era_report: block
+                .header
+                .era_end
+                .map(|era_end| Box::new(era_end.era_report)),
             era_id: block.header.era_id,
             height: block.header.height,
             proposer: Box::new(block.body.proposer),
@@ -613,7 +616,7 @@ impl Display for FinalizedBlock {
             self.deploy_hashes.len(),
             self.transfer_hashes.len(),
         )?;
-        if let Some(ee) = *self.era_report.clone() {
+        if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -1300,10 +1303,10 @@ impl Block {
 
         let body_hash = body.hash();
 
-        let era_end = match (*finalized_block.era_report, next_era_validator_weights) {
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
             (Some(era_report), Some(next_era_validator_weights)) => {
-                Some(EraEnd::new(era_report, next_era_validator_weights))
+                Some(EraEnd::new(*era_report, next_era_validator_weights))
             }
             (maybe_era_report, maybe_next_era_validator_weights) => {
                 return Err(BlockCreationError::CouldNotCreateEraEnd {
@@ -1560,7 +1563,7 @@ impl Block {
             deploys_iter,
         );
         if !validator_weights.is_empty() {
-            finalized_block.era_report = Box::new(Some(EraReport::default()));
+            finalized_block.era_report = Some(Box::new(EraReport::default()));
         }
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = if validator_weights.is_empty() {
