@@ -161,7 +161,7 @@ impl<REv> ReactorEventT for REv where
 ///     linkStyle 0 stroke-width:0;
 ///
 ///     Start --> A{has valid size?}
-///     A -->|Yes| B{"is compliant with config?<br/>(size, chain name, ttl, etc.)"}    
+///     A -->|Yes| B{"is compliant with config?<br/>(size, chain name, ttl, etc.)"}
 ///     G -->|Yes| ZZ[Accept]
 ///     B -->|Yes| C{is from<br/>client?}
 ///     C -->|Yes| CLIENT{has expired?}
