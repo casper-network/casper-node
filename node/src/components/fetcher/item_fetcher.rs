@@ -100,7 +100,7 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
                 let handle = entry.get_mut();
                 if handle.validation_metadata() != &*validation_metadata {
                     let error = Error::ValidationMetadataMismatch {
-                        id,
+                        id: Box::new(id),
                         peer,
                         current: Box::new(handle.validation_metadata().clone()),
                         new: validation_metadata,
@@ -128,7 +128,10 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
 
                 self.signal(
                     id.clone(),
-                    Err(Error::CouldNotConstructGetRequest { id, peer }),
+                    Err(Error::CouldNotConstructGetRequest {
+                        id: Box::new(id),
+                        peer,
+                    }),
                     peer,
                 )
             }
