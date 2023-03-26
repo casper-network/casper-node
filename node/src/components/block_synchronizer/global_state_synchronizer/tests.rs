@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 use crate::{
     reactor::{EventQueueHandle, QueueKind, Scheduler},
@@ -152,6 +154,7 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
         Responder::without_shutdown(oneshot::channel().0),
     );
     let trie_hash = request.state_root_hash;
+    tokio::time::sleep(Duration::from_millis(5)).await;
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
     assert_eq!(effects.len(), 1);
     assert!(global_state_synchronizer.request_state.is_some());
@@ -182,7 +185,7 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
     reactor.expect_trie_accumulator_request(&trie_hash).await;
 
     // sleep a bit so that the next progress timestamp is different
-    std::thread::sleep(std::time::Duration::from_millis(2));
+    tokio::time::sleep(Duration::from_millis(2)).await;
     // simulate the fetch returning a trie
     let effects = global_state_synchronizer.handle_fetched_trie(
         TrieHash(trie_hash),
@@ -199,7 +202,7 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
     progress = global_state_synchronizer.last_progress().unwrap();
 
     // sleep a bit so that the next progress timestamp is different
-    std::thread::sleep(std::time::Duration::from_millis(2));
+    tokio::time::sleep(Duration::from_millis(2)).await;
     // simulate synchronizer processing the fetched trie
     let effects = global_state_synchronizer.handle_put_trie_result(
         TrieHash(trie_hash),

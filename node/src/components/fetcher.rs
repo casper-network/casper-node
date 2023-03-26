@@ -115,7 +115,7 @@ where
                 validation_metadata,
                 maybe_item,
                 responder,
-            } => match *maybe_item {
+            } => match maybe_item {
                 Some(item) => {
                     self.metrics().found_in_storage.inc();
                     responder

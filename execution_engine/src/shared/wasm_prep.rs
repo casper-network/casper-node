@@ -6,6 +6,7 @@ use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
 use super::wasm_config::WasmConfig;
+use crate::core::execution;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
 /// Name of the internal gas function injected by [`pwasm_utils::inject_gas_counter`].
@@ -393,7 +394,7 @@ pub fn preprocess(
     let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
     let module = pwasm_utils::inject_gas_counter(
         module,
-        &wasm_config.opcode_costs().to_set(),
+        &wasm_config.opcode_costs(),
         DEFAULT_GAS_MODULE_NAME,
     )
     .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
@@ -405,6 +406,34 @@ pub fn preprocess(
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
 pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
     parity_wasm::deserialize_buffer::<Module>(module_bytes).map_err(Into::into)
+}
+
+/// Creates new wasm module from entry points.
+pub fn get_module_from_entry_points(
+    entry_point_names: Vec<&str>,
+    mut module: Module,
+) -> Result<Vec<u8>, execution::Error> {
+    let export_section = module.export_section().ok_or_else(|| {
+        execution::Error::FunctionNotFound(String::from("Missing Export Section"))
+    })?;
+
+    let maybe_missing_name: Option<String> = entry_point_names
+        .iter()
+        .find(|name| {
+            !export_section
+                .entries()
+                .iter()
+                .any(|export_entry| export_entry.field() == **name)
+        })
+        .map(|s| String::from(*s));
+
+    match maybe_missing_name {
+        Some(missing_name) => Err(execution::Error::FunctionNotFound(missing_name)),
+        None => {
+            pwasm_utils::optimize(&mut module, entry_point_names)?;
+            parity_wasm::serialize(module).map_err(execution::Error::ParityWasm)
+        }
+    }
 }
 
 #[cfg(test)]

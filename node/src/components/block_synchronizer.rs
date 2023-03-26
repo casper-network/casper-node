@@ -321,7 +321,7 @@ impl BlockSynchronizer {
             }
         }
 
-        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        let (block_header, maybe_sigs) = sync_leap.highest_block_header_and_signatures();
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))
                 if builder.block_hash() == block_header.block_hash() =>
@@ -532,10 +532,18 @@ impl BlockSynchronizer {
             if builder.in_flight_latch().is_some() || builder.is_finished() {
                 return;
             }
-            let action = builder.block_acquisition_action(rng, max_simultaneous_peers);
+            let action = builder.block_acquisition_action(
+                rng,
+                max_simultaneous_peers,
+                chainspec.core_config.legacy_required_finality,
+            );
             let peers = action.peers_to_ask();
             let need_next = action.need_next();
-            info!("BlockSynchronizer: {}", need_next);
+            info!(
+                "BlockSynchronizer: {} with {} peers",
+                need_next,
+                peers.len()
+            );
             match need_next {
                 NeedNext::Nothing(_) => {
                     // currently idle or waiting, check back later
@@ -568,6 +576,7 @@ impl BlockSynchronizer {
                         .take(max_simultaneous_peers)
                         .zip(peers.into_iter().cycle())
                     {
+                        debug!(%validator, %peer, "attempting to fetch FinalitySignature");
                         builder.register_finality_signature_pending(validator.clone());
                         let id = FinalitySignatureId {
                             block_hash,
@@ -616,7 +625,7 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<ApprovalsHashes>(block_hash, node_id, *block.clone())
+                            .fetch::<ApprovalsHashes>(block_hash, node_id, block.clone())
                             .event(Event::ApprovalsHashesFetched)
                     }))
                 }
@@ -645,14 +654,11 @@ impl BlockSynchronizer {
                 NeedNext::EnqueueForExecution(block_hash, _) => {
                     if false == builder.should_fetch_execution_state() {
                         builder.set_in_flight_latch();
-                        results.extend(
-                            effect_builder
-                                .make_block_executable(block_hash)
-                                .event(move |result| Event::MadeFinalizedBlock {
-                                    block_hash,
-                                    result,
-                                }),
-                        )
+                        if builder.execution_unattempted() {
+                            results.extend(effect_builder.make_block_executable(block_hash).event(
+                                move |result| Event::MadeFinalizedBlock { block_hash, result },
+                            ))
+                        }
                     }
                 }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
@@ -698,7 +704,7 @@ impl BlockSynchronizer {
                             .fetch::<SyncLeap>(
                                 SyncLeapIdentifier::sync_to_historical(builder.block_hash()),
                                 node_id,
-                                chainspec.clone(),
+                                chainspec.as_ref().into(),
                             )
                             .event(Event::SyncLeapFetched)
                     }))

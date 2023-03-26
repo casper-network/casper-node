@@ -10,7 +10,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
-use tracing::debug;
+use tracing::info;
 
 use casper_types::{EraId, PublicKey, SecretKey, U512};
 
@@ -110,7 +110,7 @@ impl ValidatorMatrix {
                 validators.validator_weights,
                 validators.finality_threshold_fraction,
             ));
-            debug!("Validator Matrix: Inferred validator weights for Era 0 from weights in Era 1");
+            info!("ValidatorMatrix: Inferred validator weights for Era 0 from weights in Era 1");
         }
         was_present
     }
@@ -204,6 +204,10 @@ impl ValidatorMatrix {
         }
     }
 
+    pub(crate) fn public_signing_key(&self) -> &PublicKey {
+        &self.public_signing_key
+    }
+
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
     pub(crate) fn is_self_validator_in_era(&self, era_id: EraId) -> Option<bool> {
@@ -261,7 +265,7 @@ impl Debug for ValidatorMatrix {
     }
 }
 
-#[derive(DataSize, Debug, Serialize, Default, Clone)]
+#[derive(DataSize, Debug, Eq, PartialEq, Serialize, Default, Clone)]
 pub(crate) struct EraValidatorWeights {
     era_id: EraId,
     validator_weights: BTreeMap<PublicKey, U512>,

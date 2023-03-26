@@ -10,9 +10,6 @@
 //! a component implementation that interfaces with other components via being plugged into a
 //! reactor, and an external facing http server that exposes various uri routes and converts
 //! JSON-RPC requests into the appropriate component events.
-//!
-//! For the list of supported RPC methods, see:
-//! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
 mod event;

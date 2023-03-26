@@ -142,6 +142,12 @@ impl MainReactor {
                 return None;
             }
         }
+
+        if self.block_synchronizer.forward_progress().is_active() {
+            debug!("KeepUp: still syncing a block");
+            return None;
+        }
+
         let queue_depth = self.contract_runtime.queue_depth();
         if queue_depth > 0 {
             debug!("KeepUp: should_validate queue_depth {}", queue_depth);
@@ -172,8 +178,8 @@ impl MainReactor {
             }
             BlockSynchronizerProgress::Synced(block_hash, block_height, era_id) => {
                 // for a synced forward block -> we have header, body, any referenced deploys,
-                // and sufficient finality (by weight) of signatures. this node will ultimately
-                // attempt to execute this block to produce global state and execution effects.
+                // sufficient finality (by weight) of signatures, associated global state and
+                // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
         }
@@ -282,18 +288,18 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> Option<KeepUpInstruction> {
         let sync_back_progress = self.block_synchronizer.historical_progress();
-        debug!(?sync_back_progress, "historical: sync back progress");
+        debug!(?sync_back_progress, "KeepUp: historical sync back progress");
         self.update_last_progress(&sync_back_progress, true);
         match self.sync_back_instruction(&sync_back_progress) {
             Ok(Some(sync_back_instruction)) => match sync_back_instruction {
                 SyncBackInstruction::TtlSynced | SyncBackInstruction::GenesisSynced => {
                     // we don't need to sync any historical blocks currently
-                    debug!("historical: synced to TTL or Genesis");
+                    debug!("KeepUp: synced to TTL or Genesis");
                     self.block_synchronizer.purge_historical();
                     None
                 }
                 SyncBackInstruction::Syncing => {
-                    debug!("historical: syncing; checking later");
+                    debug!("KeepUp: syncing historical; checking later");
                     Some(KeepUpInstruction::CheckLater(
                         format!("historical {}", SyncBackInstruction::Syncing),
                         self.control_logic_default_delay.into(),
@@ -304,7 +310,7 @@ impl MainReactor {
                     maybe_parent_metadata,
                     era_id,
                 } => {
-                    debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "historical: sync back instruction");
+                    debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "KeepUp: historical sync back instruction");
                     match (
                         self.validator_matrix.has_era(&era_id),
                         maybe_parent_metadata,
@@ -441,16 +447,23 @@ impl MainReactor {
         // may or may not know the validator set for that era to validate finality
         // signatures against. we use the leaper to gain awareness of the necessary
         // trusted ancestors to our earliest contiguous block to do necessary validation.
-        let leap_status = self.sync_leaper.leap_status();
-        info!(%parent_hash, %leap_status, "historical status");
-        debug!(?parent_hash, ?leap_status, "historical sync back state");
-        match leap_status {
+        let sync_back_status = self.sync_leaper.leap_status();
+        info!(
+            "KeepUp: historical sync back status {} {}",
+            parent_hash, sync_back_status
+        );
+        debug!(
+            ?parent_hash,
+            ?sync_back_status,
+            "KeepUp: historical sync back status"
+        );
+        match sync_back_status {
             LeapState::Idle => {
-                debug!("historical: sync leaper idle");
+                debug!("KeepUp: historical sync back idle");
                 self.sync_back_leaper_idle(effect_builder, rng, parent_hash, Duration::ZERO)
             }
             LeapState::Awaiting { .. } => KeepUpInstruction::CheckLater(
-                "historical sync leaper is awaiting response".to_string(),
+                "KeepUp: historical sync back is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
             ),
             LeapState::Received {
@@ -471,11 +484,9 @@ impl MainReactor {
         parent_hash: BlockHash,
         error: LeapActivityError,
     ) -> KeepUpInstruction {
-        self.attempts += 1;
         warn!(
             %error,
-            remaining_attempts = %self.max_attempts.saturating_sub(self.attempts),
-            "historical: failed leap",
+            "KeepUp: failed historical sync back",
         );
         self.sync_back_leaper_idle(
             effect_builder,
@@ -528,20 +539,20 @@ impl MainReactor {
         }
         let block_hash = sync_leap.highest_block_hash();
         let block_height = sync_leap.highest_block_height();
-        info!(%sync_leap, %block_height, %block_hash, "historical: leap received");
+        info!(%sync_leap, %block_height, %block_hash, "KeepUp: historical sync_back received");
 
         let era_validator_weights =
             sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
         for evw in era_validator_weights {
             let era_id = evw.era_id();
-            debug!(%era_id, "historical: attempt to register validators for era");
+            debug!(%era_id, "KeepUp: attempt to register historical validators for era");
             if self.validator_matrix.register_era_validator_weights(evw) {
-                info!(%era_id, "historical: got era");
+                info!("KeepUp: got historical era {}", era_id);
             } else {
-                debug!(%era_id, "historical: era already present or is not relevant");
+                debug!(%era_id, "KeepUp: historical era already present or is not relevant");
             }
         }
-        KeepUpInstruction::CheckLater("historical sync leap received".to_string(), Duration::ZERO)
+        KeepUpInstruction::CheckLater("historical sync back received".to_string(), Duration::ZERO)
     }
 
     fn sync_back_register(
@@ -563,7 +574,7 @@ impl MainReactor {
                 self.chainspec.core_config.simultaneous_peer_requests as usize,
             );
             debug!(
-                "historical: register_block_by_hash: {} peers count: {:?}",
+                "KeepUp: historical register_block_by_hash: {} peers count: {:?}",
                 parent_hash,
                 peers_to_ask.len()
             );
@@ -591,7 +602,7 @@ impl MainReactor {
             block_synchronizer_progress,
             BlockSynchronizerProgress::Syncing(_, _, _)
         ) {
-            debug!("historical: still syncing");
+            debug!("KeepUp: still syncing historical block");
             return Ok(Some(SyncBackInstruction::Syncing));
         }
         // in this flow there is no significant difference between Idle & Synced, as unlike in
@@ -608,7 +619,7 @@ impl MainReactor {
                     return Ok(Some(SyncBackInstruction::TtlSynced));
                 }
                 let parent_hash = block_header.parent_hash();
-                debug!(?block_header, %parent_hash, "historical: highest orphaned block");
+                debug!(?block_header, %parent_hash, "KeepUp: highest orphaned historical block");
                 match self.storage.read_block_header(parent_hash) {
                     Ok(Some(parent_block_header)) => {
                         // even if we don't have a complete block (all parts and dependencies)
@@ -639,7 +650,7 @@ impl MainReactor {
                         debug!(
                             ?parent_block_header,
                             ?maybe_parent_metadata,
-                            "historical: found parent block header in storage"
+                            "KeepUp: found parent block header for historical block in storage"
                         );
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: parent_block_header.block_hash(),
@@ -648,7 +659,7 @@ impl MainReactor {
                         }))
                     }
                     Ok(None) => {
-                        debug!(%parent_hash, "historical: did not find block header in storage");
+                        debug!(%parent_hash, "KeepUp: did not find historical block header in storage");
                         let era_id = match block_header.era_id().predecessor() {
                             None => EraId::from(0),
                             Some(predecessor) => {
@@ -671,15 +682,15 @@ impl MainReactor {
                 }
             }
             HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => Err(format!(
-                "historical: storage is missing block height index entry {}",
+                "KeepUp: storage is missing historical block height index entry {}",
                 block_height
             )),
             HighestOrphanedBlockResult::MissingHeader(block_hash) => Err(format!(
-                "historical: storage is missing block header for {}",
+                "KeepUp: storage is missing historical block header for {}",
                 block_hash
             )),
             HighestOrphanedBlockResult::MissingHighestSequence => {
-                Err("historical: storage is missing highest block sequence".to_string())
+                Err("KeepUp: storage is missing historical highest block sequence".to_string())
             }
         }
     }

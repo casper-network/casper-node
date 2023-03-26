@@ -1,4 +1,5 @@
 use casper_types::EraId;
+use std::fmt::{Display, Formatter};
 
 use crate::types::BlockHash;
 
@@ -74,6 +75,30 @@ impl SyncIdentifier {
             child_hash
         } else {
             Some(self.block_hash())
+        }
+    }
+}
+
+impl Display for SyncIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyncIdentifier::BlockHash(block_hash) => block_hash.fmt(f),
+            SyncIdentifier::BlockIdentifier(block_hash, block_height) => {
+                write!(
+                    f,
+                    "block_hash: {} block_height: {}",
+                    block_hash, block_height
+                )
+            }
+            SyncIdentifier::SyncedBlockIdentifier(block_hash, block_height, era_id)
+            | SyncIdentifier::ExecutingBlockIdentifier(block_hash, block_height, era_id)
+            | SyncIdentifier::LocalTip(block_hash, block_height, era_id) => {
+                write!(
+                    f,
+                    "block_hash: {} block_height: {} era_id: {}",
+                    block_hash, block_height, era_id
+                )
+            }
         }
     }
 }

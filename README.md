@@ -1,5 +1,11 @@
 [![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
+# casper-node
+
+This is the core application for the Casper blockchain.
+
+## Casper Blockchain
+
 Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier,
 Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes
 the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and
@@ -7,33 +13,31 @@ future-proof to support innovations today and tomorrow. Guided by open-source pr
 empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our
 mission at: https://casper.network/network/casper-association
 
-## Current Development Status
+### Current Development Status
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
 
 The Casper MainNet is live.
 - [cspr.live Block Explorer](https://cspr.live)
 
-## Specification
+### Specification
 
 - [Platform Specification](https://docs.casperlabs.io/design/)
 - [Highway Consensus Proofs](https://github.com/CasperLabs/highway/releases/latest)
 
-## Get Started with Smart Contracts
+### Get Started with Smart Contracts
 - [Writing Smart Contracts](https://docs.casperlabs.io/dapp-dev-guide/)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
 - [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
 - [AssemblyScript Smart Contract API](https://www.npmjs.com/package/casper-contract)
 
-## Community
+### Community
 
 - [Discord Server](https://discord.gg/mpZ9AYD)
 - [Telegram Channel](https://t.me/casperofficialann)
 
-# casper-node
 
-This is the core application for the Casper blockchain.
 
-## Running a validator node from Source
+## Running a casper-node from source
 
 ### Pre-Requisites for Building
 
