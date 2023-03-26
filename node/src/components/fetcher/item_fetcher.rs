@@ -52,7 +52,7 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         effect_builder: EffectBuilder<REv>,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where
@@ -85,7 +85,7 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         effect_builder: EffectBuilder<REv>,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where
@@ -98,12 +98,12 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         match item_handles.entry(id.clone()).or_default().entry(peer) {
             Entry::Occupied(mut entry) => {
                 let handle = entry.get_mut();
-                if *handle.validation_metadata() != validation_metadata {
+                if handle.validation_metadata() != &*validation_metadata {
                     let error = Error::ValidationMetadataMismatch {
                         id,
                         peer,
                         current: Box::new(handle.validation_metadata().clone()),
-                        new: Box::new(validation_metadata),
+                        new: validation_metadata,
                     };
                     error!(%error, "failed to fetch");
                     return responder.respond(Err(error)).ignore();

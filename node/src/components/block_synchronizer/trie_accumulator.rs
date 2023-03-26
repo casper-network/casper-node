@@ -250,7 +250,7 @@ impl TrieAccumulator {
                 .merge(old_partial_chunks);
         }
         effect_builder
-            .fetch::<TrieOrChunk>(id, peer, EmptyValidationMetadata)
+            .fetch::<TrieOrChunk>(id, peer, Box::new(EmptyValidationMetadata))
             .event(move |fetch_result| Event::TrieOrChunkFetched { id, fetch_result })
     }
 }

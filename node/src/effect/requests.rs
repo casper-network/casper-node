@@ -1024,7 +1024,7 @@ pub(crate) struct FetcherRequest<T: FetchItem> {
     /// The peer id of the peer to be asked if the item is not held locally
     pub(crate) peer: NodeId,
     /// Metadata used during validation of the fetched item.
-    pub(crate) validation_metadata: T::ValidationMetadata,
+    pub(crate) validation_metadata: Box<T::ValidationMetadata>,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
 }

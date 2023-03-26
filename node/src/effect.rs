@@ -1664,7 +1664,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
     ) -> FetchResult<T>
     where
         REv: From<FetcherRequest<T>>,

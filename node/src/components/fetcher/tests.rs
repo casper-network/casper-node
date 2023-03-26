@@ -385,7 +385,7 @@ fn fetch_deploy(
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     move |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .fetch::<Deploy>(deploy_id, node_id, EmptyValidationMetadata)
+            .fetch::<Deploy>(deploy_id, node_id, Box::new(EmptyValidationMetadata))
             .then(move |deploy| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
