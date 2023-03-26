@@ -698,7 +698,7 @@ pub(crate) enum RpcRequest {
         /// retrieve it.
         only_from_available_block_range: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<BlockWithMetadata>>,
+        responder: Responder<Option<Box<BlockWithMetadata>>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -751,7 +751,7 @@ pub(crate) enum RpcRequest {
         /// Whether to return finalized approvals.
         finalized_approvals: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
+        responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
     },
     /// Return the connected peers.
     GetPeers {
