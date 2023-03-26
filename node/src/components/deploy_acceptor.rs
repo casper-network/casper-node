@@ -653,7 +653,7 @@ impl DeployAcceptor {
         is_payment: bool,
         entry_point: String,
         contract_hash: ContractHash,
-        maybe_contract: Option<Contract>,
+        maybe_contract: Option<Box<Contract>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Some(contract) = maybe_contract {
@@ -713,7 +713,7 @@ impl DeployAcceptor {
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<ContractPackage>,
+        maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         match maybe_contract_package {

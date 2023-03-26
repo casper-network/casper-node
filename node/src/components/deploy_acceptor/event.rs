@@ -86,7 +86,7 @@ pub(crate) enum Event {
         prestate_hash: Digest,
         is_payment: bool,
         contract_hash: ContractHash,
-        maybe_contract: Option<Contract>,
+        maybe_contract: Option<Box<Contract>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for a `ContractPackage` to verify the executable logic.
@@ -96,7 +96,7 @@ pub(crate) enum Event {
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<ContractPackage>,
+        maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     },
 }
