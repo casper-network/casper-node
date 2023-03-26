@@ -22,7 +22,7 @@ pub enum Event {
     DeploysExpired(Vec<DeployHash>),
     Fault {
         era_id: EraId,
-        public_key: PublicKey,
+        public_key: Box<PublicKey>,
         timestamp: Timestamp,
     },
     FinalitySignature(Box<FinalitySignature>),
