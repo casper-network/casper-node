@@ -254,7 +254,7 @@ impl DeployAcceptor {
             .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {
                 event_metadata: Box::new(EventMetadata::new(deploy, source, maybe_responder)),
-                maybe_block_header: Box::new(maybe_block_header),
+                maybe_block_header: maybe_block_header.map(Box::new),
                 verification_start_timestamp,
             })
     }
@@ -263,7 +263,7 @@ impl DeployAcceptor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         event_metadata: Box<EventMetadata>,
-        maybe_block_header: Option<BlockHeader>,
+        maybe_block_header: Option<Box<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
@@ -946,7 +946,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
             } => self.handle_get_block_header_result(
                 effect_builder,
                 event_metadata,
-                *maybe_block_header,
+                maybe_block_header,
                 verification_start_timestamp,
             ),
             Event::GetAccountResult {

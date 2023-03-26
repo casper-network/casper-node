@@ -62,7 +62,7 @@ pub(crate) enum Event {
     /// The result of querying the highest available `BlockHeader` from the storage component.
     GetBlockHeaderResult {
         event_metadata: Box<EventMetadata>,
-        maybe_block_header: Box<Option<BlockHeader>>,
+        maybe_block_header: Option<Box<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for the `Account` associated with the `Deploy`.
