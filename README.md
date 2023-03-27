@@ -49,6 +49,15 @@ The Casper MainNet is live.
 * g++
 * recommended [wasm-strip](https://github.com/WebAssembly/wabt) (used to reduce the size of compiled Wasm)
 
+```sh
+# Ubuntu prerequisites setup example
+apt update
+apt install cmake libssl-dev pkg-config gcc g++ -y
+# the '-s -- -y' part ensures silent mode. Ommit if you want to customize
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+```
+
+
 ### Setup
 
 Before building a node, prepare your Rust build environment:
