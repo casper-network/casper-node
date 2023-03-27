@@ -157,7 +157,6 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                 0 #length_calculation
             }
 
-            /// Consumes `self` and serializes to a `Vec<u8>`.
             #[inline]
             fn into_bytes(self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error>
             where
