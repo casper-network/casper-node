@@ -408,6 +408,7 @@ impl BlockBuilder {
         if let Some(era_id) = self.era_id {
             if let Some(evw) = validator_matrix.validator_weights(era_id) {
                 self.validator_weights = Some(evw);
+                self.touch();
             }
         }
     }
