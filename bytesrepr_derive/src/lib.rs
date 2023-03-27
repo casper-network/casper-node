@@ -1,3 +1,7 @@
+//! Proc macro to derive `bytesrepr`'s `FromBytes/ToBytes` traits.
+//!
+//! See `README.md` for details.
+
 extern crate proc_macro;
 
 use std::env;
@@ -6,6 +10,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DataEnum, DataStruct, Generics, Ident, LitInt};
 
+/// Checks whether or not debugging is enabled through environment variables.
 fn debug_enabled() -> bool {
     if let Some(val) = env::var("BYTESREPR_DERIVE_DEBUG").ok() {
         val != "0"
@@ -67,6 +72,7 @@ fn param_idents_from_generics(generics: &Generics) -> Vec<Ident> {
         .collect()
 }
 
+/// Given a set of generics, derives a where clause containing all existing trait bounds and an additional requirement of `T: #extra_req` for every variable in `generics`.
 fn generate_where_clause(
     generics: &Generics,
     extra_req: proc_macro2::TokenStream,
@@ -85,6 +91,7 @@ fn generate_where_clause(
     where_clause
 }
 
+/// Given a set of generics, derives the token stream `<A, B, C ..>`, without trait bounds.
 fn generate_generic_args(generics: &Generics) -> proc_macro2::TokenStream {
     let idents = param_idents_from_generics(&generics);
     if !idents.is_empty() {
