@@ -163,7 +163,7 @@ mod tests {
             SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
 
         // Signature for the validator #0 weighting 1:
-        let (public_0, secret_0) = validators.iter().nth(0).unwrap();
+        let (public_0, secret_0) = validators.get(0).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
         assert_matches!(
@@ -183,7 +183,7 @@ mod tests {
         );
 
         // Signature for the validator #2 weighting 3:
-        let (public_2, secret_2) = validators.iter().nth(2).unwrap();
+        let (public_2, secret_2) = validators.get(2).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_2, public_2.clone());
         assert_matches!(
@@ -207,7 +207,7 @@ mod tests {
         );
 
         // Signature for the validator #3 weighting 4:
-        let (public_3, secret_3) = validators.iter().nth(3).unwrap();
+        let (public_3, secret_3) = validators.get(3).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_3, public_3.clone());
         assert_matches!(
@@ -254,7 +254,7 @@ mod tests {
             SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
 
         // Signature for the validator #0 weighting 1:
-        let (public_0, secret_0) = validators.iter().nth(0).unwrap();
+        let (public_0, secret_0) = validators.get(0).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
         assert_matches!(
@@ -275,7 +275,7 @@ mod tests {
         );
 
         // Signature for the validator #2 weighting 3:
-        let (public_2, secret_2) = validators.iter().nth(2).unwrap();
+        let (public_2, secret_2) = validators.get(2).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_2, public_2.clone());
         assert_matches!(
@@ -299,7 +299,7 @@ mod tests {
         );
 
         // Signature for the validator #3 weighting 4:
-        let (public_3, secret_3) = validators.iter().nth(3).unwrap();
+        let (public_3, secret_3) = validators.get(3).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_3, public_3.clone());
         assert_matches!(
@@ -346,7 +346,7 @@ mod tests {
             SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
 
         // Set the validator #0 weighting 1 as pending:
-        let (public_0, secret_0) = validators.iter().nth(0).unwrap();
+        let (public_0, secret_0) = validators.get(0).unwrap();
         signature_acquisition.register_pending(public_0.clone());
         assert_equal(signature_acquisition.have_signatures(), []);
         assert_equal(signature_acquisition.not_vacant(), [public_0]);
@@ -400,8 +400,8 @@ mod tests {
         let mut signature_acquisition =
             SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
 
-        let (public_0, _secret_0) = validators.iter().nth(0).unwrap();
-        let (_public_1, secret_1) = validators.iter().nth(1).unwrap();
+        let (public_0, _secret_0) = validators.get(0).unwrap();
+        let (_public_1, secret_1) = validators.get(1).unwrap();
         let finality_signature =
             FinalitySignature::create(block_hash, era_id, secret_1, public_0.clone());
 
