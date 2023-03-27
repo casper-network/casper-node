@@ -2,18 +2,17 @@ extern crate proc_macro;
 
 use std::env;
 
-use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DataEnum, DataStruct, Generics, Ident, LitInt};
 
-static DEBUG: Lazy<bool> = Lazy::new(|| {
+fn debug_enabled() -> bool {
     if let Some(val) = env::var("BYTESREPR_DERIVE_DEBUG").ok() {
         val != "0"
     } else {
         false
     }
-});
+}
 
 /// Top-level proc macro for `#[derive(ToBytes)]`.
 #[proc_macro_derive(ToBytes)]
@@ -26,7 +25,7 @@ pub fn derive_to_bytes(tokens: TokenStream) -> TokenStream {
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
     };
 
-    if *DEBUG {
+    if debug_enabled() {
         eprintln!("{}", output);
     }
 
@@ -44,7 +43,7 @@ pub fn derive_from_bytes(tokens: TokenStream) -> TokenStream {
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
     };
 
-    if *DEBUG {
+    if debug_enabled() {
         eprintln!("{}", output);
     }
 

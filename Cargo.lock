@@ -375,7 +375,6 @@ name = "bytesrepr_derive"
 version = "0.1.0"
 dependencies = [
  "casper-types 1.5.0",
- "once_cell",
  "proc-macro2 1.0.52",
  "quote 1.0.26",
  "syn 2.0.4",
