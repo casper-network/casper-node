@@ -10,6 +10,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_rational::Ratio;
 use serde::Serialize;
+use static_assertions::const_assert;
 use tracing::info;
 
 use casper_types::{EraId, PublicKey, SecretKey, U512};
@@ -17,6 +18,7 @@ use casper_types::{EraId, PublicKey, SecretKey, U512};
 use super::{BlockHeader, FinalitySignature};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
+const_assert!(MAX_VALIDATOR_MATRIX_ENTRIES % 2 == 0);
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone, DataSize)]
 pub(crate) enum SignatureWeight {
@@ -130,21 +132,32 @@ impl ValidatorMatrix {
             .write()
             .expect("poisoned lock on validator matrix");
         let is_new = guard.insert(era_id, validators).is_none();
-        if guard.len() <= MAX_VALIDATOR_MATRIX_ENTRIES || self.retrograde_latch.is_none() {
-            return is_new;
-        }
-        let latch_era = self.retrograde_latch.unwrap_or_default(); // none checked above
-        let median_era = guard
-            .keys()
-            .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
-            .copied()
-            .unwrap();
-        if median_era <= latch_era {
-            is_new
+
+        let latch_era = if let Some(era) = self.retrograde_latch.as_ref() {
+            *era
         } else {
-            guard.remove(&median_era);
-            median_era != era_id
+            return is_new;
+        };
+
+        let mut removed = false;
+        let excess_entry_count = guard.len().saturating_sub(MAX_VALIDATOR_MATRIX_ENTRIES);
+        for _ in 0..excess_entry_count {
+            let median_era = guard
+                .keys()
+                .rev()
+                .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
+                .copied()
+                .unwrap();
+            if median_era <= latch_era {
+                break;
+            } else {
+                guard.remove(&median_era);
+                if median_era == era_id {
+                    removed = true;
+                }
+            }
         }
+        is_new && !removed
     }
 
     pub(crate) fn register_validator_weights(
@@ -493,5 +506,109 @@ mod tests {
         );
         let new_state: Vec<EraId> = validator_matrix.read_inner().keys().copied().collect();
         assert_eq!(old_state, new_state, "state should be unchanged");
+    }
+
+    #[test]
+    fn register_validator_weights_latched_pruning() {
+        // Create a validator matrix and saturate it with entries.
+        let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+        // Set the retrograde latch to 10 so we can register all eras lower or
+        // equal to 10.
+        validator_matrix.register_retrograde_latch(Some(EraId::from(10)));
+        let mut era_validator_weights = vec![validator_matrix.validator_weights(0.into()).unwrap()];
+        era_validator_weights.extend(
+            (1..=MAX_VALIDATOR_MATRIX_ENTRIES as u64)
+                .into_iter()
+                .map(EraId::from)
+                .map(empty_era_validator_weights),
+        );
+        for evw in era_validator_weights
+            .iter()
+            .take(MAX_VALIDATOR_MATRIX_ENTRIES + 1)
+            .skip(1)
+            .cloned()
+        {
+            assert!(
+                validator_matrix.register_era_validator_weights(evw),
+                "register_era_validator_weights"
+            );
+        }
+
+        // Register eras [7, 8, 9].
+        era_validator_weights.extend(
+            (7..=9)
+                .into_iter()
+                .map(EraId::from)
+                .map(empty_era_validator_weights),
+        );
+        for evw in era_validator_weights.iter().rev().take(3).cloned() {
+            assert!(
+                validator_matrix.register_era_validator_weights(evw),
+                "register_era_validator_weights"
+            );
+        }
+
+        // Set the retrograde latch to era 5.
+        validator_matrix.register_retrograde_latch(Some(EraId::from(5)));
+        // Add era 10 to the weights.
+        era_validator_weights.push(empty_era_validator_weights(EraId::from(10)));
+        assert_eq!(era_validator_weights.len(), 11);
+        // As the current weights in the matrix are [0, ..., 9], register era
+        // 10. This should succeed anyway since it's the highest weight.
+        assert!(
+            validator_matrix.register_era_validator_weights(era_validator_weights[10].clone()),
+            "register_era_validator_weights"
+        );
+        // The latch was previously set to 5, so now all weights which are
+        // neither the lowest 3, highest 3 or higher than the latched era
+        // should have been purged.
+        // Given we had weights [0, ..., 10] and the latch is 5, we should
+        // be left with [0, 1, 2, 3, 4, 5, 8, 9, 10].
+        for era in 0..=5 {
+            assert!(validator_matrix.has_era(&EraId::from(era)));
+        }
+        for era in 6..=7 {
+            assert!(!validator_matrix.has_era(&EraId::from(era)));
+        }
+        for era in 8..=10 {
+            assert!(validator_matrix.has_era(&EraId::from(era)));
+        }
+
+        // Make sure era 6, which was previously purged, is not registered as
+        // it is greater than the latch, which is 5.
+        assert!(
+            !validator_matrix.register_era_validator_weights(era_validator_weights[6].clone()),
+            "register_era_validator_weights"
+        );
+
+        // Set the retrograde latch to era 6.
+        validator_matrix.register_retrograde_latch(Some(EraId::from(6)));
+        // Make sure era 6 is now registered.
+        assert!(
+            validator_matrix.register_era_validator_weights(era_validator_weights[6].clone()),
+            "register_era_validator_weights"
+        );
+
+        // Set the retrograde latch to era 1.
+        validator_matrix.register_retrograde_latch(Some(EraId::from(1)));
+        // Register era 10 again to drive the purging mechanism.
+        assert!(
+            !validator_matrix.register_era_validator_weights(era_validator_weights[10].clone()),
+            "register_era_validator_weights"
+        );
+        // The latch was previously set to 1, so now all weights which are
+        // neither the lowest 3, highest 3 or higher than the latched era
+        // should have been purged.
+        // Given we had weights [0, 1, 2, 3, 4, 5, 6, 8, 9, 10] and the latch
+        // is 1, we should be left with [0, 1, 2, 8, 9, 10].
+        for era in 0..=2 {
+            assert!(validator_matrix.has_era(&EraId::from(era)));
+        }
+        for era in 3..=7 {
+            assert!(!validator_matrix.has_era(&EraId::from(era)));
+        }
+        for era in 8..=10 {
+            assert!(validator_matrix.has_era(&EraId::from(era)));
+        }
     }
 }
