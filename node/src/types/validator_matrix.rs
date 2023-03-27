@@ -130,21 +130,32 @@ impl ValidatorMatrix {
             .write()
             .expect("poisoned lock on validator matrix");
         let is_new = guard.insert(era_id, validators).is_none();
-        if guard.len() <= MAX_VALIDATOR_MATRIX_ENTRIES || self.retrograde_latch.is_none() {
-            return is_new;
-        }
-        let latch_era = self.retrograde_latch.unwrap_or_default(); // none checked above
-        let median_era = guard
-            .keys()
-            .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
-            .copied()
-            .unwrap();
-        if median_era <= latch_era {
-            is_new
+
+        let latch_era = if let Some(era) = self.retrograde_latch.as_ref() {
+            *era
         } else {
-            guard.remove(&median_era);
-            median_era != era_id
+            return is_new;
+        };
+
+        let mut removed = false;
+        let excess_entry_count = guard.len().saturating_sub(MAX_VALIDATOR_MATRIX_ENTRIES);
+        for _ in 0..excess_entry_count {
+            let median_era = guard
+                .keys()
+                .rev()
+                .nth(MAX_VALIDATOR_MATRIX_ENTRIES / 2)
+                .copied()
+                .unwrap();
+            if median_era <= latch_era {
+                break;
+            } else {
+                guard.remove(&median_era);
+                if median_era == era_id {
+                    removed = true;
+                }
+            }
         }
+        is_new && !removed
     }
 
     pub(crate) fn register_validator_weights(
