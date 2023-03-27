@@ -2212,6 +2212,45 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     style A fill:#ffcc66,stroke:#333,stroke-width:4px
+///     style B fill:#ffcc66,stroke:#333,stroke-width:4px
+///     title[FinalitySignature lifecycle]
+///     title---Start
+///     style title fill:#FFF,stroke:#FFF
+///     linkStyle 0 stroke-width:0;
+///     Start --> A["KeepUp/Validate"]
+///     Start --> B["Historical"]
+///     A --> C["Validator creates FS"]
+///     A --> D["Received broadcasted FS"]
+///     A --> E["Received gossiped FS"]
+///     B --> F["Historical sync starts"]
+///     C --> G["Put FS to storage"]
+///     G --> H["Broadcast FS to Validators"]
+///     G --> I["Register FS in BlockAccumulator"]
+///     I --> J{"Has sufficient finality?"}
+///     J --> |Yes| K["Put FS to storage"]
+///     J --> |No| L["Keep waiting for more signatures"]
+///     D --> I
+///     E --> I
+///     F --> M["Fetch FS and put to storage"]
+///     M --> N["Register FS in BlockBuilder"]
+///     N --> O{"Has weak finality?"}
+///     O --> |No| M
+///     O --> |Yes| P["Fetch other bits of block..."]
+///     P --> Q["Fetch FS and put to storage"]
+///     Q --> R["Register FS in BlockBuilder"]
+///     R --> S{"Has strict finality?"}
+///     S --> |No| Q
+///     S --> |Yes| T["Process historical block"]
+///     M --> I
+///     Q --> I
+///     T --> End
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, DataSize, Eq, JsonSchema)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
