@@ -2,9 +2,11 @@ pub(crate) mod test_utils;
 
 use std::{collections::HashSet, iter, rc::Rc, time::Duration};
 
-use casper_types::testing::TestRng;
+use assert_matches::assert_matches;
 use derive_more::From;
 use rand::{seq::IteratorRandom, Rng};
+
+use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{
@@ -257,7 +259,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
         };
     }
 
-    // Ensure the in-flight latch has been set.
+    // Ensure the in-flight latch has been set, i.e. that `need_next` returns nothing.
     let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
     assert!(effects.is_empty());
 
@@ -273,12 +275,17 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
         .expect("should have historical builder")
         .register_era_validator_weights(&validator_matrix);
 
+    // Ensure the in-flight latch has been released, i.e. that `need_next` returns something.
     let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
     assert_eq!(effects.len(), 1);
     tokio::spawn(async move { effects.remove(0).await });
     let event = mock_reactor.crank().await;
-    match event {
-        MockReactorEvent::FinalitySignatureFetcherRequest(_) => (),
-        _ => panic!("unexpected event: {:?}", event),
-    };
+    assert_matches!(
+        event,
+        MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+            id,
+            peer,
+            ..
+        }) if peers.contains(&peer) && id.block_hash == *block.hash()
+    );
 }
