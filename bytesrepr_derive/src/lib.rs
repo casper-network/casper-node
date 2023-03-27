@@ -1,18 +1,36 @@
 extern crate proc_macro;
+
+use std::env;
+
+use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DataEnum, DataStruct, Generics, Ident, LitInt};
+
+static DEBUG: Lazy<bool> = Lazy::new(|| {
+    if let Some(val) = env::var("BYTESREPR_DERIVE_DEBUG").ok() {
+        val != "0"
+    } else {
+        false
+    }
+});
 
 /// Top-level proc macro for `#[derive(ToBytes)]`.
 #[proc_macro_derive(ToBytes)]
 pub fn derive_to_bytes(tokens: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(tokens).unwrap();
 
-    match ast.data {
+    let output = match ast.data {
         syn::Data::Struct(st) => derive_to_bytes_for_struct(ast.ident, st, ast.generics),
         syn::Data::Enum(en) => derive_to_bytes_for_enum(ast.ident, en, ast.generics),
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
+    };
+
+    if *DEBUG {
+        eprintln!("{}", output);
     }
+
+    output
 }
 
 /// Top-level proc macro for `#[derive(FromBytes)]`.
@@ -20,11 +38,17 @@ pub fn derive_to_bytes(tokens: TokenStream) -> TokenStream {
 pub fn derive_from_bytes(tokens: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(tokens).unwrap();
 
-    match ast.data {
+    let output = match ast.data {
         syn::Data::Struct(st) => derive_from_bytes_for_struct(ast.ident, st, ast.generics),
         syn::Data::Enum(en) => derive_from_bytes_for_enum(ast.ident, en, ast.generics),
         syn::Data::Union(_) => panic!("unions are not supported by bytesrepr_derive"),
+    };
+
+    if *DEBUG {
+        eprintln!("{}", output);
     }
+
+    output
 }
 
 /// Given a set of generics, returns a vec of all idents.
@@ -144,7 +168,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
         }
     };
 
-    let rv = quote! {
+    quote! {
         impl #generic_idents ::casper_types::bytesrepr::ToBytes for #st_name #generics #where_clause {
             #[inline]
             fn to_bytes(&self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error> {
@@ -176,11 +200,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                 Ok(())
             }
         }
-    };
-
-    eprintln!("{}", rv);
-
-    rv.into()
+    }.into()
 }
 
 /// Proc macro for `#[derive(FromBytes)]` for `struct`s.
@@ -226,7 +246,7 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generi
         }
     };
 
-    let rv = quote! {
+    quote! {
         impl #generic_idents ::casper_types::bytesrepr::FromBytes for #st_name #generics #where_clause {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), ::casper_types::bytesrepr::Error> {
                 let remainder = bytes;
@@ -234,11 +254,7 @@ fn derive_from_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generi
                 Ok((#assignment, remainder))
             }
         }
-    };
-
-    eprintln!("{}", rv);
-
-    rv.into()
+    }.into()
 }
 
 /// Proc macro for `#[derive(ToBytes)]` for `enum`s.
@@ -343,7 +359,7 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
         }
     }
 
-    let rv = quote!(
+    quote!(
         impl #generic_idents ::casper_types::bytesrepr::ToBytes for #en_name #generics #where_clause {
             #[inline]
             fn to_bytes(&self) -> Result<Vec<u8>, ::casper_types::bytesrepr::Error> {
@@ -371,10 +387,7 @@ fn derive_to_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) ->
                 Ok(())
             }
         }
-    );
-    eprintln!("{}", rv);
-
-    rv.into()
+    ).into()
 }
 
 /// Proc macro for `#[derive(FromBytes)]` for `enum`s.
@@ -451,7 +464,7 @@ fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) 
         }
     }
 
-    let rv = quote!(
+    quote!(
         impl #generic_idents ::casper_types::bytesrepr::FromBytes for #en_name #generics #where_clause {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), ::casper_types::bytesrepr::Error> {
                 let (tag, remainder) = u8::from_bytes(bytes)?;
@@ -461,8 +474,5 @@ fn derive_from_bytes_for_enum(en_name: Ident, en: DataEnum, generics: Generics) 
                 }
             }
         }
-    );
-    eprintln!("{}", rv);
-
-    rv.into()
+    ).into()
 }
