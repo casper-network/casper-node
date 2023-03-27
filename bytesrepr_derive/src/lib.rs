@@ -111,6 +111,9 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
         }
         syn::Fields::Unnamed(ref fields) => {
             for idx in 0..(fields.unnamed.len()) {
+                let formatted = format!("{}", idx);
+                let lit = LitInt::new(&formatted, st_name.span());
+
                 if fields.unnamed.len() != 1 {
                     if idx == 0 {
                         owned_fields_serialization.extend(quote!(
@@ -118,7 +121,7 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                         ));
                     }
                     owned_fields_serialization.extend(quote!(
-                        buffer.extend(::casper_types::bytesrepr::ToBytes::into_bytes(self.#idx)?);
+                        buffer.extend(::casper_types::bytesrepr::ToBytes::into_bytes(self.#lit)?);
                     ));
                 } else {
                     owned_fields_serialization.extend(quote!(
@@ -126,8 +129,6 @@ fn derive_to_bytes_for_struct(st_name: Ident, st: DataStruct, generics: Generics
                     ));
                 }
 
-                let formatted = format!("{}", idx);
-                let lit = LitInt::new(&formatted, st_name.span());
                 fields_serialization.extend(quote!(
                     ::casper_types::bytesrepr::ToBytes::write_bytes(&self.#lit, writer)?;
                 ));
