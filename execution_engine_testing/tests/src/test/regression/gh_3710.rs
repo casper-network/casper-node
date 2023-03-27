@@ -1,9 +1,27 @@
-use std::{collections::BTreeSet, convert::TryInto, iter::FromIterator};
+use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
 
-use casper_engine_test_support::UpgradeRequestBuilder;
-use casper_execution_engine::core::engine_state::purge::{PurgeConfig, PurgeResult};
+use casper_engine_test_support::{
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    PRODUCTION_RUN_GENESIS_REQUEST,
+};
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            self,
+            purge::{PurgeConfig, PurgeResult},
+            RewardItem,
+        },
+        execution,
+    },
+    storage::global_state::{CommitProvider, StateProvider},
+};
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, KeyTag, ProtocolVersion};
+use casper_types::{
+    runtime_args,
+    system::auction::{self, DelegationRate},
+    EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, U512,
+};
 
 use crate::lmdb_fixture;
 
@@ -202,76 +220,145 @@ fn gh_3710_commit_purge_should_delete_values() {
     assert_eq!(keys_after_batch_2_purge.len(), 0);
 }
 
+const DEFAULT_REWARD_AMOUNT: u64 = 1_000_000;
+
+fn add_validator_and_wait_for_rotation<S>(builder: &mut WasmTestBuilder<S>)
+where
+    S: StateProvider + CommitProvider,
+    engine_state::Error: From<S::Error>,
+    S::Error: Into<execution::Error> + fmt::Debug,
+{
+    const DELEGATION_RATE: DelegationRate = 10;
+
+    let args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
+        auction::ARG_AMOUNT => U512::from(DEFAULT_REWARD_AMOUNT),
+    };
+
+    let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        builder.get_auction_contract_hash(),
+        auction::METHOD_ADD_BID,
+        args,
+    )
+    .build();
+
+    builder.exec(add_bid_request).expect_success().commit();
+
+    // compute N eras
+
+    let current_era_id = builder.get_era();
+
+    // eras current..=delay + 1 without rewards (default genesis validator is not a
+    // validator yet)
+    for era_counter in current_era_id.iter(builder.get_auction_delay() + 1) {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(era_counter)
+            // no rewards as default validator is not a validator yet
+            .build();
+        builder.step(step_request).unwrap();
+    }
+}
+
+fn progress_eras_with_rewards<S, F>(builder: &mut WasmTestBuilder<S>, rewards: F, era_count: usize)
+where
+    S: StateProvider + CommitProvider,
+    engine_state::Error: From<S::Error>,
+    S::Error: Into<execution::Error> + fmt::Debug,
+    F: Fn(EraId) -> u64,
+{
+    let current_era_id = builder.get_era();
+    for era_counter in current_era_id.iter(era_count.try_into().unwrap()) {
+        let value = rewards(era_counter);
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(era_counter)
+            .with_reward_item(RewardItem::new(DEFAULT_ACCOUNT_PUBLIC_KEY.clone(), value))
+            .build();
+        builder.step(step_request).unwrap();
+    }
+}
+
+#[ignore]
+#[test]
+fn gh_3710_should_produce_era_summary_in_a_step() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    add_validator_and_wait_for_rotation(&mut builder);
+    progress_eras_with_rewards(
+        &mut builder,
+        |era_counter| era_counter.value() * DEFAULT_REWARD_AMOUNT,
+        FIXTURE_N_ERAS,
+    );
+
+    let era_info_keys = builder.get_keys(KeyTag::EraInfo).unwrap();
+    assert_eq!(era_info_keys, Vec::new());
+
+    let era_summary_1 = builder
+        .query(None, Key::EraSummary, &[])
+        .expect("should query era summary");
+
+    let era_summary_1 = era_summary_1.as_era_info().expect("era summary");
+
+    // Double the reward in next era to observe that the summary changes.
+    progress_eras_with_rewards(
+        &mut builder,
+        |era_counter| era_counter.value() * (DEFAULT_REWARD_AMOUNT * 2),
+        1,
+    );
+
+    let era_summary_2 = builder
+        .query(None, Key::EraSummary, &[])
+        .expect("should query era summary");
+
+    let era_summary_2 = era_summary_2.as_era_info().expect("era summary");
+
+    assert_ne!(era_summary_1, era_summary_2);
+
+    let era_info_keys = builder.get_keys(KeyTag::EraInfo).unwrap();
+    assert_eq!(era_info_keys, Vec::new());
+
+    // As a sanity check ensure there's just a single era summary per tip
+    assert_eq!(
+        builder
+            .get_keys(KeyTag::EraSummary)
+            .expect("should get all era summary keys")
+            .len(),
+        1
+    );
+}
+
 #[cfg(feature = "fixture-generators")]
 mod fixture {
     use std::collections::BTreeMap;
 
-    use casper_engine_test_support::{
-        ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
-    };
-    use casper_execution_engine::core::engine_state::RewardItem;
+    use casper_engine_test_support::{DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST};
     use casper_types::{
-        runtime_args,
-        system::auction::{self, DelegationRate, EraInfo, SeigniorageAllocation},
-        EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, StoredValue, U512,
+        system::auction::{EraInfo, SeigniorageAllocation},
+        EraId, Key, KeyTag, StoredValue, U512,
     };
 
     use super::{FIXTURE_N_ERAS, GH_3710_FIXTURE};
-    use crate::lmdb_fixture;
+    use crate::{lmdb_fixture, test::regression::gh_3710::DEFAULT_REWARD_AMOUNT};
 
     #[test]
     fn generate_era_info_bloat_fixture() {
         // To generate this fixture again you have to re-run this code release-1.4.13.
         let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
         lmdb_fixture::generate_fixture(GH_3710_FIXTURE, genesis_request, |builder| {
-            const DELEGATION_RATE: DelegationRate = 10;
-
-            let args = runtime_args! {
-                auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-                auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
-                auction::ARG_AMOUNT => U512::from(1_000_000u64),
-            };
-
-            let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
-                *DEFAULT_ACCOUNT_ADDR,
-                builder.get_auction_contract_hash(),
-                auction::METHOD_ADD_BID,
-                args,
-            )
-            .build();
-
-            builder.exec(add_bid_request).expect_success().commit();
-
-            // compute N eras
-
-            let current_era_id = builder.get_era();
-
-            // eras current..=delay + 1 without rewards (default genesis validator is not a
-            // validator yet)
-            for era_counter in current_era_id.iter(builder.get_auction_delay() + 1) {
-                let step_request = StepRequestBuilder::new()
-                    .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(ProtocolVersion::V1_0_0)
-                    .with_next_era_id(era_counter)
-                    // no rewards as default validator is not a validator yet
-                    .build();
-                builder.step(step_request).unwrap();
-            }
-
-            let current_era_id = builder.get_era();
-            for era_counter in current_era_id.iter(FIXTURE_N_ERAS as u64) {
-                let value = era_counter.value() * 1_000_000u64;
-                let step_request = StepRequestBuilder::new()
-                    .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(ProtocolVersion::V1_0_0)
-                    .with_next_era_id(era_counter)
-                    .with_reward_item(RewardItem::new(DEFAULT_ACCOUNT_PUBLIC_KEY.clone(), value))
-                    .build();
-                builder.step(step_request).unwrap();
-            }
+            super::add_validator_and_wait_for_rotation(builder);
 
             // N more eras that pays out rewards
+            super::progress_eras_with_rewards(
+                builder,
+                |era_counter| era_counter.value() * DEFAULT_REWARD_AMOUNT,
+                FIXTURE_N_ERAS,
+            );
 
             let last_era_info = EraId::new(builder.get_auction_delay() + FIXTURE_N_ERAS as u64);
             let last_era_info_key = Key::EraInfo(last_era_info);
