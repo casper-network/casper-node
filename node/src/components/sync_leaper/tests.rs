@@ -291,7 +291,7 @@ fn fetch_received_peer_rejected() {
     sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
 
     let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::Rejected {
-        id: sync_leap_identifier,
+        id: Box::new(sync_leap_identifier),
         peer,
     });
 
@@ -314,7 +314,7 @@ fn fetch_received_from_unknown_peer_rejected() {
 
     let unknown_peer = NodeId::random(&mut rng);
     let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::Rejected {
-        id: sync_leap_identifier,
+        id: Box::new(sync_leap_identifier),
         peer: unknown_peer,
     });
 
@@ -338,7 +338,7 @@ fn fetch_received_other_error() {
     sync_leaper.register_leap_attempt(sync_leap_identifier, peers_to_ask);
 
     let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::TimedOut {
-        id: sync_leap_identifier,
+        id: Box::new(sync_leap_identifier),
         peer,
     });
 
@@ -361,7 +361,7 @@ fn fetch_received_from_unknown_peer_other_error() {
 
     let unknown_peer = NodeId::random(&mut rng);
     let fetch_result: FetchResult<SyncLeap> = Err(fetcher::Error::TimedOut {
-        id: sync_leap_identifier,
+        id: Box::new(sync_leap_identifier),
         peer: unknown_peer,
     });
 

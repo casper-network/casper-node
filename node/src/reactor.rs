@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 //! Reactor core.
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are
@@ -914,7 +916,7 @@ fn handle_get_response<R>(
     effect_builder: EffectBuilder<<R as Reactor>::Event>,
     rng: &mut NodeRng,
     sender: NodeId,
-    message: NetResponse,
+    message: Box<NetResponse>,
 ) -> Effects<<R as Reactor>::Event>
 where
     R: Reactor,
@@ -931,7 +933,7 @@ where
         + From<block_accumulator::Event>
         + From<PeerBehaviorAnnouncement>,
 {
-    match message {
+    match *message {
         NetResponse::Deploy(ref serialized_item) => handle_fetch_response::<R, Deploy>(
             reactor,
             effect_builder,

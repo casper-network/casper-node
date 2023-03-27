@@ -452,7 +452,7 @@ impl reactor::Reactor for MainReactor {
                         let reactor_event =
                             MainEvent::EventStreamServer(event_stream_server::Event::Fault {
                                 era_id,
-                                public_key: *public_key,
+                                public_key,
                                 timestamp,
                             });
                         self.dispatch_event(effect_builder, rng, reactor_event)

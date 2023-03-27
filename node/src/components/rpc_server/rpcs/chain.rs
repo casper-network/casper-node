@@ -438,7 +438,7 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
         .await;
 
     if let Some(block_with_metadata) = maybe_result {
-        return Ok(block_with_metadata);
+        return Ok(*block_with_metadata);
     }
 
     // TODO: Potential optimization: We might want to make the `GetBlock` actually return the

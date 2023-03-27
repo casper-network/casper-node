@@ -1602,30 +1602,24 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the requested finality signature from storage.
     pub(crate) async fn get_finality_signature_from_storage(
         self,
-        id: FinalitySignatureId,
+        id: Box<FinalitySignatureId>,
     ) -> Option<FinalitySignature>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetFinalitySignature {
-                id: Box::new(id),
-                responder,
-            },
+            |responder| StorageRequest::GetFinalitySignature { id, responder },
             QueueKind::FromStorage,
         )
         .await
     }
 
-    pub(crate) async fn is_finality_signature_stored(self, id: FinalitySignatureId) -> bool
+    pub(crate) async fn is_finality_signature_stored(self, id: Box<FinalitySignatureId>) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::IsFinalitySignatureStored {
-                id: Box::new(id),
-                responder,
-            },
+            |responder| StorageRequest::IsFinalitySignatureStored { id, responder },
             QueueKind::FromStorage,
         )
         .await
@@ -1670,7 +1664,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
     ) -> FetchResult<T>
     where
         REv: From<FetcherRequest<T>>,
@@ -1927,13 +1921,16 @@ impl<REv> EffectBuilder<REv> {
         prestate_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Contract>
+    ) -> Option<Box<Contract>>
     where
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(prestate_hash, query_key, path);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.as_contract().cloned(),
+            Ok(QueryResult::Success { value, .. }) => {
+                // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
+                value.as_contract().map(|c| Box::new(c.clone()))
+            }
             Ok(_) | Err(_) => None,
         }
     }
@@ -1944,13 +1941,15 @@ impl<REv> EffectBuilder<REv> {
         prestate_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<ContractPackage>
+    ) -> Option<Box<ContractPackage>>
     where
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(prestate_hash, query_key, path);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.as_contract_package().cloned(),
+            Ok(QueryResult::Success { value, .. }) => {
+                value.as_contract_package().map(|pkg| Box::new(pkg.clone()))
+            }
             Ok(_) | Err(_) => None,
         }
     }

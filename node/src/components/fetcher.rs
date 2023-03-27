@@ -139,15 +139,34 @@ where
             Event::GotInvalidRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {
                 trace!(TAG=%T::TAG, %id, %peer, "item absent on the remote node");
-                self.signal(id.clone(), Err(Error::Absent { id, peer }), peer)
+                self.signal(
+                    id.clone(),
+                    Err(Error::Absent {
+                        id: Box::new(id),
+                        peer,
+                    }),
+                    peer,
+                )
             }
             Event::RejectedRemotely { id, peer } => {
                 trace!(TAG=%T::TAG, %id, %peer, "peer rejected fetch request");
-                self.signal(id.clone(), Err(Error::Rejected { id, peer }), peer)
+                self.signal(
+                    id.clone(),
+                    Err(Error::Rejected {
+                        id: Box::new(id),
+                        peer,
+                    }),
+                    peer,
+                )
             }
-            Event::TimeoutPeer { id, peer } => {
-                self.signal(id.clone(), Err(Error::TimedOut { id, peer }), peer)
-            }
+            Event::TimeoutPeer { id, peer } => self.signal(
+                id.clone(),
+                Err(Error::TimedOut {
+                    id: Box::new(id),
+                    peer,
+                }),
+                peer,
+            ),
             Event::PutToStorage { item, peer } => {
                 let mut effects =
                     Self::announce_fetched_new_item(effect_builder, (*item).clone(), peer).ignore();

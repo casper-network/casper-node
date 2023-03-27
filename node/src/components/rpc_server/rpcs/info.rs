@@ -141,7 +141,7 @@ impl RpcWithParams for GetDeploy {
             .await;
 
         let (deploy, metadata_ext) = match maybe_deploy_and_metadata {
-            Some((deploy, metadata_ext)) => (deploy, metadata_ext),
+            Some(inner) => (inner.0, inner.1),
             None => {
                 let message = format!(
                     "failed to get {} and metadata from storage",
