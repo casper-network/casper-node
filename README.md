@@ -25,7 +25,7 @@ The Casper MainNet is live.
 - [Highway Consensus Proofs](https://github.com/CasperLabs/highway/releases/latest)
 
 ### Get Started with Smart Contracts
-- [Writing Smart Contracts](https://docs.casperlabs.io/dapp-dev-guide/)
+- [Writing Smart Contracts](https://docs.casperlabs.io/developers/)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
 - [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
 - [AssemblyScript Smart Contract API](https://www.npmjs.com/package/casper-contract)
