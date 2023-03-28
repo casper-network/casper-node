@@ -188,7 +188,7 @@ mod specimen_support {
                     Vertex::Evidence(LargestSpecimen::largest_specimen(estimator, cache))
                 }
                 VertexDiscriminants::Endorsements => {
-                    if !estimator.require_parameter_bool("endorsements_disabled") {
+                    if estimator.require_parameter_bool("endorsements_enabled") {
                         Vertex::Endorsements(LargestSpecimen::largest_specimen(estimator, cache))
                     } else {
                         Vertex::Ping(LargestSpecimen::largest_specimen(estimator, cache))
@@ -236,7 +236,7 @@ mod specimen_support {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             Endorsements {
                 unit: LargestSpecimen::largest_specimen(estimator, cache),
-                endorsers: if !estimator.require_parameter_bool("endorsements_disabled") {
+                endorsers: if estimator.require_parameter_bool("endorsements_enabled") {
                     vec_prop_specimen(estimator, "validator_count", cache)
                 } else {
                     Vec::new()

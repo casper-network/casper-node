@@ -573,7 +573,9 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
             "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
             // `RADIX` from EE.
             "max_pointer_per_node" => 255,
-            "endorsements_disabled" => 1,
+            // Endorsements are currently hard-disabled (via code). If ever re-enabled, this
+            // parameter should ideally be removed entirely.
+            "endorsements_enabled" => 0,
             _ => return None,
         })
     }
