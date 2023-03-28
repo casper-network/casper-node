@@ -1712,24 +1712,27 @@ mod std_impls {
 /// For safety you should prefer to use [`vec_u8_to_bytes`]. For efficiency reasons you should also
 /// avoid using serializing Vec<u8>.
 fn u8_slice_to_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    let serialized_length = u8_slice_serialized_length(bytes);
-    let mut vec = try_vec_with_capacity(serialized_length)?;
     let length_prefix: u32 = bytes
         .len()
         .try_into()
         .map_err(|_| Error::NotRepresentable)?;
-    let length_prefix_bytes = length_prefix.to_le_bytes();
-    vec.extend_from_slice(&length_prefix_bytes);
+    let serialized_length = u8_slice_serialized_length(bytes);
+    let mut vec = try_vec_with_capacity(serialized_length)?;
+
+    vec.extend(length_prefix.to_le_bytes());
     vec.extend_from_slice(bytes);
     Ok(vec)
 }
 
 fn write_u8_slice(bytes: &[u8], writer: &mut Vec<u8>) -> Result<(), Error> {
-    let length_32: u32 = bytes
+    let length_prefix: u32 = bytes
         .len()
         .try_into()
         .map_err(|_| Error::NotRepresentable)?;
-    writer.extend_from_slice(&length_32.to_le_bytes());
+    let serialized_length = u8_slice_serialized_length(bytes);
+    writer.reserve(serialized_length);
+
+    writer.extend(length_prefix.to_le_bytes());
     writer.extend_from_slice(bytes);
     Ok(())
 }
