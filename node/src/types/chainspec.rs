@@ -106,6 +106,7 @@ impl Chainspec {
             warn!(calculated_length=serialized.len(), configured_maximum=self.network_config.maximum_net_message_size,
                 "config value [network][maximum_net_message_size] is too small to accomodate the maximum message size",
             );
+            return false;
         }
 
         if self.core_config.unbonding_delay <= self.core_config.auction_delay {
