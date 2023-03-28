@@ -53,7 +53,7 @@ The Casper MainNet is live.
 # Ubuntu prerequisites setup example
 apt update
 apt install cmake libssl-dev pkg-config gcc g++ -y
-# the '-s -- -y' part ensures silent mode. Ommit if you want to customize
+# the '-s -- -y' part ensures silent mode. Omit if you want to customize
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 ```
 
