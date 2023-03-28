@@ -387,7 +387,7 @@ where
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
-                self.handle_message(effect_builder, rng, sender, message)
+                self.handle_message(effect_builder, rng, sender, *message)
             }
             Event::DemandIncoming(ConsensusDemand {
                 sender,

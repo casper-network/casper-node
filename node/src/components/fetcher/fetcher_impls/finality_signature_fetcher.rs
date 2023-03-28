@@ -19,7 +19,8 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
 
     fn item_handles(
         &mut self,
-    ) -> &mut HashMap<FinalitySignatureId, HashMap<NodeId, ItemHandle<FinalitySignature>>> {
+    ) -> &mut HashMap<Box<FinalitySignatureId>, HashMap<NodeId, ItemHandle<FinalitySignature>>>
+    {
         &mut self.item_handles
     }
 
@@ -33,7 +34,7 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
 
     async fn get_locally<REv: From<StorageRequest> + From<BlockAccumulatorRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        id: FinalitySignatureId,
+        id: Box<FinalitySignatureId>,
     ) -> Option<FinalitySignature> {
         effect_builder
             .get_signature_from_storage(id.block_hash, id.public_key.clone())

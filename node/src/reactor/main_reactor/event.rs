@@ -1,9 +1,13 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    mem,
+};
 
 use derive_more::From;
 use serde::Serialize;
 
 use casper_types::{system::auction::EraValidators, EraId};
+use static_assertions::const_assert;
 
 use crate::{
     components::{
@@ -46,11 +50,15 @@ use crate::{
     },
 };
 
+// Enforce an upper bound for the `MainEvent` size, which is already quite hefty.
+// 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.
+// 200 is where the `large_enum_variant` clippy lint draws the line as well.
+const _MAIN_EVENT_SIZE: usize = mem::size_of::<MainEvent>();
+const_assert!(_MAIN_EVENT_SIZE <= 192);
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
-// Note: The large enum size must be reigned in eventually. This is a stopgap for now.
-#[allow(clippy::large_enum_variant)]
 pub(crate) enum MainEvent {
     #[from]
     ControlAnnouncement(ControlAnnouncement),

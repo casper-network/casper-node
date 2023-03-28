@@ -20,7 +20,7 @@ pub(crate) enum Event<T: FetchItem> {
     GetLocallyResult {
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
         maybe_item: Option<Box<T>>,
         responder: FetchResponder<T>,
     },

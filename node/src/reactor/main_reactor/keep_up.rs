@@ -590,6 +590,10 @@ impl MainReactor {
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
         match self.storage.get_highest_orphaned_block_header() {
             HighestOrphanedBlockResult::Orphan(block_header) => {
+                // set a latch on the validator matrix to prevent it from purging validator weights
+                // of interstitial eras which we have not yet historically sync'd
+                self.validator_matrix
+                    .register_retrograde_latch(Some(block_header.era_id()));
                 if block_header.is_genesis() {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }

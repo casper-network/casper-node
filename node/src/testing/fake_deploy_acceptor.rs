@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 //! The `FakeDeployAcceptor` behaves as per the real `DeployAcceptor` but without any deploy
 //! verification being performed.
 //!
@@ -55,7 +57,7 @@ impl FakeDeployAcceptor {
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let verification_start_timestamp = Timestamp::now();
-        let event_metadata = EventMetadata::new(deploy.clone(), source, maybe_responder);
+        let event_metadata = Box::new(EventMetadata::new(deploy.clone(), source, maybe_responder));
         effect_builder
             .put_deploy_to_storage(Box::new(*deploy))
             .event(move |is_new| Event::PutToStorageResult {
@@ -68,14 +70,14 @@ impl FakeDeployAcceptor {
     fn handle_put_to_storage<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         is_new: bool,
     ) -> Effects<Event> {
         let EventMetadata {
             deploy,
             source,
             maybe_responder,
-        } = event_metadata;
+        } = *event_metadata;
         let mut effects = Effects::new();
         if is_new {
             effects.extend(

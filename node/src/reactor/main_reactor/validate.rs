@@ -6,6 +6,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::{MainEvent, MainReactor},
+    storage::HighestOrphanedBlockResult,
     NodeRng,
 };
 
@@ -118,6 +119,16 @@ impl MainReactor {
             .deploy_buffer
             .have_full_ttl_of_deploys(highest_switch_block_header)
         {
+            if let HighestOrphanedBlockResult::Orphan(header) =
+                self.storage.get_highest_orphaned_block_header()
+            {
+                self.validator_matrix
+                    .register_retrograde_latch(Some(header.era_id()));
+            } else {
+                return Err(
+                    "get_highest_orphaned_block_header failed to produce record".to_string()
+                );
+            }
             debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
         } else {
             info!(

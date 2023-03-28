@@ -226,17 +226,15 @@ fn has_completed_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
 }
 
 fn is_ping(event: &MainEvent) -> bool {
-    if let MainEvent::ConsensusMessageIncoming(ConsensusMessageIncoming {
-        message: ConsensusMessage::Protocol { payload, .. },
-        ..
-    }) = event
-    {
-        return matches!(
-            payload.clone().try_into_highway(),
-            Ok(HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(
-                _
-            )))
-        );
+    if let MainEvent::ConsensusMessageIncoming(ConsensusMessageIncoming { message, .. }) = event {
+        if let ConsensusMessage::Protocol { ref payload, .. } = **message {
+            return matches!(
+                payload.clone().try_into_highway(),
+                Ok(HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(
+                    _
+                )))
+            );
+        }
     }
     false
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 mod event;
 mod metrics;
 mod tests;
@@ -161,7 +163,7 @@ impl<REv> ReactorEventT for REv where
 ///     linkStyle 0 stroke-width:0;
 ///
 ///     Start --> A{has valid size?}
-///     A -->|Yes| B{"is compliant with config?<br/>(size, chain name, ttl, etc.)"}    
+///     A -->|Yes| B{"is compliant with config?<br/>(size, chain name, ttl, etc.)"}
 ///     G -->|Yes| ZZ[Accept]
 ///     B -->|Yes| C{is from<br/>client?}
 ///     C -->|Yes| CLIENT{has expired?}
@@ -226,7 +228,7 @@ impl DeployAcceptor {
             debug!(%deploy, %error, "deploy is incorrectly configured");
             return self.handle_invalid_deploy_result(
                 effect_builder,
-                EventMetadata::new(deploy, source, maybe_responder),
+                Box::new(EventMetadata::new(deploy, source, maybe_responder)),
                 Error::InvalidDeployConfiguration(error),
                 verification_start_timestamp,
             );
@@ -240,7 +242,7 @@ impl DeployAcceptor {
                 debug!(%deploy, "deploy has expired");
                 return self.handle_invalid_deploy_result(
                     effect_builder,
-                    EventMetadata::new(deploy, source, maybe_responder),
+                    Box::new(EventMetadata::new(deploy, source, maybe_responder)),
                     Error::ExpiredDeploy {
                         deploy_expiry_timestamp: time_of_expiry,
                         current_node_timestamp,
@@ -253,8 +255,8 @@ impl DeployAcceptor {
         effect_builder
             .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {
-                event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                maybe_block_header: Box::new(maybe_block_header),
+                event_metadata: Box::new(EventMetadata::new(deploy, source, maybe_responder)),
+                maybe_block_header: maybe_block_header.map(Box::new),
                 verification_start_timestamp,
             })
     }
@@ -262,8 +264,8 @@ impl DeployAcceptor {
     fn handle_get_block_header_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
-        maybe_block_header: Option<BlockHeader>,
+        event_metadata: Box<EventMetadata>,
+        maybe_block_header: Option<Box<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
@@ -305,7 +307,7 @@ impl DeployAcceptor {
     fn handle_get_account_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         maybe_account: Option<Account>,
         verification_start_timestamp: Timestamp,
@@ -377,7 +379,7 @@ impl DeployAcceptor {
     fn handle_get_balance_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         maybe_balance_value: Option<U512>,
         account_hash: AccountHash,
@@ -436,7 +438,7 @@ impl DeployAcceptor {
     fn verify_payment_logic<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -546,7 +548,7 @@ impl DeployAcceptor {
     fn verify_session_logic<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -648,12 +650,12 @@ impl DeployAcceptor {
     fn handle_get_contract_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         is_payment: bool,
         entry_point: String,
         contract_hash: ContractHash,
-        maybe_contract: Option<Contract>,
+        maybe_contract: Option<Box<Contract>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Some(contract) = maybe_contract {
@@ -708,12 +710,12 @@ impl DeployAcceptor {
     fn handle_get_contract_package_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<ContractPackage>,
+        maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         match maybe_contract_package {
@@ -801,7 +803,7 @@ impl DeployAcceptor {
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Err(deploy_configuration_failure) = event_metadata.deploy.is_valid() {
@@ -817,7 +819,7 @@ impl DeployAcceptor {
         }
 
         effect_builder
-            .put_deploy_to_storage(Box::new((*event_metadata.deploy).clone()))
+            .put_deploy_to_storage(event_metadata.deploy.clone())
             .event(move |is_new| Event::PutToStorageResult {
                 event_metadata,
                 is_new,
@@ -828,7 +830,7 @@ impl DeployAcceptor {
     fn handle_invalid_deploy_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         error: Error,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -836,7 +838,7 @@ impl DeployAcceptor {
             deploy,
             source,
             maybe_responder,
-        } = event_metadata;
+        } = *event_metadata;
         self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
@@ -855,7 +857,7 @@ impl DeployAcceptor {
     fn handle_put_to_storage<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         is_new: bool,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -896,7 +898,7 @@ impl DeployAcceptor {
     fn handle_stored_finalized_approvals<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         is_new: bool,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -905,7 +907,7 @@ impl DeployAcceptor {
             deploy,
             source,
             maybe_responder,
-        } = event_metadata;
+        } = *event_metadata;
         let mut effects = Effects::new();
         if is_new {
             effects.extend(
@@ -946,7 +948,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
             } => self.handle_get_block_header_result(
                 effect_builder,
                 event_metadata,
-                *maybe_block_header,
+                maybe_block_header,
                 verification_start_timestamp,
             ),
             Event::GetAccountResult {
