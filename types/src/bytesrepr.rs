@@ -1417,12 +1417,25 @@ where
 impl ToBytes for Box<[u8]> {
     #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        u8_slice_to_bytes(&self)
+        u8_slice_to_bytes(self)
     }
 
     #[inline]
     fn serialized_length(&self) -> usize {
-        u8_slice_serialized_length(&self)
+        u8_slice_serialized_length(self)
+    }
+
+    #[inline]
+    fn into_bytes(self) -> Result<Vec<u8>, Error>
+    where
+        Self: Sized,
+    {
+        u8_slice_to_bytes(&self)
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self, writer)
     }
 }
 
@@ -1433,17 +1446,43 @@ impl FromBytes for Box<[u8]> {
         let (bstr_bytes, remainder) = safe_split_at(remainder, size as usize)?;
         Ok((bstr_bytes.into(), remainder))
     }
+
+    #[inline]
+    fn from_vec(mut bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
+        let (size, _) = u32::from_bytes(&bytes)?;
+        let offset = size as usize + U32_SERIALIZED_LENGTH;
+
+        if bytes.len() < offset {
+            return Err(Error::EarlyEndOfStream);
+        }
+
+        let remainder = bytes.split_off(offset);
+        Ok((bytes[U32_SERIALIZED_LENGTH..].into(), remainder))
+    }
 }
 
 impl ToBytes for Arc<[u8]> {
     #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        u8_slice_to_bytes(&self)
+        u8_slice_to_bytes(self)
     }
 
     #[inline]
     fn serialized_length(&self) -> usize {
-        u8_slice_serialized_length(&self)
+        u8_slice_serialized_length(self)
+    }
+
+    #[inline]
+    fn into_bytes(self) -> Result<Vec<u8>, Error>
+    where
+        Self: Sized,
+    {
+        u8_slice_to_bytes(&self)
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self, writer)
     }
 }
 
