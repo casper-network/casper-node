@@ -72,7 +72,8 @@ fn param_idents_from_generics(generics: &Generics) -> Vec<Ident> {
         .collect()
 }
 
-/// Given a set of generics, derives a where clause containing all existing trait bounds and an additional requirement of `T: #extra_req` for every variable in `generics`.
+/// Given a set of generics, derives a where clause containing all existing trait bounds and an
+/// additional requirement of `T: #extra_req` for every variable in `generics`.
 fn generate_where_clause(
     generics: &Generics,
     extra_req: proc_macro2::TokenStream,
