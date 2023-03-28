@@ -789,7 +789,8 @@ impl LargestSpecimen for RuntimeArgs {
 
 impl LargestSpecimen for ChunkWithProof {
     fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
-        ChunkWithProof::new(&[0xFF; CHUNK_SIZE_BYTES], 0).expect("the chunk to be correctly created")
+        ChunkWithProof::new(&[0xFF; Self::CHUNK_SIZE_BYTES], 0)
+            .expect("the chunk to be correctly created")
     }
 }
 
