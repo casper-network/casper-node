@@ -4,6 +4,7 @@ use std::{collections::HashSet, iter, rc::Rc, time::Duration};
 
 use assert_matches::assert_matches;
 use derive_more::From;
+use prometheus::Registry;
 use rand::{seq::IteratorRandom, Rng};
 
 use casper_types::testing::TestRng;
@@ -110,12 +111,13 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     );
 
     // Create a block synchronizer with a maximum of 5 simultaneous peers
+    let metrics_registry = Registry::new();
     let mut block_synchronizer = BlockSynchronizer::new(
         Config::default(),
         Arc::new(Chainspec::random(&mut rng)),
         5,
         validator_matrix,
-        prometheus::default_registry(),
+        &metrics_registry,
     )
     .unwrap();
 
@@ -255,12 +257,13 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
 
     // Create a block synchronizer with a maximum of 5 simultaneous peers.
+    let metrics_registry = Registry::new();
     let mut block_synchronizer = BlockSynchronizer::new(
         Config::default(),
         Arc::new(Chainspec::random(&mut rng)),
         peer_count,
         validator_matrix.clone(),
-        prometheus::default_registry(),
+        &metrics_registry,
     )
     .unwrap();
 
