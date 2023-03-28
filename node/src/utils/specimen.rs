@@ -12,15 +12,13 @@ use std::{
     sync::Arc,
 };
 
-use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::ExecutableDeployItemDiscriminants, ExecutableDeployItem,
-};
+use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
-    AsymmetricType, ContractHash, ContractPackageHash, EraId, ProtocolVersion, RuntimeArgs,
-    SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
+    AsymmetricType, ContractPackageHash, EraId, ProtocolVersion, RuntimeArgs, SecretKey, SemVer,
+    TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
 use serde::Serialize;
@@ -711,53 +709,12 @@ impl LargestSpecimen for ApprovalsHash {
 // EE impls
 impl LargestSpecimen for ExecutableDeployItem {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        largest_variant::<Self, ExecutableDeployItemDiscriminants, _, _>(estimator, |variant| {
-            match variant {
-                ExecutableDeployItemDiscriminants::ModuleBytes => {
-                    ExecutableDeployItem::ModuleBytes {
-                        module_bytes: Bytes::from(vec_prop_specimen(
-                            estimator,
-                            "module_bytes",
-                            cache,
-                        )),
-                        args: LargestSpecimen::largest_specimen(estimator, cache),
-                    }
-                }
-                ExecutableDeployItemDiscriminants::StoredContractByHash => {
-                    ExecutableDeployItem::StoredContractByHash {
-                        hash: LargestSpecimen::largest_specimen(estimator, cache),
-                        entry_point: largest_contract_entry_point(estimator),
-                        args: LargestSpecimen::largest_specimen(estimator, cache),
-                    }
-                }
-                ExecutableDeployItemDiscriminants::StoredContractByName => {
-                    ExecutableDeployItem::StoredContractByName {
-                        name: largest_contract_name(estimator),
-                        entry_point: largest_contract_entry_point(estimator),
-                        args: LargestSpecimen::largest_specimen(estimator, cache),
-                    }
-                }
-                ExecutableDeployItemDiscriminants::StoredVersionedContractByHash => {
-                    ExecutableDeployItem::StoredVersionedContractByHash {
-                        hash: LargestSpecimen::largest_specimen(estimator, cache),
-                        version: LargestSpecimen::largest_specimen(estimator, cache),
-                        entry_point: largest_contract_entry_point(estimator),
-                        args: LargestSpecimen::largest_specimen(estimator, cache),
-                    }
-                }
-                ExecutableDeployItemDiscriminants::StoredVersionedContractByName => {
-                    ExecutableDeployItem::StoredVersionedContractByName {
-                        name: largest_contract_name(estimator),
-                        version: LargestSpecimen::largest_specimen(estimator, cache),
-                        entry_point: largest_contract_entry_point(estimator),
-                        args: LargestSpecimen::largest_specimen(estimator, cache),
-                    }
-                }
-                ExecutableDeployItemDiscriminants::Transfer => ExecutableDeployItem::Transfer {
-                    args: LargestSpecimen::largest_specimen(estimator, cache),
-                },
-            }
-        })
+        ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::from(vec_prop_specimen(estimator, "max_deploy_size", cache)),
+            // `module_bytes` already blows this up to the maximum deploy size, so we use this
+            // variant as the largest always and don't need to fill in any args.
+            args: RuntimeArgs::new(),
+        }
     }
 }
 
@@ -767,23 +724,11 @@ impl LargestSpecimen for U512 {
     }
 }
 
-impl LargestSpecimen for ContractHash {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        ContractHash::new([LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH])
-    }
-}
-
 impl LargestSpecimen for ContractPackageHash {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         ContractPackageHash::new(
             [LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH],
         )
-    }
-}
-
-impl LargestSpecimen for RuntimeArgs {
-    fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
-        Default::default()
     }
 }
 
@@ -885,19 +830,9 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
     })
 }
 
-/// Returns the largest string allowed for a contract name.
-fn largest_contract_name<E: SizeEstimator>(estimator: &E) -> String {
-    string_max_characters(estimator.require_parameter("contract_name_limit"))
-}
-
 /// Returns the largest string allowed for a chain name.
 fn largest_chain_name<E: SizeEstimator>(estimator: &E) -> String {
     string_max_characters(estimator.require_parameter("network_name_limit"))
-}
-
-/// Returns the largest string allowed for a contract entry point.
-fn largest_contract_entry_point<E: SizeEstimator>(estimator: &E) -> String {
-    string_max_characters(estimator.require_parameter("entry_point_limit"))
 }
 
 /// Returns a string with `len`s characters of the largest possible size.

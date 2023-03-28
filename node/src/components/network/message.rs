@@ -544,7 +544,7 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
                 .minimum_block_time
                 .millis()
                 .max(1) as i64,
-            "module_bytes" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "max_deploy_size" => self.chainspec.deploy_config.max_deploy_size as i64,
             "approvals_hashes" => {
                 (self.chainspec.deploy_config.block_max_deploy_count
                     + self.chainspec.deploy_config.block_max_transfer_count) as i64
