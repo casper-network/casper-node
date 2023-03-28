@@ -1347,6 +1347,11 @@ where
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         T::from_bytes(bytes).map(|(obj, remainder)| (Box::new(obj), remainder))
     }
+
+    #[inline]
+    fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
+        T::from_vec(bytes).map(|(obj, remainder)| (Box::new(obj), Vec::from(remainder)))
+    }
 }
 
 impl<T> ToBytes for Box<T>
@@ -1355,12 +1360,25 @@ where
 {
     #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        <Self as AsRef<T>>::as_ref(self).to_bytes()
+        <T as ToBytes>::to_bytes(self)
     }
 
     #[inline]
     fn serialized_length(&self) -> usize {
-        <Self as AsRef<T>>::as_ref(self).serialized_length()
+        <T as ToBytes>::serialized_length(self)
+    }
+
+    #[inline]
+    fn into_bytes(self) -> Result<Vec<u8>, Error>
+    where
+        Self: Sized,
+    {
+        <T as ToBytes>::into_bytes(*self)
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        <T as ToBytes>::write_bytes(self, writer)
     }
 }
 
