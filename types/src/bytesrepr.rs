@@ -1437,7 +1437,7 @@ mod std_impls {
 
     use either::Either;
 
-    use super::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+    use super::{reserve_buffer, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
     impl ToBytes for Ipv4Addr {
         #[inline]
@@ -1524,17 +1524,8 @@ mod std_impls {
     impl ToBytes for SocketAddr {
         #[inline]
         fn to_bytes(&self) -> Result<Vec<u8>, super::Error> {
-            let mut buffer = super::allocate_buffer(self)?;
-            match self {
-                SocketAddr::V4(v4) => {
-                    buffer.push(0u8);
-                    v4.write_bytes(&mut buffer)?;
-                }
-                SocketAddr::V6(v6) => {
-                    buffer.push(1u8);
-                    v6.write_bytes(&mut buffer)?;
-                }
-            }
+            let mut buffer = super::allocate_buffer(&self)?;
+            self.write_bytes(&mut buffer)?;
             Ok(buffer)
         }
 
@@ -1544,6 +1535,22 @@ mod std_impls {
                 SocketAddr::V4(v4) => 1 + v4.serialized_length(),
                 SocketAddr::V6(v6) => 1 + v6.serialized_length(),
             }
+        }
+
+        #[inline]
+        fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), super::Error> {
+            reserve_buffer(writer, &self)?;
+            match self {
+                SocketAddr::V4(v4) => {
+                    writer.push(0u8);
+                    v4.write_bytes(writer)?;
+                }
+                SocketAddr::V6(v6) => {
+                    writer.push(1u8);
+                    v6.write_bytes(writer)?;
+                }
+            }
+            Ok(())
         }
     }
 
