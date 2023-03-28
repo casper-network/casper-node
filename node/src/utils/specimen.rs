@@ -714,10 +714,24 @@ impl LargestSpecimen for ApprovalsHash {
 // EE impls
 impl LargestSpecimen for ExecutableDeployItem {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        // `module_bytes` already blows this up to the maximum deploy size, so we use this variant
+        // as the largest always and don't need to fill in any args.
+        //
+        // However, this does not hold true for all encoding schemes: An inefficient encoding can
+        // easily, via `RuntimeArgs`, result in a much larger encoded size, e.g. when encoding an
+        // array of 1-byte elements in JSON.
+        //
+        // We compromise in not supporting encodings this inefficient and add 10 * a 32-bit integer
+        // as a safety margin for tags and length prefixes.
+        let max_size_with_margin =
+            estimator.require_parameter::<i32>("max_deploy_size").max(0) as usize + 10 * 4;
+
         ExecutableDeployItem::ModuleBytes {
-            module_bytes: Bytes::from(vec_prop_specimen(estimator, "max_deploy_size", cache)),
-            // `module_bytes` already blows this up to the maximum deploy size, so we use this
-            // variant as the largest always and don't need to fill in any args.
+            module_bytes: Bytes::from(vec_of_largest_specimen(
+                estimator,
+                max_size_with_margin,
+                cache,
+            )),
             args: RuntimeArgs::new(),
         }
     }
