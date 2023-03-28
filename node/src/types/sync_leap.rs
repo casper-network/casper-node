@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
     iter,
 };
@@ -10,7 +10,8 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{crypto, EraId};
+use casper_hashing::Digest;
+use casper_types::{crypto, EraId, ProtocolVersion};
 use tracing::error;
 
 use crate::{
@@ -93,6 +94,20 @@ impl Display for SyncLeapIdentifier {
     }
 }
 
+// Additional data for syncing blocks immediately after upgrades
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GlobalStatesMetadata {
+    // Hash, era ID, global state and protocol version of the block after upgrade
+    pub(crate) after_hash: BlockHash,
+    pub(crate) after_era_id: EraId,
+    pub(crate) after_state_hash: Digest,
+    pub(crate) after_protocol_version: ProtocolVersion,
+    // Hash, global state and protocol version of the block before upgrade
+    pub(crate) before_hash: BlockHash,
+    pub(crate) before_state_hash: Digest,
+    pub(crate) before_protocol_version: ProtocolVersion,
+}
+
 /// Headers and signatures required to prove that if a given trusted block hash is on the correct
 /// chain, then so is a later header, which should be the most recent one according to the sender.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, DataSize)]
@@ -114,9 +129,9 @@ impl SyncLeap {
         &self,
         fault_tolerance_fraction: Ratio<u64>,
     ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
-        let switch_block_heights: HashSet<_> = self
-            .switch_blocks_headers()
-            .map(BlockHeader::height)
+        let block_protocol_versions: HashMap<_, _> = self
+            .headers()
+            .map(|hdr| (hdr.height(), hdr.protocol_version()))
             .collect();
         self.switch_blocks_headers()
             .find(|block_header| block_header.is_genesis())
@@ -130,12 +145,15 @@ impl SyncLeap {
             })
             .chain(
                 self.switch_blocks_headers()
-                    // filter out switch blocks preceding immediate switch blocks - we don't want
-                    // to read the era validators directly from them, as they might have been
-                    // altered by the upgrade, we'll get them from the blocks' global states
-                    // instead
+                    // filter out switch blocks preceding upgrades - we don't want to read the era
+                    // validators directly from them, as they might have been altered by the
+                    // upgrade, we'll get them from the blocks' global states instead
                     .filter(move |block_header| {
-                        !switch_block_heights.contains(&(block_header.height() + 1))
+                        block_protocol_versions
+                            .get(&(block_header.height() + 1))
+                            .map_or(true, |other_protocol_version| {
+                                block_header.protocol_version() == *other_protocol_version
+                            })
                     })
                     .flat_map(move |block_header| {
                         Some(EraValidatorWeights::new(
@@ -145,6 +163,34 @@ impl SyncLeap {
                         ))
                     }),
             )
+    }
+
+    pub(crate) fn global_states_for_sync_across_upgrade(&self) -> Option<GlobalStatesMetadata> {
+        let headers_by_height: HashMap<_, _> =
+            self.headers().map(|hdr| (hdr.height(), hdr)).collect();
+
+        let maybe_header_before_upgrade = self.switch_blocks_headers().find(|header| {
+            headers_by_height
+                .get(&(header.height() + 1))
+                .map_or(false, |other_header| {
+                    other_header.protocol_version() != header.protocol_version()
+                })
+        });
+
+        maybe_header_before_upgrade.map(|before_header| {
+            let after_header = headers_by_height
+                .get(&(before_header.height() + 1))
+                .unwrap(); // safe, because it had to be Some when we checked it above
+            GlobalStatesMetadata {
+                after_hash: after_header.block_hash(),
+                after_era_id: after_header.era_id(),
+                after_state_hash: *after_header.state_root_hash(),
+                after_protocol_version: after_header.protocol_version(),
+                before_hash: before_header.block_hash(),
+                before_state_hash: *before_header.state_root_hash(),
+                before_protocol_version: before_header.protocol_version(),
+            }
+        })
     }
 
     pub(crate) fn highest_block_height(&self) -> u64 {
@@ -367,12 +413,12 @@ mod tests {
         )
     }
 
-    fn random_switch_block_at_height_and_era(
+    fn random_switch_block_at_height_and_era_and_version(
         rng: &mut TestRng,
         height: u64,
         era_id: EraId,
+        protocol_version: ProtocolVersion,
     ) -> Block {
-        let protocol_version = ProtocolVersion::default();
         let is_switch = true;
 
         Block::random_with_specifics(
@@ -423,19 +469,14 @@ mod tests {
         }
     }
 
-    // Each generated era gets two validators pulled from the provided `validators` set.
-    fn make_test_sync_leap_with_validators(
-        rng: &mut TestRng,
+    fn make_test_sync_leap_with_chain(
         validators: &[ValidatorSpec],
-        switch_blocks: &[u64],
+        test_chain: &[Block],
         query: usize,
         trusted_ancestor_headers: &[usize],
         signed_block_headers: &[usize],
         add_proofs: bool,
     ) -> SyncLeap {
-        let mut test_chain_spec = TestChainSpec::new(rng, Some(switch_blocks.to_vec()), validators);
-        let test_chain: Vec<_> = test_chain_spec.iter().take(12).collect();
-
         let trusted_block_header = test_chain.get(query).unwrap().header().clone();
 
         let trusted_ancestor_headers: Vec<_> = trusted_ancestor_headers
@@ -446,7 +487,7 @@ mod tests {
         let signed_block_headers: Vec<_> = signed_block_headers
             .iter()
             .map(|height| {
-                make_signed_block_header_from_height(*height, &test_chain, validators, add_proofs)
+                make_signed_block_header_from_height(*height, test_chain, validators, add_proofs)
             })
             .collect();
 
@@ -456,6 +497,30 @@ mod tests {
             trusted_ancestor_headers,
             signed_block_headers,
         }
+    }
+
+    // Each generated era gets two validators pulled from the provided `validators` set.
+    fn make_test_sync_leap_with_validators(
+        rng: &mut TestRng,
+        validators: &[ValidatorSpec],
+        switch_blocks: &[u64],
+        query: usize,
+        trusted_ancestor_headers: &[usize],
+        signed_block_headers: &[usize],
+        add_proofs: bool,
+    ) -> SyncLeap {
+        let mut test_chain_spec =
+            TestChainSpec::new(rng, Some(switch_blocks.to_vec()), None, validators);
+        let test_chain: Vec<_> = test_chain_spec.iter().take(12).collect();
+
+        make_test_sync_leap_with_chain(
+            validators,
+            &test_chain,
+            query,
+            trusted_ancestor_headers,
+            signed_block_headers,
+            add_proofs,
+        )
     }
 
     fn make_test_sync_leap(
@@ -653,7 +718,7 @@ mod tests {
         // triggered.
         let block = random_block_at_height(&mut rng, 0);
         let block_iterator =
-            TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
+            TestBlockIterator::new(block.clone(), &mut rng, None, None, Default::default());
 
         let trusted_ancestor_headers = block_iterator
             .take(3)
@@ -676,7 +741,7 @@ mod tests {
         // error.
         let block = random_block_at_height(&mut rng, 0);
         let block_iterator =
-            TestBlockIterator::new(block.clone(), &mut rng, None, Default::default());
+            TestBlockIterator::new(block.clone(), &mut rng, None, None, Default::default());
 
         let trusted_ancestor_headers = block_iterator
             .take(1)
@@ -705,8 +770,13 @@ mod tests {
         let switch_blocks = None;
 
         let block = random_block_at_height(&mut rng, 0);
-        let block_iterator =
-            TestBlockIterator::new(block.clone(), &mut rng, switch_blocks, Default::default());
+        let block_iterator = TestBlockIterator::new(
+            block.clone(),
+            &mut rng,
+            switch_blocks,
+            None,
+            Default::default(),
+        );
 
         let trusted_ancestor_headers: Vec<_> = block_iterator
             .take(3)
@@ -1562,17 +1632,159 @@ mod tests {
     }
 
     #[test]
-    fn era_validator_weights_without_genesis_without_switch_block_preceding_immediate_switch_block()
-    {
+    fn should_not_return_global_states_when_no_upgrade() {
+        let mut rng = TestRng::new();
+
+        const DEFAULT_VALIDATOR_WEIGHT: u32 = 100;
+
+        let validators: Vec<_> = iter::repeat_with(crypto::generate_ed25519_keypair)
+            .take(2)
+            .map(|(secret_key, public_key)| ValidatorSpec {
+                secret_key,
+                public_key,
+                weight: Some(DEFAULT_VALIDATOR_WEIGHT.into()),
+            })
+            .collect();
+
+        let mut test_chain_spec = TestChainSpec::new(&mut rng, Some(vec![4, 8]), None, &validators);
+        let chain: Vec<_> = test_chain_spec.iter().take(12).collect();
+
+        let sync_leap =
+            make_test_sync_leap_with_chain(&validators, &chain, 11, &[10, 9, 8], &[], false);
+
+        let global_states_metadata = sync_leap.global_states_for_sync_across_upgrade();
+        assert!(global_states_metadata.is_none());
+    }
+
+    #[test]
+    fn should_return_global_states_when_upgrade() {
+        let mut rng = TestRng::new();
+
+        const DEFAULT_VALIDATOR_WEIGHT: u32 = 100;
+
+        let validators: Vec<_> = iter::repeat_with(crypto::generate_ed25519_keypair)
+            .take(2)
+            .map(|(secret_key, public_key)| ValidatorSpec {
+                secret_key,
+                public_key,
+                weight: Some(DEFAULT_VALIDATOR_WEIGHT.into()),
+            })
+            .collect();
+
+        let mut test_chain_spec =
+            TestChainSpec::new(&mut rng, Some(vec![4, 8]), Some(vec![8]), &validators);
+        let chain: Vec<_> = test_chain_spec.iter().take(12).collect();
+
+        let sync_leap =
+            make_test_sync_leap_with_chain(&validators, &chain, 11, &[10, 9, 8], &[], false);
+
+        let global_states_metadata = sync_leap
+            .global_states_for_sync_across_upgrade()
+            .expect("should be Some");
+
+        assert_eq!(global_states_metadata.after_hash, *chain[9].hash());
+        assert_eq!(
+            global_states_metadata.after_era_id,
+            chain[9].header().era_id()
+        );
+        assert_eq!(
+            global_states_metadata.after_protocol_version,
+            chain[9].header().protocol_version()
+        );
+        assert_eq!(
+            global_states_metadata.after_state_hash,
+            *chain[9].header().state_root_hash()
+        );
+
+        assert_eq!(global_states_metadata.before_hash, *chain[8].hash());
+        assert_eq!(
+            global_states_metadata.before_protocol_version,
+            chain[8].header().protocol_version()
+        );
+        assert_eq!(
+            global_states_metadata.before_state_hash,
+            *chain[8].header().state_root_hash()
+        );
+
+        assert_ne!(
+            global_states_metadata.before_protocol_version,
+            global_states_metadata.after_protocol_version
+        );
+    }
+
+    #[test]
+    fn should_return_global_states_when_immediate_switch_block() {
+        let mut rng = TestRng::new();
+
+        const DEFAULT_VALIDATOR_WEIGHT: u32 = 100;
+
+        let validators: Vec<_> = iter::repeat_with(crypto::generate_ed25519_keypair)
+            .take(2)
+            .map(|(secret_key, public_key)| ValidatorSpec {
+                secret_key,
+                public_key,
+                weight: Some(DEFAULT_VALIDATOR_WEIGHT.into()),
+            })
+            .collect();
+
+        let mut test_chain_spec =
+            TestChainSpec::new(&mut rng, Some(vec![4, 8, 9]), Some(vec![8]), &validators);
+        let chain: Vec<_> = test_chain_spec.iter().take(12).collect();
+
+        let sync_leap = make_test_sync_leap_with_chain(&validators, &chain, 9, &[8], &[], false);
+
+        let global_states_metadata = sync_leap
+            .global_states_for_sync_across_upgrade()
+            .expect("should be Some");
+
+        assert_eq!(global_states_metadata.after_hash, *chain[9].hash());
+        assert_eq!(
+            global_states_metadata.after_era_id,
+            chain[9].header().era_id()
+        );
+        assert_eq!(
+            global_states_metadata.after_protocol_version,
+            chain[9].header().protocol_version()
+        );
+        assert_eq!(
+            global_states_metadata.after_state_hash,
+            *chain[9].header().state_root_hash()
+        );
+
+        assert_eq!(global_states_metadata.before_hash, *chain[8].hash());
+        assert_eq!(
+            global_states_metadata.before_protocol_version,
+            chain[8].header().protocol_version()
+        );
+        assert_eq!(
+            global_states_metadata.before_state_hash,
+            *chain[8].header().state_root_hash()
+        );
+
+        assert_ne!(
+            global_states_metadata.before_protocol_version,
+            global_states_metadata.after_protocol_version
+        );
+    }
+
+    #[test]
+    fn era_validator_weights_without_genesis_without_upgrade() {
         let mut rng = TestRng::new();
 
         let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let version = ProtocolVersion::from_parts(1, 5, 0);
 
         let (
             signed_block_header_with_metadata_1,
             signed_block_header_with_metadata_2,
             signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height(rng, (1, 10), (2, 20), (3, 30));
+        ) = make_three_switch_blocks_at_era_and_height_and_version(
+            rng,
+            (1, 10, version),
+            (2, 20, version),
+            (3, 30, version),
+        );
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
@@ -1607,11 +1819,19 @@ mod tests {
 
         let trusted_block = Block::random_non_switch_block(&mut rng);
 
+        let version_1 = ProtocolVersion::from_parts(1, 4, 0);
+        let version_2 = ProtocolVersion::from_parts(1, 5, 0);
+
         let (
             signed_block_header_with_metadata_1,
             signed_block_header_with_metadata_2,
             signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height(rng, (1, 10), (2, 20), (3, 21));
+        ) = make_three_switch_blocks_at_era_and_height_and_version(
+            rng,
+            (1, 10, version_1),
+            (2, 20, version_1),
+            (3, 21, version_2),
+        );
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
@@ -1645,16 +1865,23 @@ mod tests {
     }
 
     #[test]
-    fn era_validator_weights_with_genesis_without_switch_block_preceding_immediate_switch_block() {
+    fn era_validator_weights_with_genesis_without_upgrade() {
         let mut rng = TestRng::new();
 
         let trusted_block = Block::random_non_switch_block(&mut rng);
+
+        let version = ProtocolVersion::from_parts(1, 5, 0);
 
         let (
             signed_block_header_with_metadata_1,
             signed_block_header_with_metadata_2,
             signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height(rng, (0, 0), (1, 10), (2, 20));
+        ) = make_three_switch_blocks_at_era_and_height_and_version(
+            rng,
+            (0, 0, version),
+            (1, 10, version),
+            (2, 20, version),
+        );
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
@@ -1684,22 +1911,34 @@ mod tests {
         assert_eq!(expected_eras, actual_eras);
     }
 
-    fn make_three_switch_blocks_at_era_and_height(
+    fn make_three_switch_blocks_at_era_and_height_and_version(
         mut rng: TestRng,
-        (era_1, height_1): (u64, u64),
-        (era_2, height_2): (u64, u64),
-        (era_3, height_3): (u64, u64),
+        (era_1, height_1, version_1): (u64, u64, ProtocolVersion),
+        (era_2, height_2, version_2): (u64, u64, ProtocolVersion),
+        (era_3, height_3, version_3): (u64, u64, ProtocolVersion),
     ) -> (
         BlockHeaderWithMetadata,
         BlockHeaderWithMetadata,
         BlockHeaderWithMetadata,
     ) {
-        let signed_block_1 =
-            random_switch_block_at_height_and_era(&mut rng, height_1, era_1.into());
-        let signed_block_2 =
-            random_switch_block_at_height_and_era(&mut rng, height_2, era_2.into());
-        let signed_block_3 =
-            random_switch_block_at_height_and_era(&mut rng, height_3, era_3.into());
+        let signed_block_1 = random_switch_block_at_height_and_era_and_version(
+            &mut rng,
+            height_1,
+            era_1.into(),
+            version_1,
+        );
+        let signed_block_2 = random_switch_block_at_height_and_era_and_version(
+            &mut rng,
+            height_2,
+            era_2.into(),
+            version_2,
+        );
+        let signed_block_3 = random_switch_block_at_height_and_era_and_version(
+            &mut rng,
+            height_3,
+            era_3.into(),
+            version_3,
+        );
 
         let signed_block_header_with_metadata_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
@@ -1748,6 +1987,7 @@ mod tests {
         block: Block,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
+        upgrades_indices: Option<Vec<u64>>,
         validators: &'a [ValidatorSpec],
     }
 
@@ -1755,6 +1995,7 @@ mod tests {
         pub(crate) fn new(
             test_rng: &'a mut TestRng,
             switch_block_indices: Option<Vec<u64>>,
+            upgrades_indices: Option<Vec<u64>>,
             validators: &'a [ValidatorSpec],
         ) -> Self {
             let block = Block::random(test_rng);
@@ -1762,6 +2003,7 @@ mod tests {
                 block,
                 rng: test_rng,
                 switch_block_indices,
+                upgrades_indices,
                 validators,
             }
         }
@@ -1782,6 +2024,12 @@ mod tests {
                             .map(|index| index + block_height)
                             .collect()
                     }),
+                self.upgrades_indices.clone().map(|upgrades_indices| {
+                    upgrades_indices
+                        .iter()
+                        .map(|index| index + block_height)
+                        .collect()
+                }),
                 self.validators
                     .iter()
                     .map(
@@ -1803,8 +2051,10 @@ mod tests {
 
     pub(crate) struct TestBlockIterator<'a> {
         block: Block,
+        protocol_version: ProtocolVersion,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
+        upgrades_indices: Option<Vec<u64>>,
         validators: Vec<(PublicKey, U512)>,
         next_validator_index: usize,
     }
@@ -1814,12 +2064,16 @@ mod tests {
             block: Block,
             rng: &'a mut TestRng,
             switch_block_indices: Option<Vec<u64>>,
+            upgrades_indices: Option<Vec<u64>>,
             validators: Vec<(PublicKey, U512)>,
         ) -> Self {
+            let protocol_version = block.header().protocol_version();
             Self {
                 block,
+                protocol_version,
                 rng,
                 switch_block_indices,
+                upgrades_indices,
                 validators,
                 next_validator_index: 0,
             }
@@ -1830,25 +2084,42 @@ mod tests {
         type Item = Block;
 
         fn next(&mut self) -> Option<Self::Item> {
-            let (is_switch_block, is_successor_of_switch_block, validators) =
+            let (is_switch_block, is_successor_of_switch_block, is_upgrade, validators) =
                 match &self.switch_block_indices {
                     Some(switch_block_heights)
                         if switch_block_heights.contains(&self.block.height()) =>
                     {
+                        let prev_height = self.block.height().saturating_sub(1);
                         let is_successor_of_switch_block =
-                            switch_block_heights.contains(&(self.block.height().saturating_sub(1)));
+                            switch_block_heights.contains(&prev_height);
+                        let is_upgrade = is_successor_of_switch_block
+                            && self
+                                .upgrades_indices
+                                .as_ref()
+                                .map_or(false, |upgrades_indices| {
+                                    upgrades_indices.contains(&prev_height)
+                                });
                         (
                             true,
                             is_successor_of_switch_block,
+                            is_upgrade,
                             Some(self.validators.clone()),
                         )
                     }
                     Some(switch_block_heights) => {
+                        let prev_height = self.block.height().saturating_sub(1);
                         let is_successor_of_switch_block =
-                            switch_block_heights.contains(&(self.block.height().saturating_sub(1)));
-                        (false, is_successor_of_switch_block, None)
+                            switch_block_heights.contains(&prev_height);
+                        let is_upgrade = is_successor_of_switch_block
+                            && self
+                                .upgrades_indices
+                                .as_ref()
+                                .map_or(false, |upgrades_indices| {
+                                    upgrades_indices.contains(&prev_height)
+                                });
+                        (false, is_successor_of_switch_block, is_upgrade, None)
                     }
-                    None => (false, false, None),
+                    None => (false, false, false, None),
                 };
 
             let validators = if let Some(validators) = validators {
@@ -1870,6 +2141,14 @@ mod tests {
                 None
             };
 
+            if is_upgrade {
+                self.protocol_version = ProtocolVersion::from_parts(
+                    self.protocol_version.value().major,
+                    self.protocol_version.value().minor + 1,
+                    self.protocol_version.value().patch,
+                );
+            }
+
             let next = Block::new(
                 *self.block.hash(),
                 self.block.header().accumulated_seed(),
@@ -1887,7 +2166,7 @@ mod tests {
                     iter::empty(),
                 ),
                 validators,
-                self.block.header().protocol_version(),
+                self.protocol_version,
             )
             .unwrap();
             self.block = next.clone();
@@ -1898,7 +2177,7 @@ mod tests {
     #[test]
     fn should_create_valid_chain() {
         let mut rng = TestRng::new();
-        let mut test_block = TestChainSpec::new(&mut rng, None, &[]);
+        let mut test_block = TestChainSpec::new(&mut rng, None, None, &[]);
         let mut block_batch = test_block.iter().take(100);
         let mut parent_block: Block = block_batch.next().unwrap();
         for current_block in block_batch {
@@ -1930,8 +2209,12 @@ mod tests {
             .collect();
 
         let mut rng = TestRng::new();
-        let mut test_block =
-            TestChainSpec::new(&mut rng, Some(switch_block_indices.clone()), &validators);
+        let mut test_block = TestChainSpec::new(
+            &mut rng,
+            Some(switch_block_indices.clone()),
+            None,
+            &validators,
+        );
         let block_batch: Vec<_> = test_block.iter().take(100).collect();
 
         let base_height = block_batch.first().expect("should have block").height();
