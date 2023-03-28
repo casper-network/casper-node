@@ -1723,7 +1723,7 @@ pub(crate) fn vec_u8_serialized_length(vec: &Vec<u8>) -> usize {
 /// Returns `true` if a we can serialize and then deserialize a value
 pub fn test_serialization_roundtrip<T>(t: &T)
 where
-    T: alloc::fmt::Debug + ToBytes + FromBytes + PartialEq,
+    T: alloc::fmt::Debug + ToBytes + FromBytes + PartialEq + Clone,
 {
     let serialized = ToBytes::to_bytes(t).expect("Unable to serialize data");
     assert_eq!(
@@ -1747,6 +1747,13 @@ where
 
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
     assert_eq!(*t, deserialized);
+
+    // Also test `into_bytes`.
+    let serialized_into = t
+        .clone()
+        .into_bytes()
+        .expect("failed to serialized using `into_bytes`");
+    assert_eq!(written_bytes, serialized_into);
 }
 #[cfg(test)]
 mod tests {
