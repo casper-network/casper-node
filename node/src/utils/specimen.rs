@@ -3,11 +3,10 @@
 //! Structs implementing the specimen trait allow for specific sample instances being created, such
 //! as the biggest possible.
 
-use core::convert::TryInto;
 use std::{
     any::{Any, TypeId},
     collections::{BTreeMap, BTreeSet, HashMap},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     iter::FromIterator,
     net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::Arc,
