@@ -433,12 +433,12 @@ where
                 Secp256k1,
             }
             largest_variant::<PublicKey, PublicKeyDiscriminants, _, _>(estimator, |variant| {
-                // We take advantange of two things here:
+                // We take advantage of two things here:
                 //
                 // 1. The required seed bytes for Ed25519 and Secp256k1 are both the same length of
                 //    32 bytes.
                 // 2. While Secp256k1 does not allow the most trivial seed bytes of 0x00..0001, a
-                //    a hash function output seems to satisfay it, and our current hashing scheme
+                //    a hash function output seems to satisfy it, and our current hashing scheme
                 //    also output 32 bytes.
                 let seed_bytes = Digest::hash(seed.to_be_bytes()).value();
 
@@ -552,7 +552,7 @@ impl LargestSpecimen for Block {
             )),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
-        .expect("did not expect largest speciment creation of block to fail")
+        .expect("did not expect largest specimen creation of block to fail")
     }
 }
 
@@ -616,7 +616,7 @@ impl LargestSpecimen for Digest {
 
 impl LargestSpecimen for BlockPayload {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        // We cannot just use the standard largest speciment for `DeployHashWithApprovals`, as this
+        // We cannot just use the standard largest specimen for `DeployHashWithApprovals`, as this
         // would cause a quadratic increase in deploys. Instead, we generate one large deploy that
         // contains the number of approvals if they are spread out across the block.
 
@@ -698,7 +698,7 @@ where
     fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
         PublicKey::large_unique_sequence(estimator, count, cache)
             .into_iter()
-            .map(|pk| Approval::from_parts(pk, LargestSpecimen::largest_specimen(estimator, cache)))
+            .map(|public_key| Approval::from_parts(public_key, LargestSpecimen::largest_specimen(estimator, cache)))
             .collect()
     }
 }
@@ -790,7 +790,7 @@ impl LargestSpecimen for RuntimeArgs {
 
 impl LargestSpecimen for ChunkWithProof {
     fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
-        ChunkWithProof::new(&[0xFF; 8 * 1024 * 1024], 0).expect("the chunk to be correctly created")
+        ChunkWithProof::new(&[0xFF; CHUNK_SIZE_BYTES], 0).expect("the chunk to be correctly created")
     }
 }
 

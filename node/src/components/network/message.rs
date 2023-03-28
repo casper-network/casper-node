@@ -527,7 +527,7 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
         Some(match name {
             // The name limit will be larger than the actual name, so it is a safe upper bound.
             "network_name_limit" => self.chainspec.network_config.name.len() as i64,
-            // These limits are making deploys bigger then they actually are, since many items
+            // These limits are making deploys bigger than they actually are, since many items
             // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
             "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
             "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
@@ -559,7 +559,7 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
                     as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
-                //       spreading out the approvals can be increase or decrease the size. For
+                //       spreading out the approvals can increase or decrease the size. For
                 //       example, in a length-prefixed encoding, putting them all in one may result
                 //       in a smaller size if variable size integer encoding it used. In a format
                 //       using separators without trailing separators (e.g. commas in JSON),
