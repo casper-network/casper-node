@@ -333,6 +333,13 @@ impl MainReactor {
             Digest::default(),
         );
 
+        let era_id = EraId::default();
+
+        // as this is a genesis validator, there is no historical syncing necessary
+        // thus, the retrograde latch is immediately set
+        self.validator_matrix
+            .register_retrograde_latch(Some(era_id));
+
         // new networks will create a switch block at genesis to
         // surface the genesis validators. older networks did not
         // have this behavior.
@@ -340,7 +347,7 @@ impl MainReactor {
             BlockPayload::default(),
             Some(EraReport::default()),
             genesis_timestamp,
-            EraId::default(),
+            era_id,
             genesis_block_height,
             PublicKey::System,
         );
