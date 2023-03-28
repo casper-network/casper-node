@@ -695,7 +695,12 @@ where
     fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
         PublicKey::large_unique_sequence(estimator, count, cache)
             .into_iter()
-            .map(|public_key| Approval::from_parts(public_key, LargestSpecimen::largest_specimen(estimator, cache)))
+            .map(|public_key| {
+                Approval::from_parts(
+                    public_key,
+                    LargestSpecimen::largest_specimen(estimator, cache),
+                )
+            })
             .collect()
     }
 }
