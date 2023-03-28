@@ -2,7 +2,6 @@
 mod bytes;
 
 use alloc::{
-    alloc::{alloc, Layout},
     boxed::Box,
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
@@ -17,7 +16,6 @@ use core::{
     convert::TryInto,
     fmt::{self, Display, Formatter},
     mem,
-    ptr::NonNull,
 };
 
 #[cfg(feature = "datasize")]
@@ -117,10 +115,9 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 #[inline]
 pub fn reserve_buffer<T: ToBytes>(buffer: &mut Vec<u8>, to_be_serialized: &T) -> Result<(), Error> {
     let serialized_length = to_be_serialized.serialized_length();
-    if serialized_length > u32::max_value() as usize {
-        return Err(Error::OutOfMemory);
-    }
-    Ok(buffer.reserve(serialized_length))
+    buffer
+        .try_reserve_exact(serialized_length)
+        .map_err(|_| Error::OutOfMemory)
 }
 
 /// Serialization and deserialization errors.
@@ -549,22 +546,11 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 }
 
-// TODO Replace `try_vec_with_capacity` with `Vec::try_reserve_exact` once it's in stable.
+/// Like `Vec::with_capacity`, but uses the exact capacity.
 fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
-    // see https://doc.rust-lang.org/src/alloc/raw_vec.rs.html#75-98
-    let elem_size = mem::size_of::<T>();
-    let alloc_size = capacity.checked_mul(elem_size).ok_or(Error::OutOfMemory)?;
-
-    let ptr = if alloc_size == 0 {
-        NonNull::<T>::dangling()
-    } else {
-        let align = mem::align_of::<T>();
-        let layout = Layout::from_size_align(alloc_size, align).map_err(|_| Error::OutOfMemory)?;
-        let raw_ptr = unsafe { alloc(layout) };
-        let non_null_ptr = NonNull::<u8>::new(raw_ptr).ok_or(Error::OutOfMemory)?;
-        non_null_ptr.cast()
-    };
-    unsafe { Ok(Vec::from_raw_parts(ptr.as_ptr(), 0, capacity)) }
+    let mut v = Vec::new();
+    Vec::try_reserve_exact(&mut v, capacity).map_err(|_| Error::OutOfMemory)?;
+    Ok(v)
 }
 
 fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error> {
