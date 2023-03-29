@@ -1336,7 +1336,7 @@ where
 
     #[inline]
     fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
-        T::from_vec(bytes).map(|(obj, remainder)| (Box::new(obj), Vec::from(remainder)))
+        T::from_vec(bytes).map(|(obj, remainder)| (Box::new(obj), remainder))
     }
 }
 
@@ -1379,7 +1379,7 @@ where
 
     #[inline]
     fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
-        T::from_vec(bytes).map(|(x, remainder)| (Arc::new(x), Vec::from(remainder)))
+        T::from_vec(bytes).map(|(x, remainder)| (Arc::new(x), remainder))
     }
 }
 
