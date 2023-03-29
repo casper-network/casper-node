@@ -4,15 +4,18 @@ use prometheus::{Counter, IntCounter, IntGauge, Registry};
 use tracing::debug;
 
 use super::{outgoing::OutgoingMetrics, MessageKind};
-use crate::unregister_metric;
+use crate::{
+    unregister_metric,
+    utils::{RegisteredMetric, RegistryExt},
+};
 
 /// Network-type agnostic networking metrics.
 #[derive(Debug)]
 pub(super) struct Metrics {
     /// How often a request was made by a component to broadcast.
-    pub(super) broadcast_requests: IntCounter,
+    pub(super) broadcast_requests: RegisteredMetric<IntCounter>,
     /// How often a request to send a message directly to a peer was made.
-    pub(super) direct_message_requests: IntCounter,
+    pub(super) direct_message_requests: RegisteredMetric<IntCounter>,
     /// Number of messages still waiting to be sent out (broadcast and direct).
     pub(super) queued_messages: IntGauge,
     /// Number of connected peers.
@@ -122,12 +125,6 @@ pub(super) struct Metrics {
 impl Metrics {
     /// Creates a new instance of networking metrics.
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let broadcast_requests =
-            IntCounter::new("net_broadcast_requests", "number of broadcasting requests")?;
-        let direct_message_requests = IntCounter::new(
-            "net_direct_message_requests",
-            "number of requests to send a message directly to a peer",
-        )?;
         let queued_messages = IntGauge::new(
             "net_queued_direct_messages",
             "number of messages waiting to be sent out",
@@ -337,8 +334,6 @@ impl Metrics {
             "seconds spent delaying incoming traffic from non-validators due to limiter, in seconds."
         )?;
 
-        registry.register(Box::new(broadcast_requests.clone()))?;
-        registry.register(Box::new(direct_message_requests.clone()))?;
         registry.register(Box::new(queued_messages.clone()))?;
         registry.register(Box::new(peers.clone()))?;
 
@@ -399,8 +394,12 @@ impl Metrics {
         registry.register(Box::new(accumulated_incoming_limiter_delay.clone()))?;
 
         Ok(Metrics {
-            broadcast_requests,
-            direct_message_requests,
+            broadcast_requests: registry
+                .new_int_counter("net_broadcast_requests", "number of broadcasting requests")?,
+            direct_message_requests: registry.new_int_counter(
+                "net_direct_message_requests",
+                "number of requests to send a message directly to a peer",
+            )?,
             queued_messages,
             peers,
             out_count_protocol,
@@ -594,8 +593,6 @@ impl Metrics {
 
 impl Drop for Metrics {
     fn drop(&mut self) {
-        unregister_metric!(self.registry, self.broadcast_requests);
-        unregister_metric!(self.registry, self.direct_message_requests);
         unregister_metric!(self.registry, self.queued_messages);
         unregister_metric!(self.registry, self.peers);
 

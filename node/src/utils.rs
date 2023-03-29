@@ -31,7 +31,11 @@ use fs2::FileExt;
 use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
-use prometheus::{self, core::Collector, Histogram, HistogramOpts, IntGauge, Registry};
+use prometheus::{
+    self,
+    core::{Atomic, Collector, GenericCounter},
+    Histogram, HistogramOpts, IntCounter, IntGauge, Registry,
+};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -493,7 +497,7 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
 #[derive(Debug)]
 pub(crate) struct RegisteredMetric<T>
 where
-    T: Collector,
+    T: Collector + 'static,
 {
     metric: Option<Box<T>>,
     registry: Registry,
@@ -501,11 +505,11 @@ where
 
 impl<T> RegisteredMetric<T>
 where
-    T: Collector,
+    T: Collector + 'static,
 {
     pub(crate) fn new(registry: Registry, metric: T) -> Result<Self, prometheus::Error>
     where
-        T: Clone + 'static,
+        T: Clone,
     {
         let boxed_metric = Box::new(metric);
         registry.register(boxed_metric.clone())?;
@@ -515,11 +519,26 @@ where
             registry,
         })
     }
+
+    #[inline]
+    pub(crate) fn inner(&self) -> &T {
+        self.metric.as_ref().expect("metric disappeared")
+    }
+}
+
+impl<P> RegisteredMetric<GenericCounter<P>>
+where
+    P: Atomic,
+{
+    #[inline]
+    pub(crate) fn inc(&self) {
+        self.inner().inc()
+    }
 }
 
 impl<T> Drop for RegisteredMetric<T>
 where
-    T: Collector,
+    T: Collector + 'static,
 {
     fn drop(&mut self) {
         if let Some(boxed_metric) = self.metric.take() {
@@ -533,6 +552,37 @@ where
                 tracing::error!("unregistering {} failed: was not registered", desc)
             })
         }
+    }
+}
+
+pub(crate) trait RegistryExt {
+    fn new_int_counter<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error>;
+    fn new_int_gauge<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error>;
+}
+
+impl RegistryExt for Registry {
+    fn new_int_counter<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error> {
+        RegisteredMetric::new(self.clone(), IntCounter::new(name, help)?)
+    }
+
+    fn new_int_gauge<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error> {
+        RegisteredMetric::new(self.clone(), IntGauge::new(name, help)?)
     }
 }
 
