@@ -51,7 +51,7 @@ function _main()
     # Set initial protocol version for use later.
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
-    ACTIVATION_POINT="$(get_chain_era)"
+    ACTIVATION_POINT="$(($(get_chain_era) + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
@@ -130,7 +130,7 @@ function _step_03()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
+            era="$ACTIVATION_POINT"
         echo ""
     done
 
@@ -267,7 +267,7 @@ function _step_09()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
+            era="$ACTIVATION_POINT"
         echo ""
         # add hash to upgrades config
         PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"
