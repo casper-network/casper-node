@@ -12,19 +12,19 @@ impl ItemProvider<FinalitySignature>
 {
     async fn is_stored<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item_id: FinalitySignatureId,
+        item_id: Box<FinalitySignatureId>,
     ) -> bool {
-        effect_builder
-            .is_finality_signature_stored(item_id.clone())
-            .await
+        effect_builder.is_finality_signature_stored(item_id).await
     }
 
     async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item_id: FinalitySignatureId,
-    ) -> Option<FinalitySignature> {
+        item_id: Box<FinalitySignatureId>,
+    ) -> Option<Box<FinalitySignature>> {
+        // TODO: Make `get_finality_signature_from_storage` return a boxed copy instead.
         effect_builder
-            .get_finality_signature_from_storage(item_id.clone())
+            .get_finality_signature_from_storage(item_id)
             .await
+            .map(Box::new)
     }
 }

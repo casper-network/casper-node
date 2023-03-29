@@ -218,7 +218,7 @@ impl ScratchTrieStore {
         while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
             if let Some(descendant) = descendants_iterator.next() {
                 tries_to_visit.push((digest, current_trie, descendants_iterator));
-                // Only if a node is marked as dirty in the cache do we want to visit it's
+                // Only if a node is marked as dirty in the cache do we want to visit its
                 // descendants
                 if let Some((true, child_trie)) = cache.get(&descendant) {
                     tries_to_visit.push((descendant, child_trie, child_trie.iter_descendants()));

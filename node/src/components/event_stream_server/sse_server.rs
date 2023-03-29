@@ -104,7 +104,7 @@ pub enum SseData {
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
-        public_key: PublicKey,
+        public_key: Box<PublicKey>,
         timestamp: Timestamp,
     },
     /// New finality signature received.
@@ -190,7 +190,7 @@ impl SseData {
     pub(super) fn random_fault(rng: &mut TestRng) -> Self {
         SseData::Fault {
             era_id: EraId::new(rng.gen()),
-            public_key: PublicKey::random(rng),
+            public_key: Box::new(PublicKey::random(rng)),
             timestamp: Timestamp::random(rng),
         }
     }

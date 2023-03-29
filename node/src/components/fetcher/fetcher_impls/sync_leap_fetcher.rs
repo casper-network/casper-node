@@ -2,7 +2,6 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
-use tracing::debug;
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
@@ -43,10 +42,6 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
         effect_builder: EffectBuilder<REv>,
         item: SyncLeap,
     ) -> StoringState<'a, SyncLeap> {
-        debug!(
-            ?item,
-            "SyncLeapFetcher: Attempted to put sync leap to storage"
-        );
         StoringState::Enqueued(
             async move {
                 for header in item.headers() {

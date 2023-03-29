@@ -1,8 +1,13 @@
+pub(crate) mod test_utils;
+
 use std::{collections::HashSet, iter, rc::Rc, time::Duration};
 
-use casper_types::testing::TestRng;
+use assert_matches::assert_matches;
 use derive_more::From;
+use prometheus::Registry;
 use rand::{seq::IteratorRandom, Rng};
+
+use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{
@@ -106,12 +111,13 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     );
 
     // Create a block synchronizer with a maximum of 5 simultaneous peers
+    let metrics_registry = Registry::new();
     let mut block_synchronizer = BlockSynchronizer::new(
         Config::default(),
         Arc::new(Chainspec::random(&mut rng)),
         5,
         validator_matrix,
-        prometheus::default_registry(),
+        &metrics_registry,
     )
     .unwrap();
 
@@ -121,12 +127,18 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
 
     // Set up the synchronizer for the test block such that the next step is getting global state
     block_synchronizer.register_block_by_hash(*block.hash(), true, true);
-    assert!(block_synchronizer.historical.is_some()); // we only get global state on historical sync
+    assert!(
+        block_synchronizer.historical.is_some(),
+        "we only get global state on historical sync"
+    );
     block_synchronizer.register_peers(*block.hash(), peers.clone());
     let historical_builder = block_synchronizer.historical.as_mut().unwrap();
-    assert!(historical_builder
-        .register_block_header(block.header().clone(), None)
-        .is_ok());
+    assert!(
+        historical_builder
+            .register_block_header(block.header().clone(), None)
+            .is_ok(),
+        "historical builder should register header"
+    );
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
     // Generate a finality signature for the test block and register it
@@ -136,15 +148,26 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
         &Rc::new(ALICE_SECRET_KEY.clone()),
         ALICE_PUBLIC_KEY.clone(),
     );
-    assert!(signature.is_verified().is_ok());
-    assert!(historical_builder
-        .register_finality_signature(signature, None)
-        .is_ok());
-    assert!(historical_builder.register_block(&block, None).is_ok());
+    assert!(signature.is_verified().is_ok(), "signature should be ok");
+    assert!(
+        historical_builder
+            .register_finality_signature(signature, None)
+            .is_ok(),
+        "should register singature"
+    );
+    assert!(
+        historical_builder.register_block(&block, None).is_ok(),
+        "should register block"
+    );
 
     // At this point, the next step the synchronizer takes should be to get global state
     let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
-    assert_eq!(effects.len(), 1);
+    assert_eq!(
+        effects.len(),
+        1,
+        "need next should have 1 effect at this step, not {}",
+        effects.len()
+    );
     tokio::spawn(async move { effects.remove(0).await });
     let event = mock_reactor.crank().await;
 
@@ -168,7 +191,12 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     // At this point we expect that another request for the global state would be made,
     // this time with other peers
     let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
-    assert_eq!(effects.len(), 1);
+    assert_eq!(
+        effects.len(),
+        1,
+        "need next should still have 1 effect at this step, not {}",
+        effects.len()
+    );
     tokio::spawn(async move { effects.remove(0).await });
     let event = mock_reactor.crank().await;
 
@@ -189,21 +217,122 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
         )),
     );
     let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
-    assert_eq!(effects.len(), 1);
+    assert_eq!(
+        effects.len(),
+        1,
+        "need next should still have 1 effect after global state sync'd, not {}",
+        effects.len()
+    );
     tokio::spawn(async move { effects.remove(0).await });
     let event = mock_reactor.crank().await;
 
-    // Synchronizer should have progressed
-    assert!(false == matches!(event, MockReactorEvent::SyncGlobalStateRequest { .. }));
+    assert!(
+        false == matches!(event, MockReactorEvent::SyncGlobalStateRequest { .. }),
+        "synchronizer should have progressed"
+    );
 
     // Check if the peers returned by the `GlobalStateSynchronizer` in the response were marked
     // unreliable.
     for peer in unreliable_peers.iter() {
-        assert!(block_synchronizer
-            .historical
-            .as_ref()
-            .unwrap()
-            .peer_list()
-            .is_peer_unreliable(peer));
+        assert!(
+            block_synchronizer
+                .historical
+                .as_ref()
+                .unwrap()
+                .peer_list()
+                .is_peer_unreliable(peer),
+            "{} should be marked unreliable",
+            peer
+        );
     }
+}
+
+#[tokio::test]
+async fn should_not_stall_after_registering_new_era_validator_weights() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let peer_count = 5;
+
+    // Set up an empty validator matrix.
+    let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
+
+    // Create a block synchronizer with a maximum of 5 simultaneous peers.
+    let metrics_registry = Registry::new();
+    let mut block_synchronizer = BlockSynchronizer::new(
+        Config::default(),
+        Arc::new(Chainspec::random(&mut rng)),
+        peer_count,
+        validator_matrix.clone(),
+        &metrics_registry,
+    )
+    .unwrap();
+
+    let peers: Vec<NodeId> = random_peers(&mut rng, peer_count as usize)
+        .iter()
+        .cloned()
+        .collect();
+
+    // Set up the synchronizer for the test block such that the next step is getting era validators.
+    let block = Block::random(&mut rng);
+    block_synchronizer.register_block_by_hash(*block.hash(), true, true);
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+    block_synchronizer
+        .historical
+        .as_mut()
+        .expect("should have historical builder")
+        .register_block_header(block.header().clone(), None)
+        .expect("should register block header");
+
+    // At this point, the next step the synchronizer takes should be to get era validators.
+    let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    assert_eq!(
+        effects.len(),
+        peer_count as usize,
+        "need next should have an effect per peer when needing peers"
+    );
+    for effect in effects {
+        tokio::spawn(async move { effect.await });
+        let event = mock_reactor.crank().await;
+        match event {
+            MockReactorEvent::SyncLeapFetcherRequest(_) => (),
+            _ => panic!("unexpected event: {:?}", event),
+        };
+    }
+
+    // Ensure the in-flight latch has been set, i.e. that `need_next` returns nothing.
+    let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    assert!(
+        effects.is_empty(),
+        "should not have need next while latched"
+    );
+
+    // Update the validator matrix to now have an entry for the era of our random block.
+    validator_matrix.register_validator_weights(
+        block.header().era_id(),
+        iter::once((ALICE_PUBLIC_KEY.clone(), 100.into())).collect(),
+    );
+
+    block_synchronizer
+        .historical
+        .as_mut()
+        .expect("should have historical builder")
+        .register_era_validator_weights(&validator_matrix);
+
+    // Ensure the in-flight latch has been released, i.e. that `need_next` returns something.
+    let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    assert_eq!(
+        effects.len(),
+        1,
+        "need next should produce 1 effect now that we have peers and the latch is removed"
+    );
+    tokio::spawn(async move { effects.remove(0).await });
+    let event = mock_reactor.crank().await;
+    assert_matches!(
+        event,
+        MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+            id,
+            peer,
+            ..
+        }) if peers.contains(&peer) && id.block_hash == *block.hash()
+    );
 }

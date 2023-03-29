@@ -272,7 +272,7 @@ impl DeployBuffer {
         debug!(%deploy_id, "DeployBuffer: registering gossiped deploy");
         effect_builder
             .get_stored_deploy(deploy_id)
-            .event(move |result| Event::StoredDeploy(deploy_id, Box::new(result)))
+            .event(move |result| Event::StoredDeploy(deploy_id, result.map(Box::new)))
     }
 
     /// Update buffer considering new stored deploy.
@@ -629,9 +629,9 @@ where
                     self.register_deploy_gossiped(deploy_id, effect_builder)
                 }
                 Event::StoredDeploy(deploy_id, maybe_deploy) => {
-                    match *maybe_deploy {
+                    match maybe_deploy {
                         Some(deploy) => {
-                            self.register_deploy(deploy);
+                            self.register_deploy(*deploy);
                         }
                         None => {
                             warn!("cannot register un-stored deploy({})", deploy_id);

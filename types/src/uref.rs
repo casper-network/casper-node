@@ -127,6 +127,7 @@ impl URef {
 
     /// Returns `true` if the access rights are `Some` and
     /// [`is_readable`](AccessRights::is_readable) is `true` for them.
+    #[must_use]
     pub fn is_readable(self) -> bool {
         self.1.is_readable()
     }

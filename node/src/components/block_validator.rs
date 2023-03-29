@@ -408,7 +408,7 @@ where
     async move {
         let deploy_hash: DeployHash = dt_hash.into();
         let deploy = match effect_builder
-            .fetch::<LegacyDeploy>(deploy_hash, sender, EmptyValidationMetadata)
+            .fetch::<LegacyDeploy>(deploy_hash, sender, Box::new(EmptyValidationMetadata))
             .await
         {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {

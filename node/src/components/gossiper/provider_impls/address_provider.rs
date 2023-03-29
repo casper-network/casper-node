@@ -24,7 +24,7 @@ impl ItemProvider<GossipedAddress>
     async fn get_from_storage<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
         item_id: GossipedAddress,
-    ) -> Option<GossipedAddress> {
+    ) -> Option<Box<GossipedAddress>> {
         error!(%item_id, "address gossiper should never try to get from storage");
         None
     }

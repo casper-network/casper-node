@@ -84,7 +84,7 @@ function _step_03()
         stage="$STAGE_ID" \
         verbose=false \
         node="6" \
-        era="$ACTIVATION_POINT" \
+        era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))" \
         chainspec_path="$NCTL_CASPER_HOME/resources/local/chainspec.toml.in"
 }
 

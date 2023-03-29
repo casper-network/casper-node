@@ -7,24 +7,24 @@ use crate::{components::fetcher::FetchItem, types::NodeId};
 
 #[derive(Clone, Debug, Error, PartialEq, Eq, Serialize)]
 pub(crate) enum Error<T: FetchItem> {
-    #[error("could not fetch item with id {id:?} from peer {peer:?}")]
-    Absent { id: T::Id, peer: NodeId },
+    #[error("item with id {id:?} absent on peer {peer:?}")]
+    Absent { id: Box<T::Id>, peer: NodeId },
 
     #[error("peer {peer:?} rejected fetch request for item with id {id:?}")]
-    Rejected { id: T::Id, peer: NodeId },
+    Rejected { id: Box<T::Id>, peer: NodeId },
 
     #[error("timed out getting item with id {id:?} from peer {peer:?}")]
-    TimedOut { id: T::Id, peer: NodeId },
+    TimedOut { id: Box<T::Id>, peer: NodeId },
 
     #[error("could not construct get request for item with id {id:?} for peer {peer:?}")]
-    CouldNotConstructGetRequest { id: T::Id, peer: NodeId },
+    CouldNotConstructGetRequest { id: Box<T::Id>, peer: NodeId },
 
     #[error(
         "ongoing fetch for {id} from {peer} has different validation metadata ({current:?}) to \
         that given in new fetch attempt ({new:?})"
     )]
     ValidationMetadataMismatch {
-        id: T::Id,
+        id: Box<T::Id>,
         peer: NodeId,
         current: Box<T::ValidationMetadata>,
         new: Box<T::ValidationMetadata>,

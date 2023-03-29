@@ -12,7 +12,7 @@ use std::{sync::Arc, time::Instant};
 use datasize::DataSize;
 use prometheus::Registry;
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     components::{
@@ -20,7 +20,10 @@ use crate::{
         Component,
     },
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
-    types::{Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, Chainspec, NodeId, SyncLeap,
+        SyncLeapIdentifier,
+    },
     NodeRng,
 };
 pub(crate) use error::LeapActivityError;
@@ -161,12 +164,15 @@ impl SyncLeaper {
                 .collect();
 
             return if peers_not_asked_yet.is_empty() {
+                debug!(%sync_leap_identifier, "peers_not_asked_yet.is_empty()");
                 RegisterLeapAttemptOutcome::DoNothing
             } else {
+                debug!(%sync_leap_identifier, "fetching sync leap from {} peers not asked yet", peers_not_asked_yet.len());
                 RegisterLeapAttemptOutcome::FetchSyncLeapFromPeers(peers_not_asked_yet)
             };
         }
 
+        debug!(%sync_leap_identifier, "fetching sync leap from {} peers", peers_to_ask.len());
         self.leap_activity = Some(LeapActivity::new(
             sync_leap_identifier,
             peers_to_ask
@@ -276,7 +282,9 @@ where
                                 .fetch::<SyncLeap>(
                                     sync_leap_identifier,
                                     peer,
-                                    self.chainspec.clone(),
+                                    Box::new(SyncLeapValidationMetaData::from_chainspec(
+                                        self.chainspec.as_ref(),
+                                    )),
                                 )
                                 .event(move |fetch_result| Event::FetchedSyncLeapFromPeer {
                                     sync_leap_identifier,

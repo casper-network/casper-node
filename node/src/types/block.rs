@@ -1,5 +1,6 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
 
 mod approvals_hashes;
 mod meta_block;
@@ -428,7 +429,7 @@ pub struct FinalizedBlock {
     transfer_hashes: Vec<DeployHash>,
     timestamp: Timestamp,
     random_bit: bool,
-    era_report: Box<Option<EraReport>>,
+    era_report: Option<Box<EraReport>>,
     era_id: EraId,
     height: u64,
     proposer: Box<PublicKey>,
@@ -448,7 +449,7 @@ impl FinalizedBlock {
             transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
             timestamp,
             random_bit: block_payload.random_bit,
-            era_report: Box::new(era_report),
+            era_report: era_report.map(Box::new),
             era_id,
             height,
             proposer: Box::new(proposer),
@@ -463,7 +464,7 @@ impl FinalizedBlock {
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
     /// its era.
     pub(crate) fn era_report(&self) -> Option<&EraReport> {
-        (*self.era_report).as_ref()
+        self.era_report.as_deref()
     }
 
     /// Returns the ID of the era this block belongs to.
@@ -594,7 +595,10 @@ impl From<Block> for FinalizedBlock {
             transfer_hashes: block.body.transfer_hashes,
             timestamp: block.header.timestamp,
             random_bit: block.header.random_bit,
-            era_report: Box::new(block.header.era_end.map(|era_end| era_end.era_report)),
+            era_report: block
+                .header
+                .era_end
+                .map(|era_end| Box::new(era_end.era_report)),
             era_id: block.header.era_id,
             height: block.header.height,
             proposer: Box::new(block.body.proposer),
@@ -613,7 +617,7 @@ impl Display for FinalizedBlock {
             self.deploy_hashes.len(),
             self.transfer_hashes.len(),
         )?;
-        if let Some(ee) = *self.era_report.clone() {
+        if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -1300,10 +1304,10 @@ impl Block {
 
         let body_hash = body.hash();
 
-        let era_end = match (*finalized_block.era_report, next_era_validator_weights) {
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
             (Some(era_report), Some(next_era_validator_weights)) => {
-                Some(EraEnd::new(era_report, next_era_validator_weights))
+                Some(EraEnd::new(*era_report, next_era_validator_weights))
             }
             (maybe_era_report, maybe_next_era_validator_weights) => {
                 return Err(BlockCreationError::CouldNotCreateEraEnd {
@@ -1457,6 +1461,42 @@ impl Block {
         Block::random_with_deploys(rng, None)
     }
 
+    /// Generates a random switch block.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_switch_block(rng: &mut TestRng) -> Self {
+        use std::iter;
+
+        let era_id = rng.gen();
+        let height = rng.gen();
+
+        Block::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            ProtocolVersion::default(),
+            true,
+            iter::empty(),
+        )
+    }
+
+    /// Generates a random non-switch block.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_non_switch_block(rng: &mut TestRng) -> Self {
+        use std::iter;
+
+        let era_id = rng.gen();
+        let height = rng.gen();
+
+        Block::random_with_specifics(
+            rng,
+            era_id,
+            height,
+            ProtocolVersion::default(),
+            false,
+            iter::empty(),
+        )
+    }
+
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(any(feature = "testing", test))]
     pub fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
@@ -1524,7 +1564,7 @@ impl Block {
             deploys_iter,
         );
         if !validator_weights.is_empty() {
-            finalized_block.era_report = Box::new(Some(EraReport::default()));
+            finalized_block.era_report = Some(Default::default());
         }
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = if validator_weights.is_empty() {
@@ -2325,18 +2365,21 @@ impl Display for FinalitySignature {
 }
 
 impl FetchItem for FinalitySignature {
-    type Id = FinalitySignatureId;
+    type Id = Box<FinalitySignatureId>;
     type ValidationError = crypto::Error;
     type ValidationMetadata = EmptyValidationMetadata;
 
     const TAG: Tag = Tag::FinalitySignature;
 
     fn fetch_id(&self) -> Self::Id {
-        FinalitySignatureId {
+        // Note: Unfortunately this is somewhat of a mismatch, as finality signature IDs are fairly
+        //       large, while the `FetchItem` trait expects them to be reasonably small (~ 64 bytes
+        //       or less). The included `public_key` bloats these IDs greatly.
+        Box::new(FinalitySignatureId {
             block_hash: self.block_hash,
             era_id: self.era_id,
             public_key: self.public_key.clone(),
-        }
+        })
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
@@ -2345,17 +2388,20 @@ impl FetchItem for FinalitySignature {
 }
 
 impl GossipItem for FinalitySignature {
-    type Id = FinalitySignatureId;
+    type Id = Box<FinalitySignatureId>;
 
     const ID_IS_COMPLETE_ITEM: bool = false;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = true;
 
     fn gossip_id(&self) -> Self::Id {
-        FinalitySignatureId {
+        // Note: Unfortunately this is somewhat of a mismatch, as finality signature IDs are fairly
+        //       large, while the `GossipItem` trait expects them to be reasonably small (~ 64
+        //       bytes or less). The included `public_key` bloats these IDs greatly.
+        Box::new(FinalitySignatureId {
             block_hash: self.block_hash,
             era_id: self.era_id,
             public_key: self.public_key.clone(),
-        }
+        })
     }
 
     fn gossip_target(&self) -> GossipTarget {
@@ -2392,7 +2438,7 @@ pub(crate) fn compute_approvals_checksum(
 
 #[cfg(test)]
 mod tests {
-    use std::{iter, rc::Rc};
+    use std::rc::Rc;
 
     use casper_types::{bytesrepr, testing::TestRng};
 
@@ -2525,142 +2571,5 @@ mod tests {
         };
         // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.is_verified().is_err());
-    }
-
-    // Utility struct that can be turned into an iterator that generates
-    // continuous and descending blocks (i.e. blocks that have consecutive height
-    // and parent hashes are correctly set). The height of the first block
-    // in a series is choosen randomly.
-    //
-    // Additionally, this struct allows to generate switch blocks at a specific location in the
-    // chain, for example: Setting `switch_block_indices` to [1; 3] and generating 5 blocks will
-    // cause the 2nd and 4th blocks to be switch blocks.
-    struct TestBlockSpec {
-        block: Block,
-        rng: TestRng,
-        switch_block_indices: Option<Vec<u64>>,
-    }
-
-    impl TestBlockSpec {
-        fn new(test_rng: TestRng, switch_block_indices: Option<Vec<u64>>) -> Self {
-            let mut rng = test_rng;
-            let block = Block::random(&mut rng);
-            Self {
-                block,
-                rng,
-                switch_block_indices,
-            }
-        }
-
-        fn into_iter(self) -> TestBlockIterator {
-            let block_height = self.block.height();
-            TestBlockIterator {
-                block: self.block,
-                rng: self.rng,
-                switch_block_indices: self.switch_block_indices.map(|switch_block_indices| {
-                    switch_block_indices
-                        .iter()
-                        .map(|index| index + block_height)
-                        .collect()
-                }),
-            }
-        }
-    }
-
-    struct TestBlockIterator {
-        block: Block,
-        rng: TestRng,
-        switch_block_indices: Option<Vec<u64>>,
-    }
-
-    impl Iterator for TestBlockIterator {
-        type Item = Block;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let (is_switch_block, validators) = match &self.switch_block_indices {
-                Some(switch_block_indices)
-                    if switch_block_indices.contains(&self.block.height()) =>
-                {
-                    let secret_keys: Vec<SecretKey> = iter::repeat_with(|| {
-                        SecretKey::ed25519_from_bytes(
-                            self.rng.gen::<[u8; SecretKey::ED25519_LENGTH]>(),
-                        )
-                        .unwrap()
-                    })
-                    .take(4)
-                    .collect();
-                    let validators: BTreeMap<_, _> = secret_keys
-                        .iter()
-                        .map(|sk| (PublicKey::from(sk), 100.into()))
-                        .collect();
-
-                    (true, Some(validators))
-                }
-                Some(_) | None => (false, None),
-            };
-
-            let next = Block::new(
-                *self.block.hash(),
-                self.block.header().accumulated_seed(),
-                *self.block.header().state_root_hash(),
-                FinalizedBlock::random_with_specifics(
-                    &mut self.rng,
-                    self.block.header().era_id(),
-                    self.block.header().height() + 1,
-                    is_switch_block,
-                    Timestamp::now(),
-                    iter::empty(),
-                ),
-                validators,
-                self.block.header().protocol_version(),
-            )
-            .unwrap();
-            self.block = next.clone();
-            Some(next)
-        }
-    }
-
-    #[test]
-    fn test_block_iter() {
-        let rng = TestRng::new();
-        let test_block = TestBlockSpec::new(rng, None);
-        let mut block_batch = test_block.into_iter().take(100);
-        let mut parent_block: Block = block_batch.next().unwrap();
-        for current_block in block_batch {
-            assert_eq!(
-                current_block.header().height(),
-                parent_block.header().height() + 1,
-                "height should grow monotonically"
-            );
-            assert_eq!(
-                current_block.header().parent_hash(),
-                parent_block.hash(),
-                "block's parent should point at previous block"
-            );
-            parent_block = current_block;
-        }
-    }
-
-    #[test]
-    fn test_block_iter_creates_switch_blocks() {
-        let switch_block_indices = vec![0, 10, 76];
-
-        let rng = TestRng::new();
-        let test_block = TestBlockSpec::new(rng, Some(switch_block_indices.clone()));
-        let block_batch: Vec<_> = test_block.into_iter().take(100).collect();
-
-        let base_height = block_batch.first().expect("should have block").height();
-
-        for block in block_batch {
-            if switch_block_indices
-                .iter()
-                .map(|index| index + base_height)
-                .any(|index| index == block.height())
-            {
-                assert!(block.header().is_switch_block())
-            } else {
-                assert!(!block.header().is_switch_block())
-            }
-        }
     }
 }
