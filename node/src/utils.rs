@@ -31,7 +31,7 @@ use fs2::FileExt;
 use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
-use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
+use prometheus::{self, core::Collector, Histogram, HistogramOpts, IntGauge, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -486,6 +486,52 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
         match self {
             Either::Left((v, _)) => Either::Left(v),
             Either::Right((v, _)) => Either::Right(v),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RegisteredMetric<T>
+where
+    T: Collector,
+{
+    metric: Option<Box<T>>,
+    registry: Registry,
+}
+
+impl<T> RegisteredMetric<T>
+where
+    T: Collector,
+{
+    pub(crate) fn new(registry: Registry, metric: T) -> Result<Self, prometheus::Error>
+    where
+        T: Clone + 'static,
+    {
+        let boxed_metric = Box::new(metric);
+        registry.register(boxed_metric.clone())?;
+
+        Ok(RegisteredMetric {
+            metric: Some(boxed_metric),
+            registry,
+        })
+    }
+}
+
+impl<T> Drop for RegisteredMetric<T>
+where
+    T: Collector,
+{
+    fn drop(&mut self) {
+        if let Some(boxed_metric) = self.metric.take() {
+            let desc = boxed_metric
+                .desc()
+                .iter()
+                .next()
+                .map(|desc| desc.fq_name.clone())
+                .unwrap_or_default();
+            self.registry.unregister(boxed_metric).unwrap_or_else(|_| {
+                tracing::error!("unregistering {} failed: was not registered", desc)
+            })
         }
     }
 }
