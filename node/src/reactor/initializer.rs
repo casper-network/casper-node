@@ -256,6 +256,10 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .minimum_delegation_amount,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .activation_point,
             registry,
         )?;
 

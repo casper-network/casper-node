@@ -1,13 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
 
 use itertools::Itertools;
-use tracing::{debug, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
-        StepRequest, StepSuccess,
+        self,
+        purge::{PurgeConfig, PurgeResult},
+        step::EvictItem,
+        DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+        GetEraValidatorsRequest, RewardItem, StepError, StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
@@ -23,12 +25,87 @@ use crate::{
             BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
-    types::{Block, Deploy, DeployHeader, FinalizedBlock},
+    types::{ActivationPoint, Block, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
     storage::global_state::{CommitProvider, StateProvider},
 };
+
+#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+enum PruneErasError {
+    #[error(
+        "time went backwards (current era {current_era_id} < activation point {activation_point})"
+    )]
+    TimeWentBackwards {
+        activation_point: EraId,
+        current_era_id: EraId,
+    },
+    #[error("overflow error while calculating start")]
+    StartOverflow,
+    #[error("overflow error while calculating end")]
+    EndOverflow,
+    #[error("last era info id underflow error")]
+    LastEraIdUnderflow,
+    #[error("underflow error while calculating eras since activation")]
+    ErasSinceActivationUnderflow,
+}
+
+/// Calculates era keys to be pruned.
+///
+/// Outcomes:
+/// * Ok(Some(range)) -- these ranges should be pruned
+/// * Ok(None) -- no more eras should be pruned
+/// * Err(PruneErasError{..}) -- precondition error, and current era is lower than activation point
+fn calculate_prune_eras(
+    activation_point: ActivationPoint,
+    current_era_id: EraId,
+    batch_size: u64,
+) -> Result<Option<Range<u64>>, PruneErasError> {
+    let activation_point = match activation_point {
+        ActivationPoint::EraId(era_id) if era_id > EraId::new(0) => era_id,
+        ActivationPoint::EraId(_) | ActivationPoint::Genesis(_) => {
+            // We just created genesis block and there is nothing in the global state to be pruned
+            // (yet) Block height 0 is assumed to be synonymous to a genesis block.
+            return Ok(None);
+        }
+    };
+
+    if current_era_id < activation_point {
+        return Err(PruneErasError::TimeWentBackwards {
+            activation_point,
+            current_era_id,
+        });
+    }
+
+    let current_era_id = current_era_id.value();
+
+    let last_era_info_id = activation_point
+        .checked_sub(1)
+        .map(EraId::value)
+        .ok_or(PruneErasError::LastEraIdUnderflow)?; // one era before activation point
+    let eras_since_activation = current_era_id
+        .checked_sub(last_era_info_id)
+        .ok_or(PruneErasError::ErasSinceActivationUnderflow)?;
+
+    let start = eras_since_activation
+        .saturating_sub(1)
+        .checked_mul(batch_size)
+        .ok_or(PruneErasError::StartOverflow)?;
+
+    let end = cmp::min(
+        eras_since_activation
+            .checked_mul(batch_size)
+            .ok_or(PruneErasError::EndOverflow)?,
+        last_era_info_id,
+    );
+
+    if start > end {
+        return Ok(None);
+    }
+
+    Ok(Some(start..end))
+}
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
@@ -40,6 +117,7 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
+    activation_point: ActivationPoint,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -161,6 +239,44 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
+
+    // Purging
+
+    match calculate_prune_eras(activation_point, finalized_block.era_id(), 100) {
+        Ok(Some(era_range)) => {
+            let keys_to_purge: Vec<Key> = era_range.map(EraId::new).map(Key::EraInfo).collect();
+            let first_key = keys_to_purge.first().copied();
+            let last_key = keys_to_purge.last().copied();
+            info!(finalized_block_era_id=%finalized_block.era_id(), %activation_point, %state_root_hash, first_key=?first_key, last_key=?last_key, "prune: nothing to do");
+            let purge_config = PurgeConfig::new(state_root_hash, keys_to_purge);
+            match engine_state.commit_purge(CorrelationId::new(), purge_config) {
+                Ok(PurgeResult::RootNotFound) => {
+                    error!(finalized_block_era_id=%finalized_block.era_id(), %state_root_hash, "purge: root not found");
+                }
+                Ok(PurgeResult::DoesNotExist) => {
+                    warn!(finalized_block_era_id=%finalized_block.era_id(), %state_root_hash, "purge: key does not exist");
+                }
+                Ok(PurgeResult::Success { post_state_hash }) => {
+                    info!(finalized_block_era_id=%finalized_block.era_id(), %activation_point, %state_root_hash, %post_state_hash, first_key=?first_key, last_key=?last_key, "prune: nothing to do");
+                    state_root_hash = post_state_hash;
+                }
+                Err(error) => {
+                    error!(finalized_block_era_id=%finalized_block.era_id(), %activation_point, %error, "purge: commit purge error");
+                    return Err(error.into());
+                }
+            }
+        }
+        Ok(None) => {
+            info!(finalized_block_era_id=finalized_block.era_id().value(), %activation_point, "purge: nothing to do");
+        }
+        Err(error) => {
+            error!(finalized_block_era_id=finalized_block.era_id().value(), %activation_point, %error, "purge: error while calculating keys to prune");
+            return Err(BlockExecutionError::Other(
+                "Error while calculating keys to prune".into(),
+            ));
+        }
+    }
+
     let block = Block::new(
         parent_hash,
         parent_seed,
@@ -326,4 +442,72 @@ where
     }
     trace!(?result, "step response");
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use crate::types::Timestamp;
+
+    use super::*;
+
+    #[test]
+    fn should_calculate_prune_eras() {
+        const ACTIVATION_POINT_ERA_ID: EraId = EraId::new(6061);
+
+        const ACTIVATION_POINT: ActivationPoint = ActivationPoint::EraId(ACTIVATION_POINT_ERA_ID);
+        const CURRENT_ERA_ID: EraId = ACTIVATION_POINT_ERA_ID;
+        const BATCH_SIZE: u64 = 100;
+
+        assert_eq!(
+            calculate_prune_eras(
+                ActivationPoint::Genesis(Timestamp::from_str("2021-03-31T15:00:00Z").unwrap()),
+                ACTIVATION_POINT_ERA_ID - 1,
+                BATCH_SIZE
+            ),
+            Ok(None),
+            "Genesis block does not need to prune anything"
+        );
+
+        assert_eq!(
+            calculate_prune_eras(
+                ActivationPoint::EraId(EraId::new(0)),
+                EraId::new(0),
+                BATCH_SIZE
+            ),
+            Ok(None),
+            "Genesis block does not need to prune anything"
+        );
+
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT, ACTIVATION_POINT_ERA_ID - 1, BATCH_SIZE),
+            Err(PruneErasError::TimeWentBackwards {
+                activation_point: ACTIVATION_POINT_ERA_ID,
+                current_era_id: ACTIVATION_POINT_ERA_ID - 1,
+            })
+        );
+
+        let vec: Vec<_> = (0..10)
+            .map(|offset| {
+                calculate_prune_eras(ACTIVATION_POINT, CURRENT_ERA_ID + offset, BATCH_SIZE)
+            })
+            .collect();
+        assert_eq!(vec[0], Ok(Some(0..100)));
+        assert_eq!(vec[1], Ok(Some(100..200)));
+        assert_eq!(vec[2], Ok(Some(200..300)));
+
+        let range = calculate_prune_eras(ACTIVATION_POINT, CURRENT_ERA_ID + 60, BATCH_SIZE);
+        assert_eq!(range, Ok(Some(6000..6060)));
+
+        let range = calculate_prune_eras(ACTIVATION_POINT, CURRENT_ERA_ID + 61, BATCH_SIZE);
+        assert_eq!(range, Ok(None));
+
+        let range = calculate_prune_eras(
+            ActivationPoint::EraId(EraId::new(1)),
+            EraId::new(u64::MAX),
+            BATCH_SIZE,
+        );
+        assert_eq!(range, Err(PruneErasError::StartOverflow));
+    }
 }

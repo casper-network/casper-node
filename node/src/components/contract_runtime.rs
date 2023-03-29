@@ -42,7 +42,7 @@ use crate::{
         EffectExt, Effects,
     },
     fatal,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    types::{ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
 pub(crate) use announcements::ContractRuntimeAnnouncement;
@@ -141,6 +141,7 @@ pub(crate) struct ContractRuntime {
     exec_queue: ExecQueue,
     /// Cached instance of a [`SystemContractRegistry`].
     system_contract_registry: Option<SystemContractRegistry>,
+    activation_point: ActivationPoint,
 }
 
 impl Debug for ContractRuntime {
@@ -332,6 +333,7 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                let activation_point = self.activation_point;
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -342,6 +344,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            activation_point,
                         )
                     })
                     .await;
@@ -376,6 +379,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            self.activation_point,
                         )
                         .ignore(),
                     )
@@ -421,6 +425,7 @@ impl ContractRuntime {
         max_stored_value_size: u32,
         max_delegator_size_limit: u32,
         minimum_delegation_amount: u64,
+        activation_point: ActivationPoint,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -468,6 +473,7 @@ impl ContractRuntime {
             protocol_version,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
+            activation_point,
         })
     }
 
@@ -563,6 +569,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        activation_point: ActivationPoint,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -583,6 +590,7 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
+                activation_point,
             )
         })
         .await

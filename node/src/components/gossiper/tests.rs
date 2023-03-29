@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
+    str::FromStr,
 };
 
 use derive_more::From;
@@ -49,7 +50,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Chainspec, Deploy, NodeId, Tag},
+    types::{ActivationPoint, Chainspec, Deploy, NodeId, Tag, Timestamp},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -215,6 +216,9 @@ impl reactor::Reactor for Reactor {
             MAX_STORED_VALUE_SIZE,
             DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            ActivationPoint::Genesis(
+                Timestamp::from_str("2021-03-31T15:00:00Z").expect("valid timestamp"),
+            ),
             registry,
         )
         .unwrap();

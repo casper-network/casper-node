@@ -1,5 +1,6 @@
 use std::{path::PathBuf, time::Instant};
 
+use casper_types::EraId;
 use histogram::Histogram;
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
@@ -43,6 +44,8 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    let activation_point_era_id = EraId::new(1);
+
     let opts = Opts::from_args();
 
     let chain_download_path = normalize_path(&opts.chain_download_path)?;
@@ -123,6 +126,7 @@ async fn main() -> Result<(), anyhow::Error> {
             finalized_block,
             deploys,
             transfers,
+            activation_point_era_id.into(),
         )?;
         let elapsed_micros = start.elapsed().as_micros() as u64;
         execution_time_hist
