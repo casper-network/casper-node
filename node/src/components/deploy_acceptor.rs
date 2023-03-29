@@ -79,7 +79,7 @@ pub(crate) enum Error {
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error, Serialize)]
 pub(crate) enum DeployParameterFailure {
     /// Account does not exist.
-    #[error("account {account_hash} does not exist")]
+    #[error("main purse for account {account_hash} does not exist - balance is 0")]
     NonexistentAccount { account_hash: AccountHash },
     /// Nonexistent contract at hash.
     #[error("contract at {contract_hash} does not exist")]
