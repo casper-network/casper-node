@@ -109,12 +109,6 @@ impl From<ChainspecLoaderAnnouncement> for Event {
     }
 }
 
-// impl From<ChainspecLoaderRequest> for Event {
-//     fn from(request: ChainspecLoaderRequest) -> Self {
-//         Self::Chainspec(request)
-//     }
-// }
-
 impl From<LinearChainRequest<NodeId>> for Event {
     fn from(_req: LinearChainRequest<NodeId>) -> Self {
         unreachable!("no linear chain events happen during initialization")

@@ -13,9 +13,7 @@ use casper_types::{
 };
 
 use crate::{
-    core::{
-        engine_state::execution_effect::ExecutionEffect, execution, tracking_copy::TrackingCopy,
-    },
+    core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
     shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
 };
@@ -160,9 +158,6 @@ pub enum ProtocolUpgradeError {
     /// Failed to create system contract registry.
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
-    /// Failed to migrate global state.
-    #[error("Failed to perform global state migration: {0}")]
-    MigrationRun(#[from] execution::Error),
 }
 
 impl From<bytesrepr::Error> for ProtocolUpgradeError {
