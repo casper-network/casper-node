@@ -32,6 +32,7 @@ function main() {
         # PR CI tests
         start_upgrade_scenario_1
         start_upgrade_scenario_3
+        start_upgrade_scenario_11
     else
         start_upgrade_scenario_"$TEST_ID"
     fi
