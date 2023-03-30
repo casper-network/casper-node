@@ -271,6 +271,7 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .activation_point,
+            chainspec_loader.chainspec().core_config.purge_batch_size,
             registry,
         )?;
 

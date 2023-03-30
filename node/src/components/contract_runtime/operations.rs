@@ -1,4 +1,4 @@
-use std::{cmp, collections::BTreeMap, convert::TryInto, ops::Range, sync::Arc, time::Instant};
+use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -47,21 +47,17 @@ fn calculate_purge_eras(
     activation_era_id: EraId,
     activation_height: u64,
     current_height: u64,
-    batch_size: usize,
+    batch_size: u64,
 ) -> Option<Vec<Key>> {
-    let nth_chunk: usize = match current_height.checked_sub(activation_height) {
-        Some(nth_chunk) => nth_chunk.try_into().unwrap(),
+    let nth_chunk: u64 = match current_height.checked_sub(activation_height) {
+        Some(nth_chunk) => nth_chunk,
         None => {
             // Time went backwards, programmer error, etc
             return None;
         }
     };
 
-    let range = generate_range_by_index(
-        activation_era_id.value(),
-        batch_size.try_into().unwrap(),
-        nth_chunk.try_into().unwrap(),
-    )?;
+    let range = generate_range_by_index(activation_era_id.value(), batch_size, nth_chunk)?;
 
     if range.is_empty() {
         return None;
@@ -82,6 +78,7 @@ pub fn execute_finalized_block(
     transfers: Vec<Deploy>,
     activation_point: ActivationPoint,
     activation_point_block_height: Option<u64>,
+    purge_batch_size: u64,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -214,7 +211,7 @@ pub fn execute_finalized_block(
                 activation_point,
                 activation_point_block_height,
                 previous_block_height,
-                1,
+                purge_batch_size,
             ) {
                 Some(keys_to_purge) => {
                     let first_key = keys_to_purge.first().copied();
@@ -435,7 +432,7 @@ mod tests {
         assert_eq!(calculate_purge_eras(EraId::new(0), 0, 0, 0,), None);
         assert_eq!(calculate_purge_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
         assert_eq!(
-            calculate_purge_eras(EraId::new(u64::MAX), 1, u64::MAX, usize::MAX,),
+            calculate_purge_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),
             None
         );
     }
@@ -738,7 +735,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                usize::MAX,
+                u64::MAX,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -753,7 +750,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                usize::MAX,
+                u64::MAX,
             ),
             None,
         );
@@ -763,7 +760,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                usize::MAX,
+                u64::MAX,
             ),
             None
         );
@@ -772,7 +769,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 u64::MAX,
-                usize::MAX,
+                u64::MAX,
             ),
             None,
         );

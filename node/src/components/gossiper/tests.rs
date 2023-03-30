@@ -366,6 +366,7 @@ impl reactor::Reactor for Reactor {
             ActivationPoint::Genesis(
                 Timestamp::from_str("2021-03-31T15:00:00Z").expect("valid timestamp"),
             ),
+            0,
             registry,
         )
         .unwrap();
