@@ -49,6 +49,11 @@ fn calculate_purge_eras(
     current_height: u64,
     batch_size: u64,
 ) -> Option<Vec<Key>> {
+    if batch_size == 0 {
+        // Nothing to do, the batch size is 0.
+        return None;
+    }
+
     let nth_chunk: u64 = match current_height.checked_sub(activation_height) {
         Some(nth_chunk) => nth_chunk,
         None => {
@@ -216,7 +221,7 @@ pub fn execute_finalized_block(
                 Some(keys_to_purge) => {
                     let first_key = keys_to_purge.first().copied();
                     let last_key = keys_to_purge.last().copied();
-                    info!(previous_block_height, %activation_point_block_height, %state_root_hash, first_key=?first_key, last_key=?last_key, "commit_purge: nothing to do");
+                    info!(previous_block_height, %activation_point_block_height, %state_root_hash, first_key=?first_key, last_key=?last_key, "commit_purge: preparing purge config");
                     let purge_config = PurgeConfig::new(state_root_hash, keys_to_purge);
                     match engine_state.commit_purge(CorrelationId::new(), purge_config) {
                         Ok(PurgeResult::RootNotFound) => {
