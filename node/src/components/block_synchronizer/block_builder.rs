@@ -594,11 +594,11 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
-        peers.into_iter().for_each(|peer| {
-            if !(self.is_finished() || self.is_failed()) {
-                self.peer_list.register_peer(peer)
-            }
-        });
+        if !(self.is_finished() || self.is_failed()) {
+            peers
+                .into_iter()
+                .for_each(|peer| self.peer_list.register_peer(peer));
+        }
         self.touch();
     }
 
