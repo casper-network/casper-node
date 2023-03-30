@@ -58,7 +58,7 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let max_stored_value_size = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
-        let purge_batch_size = rng.gen();
+        let purge_batch_size = rng.gen_range(0..100);
 
         CoreConfig {
             era_duration,
