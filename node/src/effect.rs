@@ -79,7 +79,7 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 #[cfg(not(feature = "fast-sync"))]
 use tracing::warn;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -109,10 +109,10 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
-        TimeDiff, Timestamp,
+        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload,
+        BlockSignatures, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
+        FinalizedBlock, Item, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -974,6 +974,26 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    pub(crate) async fn get_activation_point_era_id(self) -> Option<u64>
+    where
+        REv: From<ChainspecLoaderRequest> + From<StorageRequest>,
+    {
+        let CurrentRunInfo {
+            activation_point, ..
+        } = self.get_current_run_info().await;
+        info!(?activation_point, "get_activation_point_era_id");
+        match activation_point {
+            ActivationPoint::EraId(era_id) => self
+                .get_key_block_header_for_era_id_from_storage(era_id)
+                .await
+                .map(|block_header| block_header.height()),
+            ActivationPoint::Genesis(_timestamp) => {
+                // Nothing to do at the genesis
+                None
+            }
+        }
+    }
+
     /// Get a trie by its hash key.
     pub(crate) async fn get_trie(
         self,
@@ -1226,6 +1246,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        activation_point_era_id: Option<u64>,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1237,6 +1258,7 @@ impl<REv> EffectBuilder<REv> {
                 finalized_block,
                 deploys,
                 transfers,
+                activation_point_era_id,
                 responder,
             },
             QueueKind::Regular,
@@ -1256,6 +1278,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        activation_point_block_height: Option<u64>,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1265,6 +1288,7 @@ impl<REv> EffectBuilder<REv> {
                     finalized_block,
                     deploys,
                     transfers,
+                    activation_point_block_height,
                 },
                 QueueKind::Regular,
             )

@@ -38,8 +38,9 @@ use casper_types::ProtocolVersion;
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
-        announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
-        EffectExt, Effects,
+        announcements::ControlAnnouncement,
+        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     fatal,
     types::{ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
@@ -155,6 +156,8 @@ where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
+        + From<ChainspecLoaderRequest>
+        + From<StorageRequest>
         + Send,
 {
     type Event = ContractRuntimeRequest;
@@ -322,6 +325,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
+                activation_point_era_id,
                 responder,
             } => {
                 trace!(
@@ -345,6 +349,7 @@ where
                             deploys,
                             transfers,
                             activation_point,
+                            activation_point_era_id,
                         )
                     })
                     .await;
@@ -357,6 +362,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
+                activation_point_block_height,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
@@ -365,6 +371,7 @@ where
                 let exec_queue = Arc::clone(&self.exec_queue);
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
                 let protocol_version = self.protocol_version;
+                let activation_point = self.activation_point;
                 if self.execution_pre_state.lock().unwrap().next_block_height
                     == finalized_block.height()
                 {
@@ -379,7 +386,8 @@ where
                             finalized_block,
                             deploys,
                             transfers,
-                            self.activation_point,
+                            activation_point,
+                            activation_point_block_height,
                         )
                         .ignore(),
                     )
@@ -570,10 +578,13 @@ impl ContractRuntime {
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
         activation_point: ActivationPoint,
+        activation_point_era_id: Option<u64>,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
+            + From<ChainspecLoaderRequest>
+            + From<StorageRequest>
             + Send,
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
@@ -591,6 +602,7 @@ impl ContractRuntime {
                 deploys,
                 transfers,
                 activation_point,
+                activation_point_era_id,
             )
         })
         .await
@@ -628,9 +640,17 @@ impl ContractRuntime {
             let queue = &mut *exec_queue.lock().expect("mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
+
+        let activation_point_block_height = effect_builder.get_activation_point_era_id().await;
+
         if let Some((finalized_block, deploys, transfers)) = next_block {
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                .enqueue_block_for_execution(
+                    finalized_block,
+                    deploys,
+                    transfers,
+                    activation_point_block_height,
+                )
                 .await
         }
     }

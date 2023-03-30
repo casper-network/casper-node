@@ -45,7 +45,9 @@ use crate::{
     },
     effect::{
         announcements::ControlAnnouncement,
-        requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
+        requests::{
+            BlockValidationRequest, ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest,
+        },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
@@ -1374,7 +1376,10 @@ async fn execute_finalized_block<REv>(
     finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
     finalized_block: FinalizedBlock,
 ) where
-    REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
+    REv: From<StorageRequest>
+        + From<ControlAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>,
 {
     for (deploy_hash, finalized_approvals) in finalized_approvals {
         effect_builder
@@ -1417,8 +1422,15 @@ async fn execute_finalized_block<REv>(
         }
     };
 
+    let activation_point_block_height = effect_builder.get_activation_point_era_id().await;
+
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys, transfers)
+        .enqueue_block_for_execution(
+            finalized_block,
+            deploys,
+            transfers,
+            activation_point_block_height,
+        )
         .await
 }
 

@@ -40,7 +40,9 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
             NetworkAnnouncement, RpcServerAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
+        requests::{
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+        },
         Responder,
     },
     protocol::Message as NodeMessage,
@@ -84,6 +86,8 @@ enum Event {
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    #[from]
+    Chainspec(#[serde(skip_serializing)] ChainspecLoaderRequest),
 }
 
 impl ReactorEvent for Event {
@@ -154,6 +158,7 @@ impl Display for Event {
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
+            Event::Chainspec(request) => write!(formatter, "chainspec request: {}", request),
         }
     }
 }
@@ -184,71 +189,6 @@ impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = Config;
     type Error = Error;
-
-    fn new(
-        config: Self::Config,
-        registry: &Registry,
-        event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let network = NetworkController::create_node(event_queue, rng);
-
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
-        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(
-            &storage_withdir,
-            None,
-            ProtocolVersion::from_parts(1, 0, 0),
-            false,
-            "test",
-        )
-        .unwrap();
-
-        let contract_runtime_config = contract_runtime::Config::default();
-        let contract_runtime = ContractRuntime::new(
-            ProtocolVersion::from_parts(1, 0, 0),
-            storage.root_path(),
-            &contract_runtime_config,
-            WasmConfig::default(),
-            SystemConfig::default(),
-            MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            MAX_STORED_VALUE_SIZE,
-            DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            ActivationPoint::Genesis(
-                Timestamp::from_str("2021-03-31T15:00:00Z").expect("valid timestamp"),
-            ),
-            registry,
-        )
-        .unwrap();
-
-        let deploy_acceptor = DeployAcceptor::new(
-            deploy_acceptor::Config::new(false),
-            &Chainspec::from_resources("local"),
-            registry,
-        )
-        .unwrap();
-        let deploy_gossiper = Gossiper::new_for_partial_items(
-            "deploy_gossiper",
-            config,
-            get_deploy_from_storage,
-            registry,
-        )?;
-
-        let reactor = Reactor {
-            network,
-            storage,
-            deploy_acceptor,
-            deploy_gossiper,
-            contract_runtime,
-            _storage_tempdir: storage_tempdir,
-        };
-
-        let effects = Effects::new();
-
-        Ok((reactor, effects))
-    }
 
     fn dispatch_event(
         &mut self,
@@ -388,7 +328,73 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
             ),
+            Event::Chainspec(_request) => todo!(),
         }
+    }
+
+    fn new(
+        config: Self::Config,
+        registry: &Registry,
+        event_queue: EventQueueHandle<Self::Event>,
+        rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
+        let network = NetworkController::create_node(event_queue, rng);
+
+        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+        let storage = Storage::new(
+            &storage_withdir,
+            None,
+            ProtocolVersion::from_parts(1, 0, 0),
+            false,
+            "test",
+        )
+        .unwrap();
+
+        let contract_runtime_config = contract_runtime::Config::default();
+        let contract_runtime = ContractRuntime::new(
+            ProtocolVersion::from_parts(1, 0, 0),
+            storage.root_path(),
+            &contract_runtime_config,
+            WasmConfig::default(),
+            SystemConfig::default(),
+            MAX_ASSOCIATED_KEYS,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            MAX_STORED_VALUE_SIZE,
+            DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            ActivationPoint::Genesis(
+                Timestamp::from_str("2021-03-31T15:00:00Z").expect("valid timestamp"),
+            ),
+            registry,
+        )
+        .unwrap();
+
+        let deploy_acceptor = DeployAcceptor::new(
+            deploy_acceptor::Config::new(false),
+            &Chainspec::from_resources("local"),
+            registry,
+        )
+        .unwrap();
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config,
+            get_deploy_from_storage,
+            registry,
+        )?;
+
+        let reactor = Reactor {
+            network,
+            storage,
+            deploy_acceptor,
+            deploy_gossiper,
+            contract_runtime,
+            _storage_tempdir: storage_tempdir,
+        };
+
+        let effects = Effects::new();
+
+        Ok((reactor, effects))
     }
 
     fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {

@@ -57,16 +57,45 @@ function _step_01()
 function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
+    await_n_eras '1' 'true' '5.0'
+}
 
-    sleep 60.0
-    await_until_era_n 1
+function assert_present_era_infos() {
+    local NODE_ID=${1}
+    local BLOCK=$(nctl-view-chain-block)
+    local CURRENT_ERA_ID=$(jq -r '.header.era_id' <<< "$BLOCK")
+    local SEQ_END=$(($CURRENT_ERA_ID-1))
+    local STATE_ROOT_HASH=$(jq -r '.header.state_root_hash' <<< "$BLOCK")
+    echo "state root hash $STATE_ROOT_HASH"
+    local total=0
+    for i in $(seq 0 $SEQ_END);
+    do
+        OUTPUT=$($(get_path_to_client) \
+            query-global-state \
+            --node-address "$(get_node_address_rpc "$NODE_ID")" \
+            --state-root-hash "$STATE_ROOT_HASH" \
+            --key era-$i)
+        RESULT="$?"
+        if [ $RESULT -eq 0 ]; then
+            local total=$(($total+1))
+        else
+            echo Unable to query era $i
+            echo $OUTPUT
+            exit 1
+        fi
+    done
+    if [ ! $total -eq $CURRENT_ERA_ID ]; then
+        echo "Expected $CURRENT_ERA_ID era infos but queried $total"
+        exit 1
+    fi
 }
 
 # Step 03: Query auction info
 function _step_03() {
-    log_step_upgrades 3 "querying for historical information"
+    local NODE_ID=${1}
+    log_step_upgrades 3 "querying for latest era infos"
 
-    HISTORIC_AUCTION_INFO="$(get_auction_state_at_block_1)"
+    assert_present_era_infos
 }
 
 # Step 04: Upgrade network from stage.
@@ -79,23 +108,50 @@ function _step_04()
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
 
-    log "... awaiting 2 eras + 1 block"
+    log "... awaiting era"
+
+    # previous protocol had era id of 1, and new verison apparently activates at era 3
     await_n_eras '2' 'true' '5.0'
-    await_n_blocks 1
+    log "... awaiting multiple blocks"
+    await_n_blocks 5
+
+
 }
 
 function _step_05() {
-    log_step_upgrades 5 "querying for historical information after upgrade"
+    log "... asserting"
+    local NODE_ID=${1}
+    local BLOCK=$(nctl-view-chain-block)
 
-    local AUCTION_INFO="$(get_auction_state_at_block_1)"
-
-    if [ "$AUCTION_INFO" != "$HISTORIC_AUCTION_INFO" ]; then
-      log "Error auction info does not match"
-      echo "$AUCTION_INFO"
-      echo "$HISTORIC_AUCTION_INFO"
-      exit 1
+    local CURRENT_ERA_ID=$(jq -r '.header.era_id' <<< "$BLOCK")
+    local SEQ=$(($CURRENT_ERA_ID-1))
+    local STATE_ROOT_HASH=$(jq -r '.header.state_root_hash' <<< "$BLOCK")
+    echo "state root hash $STATE_ROOT_HASH"
+    local total=0
+    set +e
+    for i in $(seq 0 $SEQ);
+    do
+        OUTPUT=$($(get_path_to_client) \
+            query-global-state \
+            --node-address "$(get_node_address_rpc "$NODE_ID")" \
+            --state-root-hash "$STATE_ROOT_HASH" \
+            --key era-$i)
+        RESULT="$?"
+        if [ $RESULT -eq 0 ]; then
+            total=$(($total+1))
+        else
+            echo "Querying for era $i output"
+            echo "$OUTPUT"
+        fi
+    done
+    set -e
+    echo Total era infos found $total for a total of $CURRENT_ERA_ID era
+    if [ ! $total -eq 0 ]; then
+        echo "Should have 0 era infos total..."
+        exit 1
+    else
+        echo "Success!"
     fi
-
 }
 
 # Step 06: Terminate.

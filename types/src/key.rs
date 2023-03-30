@@ -1080,6 +1080,7 @@ mod tests {
             let parsed_key = Key::from_formatted_str(&string).unwrap();
             assert_eq!(parsed_key, *key, "{string} (key = {key:?})");
         }
+        dbg!(Key::EraSummary.to_formatted_string());
     }
 
     #[test]
@@ -1132,7 +1133,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("system-contract-registry-key from string error: "));
-
+        assert!(Key::from_formatted_str(ERA_SUMMARY_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("era-summary-key from string error: "));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
