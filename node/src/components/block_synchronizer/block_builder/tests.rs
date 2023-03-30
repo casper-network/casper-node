@@ -144,7 +144,7 @@ fn register_block_execution_enqueued() {
         Acceptance::NeededIt
     );
     builder.acquisition_state =
-        BlockAcquisitionState::HaveAllDeploys(Box::new(block.clone()), signature_acquisition);
+        BlockAcquisitionState::HaveAllDeploys(Box::new(block), signature_acquisition);
 
     assert_eq!(builder.execution_progress, ExecutionProgress::Idle);
 
@@ -184,10 +184,8 @@ fn register_block_executed() {
         signature_acquisition.apply_signature(sig, &weights),
         Acceptance::NeededIt
     );
-    builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
-        Box::new(block.clone()),
-        signature_acquisition,
-    );
+    builder.acquisition_state =
+        BlockAcquisitionState::HaveStrictFinalitySignatures(Box::new(block), signature_acquisition);
     builder.execution_progress = ExecutionProgress::Started;
 
     builder.register_block_executed();
