@@ -443,6 +443,21 @@ impl SecretKey {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl rand::distributions::Distribution<SecretKey> for rand::distributions::Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {
+        if rng.gen() {
+            let mut bytes = [0u8; SecretKey::ED25519_LENGTH];
+            rng.fill_bytes(&mut bytes[..]);
+            SecretKey::ed25519_from_bytes(bytes).unwrap()
+        } else {
+            let mut bytes = [0u8; SecretKey::SECP256K1_LENGTH];
+            rng.fill_bytes(&mut bytes[..]);
+            SecretKey::secp256k1_from_bytes(bytes).unwrap()
+        }
+    }
+}
+
 impl Debug for SecretKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "SecretKey::{}", self.variant_name())
