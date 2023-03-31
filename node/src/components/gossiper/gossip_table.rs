@@ -10,13 +10,13 @@ use std::{
 use datasize::DataSize;
 #[cfg(test)]
 use fake_instant::FakeClock as Instant;
-use tracing::{debug, error, warn};
+use tracing::{error, trace, warn};
 
 use super::Config;
-use crate::{types::NodeId, utils::DisplayIter};
+use crate::{effect::GossipTarget, types::NodeId, utils::DisplayIter};
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum GossipAction {
+pub(super) enum GossipAction {
     /// This is new data, previously unknown by us, and for which we don't yet hold everything
     /// required to allow us start gossiping it onwards.  We should get the remaining parts from
     /// the provided holder and not gossip the ID onwards yet.
@@ -51,13 +51,15 @@ impl Display for GossipAction {
 /// Used as a return type from API methods to indicate that the caller should continue to gossip the
 /// given data.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ShouldGossip {
+pub(super) struct ShouldGossip {
     /// The number of copies of the gossip message to send.
-    pub(crate) count: usize,
+    pub(super) count: usize,
     /// Peers we should avoid gossiping this data to, since they already hold it.
-    pub(crate) exclude_peers: HashSet<NodeId>,
+    pub(super) exclude_peers: HashSet<NodeId>,
     /// Whether we already held the full data or not.
-    pub(crate) is_already_held: bool,
+    pub(super) is_already_held: bool,
+    /// Who to gossip this to.
+    pub(super) target: GossipTarget,
 }
 
 impl Display for ShouldGossip {
@@ -83,43 +85,53 @@ impl Display for ShouldGossip {
 }
 
 #[derive(DataSize, Debug, Default)]
-pub(crate) struct State {
+pub(super) struct State {
     /// The peers excluding us which hold the data.
     holders: HashSet<NodeId>,
-    /// Whether we hold the full data locally yet or not.
-    held_by_us: bool,
     /// The subset of `holders` we have infected.  Not just a count so we don't attribute the same
     /// peer multiple times.
     infected_by_us: HashSet<NodeId>,
     /// The count of in-flight gossip messages sent by us for this data.
     in_flight_count: usize,
+    /// The relevant target for this data, if known yet.
+    target: Option<GossipTarget>,
+    /// The set of peers we attempted to infect.
+    attempted_to_infect: HashSet<NodeId>,
 }
 
 impl State {
+    /// Whether we hold the full data locally yet or not.
+    fn held_by_us(&self) -> bool {
+        self.target.is_some()
+    }
+
     /// Returns whether we should finish gossiping this data.
-    fn is_finished(&self, infection_target: usize, holders_limit: usize) -> bool {
-        self.infected_by_us.len() >= infection_target || self.holders.len() >= holders_limit
+    fn is_finished(&self, infection_target: usize, attempted_to_infect_limit: usize) -> bool {
+        self.infected_by_us.len() >= infection_target
+            || self.attempted_to_infect.len() >= attempted_to_infect_limit
     }
 
     /// Returns a `GossipAction` derived from the given state.
     fn action(
         &mut self,
         infection_target: usize,
-        holders_limit: usize,
+        attempted_to_infect_limit: usize,
         is_new: bool,
     ) -> GossipAction {
-        if self.is_finished(infection_target, holders_limit) {
+        if self.is_finished(infection_target, attempted_to_infect_limit) {
             return GossipAction::Noop;
         }
 
-        if self.held_by_us {
+        if let Some(target) = self.target {
+            // The item is held by us, decide whether we should gossip it or not.
             let count =
                 infection_target.saturating_sub(self.in_flight_count + self.infected_by_us.len());
             if count > 0 {
                 self.in_flight_count += count;
                 return GossipAction::ShouldGossip(ShouldGossip {
                     count,
-                    exclude_peers: self.holders.clone(),
+                    target,
+                    exclude_peers: self.attempted_to_infect.clone(),
                     is_already_held: !is_new,
                 });
             } else {
@@ -141,7 +153,7 @@ impl State {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct Timeouts<T> {
+pub(super) struct Timeouts<T> {
     values: Vec<(Instant, T)>,
 }
 
@@ -172,7 +184,7 @@ impl<T> Timeouts<T> {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct GossipTable<T> {
+pub(super) struct GossipTable<T> {
     /// Data IDs for which gossiping is still ongoing.
     current: HashMap<T, State>,
     /// Data IDs for which gossiping is complete.
@@ -182,52 +194,53 @@ pub(crate) struct GossipTable<T> {
     /// See `Config::infection_target`.
     infection_target: usize,
     /// Derived from `Config::saturation_limit_percent` - we gossip data while the number of
-    /// holders doesn't exceed `holders_limit`.
-    holders_limit: usize,
+    /// attempts to infect doesn't exceed `attempted_to_infect_limit`.
+    attempted_to_infect_limit: usize,
     /// See `Config::finished_entry_duration`.
     finished_entry_duration: Duration,
 }
 
 impl<T> GossipTable<T> {
     /// Number of items currently being gossiped.
-    pub fn items_current(&self) -> usize {
+    pub(super) fn items_current(&self) -> usize {
         self.current.len()
     }
 
     /// Number of items that are kept but are finished gossiping.
-    pub fn items_finished(&self) -> usize {
+    pub(super) fn items_finished(&self) -> usize {
         self.finished.len()
     }
 }
 
-impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
+impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     /// Returns a new `GossipTable` using the provided configuration.
-    pub(crate) fn new(config: Config) -> Self {
-        let holders_limit = (100 * usize::from(config.infection_target()))
+    pub(super) fn new(config: Config) -> Self {
+        let attempted_to_infect_limit = (100 * usize::from(config.infection_target()))
             / (100 - usize::from(config.saturation_limit_percent()));
         GossipTable {
             current: HashMap::new(),
             finished: HashSet::new(),
             timeouts: Timeouts::new(),
             infection_target: usize::from(config.infection_target()),
-            holders_limit,
+            attempted_to_infect_limit,
             finished_entry_duration: config.finished_entry_duration().into(),
         }
     }
 
     /// We received knowledge about potentially new data with given ID from the given peer.  This
     /// should only be called where we don't already hold everything locally we need to be able to
-    /// gossip it onwards.  If we are able to gossip the data already, call `new_data` instead.
+    /// gossip it onwards.  If we are able to gossip the data already, call `new_complete_data`
+    /// instead.
     ///
     /// Once we have retrieved everything we need in order to begin gossiping onwards, call
-    /// `new_data`.
+    /// `new_complete_data`.
     ///
     /// Returns whether we should gossip it, and a list of peers to exclude.
-    pub(crate) fn new_partial_data(&mut self, data_id: &T, holder: NodeId) -> GossipAction {
+    pub(super) fn new_data_id(&mut self, data_id: &T, holder: NodeId) -> GossipAction {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
-            debug!(item=%data_id, "no further action: item already finished");
+            trace!(item=%data_id, "no further action: item already finished");
             return GossipAction::Noop;
         }
 
@@ -236,7 +249,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         };
 
         if let Some(action) = self.update_current(data_id, update) {
-            debug!(item=%data_id, %action, "item is currently being gossiped");
+            trace!(item=%data_id, %action, "item is currently being gossiped");
             return action;
         }
 
@@ -244,9 +257,13 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         let mut state = State::default();
         update(&mut state);
         let is_new = true;
-        let action = state.action(self.infection_target, self.holders_limit, is_new);
-        let _ = self.current.insert(*data_id, state);
-        debug!(item=%data_id, %action, "gossiping new item should begin");
+        let action = state.action(
+            self.infection_target,
+            self.attempted_to_infect_limit,
+            is_new,
+        );
+        let _ = self.current.insert(data_id.clone(), state);
+        trace!(item=%data_id, %action, "gossiping new item should begin");
         action
     }
 
@@ -255,28 +272,29 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// node, `maybe_holder` should be `None`.
     ///
     /// This should only be called once we hold everything locally we need to be able to gossip it
-    /// onwards.  If we aren't able to gossip this data yet, call `new_partial_data` instead.
+    /// onwards.  If we aren't able to gossip this data yet, call `new_data_id` instead.
     ///
     /// Returns whether we should gossip it, and a list of peers to exclude.
-    pub(crate) fn new_complete_data(
+    pub(super) fn new_complete_data(
         &mut self,
         data_id: &T,
         maybe_holder: Option<NodeId>,
+        target: GossipTarget,
     ) -> GossipAction {
         self.purge_finished();
 
         if self.finished.contains(data_id) {
-            debug!(item=%data_id, "no further action: item already finished");
+            trace!(item=%data_id, "no further action: item already finished");
             return GossipAction::Noop;
         }
 
         let update = |state: &mut State| {
             state.holders.extend(maybe_holder);
-            state.held_by_us = true;
+            state.target = Some(target);
         };
 
         if let Some(action) = self.update_current(data_id, update) {
-            debug!(item=%data_id, %action, "item is currently being gossiped");
+            trace!(item=%data_id, %action, "item is currently being gossiped");
             return action;
         }
 
@@ -284,10 +302,24 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         let mut state = State::default();
         update(&mut state);
         let is_new = true;
-        let action = state.action(self.infection_target, self.holders_limit, is_new);
-        let _ = self.current.insert(*data_id, state);
-        debug!(item=%data_id, %action, "gossiping new item should begin");
+        let action = state.action(
+            self.infection_target,
+            self.attempted_to_infect_limit,
+            is_new,
+        );
+        let _ = self.current.insert(data_id.clone(), state);
+        trace!(item=%data_id, %action, "gossiping new item should begin");
         action
+    }
+
+    pub(super) fn register_infection_attempt<'a>(
+        &'a mut self,
+        item_id: &T,
+        peers: impl Iterator<Item = &'a NodeId>,
+    ) {
+        if let Some(state) = self.current.get_mut(item_id) {
+            state.attempted_to_infect.extend(peers);
+        }
     }
 
     /// We got a response from a peer we gossiped to indicating we infected it (it didn't previously
@@ -296,7 +328,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// If the given `data_id` is not a member of the current entries (those not deemed finished),
     /// then `GossipAction::Noop` will be returned under the assumption that the data has already
     /// finished being gossiped.
-    pub(crate) fn we_infected(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
+    pub(super) fn we_infected(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
         let infected_by_us = true;
         self.infected(data_id, peer, infected_by_us)
     }
@@ -307,17 +339,17 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// If the given `data_id` is not a member of the current entries (those not deemed finished),
     /// then `GossipAction::Noop` will be returned under the assumption that the data has already
     /// finished being gossiped.
-    pub(crate) fn already_infected(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
+    pub(super) fn already_infected(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
         let infected_by_us = false;
         self.infected(data_id, peer, infected_by_us)
     }
 
     fn infected(&mut self, data_id: &T, peer: NodeId, by_us: bool) -> GossipAction {
         let update = |state: &mut State| {
-            if !state.held_by_us {
+            if !state.held_by_us() {
                 warn!(
                     item=%data_id,
-                    %peer, "shouldn't have received a gossip response for partial data"
+                    %peer, "shouldn't have received a gossip response for data we don't hold"
                 );
                 return;
             }
@@ -340,10 +372,10 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// This should be called if, after trying to gossip to a given number of peers, we find that
     /// we've not been able to select enough peers.  Without this reduction, the given gossip item
     /// would never move from `current` to `finished`, and hence would never be purged.
-    pub(crate) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) -> bool {
+    pub(super) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) -> bool {
         let should_finish = if let Some(state) = self.current.get_mut(data_id) {
             state.in_flight_count = state.in_flight_count.saturating_sub(reduce_by);
-            debug!(
+            trace!(
                 item=%data_id,
                 in_flight_count=%state.in_flight_count,
                 "reduced in-flight count for item"
@@ -354,7 +386,7 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         };
 
         if should_finish {
-            debug!(item=%data_id, "finished gossiping since no more peers to gossip to");
+            trace!(item=%data_id, "finished gossiping since no more peers to gossip to");
             return self.force_finish(data_id);
         }
 
@@ -365,16 +397,16 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     ///
     /// If the peer is already counted as a holder, it has previously responded and this method
     /// returns Noop.  Otherwise it has timed out and we return the appropriate action to take.
-    pub(crate) fn check_timeout(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
+    pub(super) fn check_timeout(&mut self, data_id: &T, peer: NodeId) -> GossipAction {
         let update = |state: &mut State| {
             debug_assert!(
-                state.held_by_us,
-                "shouldn't check timeout for a gossip response for partial data"
+                state.held_by_us(),
+                "shouldn't check timeout for a gossip response for data we don't hold"
             );
-            if !state.held_by_us {
+            if !state.held_by_us() {
                 error!(
                     item=%data_id,
-                    %peer, "shouldn't check timeout for a gossip response for partial data"
+                    %peer, "shouldn't check timeout for a gossip response for data we don't hold"
                 );
                 return;
             }
@@ -395,25 +427,29 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     ///
     /// If this causes the list of holders to become empty, and we also don't hold the full data,
     /// then this entry is removed as if we'd never heard of it.
-    pub(crate) fn remove_holder_if_unresponsive(
+    pub(super) fn remove_holder_if_unresponsive(
         &mut self,
         data_id: &T,
         peer: NodeId,
     ) -> GossipAction {
         if let Some(mut state) = self.current.remove(data_id) {
-            if !state.held_by_us {
+            if !state.held_by_us() {
                 let _ = state.holders.remove(&peer);
-                debug!(item=%data_id, %peer, "removed peer as a holder of the item");
+                trace!(item=%data_id, %peer, "removed peer as a holder of the item");
                 if state.holders.is_empty() {
                     // We don't hold the full data, and we don't know any holders - remove the entry
-                    debug!(item=%data_id, "no further action: item now removed as no holders");
+                    trace!(item=%data_id, "no further action: item now removed as no holders");
                     return GossipAction::Noop;
                 }
             }
-            let is_new = !state.held_by_us;
-            let action = state.action(self.infection_target, self.holders_limit, is_new);
-            let _ = self.current.insert(*data_id, state);
-            debug!(item=%data_id, %action, "assuming peer response did not timeout");
+            let is_new = !state.held_by_us();
+            let action = state.action(
+                self.infection_target,
+                self.attempted_to_infect_limit,
+                is_new,
+            );
+            let _ = self.current.insert(data_id.clone(), state);
+            trace!(item=%data_id, %action, "assuming peer response did not timeout");
             return action;
         }
 
@@ -424,12 +460,34 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     /// `finished` and eventually be purged.
     ///
     /// Returns `true` if there was a current entry for this data.
-    pub(crate) fn force_finish(&mut self, data_id: &T) -> bool {
+    pub(super) fn force_finish(&mut self, data_id: &T) -> bool {
         if self.current.remove(data_id).is_some() {
             self.insert_to_finished(data_id);
             return true;
         }
         false
+    }
+
+    /// If the data has not been deemed valid by the component responsible for it (i.e.
+    /// `state.held_by_us` is false) it should not be gossiped onwards by us.  The entry will be
+    /// marked as `finished` and eventually be purged.
+    ///
+    /// Returns `true` if such an entry was found and marked `finished`.
+    pub(super) fn finish_if_not_held_by_us(&mut self, data_id: &T) -> bool {
+        if self
+            .current
+            .get(data_id)
+            .map(|state| !state.held_by_us())
+            .unwrap_or(false)
+        {
+            return self.force_finish(data_id);
+        }
+        false
+    }
+
+    /// Returns `true` if the given ID is in `current` or `finished`.
+    pub(super) fn has_entry(&self, data_id: &T) -> bool {
+        self.current.contains_key(data_id) || self.finished.contains(data_id)
     }
 
     /// Updates the entry under `data_id` in `self.current` and returns the action we should now
@@ -443,20 +501,24 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
     ) -> Option<GossipAction> {
         let mut state = self.current.remove(data_id)?;
         update(&mut state);
-        if state.is_finished(self.infection_target, self.holders_limit) {
+        if state.is_finished(self.infection_target, self.attempted_to_infect_limit) {
             self.insert_to_finished(data_id);
             return Some(GossipAction::AnnounceFinished);
         }
         let is_new = false;
-        let action = state.action(self.infection_target, self.holders_limit, is_new);
-        let _ = self.current.insert(*data_id, state);
+        let action = state.action(
+            self.infection_target,
+            self.attempted_to_infect_limit,
+            is_new,
+        );
+        let _ = self.current.insert(data_id.clone(), state);
         Some(action)
     }
 
     fn insert_to_finished(&mut self, data_id: &T) {
         let timeout = Instant::now() + self.finished_entry_duration;
-        let _ = self.finished.insert(*data_id);
-        self.timeouts.push(timeout, *data_id);
+        let _ = self.finished.insert(data_id.clone());
+        self.timeouts.push(timeout, data_id.clone());
     }
 
     /// Retains only those finished entries which still haven't timed out.
@@ -466,6 +528,11 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         for expired_finished in self.timeouts.purge(&now) {
             let _ = self.finished.remove(&expired_finished);
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.current.is_empty() && self.finished.is_empty()
     }
 }
 
@@ -480,11 +547,11 @@ mod tests {
     use crate::{logging, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
-    const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;
+    const EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT: usize = 15;
 
     fn random_node_ids(rng: &mut TestRng) -> Vec<NodeId> {
         iter::repeat_with(|| NodeId::random(rng))
-            .take(EXPECTED_DEFAULT_HOLDERS_LIMIT + 3)
+            .take(EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT + 3)
             .collect()
     }
 
@@ -503,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn new_partial_data() {
+    fn new_data_id() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
@@ -514,45 +581,48 @@ mod tests {
             EXPECTED_DEFAULT_INFECTION_TARGET,
             gossip_table.infection_target
         );
-        assert_eq!(EXPECTED_DEFAULT_HOLDERS_LIMIT, gossip_table.holders_limit);
+        assert_eq!(
+            EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT,
+            gossip_table.attempted_to_infect_limit
+        );
 
-        // Check new partial data causes `GetRemainder` to be returned.
-        let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Check new data ID causes `GetRemainder` to be returned.
+        let action = gossip_table.new_data_id(&data_id, node_ids[0]);
         let expected = GossipAction::GetRemainder {
             holder: node_ids[0],
         };
         assert_eq!(expected, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);
 
-        // Check same partial data from same source causes `AwaitingRemainder` to be returned.
-        let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Check same data ID from same source causes `AwaitingRemainder` to be returned.
+        let action = gossip_table.new_data_id(&data_id, node_ids[0]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);
 
-        // Check same partial data from different source causes `AwaitingRemainder` to be returned
+        // Check same data ID from different source causes `AwaitingRemainder` to be returned
         // and holders updated.
-        let action = gossip_table.new_partial_data(&data_id, node_ids[1]);
+        let action = gossip_table.new_data_id(&data_id, node_ids[1]);
         assert_eq!(GossipAction::AwaitingRemainder, action);
         check_holders(&node_ids[..2], &gossip_table, &data_id);
 
-        // Finish the gossip by reporting three infections, then check same partial data causes
+        // Finish the gossip by reporting three infections, then check same data ID causes
         // `Noop` to be returned and holders cleared.
-        let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
+        let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
         let limit = 3 + EXPECTED_DEFAULT_INFECTION_TARGET;
         for node_id in &node_ids[3..limit] {
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
-        let action = gossip_table.new_partial_data(&data_id, node_ids[limit]);
+        let action = gossip_table.new_data_id(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..0], &gossip_table, &data_id);
 
-        // Time the finished data out, then check same partial data causes `GetRemainder` to be
+        // Time the finished data out, then check same data ID causes `GetRemainder` to be
         // returned as per a completely new entry.
         let millis = TimeDiff::from_str(DEFAULT_FINISHED_ENTRY_DURATION)
             .unwrap()
             .millis();
         Instant::advance_time(millis + 1);
-        let action = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        let action = gossip_table.new_data_id(&data_id, node_ids[0]);
         let expected = GossipAction::GetRemainder {
             holder: node_ids[0],
         };
@@ -561,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn should_noop_if_we_have_partial_data_and_get_gossip_response() {
+    fn should_noop_if_we_dont_hold_data_and_get_gossip_response() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_id = NodeId::random(&mut rng);
@@ -569,7 +639,7 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        let _ = gossip_table.new_partial_data(&data_id, node_id);
+        let _ = gossip_table.new_data_id(&data_id, node_id);
 
         let action = gossip_table.we_infected(&data_id, node_id);
         assert_eq!(GossipAction::AwaitingRemainder, action);
@@ -588,9 +658,10 @@ mod tests {
         let mut gossip_table = GossipTable::new(Config::default());
 
         // Check new complete data from us causes `ShouldGossip` to be returned.
-        let action = gossip_table.new_complete_data(&data_id, None);
+        let action = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
+            target: GossipTarget::All,
             exclude_peers: HashSet::new(),
             is_already_held: false,
         });
@@ -599,22 +670,26 @@ mod tests {
 
         // Check same complete data from other source causes `Noop` to be returned since we still
         // have all gossip requests in flight.  Check it updates holders.
-        let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[0]));
+        let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);
 
         // Check receiving a gossip response, causes `ShouldGossip` to be returned and holders
         // updated.
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[1]));
         let action = gossip_table.already_infected(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..2].iter().cloned().collect(),
             is_already_held: true,
         });
         assert_eq!(expected, action);
         check_holders(&node_ids[..2], &gossip_table, &data_id);
 
-        let action = gossip_table.new_complete_data(&data_id, Some(node_ids[2]));
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[2]));
+        let action = gossip_table.new_complete_data(&data_id, Some(node_ids[2]), GossipTarget::All);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..3], &gossip_table, &data_id);
 
@@ -622,9 +697,10 @@ mod tests {
         // causes `Noop` to be returned and holders cleared.
         let limit = 3 + EXPECTED_DEFAULT_INFECTION_TARGET;
         for node_id in &node_ids[3..limit] {
+            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
-        let action = gossip_table.new_complete_data(&data_id, None);
+        let action = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..0], &gossip_table, &data_id);
 
@@ -634,10 +710,12 @@ mod tests {
             .unwrap()
             .millis();
         Instant::advance_time(millis + 1);
-        let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
+
+        let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: EXPECTED_DEFAULT_INFECTION_TARGET,
-            exclude_peers: node_ids[..1].iter().cloned().collect(),
+            target: GossipTarget::All,
+            exclude_peers: HashSet::new(), // We didn't infect anyone yet.
             is_already_held: false,
         });
         assert_eq!(expected, action);
@@ -655,9 +733,10 @@ mod tests {
 
         // Add new complete data from us and check two infections doesn't cause us to stop
         // gossiping.
-        let _ = gossip_table.new_complete_data(&data_id, None);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
         for node_id in node_ids.iter().take(limit) {
+            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
             let action = gossip_table.we_infected(&data_id, *node_id);
             assert_eq!(GossipAction::Noop, action);
             assert!(!gossip_table.finished.contains(&data_id));
@@ -665,9 +744,11 @@ mod tests {
 
         // Check recording an infection from an already-recorded infectee doesn't cause us to stop
         // gossiping.
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[limit - 1]));
         let action = gossip_table.we_infected(&data_id, node_ids[limit - 1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..limit].iter().cloned().collect(),
             is_already_held: true,
         });
@@ -675,13 +756,14 @@ mod tests {
         assert!(!gossip_table.finished.contains(&data_id));
 
         // Check third new infection does cause us to stop gossiping.
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[limit]));
         let action = gossip_table.we_infected(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::AnnounceFinished, action);
         assert!(gossip_table.finished.contains(&data_id));
     }
 
     #[test]
-    fn should_terminate_via_incoming_gossip() {
+    fn should_not_terminate_via_incoming_gossip() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
@@ -692,26 +774,31 @@ mod tests {
 
         // Take the two items close to the termination condition of holder count by simulating
         // receiving several incoming gossip requests.  Each should remain unfinished.
-        let limit = EXPECTED_DEFAULT_HOLDERS_LIMIT - 1;
+        let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 1;
         for node_id in node_ids.iter().take(limit) {
-            let _ = gossip_table.new_partial_data(&data_id1, *node_id);
+            let _ = gossip_table.new_data_id(&data_id1, *node_id);
             assert!(!gossip_table.finished.contains(&data_id1));
 
-            let _ = gossip_table.new_complete_data(&data_id2, Some(*node_id));
+            let _ = gossip_table.new_complete_data(&data_id2, Some(*node_id), GossipTarget::All);
             assert!(!gossip_table.finished.contains(&data_id2));
         }
 
         // Simulate receiving a final gossip request for each, which should cause them both to be
         // moved to the `finished` collection.
-        let action =
-            gossip_table.new_partial_data(&data_id1, node_ids[EXPECTED_DEFAULT_HOLDERS_LIMIT]);
-        assert!(gossip_table.finished.contains(&data_id1));
-        assert_eq!(GossipAction::AnnounceFinished, action);
+        let action = gossip_table.new_data_id(
+            &data_id1,
+            node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT],
+        );
+        assert!(!gossip_table.finished.contains(&data_id1));
+        assert_eq!(GossipAction::AwaitingRemainder, action);
 
-        let action = gossip_table
-            .new_complete_data(&data_id2, Some(node_ids[EXPECTED_DEFAULT_HOLDERS_LIMIT]));
-        assert!(gossip_table.finished.contains(&data_id2));
-        assert_eq!(GossipAction::AnnounceFinished, action);
+        let action = gossip_table.new_complete_data(
+            &data_id2,
+            Some(node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT]),
+            GossipTarget::All,
+        );
+        assert!(!gossip_table.finished.contains(&data_id2));
+        assert_eq!(GossipAction::Noop, action);
     }
 
     #[test]
@@ -725,15 +812,23 @@ mod tests {
 
         // Take the item close to the termination condition of holder count by simulating receiving
         // several incoming gossip requests.  It should remain unfinished.
-        let limit = EXPECTED_DEFAULT_HOLDERS_LIMIT - 1;
+        let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 1;
         for node_id in node_ids.iter().take(limit) {
-            let _ = gossip_table.new_complete_data(&data_id, Some(*node_id));
+            let _ = gossip_table.new_complete_data(&data_id, Some(*node_id), GossipTarget::All);
+            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
             assert!(!gossip_table.finished.contains(&data_id));
         }
 
         // Simulate a gossip response timing out, which should cause the item to be moved to the
         // `finished` collection.
-        let action = gossip_table.check_timeout(&data_id, node_ids[EXPECTED_DEFAULT_HOLDERS_LIMIT]);
+        gossip_table.register_infection_attempt(
+            &data_id,
+            std::iter::once(&node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT]),
+        );
+        let action = gossip_table.check_timeout(
+            &data_id,
+            node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT],
+        );
         assert!(gossip_table.finished.contains(&data_id));
         assert_eq!(GossipAction::AnnounceFinished, action);
     }
@@ -748,7 +843,7 @@ mod tests {
 
         // Take the item close to the termination condition of in-flight count reaching 0.  It
         // should remain unfinished.
-        let _ = gossip_table.new_complete_data(&data_id, None);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
         assert!(!gossip_table.reduce_in_flight_count(&data_id, limit));
         assert!(!gossip_table.finished.contains(&data_id));
@@ -774,12 +869,14 @@ mod tests {
 
         // Add new complete data with 14 non-infections and check this doesn't cause us to stop
         // gossiping.
-        let _ = gossip_table.new_complete_data(&data_id, None);
-        let limit = EXPECTED_DEFAULT_HOLDERS_LIMIT - 1;
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
+        let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 1;
         for (index, node_id) in node_ids.iter().enumerate().take(limit) {
+            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
             let action = gossip_table.already_infected(&data_id, *node_id);
             let expected = GossipAction::ShouldGossip(ShouldGossip {
                 count: 1,
+                target: GossipTarget::All,
                 exclude_peers: node_ids[..(index + 1)].iter().cloned().collect(),
                 is_already_held: true,
             });
@@ -788,15 +885,18 @@ mod tests {
 
         // Check recording a non-infection from an already-recorded holder doesn't cause us to stop
         // gossiping.
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[0]));
         let action = gossip_table.already_infected(&data_id, node_ids[0]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..limit].iter().cloned().collect(),
             is_already_held: true,
         });
         assert_eq!(expected, action);
 
         // Check 15th non-infection does cause us to stop gossiping.
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[limit]));
         let action = gossip_table.we_infected(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::AnnounceFinished, action);
     }
@@ -811,22 +911,30 @@ mod tests {
         let mut gossip_table = GossipTable::new(Config::default());
 
         // Add new complete data with 2 infections and 11 non-infections.
-        let _ = gossip_table.new_complete_data(&data_id, None);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let infection_limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
         for node_id in &node_ids[0..infection_limit] {
+            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
 
-        let holders_limit = EXPECTED_DEFAULT_HOLDERS_LIMIT - 2;
-        for node_id in &node_ids[infection_limit..holders_limit] {
+        let attempted_to_infect = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 2;
+        for node_id in &node_ids[infection_limit..attempted_to_infect] {
+            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
             let _ = gossip_table.already_infected(&data_id, *node_id);
         }
 
         // Check adding 12th non-infection doesn't cause us to stop gossiping.
-        let action = gossip_table.already_infected(&data_id, node_ids[holders_limit]);
+        gossip_table
+            .register_infection_attempt(&data_id, std::iter::once(&node_ids[attempted_to_infect]));
+        let action = gossip_table.already_infected(&data_id, node_ids[attempted_to_infect]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
-            exclude_peers: node_ids[..(holders_limit + 1)].iter().cloned().collect(),
+            target: GossipTarget::All,
+            exclude_peers: node_ids[..(attempted_to_infect + 1)]
+                .iter()
+                .cloned()
+                .collect(),
             is_already_held: true,
         });
         assert_eq!(expected, action);
@@ -842,17 +950,20 @@ mod tests {
         let mut gossip_table = GossipTable::new(Config::default());
 
         // Add new complete data and get a response from node 0 only.
-        let _ = gossip_table.new_complete_data(&data_id, None);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let _ = gossip_table.we_infected(&data_id, node_ids[0]);
 
         // check_timeout for node 0 should return Noop, and for node 1 it should represent a timed
         // out response and return ShouldGossip.
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[0]));
         let action = gossip_table.check_timeout(&data_id, node_ids[0]);
         assert_eq!(GossipAction::Noop, action);
 
+        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[1]));
         let action = gossip_table.check_timeout(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
+            target: GossipTarget::All,
             exclude_peers: node_ids[..=1].iter().cloned().collect(),
             is_already_held: true,
         });
@@ -862,16 +973,18 @@ mod tests {
     #[test]
     #[cfg_attr(
         debug_assertions,
-        should_panic(expected = "shouldn't check timeout for a gossip response for partial data")
+        should_panic(
+            expected = "shouldn't check timeout for a gossip response for data we don't hold"
+        )
     )]
-    fn check_timeout_should_panic_for_partial_copy() {
+    fn check_timeout_should_panic_for_data_we_dont_hold() {
         let _ = logging::init();
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
         let mut gossip_table = GossipTable::new(Config::default());
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
         let _ = gossip_table.check_timeout(&data_id, node_ids[0]);
     }
 
@@ -884,9 +997,9 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from nodes 0 and 1.
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[1]);
+        // Add new data ID from nodes 0 and 1.
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
+        let _ = gossip_table.new_data_id(&data_id, node_ids[1]);
 
         // Node 0 should be removed from the holders since it hasn't provided us with the full data,
         // and we should be told to get the remainder from node 1.
@@ -914,9 +1027,9 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from node 0 and record that we have received the full data from it.
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
-        let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]));
+        // Add new data ID from node 0 and record that we have received the full data from it.
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
+        let _ = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
 
         // Node 0 should remain as a holder since we now hold the complete data.
         let action = gossip_table.remove_holder_if_unresponsive(&data_id, node_ids[0]);
@@ -934,8 +1047,8 @@ mod tests {
 
         let mut gossip_table = GossipTable::new(Config::default());
 
-        // Add new partial data from node 0, then forcibly finish gossiping.
-        let _ = gossip_table.new_partial_data(&data_id, node_ids[0]);
+        // Add new data ID from node 0, then forcibly finish gossiping.
+        let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
         assert!(gossip_table.force_finish(&data_id));
         assert!(gossip_table.finished.contains(&data_id));
 
@@ -953,7 +1066,7 @@ mod tests {
         let mut gossip_table = GossipTable::new(Config::default());
 
         // Add new complete data and finish via infection limit.
-        let _ = gossip_table.new_complete_data(&data_id, None);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         for node_id in &node_ids[0..EXPECTED_DEFAULT_INFECTION_TARGET] {
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
@@ -968,7 +1081,7 @@ mod tests {
         assert!(!gossip_table.finished.contains(&data_id));
 
         // Add new complete data and forcibly finish.
-        let _ = gossip_table.new_complete_data(&data_id, None);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         assert!(gossip_table.force_finish(&data_id));
         assert!(gossip_table.finished.contains(&data_id));
 

@@ -28,7 +28,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 4, 8);
+    ProtocolVersion::from_parts(1, 4, 13);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -430,7 +430,7 @@ pub struct ListRpcsResult {
 
 impl DocExample for ListRpcsResult {
     fn doc_example() -> &'static Self {
-        &*LIST_RPCS_RESULT
+        &LIST_RPCS_RESULT
     }
 }
 
@@ -468,7 +468,7 @@ mod doc_example_impls {
 
     impl DocExample for Timestamp {
         fn doc_example() -> &'static Self {
-            &*TIMESTAMP_EXAMPLE
+            &TIMESTAMP_EXAMPLE
         }
     }
 }

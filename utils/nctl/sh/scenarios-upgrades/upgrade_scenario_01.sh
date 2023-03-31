@@ -3,7 +3,7 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1 running at current mainnet commit.
+# 1. Start network from pre-built stage.
 # 2. Execute some deploys to populate global state a little
 # 3. Upgrade all running nodes to v2
 # 4. Assert v2 nodes run & the chain advances (new blocks are generated)
@@ -116,17 +116,29 @@ function _step_05()
 function _step_06()
 {
     local N1_PROTOCOL_VERSION_INITIAL=${1}
+    local TIMEOUT=${2:-'60'}
     local HEIGHT_1
     local HEIGHT_2
     local NODE_ID
 
     log_step_upgrades 6 "asserting node upgrades"
 
-    # Assert no nodes have stopped.
-    if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
-        log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
-        exit 1
-    fi
+    while [ "$TIMEOUT" -ge 0 ]; do
+        # Assert no nodes have stopped.
+        if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
+            if [ "$TIMEOUT" != '0' ]; then
+                log "...waiting for nodes to come up, timeout=$TIMEOUT"
+                sleep 1
+                TIMEOUT=$((TIMEOUT-1))
+            else
+                log "ERROR :: protocol upgrade failure - >= 1 nodes have stopped"
+                exit 1
+            fi
+        else
+            log "... all nodes up! [continuing]"
+            break
+        fi
+    done
 
     # Assert no nodes have stalled.
     HEIGHT_1=$(get_chain_height)
@@ -135,7 +147,7 @@ function _step_06()
     do
         HEIGHT_2=$(get_chain_height "$NODE_ID")
         if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
-            log "ERROR :: protocol upgrade failure - >= 1 nodes have stalled"
+            log "ERROR :: protocol upgrade failure - node $NODE_ID has stalled - current height $HEIGHT_2 is <= starting height $HEIGHT_1"
             exit 1
         fi
     done
@@ -183,8 +195,8 @@ function _step_07()
         fi
     done
 
-    log "... awaiting auction bid acceptance (3 eras + 1 block)"
-    nctl-await-n-eras offset='3' sleep_interval='5.0' timeout='180'
+    log "... awaiting auction bid acceptance (2 eras + 1 block)"
+    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
     await_n_blocks 1
 
     log "... starting nodes"
@@ -225,13 +237,23 @@ function _step_08()
     local NX_PROTOCOL_VERSION
     local NX_STATE_ROOT_HASH
     local RETRY_COUNT
+    local NODE_COUNT
 
     log_step_upgrades 8 "asserting joined nodes are running upgrade"
 
+    NODE_COUNT=$(get_count_of_nodes)
+    # Status refresh.
+    for NODE_ID in $(seq 1 $NODE_COUNT)
+    do
+        source "$NCTL"/sh/node/status.sh node="$NODE_ID"
+    done
+
     # Assert all nodes are live.
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    for NODE_ID in $(seq 1 $NODE_COUNT)
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
+            log "node-$NODE_ID not up"
+            log "NODE_COUNT_UP: $(get_count_of_up_nodes)"
             log "ERROR :: protocol upgrade failure - >= 1 nodes not live"
             exit 1
         fi
@@ -288,6 +310,12 @@ function _step_08()
         else
             log "HASH MATCH :: $NODE_ID  :: HASH = $NX_STATE_ROOT_HASH :: N1 HASH = $N1_STATE_ROOT_HASH"
         fi
+    done
+
+    log "Waiting for all nodes to sync to genesis"
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        await_node_historical_sync_to_genesis "$NODE_ID" "300"
     done
 }
 

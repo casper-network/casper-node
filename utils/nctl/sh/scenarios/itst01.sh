@@ -17,21 +17,23 @@ function main() {
     log "Starting Scenario: itst01"
     log "------------------------------------------------------------"
 
-    log "Node to be stopped: $NODE_ID"
+    local NODE_SHUTDOWN_ID=${1}
+
+    log "Node to be stopped: $NODE_SHUTDOWN_ID"
 
     # 0. Wait for network start up
     do_await_genesis_era_to_complete
     # 1. Allow chain to progress
     do_await_era_change
     # 2. Stop random node
-    do_stop_node "$NODE_ID"
+    do_stop_node "$NODE_SHUTDOWN_ID"
     # 3. Allow chain to progress
     do_await_era_change
     # 4. Get another random running node to compare
     do_get_another_node
     do_read_lfb_hash "$COMPARE_NODE_ID"
     # 5. Restart node from LFB
-    do_start_node "$NODE_ID" "$LFB_HASH"
+    do_start_node "$NODE_SHUTDOWN_ID" "$LFB_HASH"
     # 6-8. Check sync of restarted node,
     # wait 1 era, and then check they are still in sync.
     # This way we can verify that the node is up-to-date with the protocol state

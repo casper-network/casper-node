@@ -1,13 +1,13 @@
 //@ts-nocheck
-import {Error} from "../../../../contract_as/assembly/error";
-import {Key} from "../../../../contract_as/assembly/key";
+import { Error } from "../../../../contract_as/assembly/error";
+import { Key } from "../../../../contract_as/assembly/key";
 import { newDictionary, dictionaryGet, dictionaryPut, dictionaryRead } from "../../../../contract_as/assembly/dictionary";
-import {CLValue} from "../../../../contract_as/assembly/clvalue";
-import {checkTypedArrayEqual} from "../../../../contract_as/assembly/utils";
+import { CLValue } from "../../../../contract_as/assembly/clvalue";
+import { checkArraysEqual } from "../../../../contract_as/assembly/utils";
 
 const DICTIONARY_NAME = "dictionary-name";
 const DICTIONARY_ITEM_KEY = "dictionary-item-key";
-const DICTIONARY_VALUE= "dictionary-value";
+const DICTIONARY_VALUE = "dictionary-value";
 
 export function call(): void {
     let dictionary_seed_uref = newDictionary(DICTIONARY_NAME);
@@ -24,7 +24,7 @@ export function call(): void {
         Error.fromUserError(15).revert()
         return
     }
-    if (!checkTypedArrayEqual(valueViaDictionaryRead, valueViaDictionaryGet)) {
+    if (!checkArraysEqual<u8, StaticArray<u8>>(valueViaDictionaryRead, valueViaDictionaryGet)) {
         Error.fromUserError(18).revert()
         return
     }

@@ -5,8 +5,8 @@ use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 /// termination signal.
 const SIGNAL_OFFSET: u8 = 128;
 
-/// Exit codes which should be used by the casper-node binary, and provided by the initializer
-/// reactor to the binary.
+/// Exit codes which should be used by the casper-node binary, and provided by the reactor to the
+/// binary.
 ///
 /// Note that a panic will result in the Rust process producing an exit code of 101.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
@@ -23,6 +23,8 @@ pub enum ExitCode {
     /// It is no longer used, but we keep it here to avoid it being reassigned to other features.
     #[doc(hidden)]
     DowngradeVersion = 102,
+    /// The process should exit with `103`.  The user requested a node shut down without restart.
+    CleanExitDontRestart = 103,
     /// The exit code Rust uses by default when interrupted via an `INT` signal.
     SigInt = SIGNAL_OFFSET + SIGINT as u8,
     /// The exit code Rust uses by default when interrupted via a `QUIT` signal.

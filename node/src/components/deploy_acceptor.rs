@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 mod event;
 mod metrics;
 mod tests;
@@ -8,7 +10,7 @@ use datasize::DataSize;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::{
@@ -27,16 +29,22 @@ use casper_types::{
 use crate::{
     components::Component,
     effect::{
-        announcements::DeployAcceptorAnnouncement,
+        announcements::{DeployAcceptorAnnouncement, FatalAnnouncement},
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure},
+    fatal,
+    types::{
+        chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure,
+        FinalizedApprovals,
+    },
     utils::Source,
     NodeRng,
 };
 
 pub(crate) use event::{Event, EventMetadata};
+
+const COMPONENT_NAME: &str = "deploy_acceptor";
 
 const ARG_TARGET: &str = "target";
 
@@ -122,6 +130,7 @@ pub(crate) trait ReactorEventT:
     + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<FatalAnnouncement>
     + Send
 {
 }
@@ -131,6 +140,7 @@ impl<REv> ReactorEventT for REv where
         + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<FatalAnnouncement>
         + Send
 {
 }
@@ -140,12 +150,44 @@ impl<REv> ReactorEventT for REv where
 ///
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
-#[derive(Debug)]
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     style Z fill:#ff8a8a,stroke:#333,stroke-width:4px
+///     style ZZ fill:#8aff94,stroke:#333,stroke-width:4px
+///     title[Deploy Acceptance process]
+///     title---Start
+///     style title fill:#FFF,stroke:#FFF
+///     linkStyle 0 stroke-width:0;
+///
+///     Start --> A{has valid size?}
+///     A -->|Yes| B{"is compliant with config?<br/>(size, chain name, ttl, etc.)"}
+///     G -->|Yes| ZZ[Accept]
+///     B -->|Yes| C{is from<br/>client?}
+///     C -->|Yes| CLIENT{has expired?}
+///     B -->|No| Z[Reject]
+///     C -->|No| E
+///     CLIENT -->|Yes| Z
+///     CLIENT -->|No| D{"is client<br/>account correct?<br/>(authorization, weight,<br/>balance, etc.)"}
+///     D -->|Yes| E{"is payment and<br/>session logic correct?<br/>(module bytes,<br/>payment amount)"}
+///     E -->|No| Z
+///     E -->|Yes| F{is contract valid?}
+///     F -->|Yes| G{is deploy<br/>cryptographically<br/>valid?}
+///     F -->|No| Z
+///     D -->|No| Z
+///     G -->|No| Z
+///     ZZ --> End
+///     Z --> End
+/// ```
+#[derive(Debug, DataSize)]
 pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
     max_associated_keys: u32,
+    #[data_size(skip)]
     metrics: metrics::Metrics,
 }
 
@@ -174,6 +216,7 @@ impl DeployAcceptor {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
+        debug!(%source, %deploy, "checking acceptance");
         let verification_start_timestamp = Timestamp::now();
         let acceptable_result = deploy.is_config_compliant(
             &self.chain_name,
@@ -185,7 +228,7 @@ impl DeployAcceptor {
             debug!(%deploy, %error, "deploy is incorrectly configured");
             return self.handle_invalid_deploy_result(
                 effect_builder,
-                EventMetadata::new(deploy, source, maybe_responder),
+                Box::new(EventMetadata::new(deploy, source, maybe_responder)),
                 Error::InvalidDeployConfiguration(error),
                 verification_start_timestamp,
             );
@@ -199,7 +242,7 @@ impl DeployAcceptor {
                 debug!(%deploy, "deploy has expired");
                 return self.handle_invalid_deploy_result(
                     effect_builder,
-                    EventMetadata::new(deploy, source, maybe_responder),
+                    Box::new(EventMetadata::new(deploy, source, maybe_responder)),
                     Error::ExpiredDeploy {
                         deploy_expiry_timestamp: time_of_expiry,
                         current_node_timestamp,
@@ -210,25 +253,25 @@ impl DeployAcceptor {
         }
 
         effect_builder
-            .get_highest_block_header_from_storage()
+            .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {
-                event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                maybe_block_header: Box::new(maybe_block_header),
+                event_metadata: Box::new(EventMetadata::new(deploy, source, maybe_responder)),
+                maybe_block_header: maybe_block_header.map(Box::new),
                 verification_start_timestamp,
             })
     }
 
-    fn handle_get_block_result<REv: ReactorEventT>(
+    fn handle_get_block_header_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
-        maybe_block: Option<BlockHeader>,
+        event_metadata: Box<EventMetadata>,
+        maybe_block_header: Option<Box<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
 
-        let block = match maybe_block {
-            Some(block) => block,
+        let block_header = match maybe_block_header {
+            Some(block_header) => block_header,
             None => {
                 // this should be unreachable per current design of the system
                 if let Some(responder) = event_metadata.maybe_responder {
@@ -238,7 +281,7 @@ impl DeployAcceptor {
             }
         };
 
-        let prestate_hash = *block.state_root_hash();
+        let prestate_hash = *block_header.state_root_hash();
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
@@ -264,7 +307,7 @@ impl DeployAcceptor {
     fn handle_get_account_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         maybe_account: Option<Account>,
         verification_start_timestamp: Timestamp,
@@ -336,7 +379,7 @@ impl DeployAcceptor {
     fn handle_get_balance_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         maybe_balance_value: Option<U512>,
         account_hash: AccountHash,
@@ -346,8 +389,11 @@ impl DeployAcceptor {
             // This would only happen due to programmer error and should crash the node.
             // Balance checks for deploys received by from a peer will cause the network
             // to stall.
-            // TODO: Change this to a fatal!
-            panic!("Balance checks for deploys received from peers should never occur.")
+            return fatal!(
+                effect_builder,
+                "Balance checks for deploys received from peers should never occur."
+            )
+            .ignore();
         }
         match maybe_balance_value {
             None => {
@@ -392,7 +438,7 @@ impl DeployAcceptor {
     fn verify_payment_logic<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -502,7 +548,7 @@ impl DeployAcceptor {
     fn verify_session_logic<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -604,12 +650,12 @@ impl DeployAcceptor {
     fn handle_get_contract_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         is_payment: bool,
         entry_point: String,
         contract_hash: ContractHash,
-        maybe_contract: Option<Contract>,
+        maybe_contract: Option<Box<Contract>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Some(contract) = maybe_contract {
@@ -664,12 +710,12 @@ impl DeployAcceptor {
     fn handle_get_contract_package_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<ContractPackage>,
+        maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         match maybe_contract_package {
@@ -754,39 +800,10 @@ impl DeployAcceptor {
         }
     }
 
-    fn handle_put_to_storage<REv: ReactorEventT>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
-        is_new: bool,
-        verification_start_timestamp: Timestamp,
-    ) -> Effects<Event> {
-        let EventMetadata {
-            deploy,
-            source,
-            maybe_responder,
-        } = event_metadata;
-        self.metrics.observe_accepted(verification_start_timestamp);
-        let mut effects = Effects::new();
-        if is_new {
-            effects.extend(
-                effect_builder
-                    .announce_new_deploy_accepted(deploy, source)
-                    .ignore(),
-            );
-        }
-
-        // success
-        if let Some(responder) = maybe_responder {
-            effects.extend(responder.respond(Ok(())).ignore());
-        }
-        effects
-    }
-
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Err(deploy_configuration_failure) = event_metadata.deploy.is_valid() {
@@ -802,7 +819,7 @@ impl DeployAcceptor {
         }
 
         effect_builder
-            .put_deploy_to_storage(Box::new((*event_metadata.deploy).clone()))
+            .put_deploy_to_storage(event_metadata.deploy.clone())
             .event(move |is_new| Event::PutToStorageResult {
                 event_metadata,
                 is_new,
@@ -813,7 +830,7 @@ impl DeployAcceptor {
     fn handle_invalid_deploy_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         error: Error,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
@@ -821,7 +838,7 @@ impl DeployAcceptor {
             deploy,
             source,
             maybe_responder,
-        } = event_metadata;
+        } = *event_metadata;
         self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
@@ -836,11 +853,80 @@ impl DeployAcceptor {
         );
         effects
     }
+
+    fn handle_put_to_storage<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        let mut effects = Effects::new();
+        if is_new {
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(event_metadata.deploy, event_metadata.source)
+                    .ignore(),
+            );
+        } else if matches!(event_metadata.source, Source::Peer(_)) {
+            // If `is_new` is `false`, the deploy was previously stored.  If the source is `Peer`,
+            // we got here as a result of a Fetch<Deploy>, and the incoming deploy could have a
+            // different set of approvals to the one already stored.  We can treat the incoming
+            // approvals as finalized and now try and store them.  If storing them returns `true`,
+            // (indicating the approvals are different to any previously stored) we can announce a
+            // new deploy accepted, causing the fetcher to be notified.
+            return effect_builder
+                .store_finalized_approvals(
+                    *event_metadata.deploy.hash(),
+                    FinalizedApprovals::new(event_metadata.deploy.approvals().clone()),
+                )
+                .event(move |is_new| Event::StoredFinalizedApprovals {
+                    event_metadata,
+                    is_new,
+                    verification_start_timestamp,
+                });
+        }
+        self.metrics.observe_accepted(verification_start_timestamp);
+
+        // success
+        if let Some(responder) = event_metadata.maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+        effects
+    }
+
+    fn handle_stored_finalized_approvals<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        is_new: bool,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        self.metrics.observe_accepted(verification_start_timestamp);
+        let EventMetadata {
+            deploy,
+            source,
+            maybe_responder,
+        } = *event_metadata;
+        let mut effects = Effects::new();
+        if is_new {
+            effects.extend(
+                effect_builder
+                    .announce_new_deploy_accepted(deploy, source)
+                    .ignore(),
+            );
+        }
+
+        // success
+        if let Some(responder) = maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+        effects
+    }
 }
 
 impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
-    type ConstructionError = prometheus::Error;
 
     fn handle_event(
         &mut self,
@@ -848,7 +934,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        debug!(?event, "handling event");
+        trace!(?event, "DeployAcceptor: handling event");
         match event {
             Event::Accept {
                 deploy,
@@ -859,10 +945,10 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 event_metadata,
                 maybe_block_header,
                 verification_start_timestamp,
-            } => self.handle_get_block_result(
+            } => self.handle_get_block_header_result(
                 effect_builder,
                 event_metadata,
-                *maybe_block_header,
+                maybe_block_header,
                 verification_start_timestamp,
             ),
             Event::GetAccountResult {
@@ -944,6 +1030,20 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 is_new,
                 verification_start_timestamp,
             ),
+            Event::StoredFinalizedApprovals {
+                event_metadata,
+                is_new,
+                verification_start_timestamp,
+            } => self.handle_stored_finalized_approvals(
+                effect_builder,
+                event_metadata,
+                is_new,
+                verification_start_timestamp,
+            ),
         }
+    }
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
     }
 }

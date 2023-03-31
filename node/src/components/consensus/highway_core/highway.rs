@@ -17,18 +17,12 @@ use crate::components::consensus::{
     consensus_protocol::BlockContext,
     highway_core::{
         active_validator::{ActiveValidator, Effect},
-        evidence::EvidenceError,
-        state::{Fault, State, UnitError, Weight},
-        validators::{Validator, Validators},
+        endorsement::{Endorsement, EndorsementError},
+        evidence::{Evidence, EvidenceError},
+        state::{Fault, Observation, State, UnitError},
     },
     traits::Context,
-};
-
-use super::{
-    endorsement::{Endorsement, EndorsementError},
-    evidence::Evidence,
-    state::Observation,
-    validators::ValidatorIndex,
+    utils::{Validator, ValidatorIndex, Validators, Weight},
 };
 
 /// If a lot of rounds were skipped between two blocks, log at most this many.
@@ -48,7 +42,7 @@ pub(crate) enum VertexError {
 }
 
 /// An error due to an invalid ping.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub(crate) enum PingError {
     #[error("The creator is not a validator.")]
     Creator,
@@ -138,7 +132,7 @@ pub(crate) enum GetDepOutcome<C: Context> {
     Evidence(C::ValidatorId),
 }
 
-/// A passive instance of the Highway protocol, containing its local state.
+/// An instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
@@ -228,10 +222,10 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
-    /// Switches the active validator to a new round exponent.
-    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+    /// Switches the active validator to a new round length.
+    pub(crate) fn set_round_len(&mut self, new_round_len: TimeDiff) {
         if let Some(ref mut av) = self.active_validator {
-            av.set_round_exp(new_round_exp);
+            av.set_round_len(new_round_len);
         }
     }
 
@@ -781,9 +775,9 @@ pub(crate) mod tests {
             },
             highway_testing::TEST_INSTANCE_ID,
             state::{tests::*, Panorama, State},
-            validators::Validators,
         },
         traits::ValidatorSecret,
+        utils::Validators,
     };
 
     pub(crate) fn test_validators() -> Validators<u32> {

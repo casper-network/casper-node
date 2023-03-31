@@ -53,3 +53,8 @@ EOM
 ```
 . $HOME/.bashrc
 ```
+## Compile it
+
+```
+nctl-compile
+```

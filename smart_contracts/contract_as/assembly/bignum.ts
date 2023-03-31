@@ -109,12 +109,12 @@ export class U512 {
         }
 
         // Decodes hex string into an array of bytes
-        let bytes = new Uint8Array(this.width);
+        let bytes = new StaticArray<u8>(this.width);
 
         // Convert ascii codes into values
         let i = 0;
         while (digits > 0 && i < bytes.length) {
-            bytes[i] = HEX_DIGITS[value.charCodeAt(--digits)];
+            bytes[i] = <u8>HEX_DIGITS[value.charCodeAt(--digits)];
 
             if (digits > 0) {
                 bytes[i] |= <u8>HEX_DIGITS[value.charCodeAt(--digits)] << 4;
@@ -494,9 +494,10 @@ export class U512 {
      * Sets the value of this U512 to the value represented by `bytes` when treated as a
      * little-endian representation of a number.
      */
-    setBytesLE(bytes: Uint8Array): void {
+    setBytesLE(bytes: StaticArray<u8>): void {
+        let ptr = changetype<usize>(bytes);
         for (let i = 0; i < this.pn.length; i++) {
-            let num = load<u32>(bytes.dataStart + (i * 4));
+            let num = load<u32>(ptr + (i * 4));
             this.pn[i] = num;
         }
     }
@@ -548,7 +549,7 @@ export class U512 {
      * @returns A [[Result]] that contains the deserialized U512 if the deserialization was
      *    successful, or an error otherwise.
      */
-    static fromBytes(bytes: Uint8Array): Result<U512> {
+    static fromBytes(bytes: StaticArray<u8>): Result<U512> {
         if (bytes.length < 1) {
             return new Result<U512>(null, Error.EarlyEndOfStream, 0);
         }
@@ -562,7 +563,7 @@ export class U512 {
         let res = new U512();
 
         // Creates a buffer so individual bytes can be placed there
-        let buffer = new Uint8Array(res.width);
+        let buffer = new StaticArray<u8>(res.width);
         for (let i = 0; i < lengthPrefix; i++) {
             buffer[i] = bytes[i + 1];
         }

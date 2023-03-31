@@ -18,16 +18,17 @@ use crate::{
 
 #[derive(Debug, From)]
 pub(crate) enum Event {
+    Initialize,
     #[from]
     RpcRequest(RpcRequest),
     GetBlockResult {
         maybe_id: Option<BlockIdentifier>,
-        result: Box<Option<BlockWithMetadata>>,
-        main_responder: Responder<Option<BlockWithMetadata>>,
+        result: Option<Box<BlockWithMetadata>>,
+        main_responder: Responder<Option<Box<BlockWithMetadata>>>,
     },
     GetBlockTransfersResult {
         block_hash: BlockHash,
-        result: Box<Option<Vec<Transfer>>>,
+        result: Option<Vec<Transfer>>,
         main_responder: Responder<Option<Vec<Transfer>>>,
     },
     QueryGlobalStateResult {
@@ -44,8 +45,8 @@ pub(crate) enum Event {
     },
     GetDeployResult {
         hash: DeployHash,
-        result: Box<Option<(Deploy, DeployMetadataExt)>>,
-        main_responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
+        result: Option<Box<(Deploy, DeployMetadataExt)>>,
+        main_responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
     },
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,
@@ -60,6 +61,7 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Event::Initialize => write!(formatter, "initialize"),
             Event::RpcRequest(request) => write!(formatter, "{}", request),
             Event::GetBlockResult {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),

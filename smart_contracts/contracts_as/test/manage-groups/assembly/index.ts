@@ -47,7 +47,7 @@ export function create_group(): void {
   }
 
   let newURefs = CL.createContractUserGroup(
-    <Uint8Array>packageHashKey.hash,
+    <StaticArray<u8>>(packageHashKey.hash),
     group_name,
     total_urefs as u8,
     existingURefs,
@@ -62,7 +62,7 @@ export function remove_group(): void {
   }
   let groupName: String = fromBytesString(CL.getNamedArg(GROUP_NAME_ARG)).unwrap();
   CL.removeContractUserGroup(
-    <Uint8Array>packageHashKey.hash,
+    <StaticArray<u8>>packageHashKey.hash,
     groupName);
 }
 
@@ -83,7 +83,7 @@ export function extend_group_urefs(): void {
   // Creates 1 additional uref inside group
   for (var i = <u64>0; i < newURefsCount; i++) {
     let _newURef = CL.extendContractUserGroupURefs(
-      <Uint8Array>packageHashKey.hash,
+      <StaticArray<u8>>packageHashKey.hash,
       groupName
     );
   }
@@ -97,7 +97,9 @@ export function remove_group_urefs(): void {
   }
   let groupName: String = fromBytesString(CL.getNamedArg(GROUP_NAME_ARG)).unwrap();
 
-  let ordinals = fromBytesArray(CL.getNamedArg(GROUP_NAME_ARG), fromBytesU64);
+  let decodeOrdinal = function (bytes: StaticArray<u8>): Result<u64> { return fromBytesU64(bytes); }
+
+  let ordinals = fromBytesArray(CL.getNamedArg(GROUP_NAME_ARG), decodeOrdinal);
 
   let contractPackageBytes = packageHashKey.read();
   if (contractPackageBytes === null) {
@@ -108,13 +110,13 @@ export function remove_group_urefs(): void {
   // Finds last uref in the groups in the contract package bytes.
   // ContractPackage serialization structure is defined in `types/src/contracts.rs`
   let urefBytes = contractPackageBytes.slice(contractPackageBytes.length - 1 - 33, contractPackageBytes.length - 1);
-  let uref = URef.fromBytes(urefBytes).unwrap();
+  let uref = URef.fromBytes(StaticArray.fromArray(urefBytes)).unwrap();
 
   let urefs = new Array<URef>();
   urefs.push(uref);
 
   CL.removeContractUserGroupURefs(
-    <Uint8Array>packageHashKey.hash,
+    <StaticArray<u8>>(packageHashKey.hash),
     groupName,
     urefs,
   );
@@ -185,10 +187,10 @@ function createEntryPoints1(): CL.EntryPoints {
   return entryPoints;
 }
 
-function installVersion1(package_hash: Uint8Array): void {
+function installVersion1(packageHash: StaticArray<u8>): void {
   let contractNamedKeys = new Array<Pair<String, Key>>();
   let entryPoints = createEntryPoints1();
-  const result = CL.addContractVersion(package_hash, entryPoints, contractNamedKeys);
+  const result = CL.addContractVersion(packageHash, entryPoints, contractNamedKeys);
 }
 
 export function call(): void {

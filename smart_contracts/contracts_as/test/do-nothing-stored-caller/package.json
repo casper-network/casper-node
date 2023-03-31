@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -o ../../../../target_as/do_nothing_stored_caller.wasm   --disable bulk-memory --optimize --use abort=",
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/do_nothing_stored_caller.wasm --disable bulk-memory --optimize --optimizeLevel 3 --converge --noAssert --use abort=",
     "asbuild": "npm run asbuild:optimized"
   },
   "devDependencies": {

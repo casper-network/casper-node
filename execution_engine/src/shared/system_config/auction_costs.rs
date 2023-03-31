@@ -14,6 +14,8 @@ pub const DEFAULT_ADD_BID_COST: u32 = 10_000;
 pub const DEFAULT_WITHDRAW_BID_COST: u32 = 10_000;
 /// Default cost of the `delegate` auction entry point.
 pub const DEFAULT_DELEGATE_COST: u32 = 10_000;
+/// Default cost of the `redelegate` auction entry point.
+pub const DEFAULT_REDELEGATE_COST: u32 = 10_000;
 /// Default cost of the `undelegate` auction entry point.
 pub const DEFAULT_UNDELEGATE_COST: u32 = 10_000;
 /// Default cost of the `run_auction` auction entry point.
@@ -60,6 +62,8 @@ pub struct AuctionCosts {
     pub read_era_id: u32,
     /// Cost of calling the `activate_bid` entry point.
     pub activate_bid: u32,
+    /// Cost of calling the `redelegate` entry point.
+    pub redelegate: u32,
 }
 
 impl Default for AuctionCosts {
@@ -78,6 +82,7 @@ impl Default for AuctionCosts {
             withdraw_validator_reward: DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
             read_era_id: DEFAULT_READ_ERA_ID_COST,
             activate_bid: DEFAULT_ACTIVATE_BID_COST,
+            redelegate: DEFAULT_REDELEGATE_COST,
         }
     }
 }
@@ -86,37 +91,73 @@ impl ToBytes for AuctionCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
-        ret.append(&mut self.get_era_validators.to_bytes()?);
-        ret.append(&mut self.read_seigniorage_recipients.to_bytes()?);
-        ret.append(&mut self.add_bid.to_bytes()?);
-        ret.append(&mut self.withdraw_bid.to_bytes()?);
-        ret.append(&mut self.delegate.to_bytes()?);
-        ret.append(&mut self.undelegate.to_bytes()?);
-        ret.append(&mut self.run_auction.to_bytes()?);
-        ret.append(&mut self.slash.to_bytes()?);
-        ret.append(&mut self.distribute.to_bytes()?);
-        ret.append(&mut self.withdraw_delegator_reward.to_bytes()?);
-        ret.append(&mut self.withdraw_validator_reward.to_bytes()?);
-        ret.append(&mut self.read_era_id.to_bytes()?);
-        ret.append(&mut self.activate_bid.to_bytes()?);
+        let Self {
+            get_era_validators,
+            read_seigniorage_recipients,
+            add_bid,
+            withdraw_bid,
+            delegate,
+            undelegate,
+            run_auction,
+            slash,
+            distribute,
+            withdraw_delegator_reward,
+            withdraw_validator_reward,
+            read_era_id,
+            activate_bid,
+            redelegate,
+        } = self;
+
+        ret.append(&mut get_era_validators.to_bytes()?);
+        ret.append(&mut read_seigniorage_recipients.to_bytes()?);
+        ret.append(&mut add_bid.to_bytes()?);
+        ret.append(&mut withdraw_bid.to_bytes()?);
+        ret.append(&mut delegate.to_bytes()?);
+        ret.append(&mut undelegate.to_bytes()?);
+        ret.append(&mut run_auction.to_bytes()?);
+        ret.append(&mut slash.to_bytes()?);
+        ret.append(&mut distribute.to_bytes()?);
+        ret.append(&mut withdraw_delegator_reward.to_bytes()?);
+        ret.append(&mut withdraw_validator_reward.to_bytes()?);
+        ret.append(&mut read_era_id.to_bytes()?);
+        ret.append(&mut activate_bid.to_bytes()?);
+        ret.append(&mut redelegate.to_bytes()?);
 
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        self.get_era_validators.serialized_length()
-            + self.read_seigniorage_recipients.serialized_length()
-            + self.add_bid.serialized_length()
-            + self.withdraw_bid.serialized_length()
-            + self.delegate.serialized_length()
-            + self.undelegate.serialized_length()
-            + self.run_auction.serialized_length()
-            + self.slash.serialized_length()
-            + self.distribute.serialized_length()
-            + self.withdraw_delegator_reward.serialized_length()
-            + self.withdraw_validator_reward.serialized_length()
-            + self.read_era_id.serialized_length()
-            + self.activate_bid.serialized_length()
+        let Self {
+            get_era_validators,
+            read_seigniorage_recipients,
+            add_bid,
+            withdraw_bid,
+            delegate,
+            undelegate,
+            run_auction,
+            slash,
+            distribute,
+            withdraw_delegator_reward,
+            withdraw_validator_reward,
+            read_era_id,
+            activate_bid,
+            redelegate,
+        } = self;
+
+        get_era_validators.serialized_length()
+            + read_seigniorage_recipients.serialized_length()
+            + add_bid.serialized_length()
+            + withdraw_bid.serialized_length()
+            + delegate.serialized_length()
+            + undelegate.serialized_length()
+            + run_auction.serialized_length()
+            + slash.serialized_length()
+            + distribute.serialized_length()
+            + withdraw_delegator_reward.serialized_length()
+            + withdraw_validator_reward.serialized_length()
+            + read_era_id.serialized_length()
+            + activate_bid.serialized_length()
+            + redelegate.serialized_length()
     }
 }
 
@@ -135,6 +176,7 @@ impl FromBytes for AuctionCosts {
         let (withdraw_validator_reward, rem) = FromBytes::from_bytes(rem)?;
         let (read_era_id, rem) = FromBytes::from_bytes(rem)?;
         let (activate_bid, rem) = FromBytes::from_bytes(rem)?;
+        let (redelegate, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Self {
                 get_era_validators,
@@ -150,6 +192,7 @@ impl FromBytes for AuctionCosts {
                 withdraw_validator_reward,
                 read_era_id,
                 activate_bid,
+                redelegate,
             },
             rem,
         ))
@@ -172,6 +215,7 @@ impl Distribution<AuctionCosts> for Standard {
             withdraw_validator_reward: rng.gen(),
             read_era_id: rng.gen(),
             activate_bid: rng.gen(),
+            redelegate: rng.gen(),
         }
     }
 }
@@ -198,6 +242,7 @@ pub mod gens {
             withdraw_validator_reward in num::u32::ANY,
             read_era_id in num::u32::ANY,
             activate_bid in num::u32::ANY,
+            redelegate in num::u32::ANY,
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,
@@ -213,6 +258,7 @@ pub mod gens {
                 withdraw_validator_reward,
                 read_era_id,
                 activate_bid,
+                redelegate,
             }
         }
     }

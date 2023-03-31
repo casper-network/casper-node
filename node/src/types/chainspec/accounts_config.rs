@@ -14,7 +14,7 @@ use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    file_utils,
+    file_utils, PublicKey,
 };
 
 use super::error::ChainspecAccountsLoadError;
@@ -34,6 +34,7 @@ where
     Ok(vec)
 }
 
+/// Configuration values associated with accounts.toml
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
     #[serde(deserialize_with = "sorted_vec_deserializer")]
@@ -43,6 +44,7 @@ pub struct AccountsConfig {
 }
 
 impl AccountsConfig {
+    /// Creates a new `AccountsConfig`.
     pub fn new(accounts: Vec<AccountConfig>, delegators: Vec<DelegatorConfig>) -> Self {
         Self {
             accounts,
@@ -50,12 +52,28 @@ impl AccountsConfig {
         }
     }
 
+    /// Accounts.
     pub fn accounts(&self) -> &[AccountConfig] {
         &self.accounts
     }
 
+    /// Delegators.
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
+    }
+
+    /// Account.
+    pub fn account(&self, public_key: &PublicKey) -> Option<&AccountConfig> {
+        self.accounts
+            .iter()
+            .find(|account| &account.public_key == public_key)
+    }
+
+    pub(crate) fn is_genesis_validator(&self, public_key: &PublicKey) -> bool {
+        match self.account(public_key) {
+            None => false,
+            Some(account_config) => account_config.is_genesis_validator(),
+        }
     }
 
     /// Returns `Self` and the raw bytes of the file.

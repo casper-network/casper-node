@@ -588,7 +588,7 @@ pub(crate) fn key_fingerprint(ec_key: EcKey<Public>) -> Result<KeyFingerprint, V
             &mut big_num_context,
         )
         .map_err(ValidationError::PublicKeyEncodingFailed)?;
-    let key_fingerprint = KeyFingerprint(Sha512::new(&buf));
+    let key_fingerprint = KeyFingerprint(Sha512::new(buf));
     Ok(key_fingerprint)
 }
 

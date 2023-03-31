@@ -4,7 +4,7 @@
 
 [![Build Status](https://drone-auto-casper-network.casperlabs.io/api/badges/casper-network/casper-node/status.svg?branch=dev)](http://drone-auto-casper-network.casperlabs.io/casper-network/casper-node)
 [![Crates.io](https://img.shields.io/crates/v/casper-json-rpc)](https://crates.io/crates/casper-json-rpc)
-[![Documentation](https://docs.rs/casper-node-macros/badge.svg)](https://docs.rs/casper-json-rpc)
+[![Documentation](https://docs.rs/casper-node/badge.svg)](https://docs.rs/casper-json-rpc)
 [![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/casper-network/casper-node/blob/master/LICENSE)
 
 A library suitable for use as the framework for a JSON-RPC server.

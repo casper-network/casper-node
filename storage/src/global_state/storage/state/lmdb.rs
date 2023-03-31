@@ -1,14 +1,9 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Deref,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::global_state::storage::lmdb::DatabaseFlags;
-use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use casper_hashing::Digest;
+use casper_types::{Key, StoredValue};
 use tempfile::TempDir;
-use tracing::trace;
 
 use crate::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
@@ -21,14 +16,12 @@ use crate::global_state::{
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
-            TrieOrChunkId,
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw,
         },
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie, read,
-                read_with_proof, ReadResult,
+                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
             },
         },
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
@@ -44,7 +37,6 @@ pub struct LmdbGlobalState {
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
-    digests_without_missing_descendants: RwLock<HashSet<Digest>>,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -85,7 +77,6 @@ impl LmdbGlobalState {
             environment,
             trie_store,
             empty_root_hash,
-            digests_without_missing_descendants: Default::default(),
         }
     }
 
@@ -132,6 +123,11 @@ impl LmdbGlobalState {
     #[must_use]
     pub fn trie_store(&self) -> &LmdbTrieStore {
         &self.trie_store
+    }
+
+    /// Returns an initial, empty root hash of the underlying trie.
+    pub fn empty_state_root_hash(&self) -> Digest {
+        self.empty_root_hash
     }
 }
 
@@ -250,43 +246,15 @@ impl StateProvider for LmdbGlobalState {
         self.empty_root_hash
     }
 
-    fn get_trie(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, Self::Error> {
-        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
-
-        let maybe_trie_or_chunk = bytes.map_or_else(
-            || Ok(None),
-            |bytes| {
-                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes)))
-                } else {
-                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
-                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
-                }
-            },
-        );
-
-        txn.commit()?;
-        maybe_trie_or_chunk
-    }
-
     fn get_trie_full(
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    ) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
+        let ret: Option<TrieRaw> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(TrieRaw::new);
         txn.commit()?;
         Ok(ret)
     }
@@ -304,74 +272,22 @@ impl StateProvider for LmdbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values.
-    fn missing_trie_keys(
+    /// Finds all of the keys of missing directly descendant `Trie<K,V>` values.
+    fn missing_children(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Digest>,
+        trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error> {
-        let trie_count = {
-            let digests_without_missing_descendants = self
-                .digests_without_missing_descendants
-                .read()
-                .expect("digest cache read lock");
-            trie_keys
-                .iter()
-                .filter(|digest| !digests_without_missing_descendants.contains(digest))
-                .count()
-        };
-        if trie_count == 0 {
-            trace!("no need to call missing_trie_keys");
-            Ok(vec![])
-        } else {
-            let txn = self.environment.create_read_txn()?;
-            let missing_descendants = missing_trie_keys::<
-                Key,
-                StoredValue,
-                lmdb::RoTransaction,
-                LmdbTrieStore,
-                Self::Error,
-            >(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys.clone(),
-                &self
-                    .digests_without_missing_descendants
-                    .read()
-                    .expect("digest cache read lock"),
-            )?;
-            if missing_descendants.is_empty() {
-                // There were no missing descendants on `trie_keys`, let's add them *and all of
-                // their descendants* to the cache.
-
-                let mut all_descendants: HashSet<Digest> = HashSet::new();
-                all_descendants.extend(&trie_keys);
-                all_descendants.extend(descendant_trie_keys::<
-                    Key,
-                    StoredValue,
-                    lmdb::RoTransaction,
-                    LmdbTrieStore,
-                    Self::Error,
-                >(
-                    &txn,
-                    self.trie_store.deref(),
-                    trie_keys,
-                    &self
-                        .digests_without_missing_descendants
-                        .read()
-                        .expect("digest cache read lock"),
-                )?);
-
-                self.digests_without_missing_descendants
-                    .write()
-                    .expect("digest cache write lock")
-                    .extend(all_descendants.into_iter());
-            }
-            txn.commit()?;
-
-            Ok(missing_descendants)
-        }
+        let txn = self.environment.create_read_txn()?;
+        let missing_hashes = missing_children::<
+            Key,
+            StoredValue,
+            lmdb::RoTransaction,
+            LmdbTrieStore,
+            Self::Error,
+        >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
+        txn.commit()?;
+        Ok(missing_hashes)
     }
 }
 
@@ -417,7 +333,7 @@ pub fn make_temporary_global_state(
 #[cfg(test)]
 mod tests {
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, bytesrepr, CLValue};
+    use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
 
@@ -453,21 +369,65 @@ mod tests {
         ]
     }
 
-    fn create_test_pairs_updated() -> Vec<(Key, StoredValue)> {
-        vec![
-            (
-                Key::Account(AccountHash::new([1u8; 32])),
-                StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
-            ),
-            (
-                Key::Account(AccountHash::new([2u8; 32])),
-                StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
-            ),
-            (
-                Key::Account(AccountHash::new([3u8; 32])),
-                StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
-            ),
+    fn create_test_pairs_updated() -> [TestPair; 3] {
+        [
+            TestPair {
+                key: Key::Account(AccountHash::new([1u8; 32])),
+                value: StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
+            },
+            TestPair {
+                key: Key::Account(AccountHash::new([2u8; 32])),
+                value: StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
+            },
+            TestPair {
+                key: Key::Account(AccountHash::new([3u8; 32])),
+                value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
+            },
         ]
+    }
+
+    fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (LmdbGlobalState, Digest) {
+        let correlation_id = CorrelationId::new();
+        let temp_dir = tempdir().unwrap();
+        let environment = Arc::new(
+            LmdbEnvironment::new(
+                temp_dir.path(),
+                DEFAULT_TEST_MAX_DB_SIZE,
+                DEFAULT_TEST_MAX_READERS,
+                true,
+            )
+            .unwrap(),
+        );
+        let trie_store =
+            Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
+
+        let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
+        let mut current_root = ret.empty_root_hash;
+        {
+            let mut txn = ret.environment.create_read_write_txn().unwrap();
+
+            for TestPair { key, value } in &(pairs_creator)() {
+                match write::<_, _, _, LmdbTrieStore, error::Error>(
+                    correlation_id,
+                    &mut txn,
+                    &ret.trie_store,
+                    &current_root,
+                    key,
+                    value,
+                )
+                .unwrap()
+                {
+                    WriteResult::Written(root_hash) => {
+                        current_root = root_hash;
+                    }
+                    WriteResult::AlreadyExists => (),
+                    WriteResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+                }
+            }
+
+            txn.commit().unwrap();
+        }
+        (ret, current_root)
     }
 
     #[test]
@@ -484,7 +444,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _, _tempdir) = make_temporary_global_state(create_test_pairs());
-        let fake_hash: Digest = Digest::hash(&[1u8; 32]);
+        let fake_hash: Digest = Digest::hash([1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

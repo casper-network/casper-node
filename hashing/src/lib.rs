@@ -23,6 +23,7 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
+use hex_fmt::HexFmt;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 #[cfg(test)]
@@ -45,6 +46,8 @@ pub use indexed_merkle_proof::IndexedMerkleProof;
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
+
+const CHUNK_DATA_ZEROED: &[u8] = &[0u8; ChunkWithProof::CHUNK_SIZE_BYTES];
 
 impl Digest {
     /// The number of bytes in a `Digest`.
@@ -104,7 +107,7 @@ impl Digest {
         let mut hasher = PAIR_PREFIX_HASHER
             .get_or_init(|| {
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
+                hasher.update(CHUNK_DATA_ZEROED);
                 hasher
             })
             .clone();
@@ -179,8 +182,8 @@ impl Digest {
         let mut kv_hashes: Vec<Digest> = Vec::with_capacity(btree_map.len());
         for (key, value) in btree_map.iter() {
             kv_hashes.push(Digest::hash_pair(
-                &Digest::hash(key.to_bytes()?),
-                &Digest::hash(value.to_bytes()?),
+                Digest::hash(key.to_bytes()?),
+                Digest::hash(value.to_bytes()?),
             ))
         }
         Ok(Self::hash_merkle_tree(kv_hashes))
@@ -211,7 +214,7 @@ impl Digest {
     pub fn hash_slice_with_proof(slice: &[Digest], proof: Digest) -> Digest {
         slice
             .iter()
-            .rfold(proof, |prev, next| Digest::hash_pair(next, &prev))
+            .rfold(proof, |prev, next| Digest::hash_pair(next, prev))
     }
 
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.
@@ -223,15 +226,15 @@ impl Digest {
         Ok(Digest(slice))
     }
 
-    /// Hash bytes into chunks if necessary.
-    pub fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+    /// Hash data into chunks if necessary.
+    pub fn hash_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Digest::hash(bytes)
+            Digest::blake2b_hash(bytes)
         } else {
             Digest::hash_merkle_tree(
                 bytes
                     .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-                    .map(Digest::hash),
+                    .map(Digest::blake2b_hash),
             )
         }
     }
@@ -274,7 +277,7 @@ impl UpperHex for Digest {
 
 impl Display for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:10}", base16::encode_lower(&self.0))
+        write!(f, "{:10}", HexFmt(&self.0))
     }
 }
 
@@ -342,7 +345,7 @@ impl Serialize for Digest {
         } else {
             // This is to keep backwards compatibility with how HexForm encodes
             // byte arrays. HexForm treats this like a slice.
-            (&self.0[..]).serialize(serializer)
+            self.0[..].serialize(serializer)
         }
     }
 }
@@ -390,7 +393,7 @@ mod tests {
     #[test]
     fn serde_custom_serialization() {
         let serialized = serde_json::to_string(&Digest::SENTINEL_RFOLD).unwrap();
-        let expected = format!("\"{}\"", Digest::SENTINEL_RFOLD);
+        let expected = format!("\"{:?}\"", Digest::SENTINEL_RFOLD);
         assert_eq!(expected, serialized);
     }
 
@@ -398,7 +401,7 @@ mod tests {
     fn hash_known() {
         // Data of length less or equal to [ChunkWithProof::CHUNK_SIZE_BYTES]
         // are hashed using Blake2B algorithm.
-        // Larger data are chunked and merkle tree hash is calculated.
+        // Larger data are chunked and Merkle tree hash is calculated.
         //
         // Please note that [ChunkWithProof::CHUNK_SIZE_BYTES] is `test` configuration
         // is smaller than in production, to allow testing with more chunks
@@ -502,7 +505,7 @@ mod tests {
         let hash1 = Digest([1u8; 32]);
         let hash2 = Digest([2u8; 32]);
 
-        let hash = Digest::hash_pair(&hash1, &hash2);
+        let hash = Digest::hash_pair(hash1, hash2);
         let hash_lower_hex = format!("{:x}", hash);
 
         assert_eq!(
@@ -625,7 +628,7 @@ mod tests {
         // │     │
         // └─────── R
         //
-        // The merkle root is thus: R = h( h(1..0) || h(a..j) )
+        // The Merkle root is thus: R = h( h(1..0) || h(a..j) )
         //
         // h(1..0) = 807f1ba73147c3a96c2d63b38dd5a5f514f66290a1436bb9821e9f2a72eff263
         // h(a..j) = 499e1cdb476523fedafc9d9db31125e2744f271578ea95b16ab4bd1905f05fea
@@ -674,7 +677,7 @@ mod tests {
             190, 67, 244, 169, 31, 95,
         ];
         assert_eq!(
-            Digest::blake2b_hash(&expected_final_hash_input),
+            Digest::blake2b_hash(expected_final_hash_input),
             long_data_hash
         );
 

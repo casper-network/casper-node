@@ -37,7 +37,7 @@ use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo, UnbondingPurse},
+    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
@@ -94,6 +94,7 @@ enum TransformTag {
     AddUInt512 = 15,
     AddKeys = 16,
     Failure = 17,
+    WriteUnbonding = 18,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -182,7 +183,7 @@ impl ExecutionResult {
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
-        &*EXECUTION_RESULT
+        &EXECUTION_RESULT
     }
 
     fn tag(&self) -> ExecutionResultTag {
@@ -250,6 +251,7 @@ impl Distribution<ExecutionResult> for Standard {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for ExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -361,6 +363,7 @@ impl ExecutionEffect {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for ExecutionEffect {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -398,6 +401,7 @@ pub struct Operation {
     pub kind: OpKind,
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for Operation {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -447,6 +451,7 @@ impl OpKind {
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for OpKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
@@ -482,6 +487,7 @@ pub struct TransformEntry {
     pub transform: Transform,
 }
 
+// TODO[goral09]: Add `write_bytes`.
 impl ToBytes for TransformEntry {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -531,7 +537,7 @@ pub enum Transform {
     /// Writes the given Bid to global state.
     WriteBid(Box<Bid>),
     /// Writes the given Withdraw to global state.
-    WriteWithdraw(Vec<UnbondingPurse>),
+    WriteWithdraw(Vec<WithdrawPurse>),
     /// Adds the given `i32`.
     AddInt32(i32),
     /// Adds the given `u64`.
@@ -546,6 +552,8 @@ pub enum Transform {
     AddKeys(Vec<NamedKey>),
     /// A failed transformation, containing an error message.
     Failure(String),
+    /// Writes the given Unbonding to global state.
+    WriteUnbonding(Vec<UnbondingPurse>),
 }
 
 impl Transform {
@@ -569,10 +577,12 @@ impl Transform {
             Transform::AddUInt512(_) => TransformTag::AddUInt512,
             Transform::AddKeys(_) => TransformTag::AddKeys,
             Transform::Failure(_) => TransformTag::Failure,
+            Transform::WriteUnbonding(_) => TransformTag::WriteUnbonding,
         }
     }
 }
 
+// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for Transform {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -625,6 +635,9 @@ impl ToBytes for Transform {
             Transform::Failure(value) => {
                 buffer.extend(value.to_bytes()?);
             }
+            Transform::WriteUnbonding(value) => {
+                buffer.extend(value.to_bytes()?);
+            }
         }
         Ok(buffer)
     }
@@ -649,6 +662,7 @@ impl ToBytes for Transform {
             | Transform::WriteContractPackage => 0,
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
+            Transform::WriteUnbonding(value) => value.serialized_length(),
         };
         U8_SERIALIZED_LENGTH + body_len
     }
@@ -715,9 +729,14 @@ impl FromBytes for Transform {
                 Ok((Transform::WriteBid(Box::new(bid)), remainder))
             }
             TransformTag::WriteWithdraw => {
+                let (withdraw_purses, remainder) =
+                    <Vec<WithdrawPurse> as FromBytes>::from_bytes(remainder)?;
+                Ok((Transform::WriteWithdraw(withdraw_purses), remainder))
+            }
+            TransformTag::WriteUnbonding => {
                 let (unbonding_purses, remainder) =
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
-                Ok((Transform::WriteWithdraw(unbonding_purses), remainder))
+                Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
             }
         }
     }

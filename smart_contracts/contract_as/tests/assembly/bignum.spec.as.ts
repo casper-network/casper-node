@@ -199,46 +199,46 @@ export function testDivision(): bool {
 
 export function testSerializeU512Zero(): bool {
     let truth = hex2bin("00");
-    let result = U512.fromBytes(truth);
+    let result = U512.fromBytes(StaticArray.fromArray(truth));
     assert(result.error == Error.Ok);
     assert(result.hasValue());
     let zero = result.value;
     assert(zero.isZero());
     const bytes = zero.toBytes();
-    return checkArraysEqual(bytes, typedToArray(truth));
+    return checkArraysEqual<u8, Array<u8>>(bytes, truth);
 };
 
 export function testSerializeU512_3BytesWide(): bool {
     let truth = hex2bin("03807801");
-    let result = U512.fromBytes(truth);
+    let result = U512.fromBytes(StaticArray.fromArray(truth));
     assert(result.error == Error.Ok);
     assert(result.hasValue());
     let num = result.value;
     assert(num.toString() == "17880"); // dec: 96384
     const bytes = num.toBytes();
-    return checkArraysEqual(bytes, typedToArray(truth));
+    return checkArraysEqual<u8, Array<u8>>(bytes, truth);
 };
 
 export function testSerializeU512_2BytesWide(): bool {
     let truth = hex2bin("020004");
-    let result = U512.fromBytes(truth);
+    let result = U512.fromBytes(StaticArray.fromArray(truth));
     assert(result.error == Error.Ok);
     assert(result.hasValue());
     let num = result.value;
     assert(num.toString() == "400"); // dec: 1024
     const bytes = num.toBytes();
-    return checkArraysEqual(bytes, typedToArray(truth));
+    return checkArraysEqual<u8, Array<u8>>(bytes, truth);
 };
 
 export function testSerializeU512_1BytesWide(): bool {
     let truth = hex2bin("0101");
-    let result = U512.fromBytes(truth);
+    let result = U512.fromBytes(StaticArray.fromArray(truth));
     assert(result.error == Error.Ok);
     assert(result.hasValue());
     let num = result.value;
     assert(num.toString() == "1");
     const bytes = num.toBytes();
-    return checkArraysEqual(bytes, typedToArray(truth));
+    return checkArraysEqual<u8, Array<u8>>(bytes, truth);
 };
 
 export function testSerialize100mTimes10(): bool {
@@ -251,9 +251,9 @@ export function testSerialize100mTimes10(): bool {
 
     let bytes = valU512.toBytes();
     assert(bytes !== null)
-    assert(checkArraysEqual(bytes, typedToArray(truth)));
+    assert(checkArraysEqual<u8, Array<u8>>(bytes, truth));
 
-    let roundTrip = U512.fromBytes(arrayToTyped(bytes));
+    let roundTrip = U512.fromBytes(StaticArray.fromArray(bytes));
     assert(roundTrip.error == Error.Ok);
     assert(roundTrip.value.toString() == hex);
 
@@ -267,13 +267,13 @@ export function testDeserLargeRandomU512(): bool {
     // bytesrepr
     let truth = hex2bin("40752c392d2ecd6123de0f1d3d4cdb7992aa85e049a94795975e81e20b78731cde6d4aa13da210479acce5f24a296ae787bada0aba1889c8fe2f2fb030d62feed2");
 
-    let deser = U512.fromBytes(truth);
+    let deser = U512.fromBytes(StaticArray.fromArray(truth));
     assert(deser.error == Error.Ok);
     assert(deser !== null);
     assert(deser.value.toString() == hex);
 
     let ser = deser.value.toBytes();
-    assert(checkArraysEqual(ser, typedToArray(truth)));
+    assert(checkArraysEqual<u8, Array<u8>>(ser, truth));
 
     return true;
 }

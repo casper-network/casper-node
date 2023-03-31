@@ -9,7 +9,7 @@ use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
-    reactor::participating::Config,
+    reactor::main_reactor::Config,
     types::{chainspec, Chainspec, ChainspecRawBytes},
     utils::{LoadError, Loadable, WithDir},
 };
@@ -232,7 +232,7 @@ mod tests {
         let info_path = tempdir.path().join(POST_MIGRATION_STATE_HASH_FILENAME);
 
         let mut rng = crate::new_rng();
-        let state_hash = Digest::hash(&[rng.gen()]);
+        let state_hash = Digest::hash([rng.gen()]);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let secret_key = SecretKey::random(&mut rng);
 
@@ -260,7 +260,7 @@ mod tests {
         assert!(maybe_hash.is_none());
 
         // Create the info file and check we can read it.
-        let state_hash = Digest::hash(&[rng.gen()]);
+        let state_hash = Digest::hash([rng.gen()]);
         write_post_migration_info(state_hash, protocol_version, &secret_key, info_path.clone())
             .unwrap();
         assert!(
@@ -293,7 +293,7 @@ mod tests {
 
         // Should return `Err` if the signature is invalid.
         let other_secret_key = SecretKey::random(&mut rng);
-        let state_hash = Digest::hash(&[rng.gen()]);
+        let state_hash = Digest::hash([rng.gen()]);
         write_post_migration_info(
             state_hash,
             protocol_version,

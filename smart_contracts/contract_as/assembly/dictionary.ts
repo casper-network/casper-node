@@ -39,19 +39,19 @@ export function newDictionary(keyName: String): URef {
  * @category Storage
  * @returns Returns bytes of serialized value, otherwise a null if given dictionary does not exists.
  */
-export function dictionaryGet(seed_uref: URef, dictionary_item_key: String): Uint8Array | null {
+export function dictionaryGet(seed_uref: URef, key: String): StaticArray<u8> | null {
     let seedUrefBytes = seed_uref.toBytes();
-    const keyBytes = encodeUTF8(dictionary_item_key);
+    const keyBytes = encodeUTF8(key);
 
-    let valueSize = new Uint8Array(1);
-    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, keyBytes.dataStart, keyBytes.length, valueSize.dataStart);
+    let valueSize = new StaticArray<u8>(1);
+    const ret = externals.dictionary_get(seedUrefBytes.dataStart, seedUrefBytes.length, changetype<usize>(keyBytes), keyBytes.byteLength, changetype<usize>(valueSize));
     if (ret == ErrorCode.ValueNotFound) {
         return null;
     }
     const error = Error.fromResult(ret);
     if (error != null) {
         error.revert();
-        throw 0;
+        return <StaticArray<u8>>unreachable();
     }
     return readHostBuffer(valueSize[0]);
 }
@@ -60,24 +60,25 @@ export function dictionaryGet(seed_uref: URef, dictionary_item_key: String): Uin
  * Reads `value` under `dictionary-key` in a dictionary.
  * @category Storage
  */
-export function dictionaryRead(dictionaryKey: Key): Uint8Array | null {
+export function dictionaryRead(dictionaryKey: Key): StaticArray<u8> | null {
     const dictionaryKeyBytes = dictionaryKey.toBytes();
-    let valueSize = new Uint8Array(1);
+    let valueSize = new StaticArray<u8>(1);
     const ret = externals.dictionary_read(
         dictionaryKeyBytes.dataStart,
         dictionaryKeyBytes.length,
-        valueSize.dataStart
+        changetype<usize>(valueSize),
     )
-    if (ret == ErrorCode.ValueNotFound){
+    if (ret == ErrorCode.ValueNotFound) {
         return null;
     }
     const error = Error.fromResult(ret);
     if (error != null) {
         error.revert();
-        return <Uint8Array>unreachable();
+        return <StaticArray<u8>>unreachable();
     }
     return readHostBuffer(valueSize[0]);
 }
+
 
 /**
  * Writes `value` under `key` in a dictionary.
@@ -90,10 +91,9 @@ export function dictionaryPut(uref: URef, key: String, value: CLValue): void {
     externals.dictionary_put(
         urefBytes.dataStart,
         urefBytes.length,
-        keyBytes.dataStart,
-        keyBytes.length,
+        changetype<usize>(keyBytes),
+        keyBytes.byteLength,
         valueBytes.dataStart,
         valueBytes.length
     );
 }
-

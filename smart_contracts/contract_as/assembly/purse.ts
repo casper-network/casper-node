@@ -78,9 +78,9 @@ function makeTransferredTo(value: u32): Ref<TransferredTo> | null {
  * purse couldn't be created.
  */
 export function createPurse(): URef {
-    let bytes = new Uint8Array(UREF_SERIALIZED_LENGTH);
+    let bytes = new StaticArray<u8>(UREF_SERIALIZED_LENGTH);
     let ret = externals.create_purse(
-        bytes.dataStart,
+        changetype<usize>(bytes),
         bytes.length
         );
     let error = Error.fromResult(<u32>ret);
@@ -141,30 +141,26 @@ export function getBalance(): U512 | null {
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
  */
-export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
+export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: StaticArray<u8>, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let purseBytes = sourcePurse.toBytes();
-    let targetBytes = new Array<u8>(targetAccount.length);
-    for (let i = 0; i < targetAccount.length; i++) {
-        targetBytes[i] = targetAccount[i];
-    }
     let amountBytes = amount.toBytes();
-    
+
     let optId: Option;
     if (id !== null) {
-        optId = new Option(arrayToTyped(toBytesU64(id.value)));
+        optId = new Option(toBytesU64(id.value));
     }
     else {
         optId = new Option(null);
     }
     const idBytes = optId.toBytes();
-    
+
     let resultPtr = new Uint32Array(1);
 
     let ret = externals.transfer_from_purse_to_account(
         purseBytes.dataStart,
         purseBytes.length,
-        targetBytes.dataStart,
-        targetBytes.length,
+        changetype<usize>(targetAccount),
+        targetAccount.length,
         amountBytes.dataStart,
         amountBytes.length,
         idBytes.dataStart,
@@ -198,7 +194,7 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
     let optId: Option;
     if (id !== null) {
         const idValue = (<Ref<u64>>id).value;
-        optId = new Option(arrayToTyped(toBytesU64(idValue)));
+        optId = new Option(toBytesU64(idValue));
     }
     else {
         optId = new Option(null);
@@ -220,6 +216,44 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
 }
 
 /**
+ * Transfers `amount` of motes from `source` purse to `target` purse.  If `target` does not exist
+ * the transfer fails.
+ *
+ * This function assumes both `sourcePurse` and `targetPurse` is already serialized. This is
+ * useful in scenarios where both `sourcePurse` and `targetPurse` are received through named
+ * arguments, or obtained from `getKey` APIs and there is no need to deserialize and
+ * serialize objects again.
+ *
+ * @internal
+ * @returns This function returns non-zero value on error.
+ */
+ export function transferFromPurseToPursePassthrough(sourceBytes: StaticArray<u8>, targetBytes: StaticArray<u8>, amountBytes: StaticArray<u8>, id: Ref<u64> | null = null): Error | null {
+    let optId: Option;
+    if (id !== null) {
+        const idValue = (<Ref<u64>>id).value;
+        optId = new Option(toBytesU64(idValue));
+    }
+    else {
+        optId = new Option(null);
+    }
+    const idBytes = optId.toBytes();
+
+    let ret = externals.transfer_from_purse_to_purse(
+        changetype<usize>(sourceBytes),
+        sourceBytes.length,
+        changetype<usize>(targetBytes),
+        targetBytes.length,
+        changetype<usize>(amountBytes),
+        amountBytes.length,
+        idBytes.dataStart,
+        idBytes.length,
+    );
+
+    return Error.fromResult(ret);
+}
+
+
+/**
  * Transfers `amount` of motes from `source` purse to an account referenced by a `targetPublicKey` public key.
  * If `target` does not exist it will be created.
  *
@@ -232,10 +266,7 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
  export function transferFromPurseToPublicKey(sourcePurse: URef, targetPublicKey: PublicKey, amount: U512, id: Ref<u64> | null = null): TransferResult {
     const accountHash = AccountHash.fromPublicKey(targetPublicKey);
     const accountHashBytes = accountHash.toBytes();
-
-    const targetAccount = arrayToTyped(accountHashBytes);
-
-    return transferFromPurseToAccount(sourcePurse, targetAccount, amount, id);
+    return transferFromPurseToAccount(sourcePurse, StaticArray.fromArray(accountHashBytes), amount, id);
  }
 
 /**
@@ -247,16 +278,12 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
  */
-export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
-    let targetBytes = new Array<u8>(targetAccount.length);
-    for (let i = 0; i < targetAccount.length; i++) {
-        targetBytes[i] = targetAccount[i];
-    }
+export function transferToAccount(targetAccount: StaticArray<u8>, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let amountBytes = amount.toBytes();
-    
+
     let optId: Option;
     if (id !== null) {
-        optId = new Option(arrayToTyped(toBytesU64(id.value)));
+        optId = new Option(toBytesU64(id.value));
     }
     else {
         optId = new Option(null);
@@ -266,8 +293,8 @@ export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: R
     let resultPtr = new Uint32Array(1);
 
     let ret = externals.transfer_to_account(
-        targetBytes.dataStart,
-        targetBytes.length,
+        changetype<usize>(targetAccount),
+        targetAccount.length,
         amountBytes.dataStart,
         amountBytes.length,
         idBytes.dataStart,
@@ -300,6 +327,6 @@ export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: R
     const accountHash = AccountHash.fromPublicKey(targetPublicKey);
     const accountHashBytes = accountHash.toBytes();
 
-    const targetAccount = arrayToTyped(accountHashBytes);
-    return transferToAccount(targetAccount, amount, id);
+    // const targetAccount = arrayToTyped(accountHashBytes);
+    return transferToAccount(StaticArray.fromArray(accountHashBytes), amount, id);
 }

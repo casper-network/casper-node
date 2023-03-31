@@ -15,12 +15,15 @@ use casper_storage::global_state::{
     shared::CorrelationId,
     storage::{
         state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{Pointer, Trie},
     },
 };
 use casper_types::{
-    account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    account::AccountHash,
+    bytesrepr::{self},
+    runtime_args,
+    system::auction,
+    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
 
 use rand::Rng;
@@ -126,6 +129,7 @@ pub fn run_blocks_with_transfers_and_step(
 
         let existing_keys = cursor
             .iter()
+            .map(Result::unwrap)
             .map(|(key, _)| Digest::try_from(key).expect("should be a digest"));
         necessary_tries.extend(existing_keys);
     }
@@ -228,15 +232,11 @@ fn find_necessary_tries<S>(
         }
         necessary_tries.insert(root);
 
-        let trie_or_chunk: TrieOrChunk = engine_state
-            .get_trie(CorrelationId::new(), TrieOrChunkId(0, root))
+        let trie_bytes = engine_state
+            .get_trie_full(CorrelationId::new(), root)
             .unwrap()
-            .expect("trie should exist");
-
-        let trie_bytes = match trie_or_chunk {
-            TrieOrChunk::Trie(trie) => trie,
-            TrieOrChunk::ChunkWithProof(_) => continue,
-        };
+            .expect("trie should exist")
+            .into_inner();
 
         if let Some(0) = trie_bytes.first() {
             continue;
@@ -378,7 +378,7 @@ pub fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
     let mut ret = Vec::with_capacity(key_count);
     for _ in 0..key_count {
         let bytes: [u8; SecretKey::ED25519_LENGTH] = rand::random();
-        let secret_key = SecretKey::ed25519_from_bytes(&bytes).unwrap();
+        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
         ret.push(public_key);
     }

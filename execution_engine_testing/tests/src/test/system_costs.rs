@@ -19,13 +19,10 @@ use casper_execution_engine::{
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        opcode_costs::OpcodeCosts,
+        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
         storage_costs::StorageCosts,
         system_config::{
-            auction_costs::{
-                AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_UNDELEGATE_COST,
-                DEFAULT_WITHDRAW_BID_COST,
-            },
+            auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST},
             handle_payment_costs::HandlePaymentCosts,
             mint_costs::{MintCosts, DEFAULT_TRANSFER_COST},
             standard_payment_costs::StandardPaymentCosts,
@@ -61,10 +58,11 @@ const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
-const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
-const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
-const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
-const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
+const NEW_ADD_BID_COST: u32 = 2_500_000_000;
+const NEW_WITHDRAW_BID_COST: u32 = 2_500_000_000;
+const NEW_DELEGATE_COST: u32 = 2_500_000_000;
+const NEW_UNDELEGATE_COST: u32 = 2_500_000_000;
+const NEW_REDELEGATE_COST: u32 = 2_500_000_000;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
@@ -85,7 +83,7 @@ const ARG_AMOUNT: &str = "amount";
 fn add_bid_and_withdraw_bid_have_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -220,7 +218,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -436,7 +434,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .config()
             .system_config()
             .auction_costs()
-            .undelegate,
+            .redelegate,
     );
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
@@ -490,6 +488,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_auction_costs = AuctionCosts {
         delegate: NEW_DELEGATE_COST,
         undelegate: NEW_UNDELEGATE_COST,
+        redelegate: NEW_REDELEGATE_COST,
         ..Default::default()
     };
     let new_mint_costs = MintCosts::default();
@@ -605,6 +604,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     );
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 
+    // Redelegate bid
     let redelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -627,10 +627,10 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     builder.exec(redelegate_request).expect_success().commit();
 
-    let expected_call_cost = U512::from(NEW_UNDELEGATE_COST);
+    let expected_call_cost = U512::from(NEW_REDELEGATE_COST);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
-    // Withdraw bid
+    // Withdraw bid (undelegate)
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -670,7 +670,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 fn mint_transfer_has_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -737,7 +737,7 @@ fn mint_transfer_has_expected_costs() {
 fn should_charge_for_erroneous_system_contract_calls() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
@@ -774,8 +774,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
         (
             auction_hash,
             auction::METHOD_REDELEGATE,
-            // We currently charge the same for both entrypoints.
-            system_config.auction_costs().undelegate,
+            system_config.auction_costs().redelegate,
         ),
         (
             auction_hash,
@@ -869,7 +868,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -909,7 +908,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let new_opcode_costs = OpcodeCosts {
         bit: 0,
@@ -921,14 +920,30 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         op_const: 0,
         local: 0,
         global: 0,
-        control_flow: 0,
+        control_flow: ControlFlowCosts {
+            block: 0,
+            op_loop: 0,
+            op_if: 0,
+            op_else: 0,
+            end: 0,
+            br: 0,
+            br_if: 0,
+            br_table: BrTableCost {
+                cost: 0,
+                size_multiplier: 0,
+            },
+            op_return: 0,
+            call: 0,
+            call_indirect: 0,
+            drop: 0,
+            select: 0,
+        },
         integer_comparison: 0,
         conversion: 0,
         unreachable: 0,
         nop: 0,
         current_memory: 0,
         grow_memory: 0,
-        regular: 0,
     };
     let new_storage_costs = StorageCosts::new(0);
 

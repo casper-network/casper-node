@@ -141,7 +141,7 @@ pub struct GetItemParams {
 
 impl DocExample for GetItemParams {
     fn doc_example() -> &'static Self {
-        &*GET_ITEM_PARAMS
+        &GET_ITEM_PARAMS
     }
 }
 
@@ -154,13 +154,13 @@ pub struct GetItemResult {
     pub api_version: ProtocolVersion,
     /// The stored value.
     pub stored_value: StoredValue,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
 impl DocExample for GetItemResult {
     fn doc_example() -> &'static Self {
-        &*GET_ITEM_RESULT
+        &GET_ITEM_RESULT
     }
 }
 
@@ -219,7 +219,7 @@ pub struct GetBalanceParams {
 
 impl DocExample for GetBalanceParams {
     fn doc_example() -> &'static Self {
-        &*GET_BALANCE_PARAMS
+        &GET_BALANCE_PARAMS
     }
 }
 
@@ -232,13 +232,13 @@ pub struct GetBalanceResult {
     pub api_version: ProtocolVersion,
     /// The balance value.
     pub balance_value: U512,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
 impl DocExample for GetBalanceResult {
     fn doc_example() -> &'static Self {
-        &*GET_BALANCE_RESULT
+        &GET_BALANCE_RESULT
     }
 }
 
@@ -331,7 +331,7 @@ pub struct GetAuctionInfoParams {
 
 impl DocExample for GetAuctionInfoParams {
     fn doc_example() -> &'static Self {
-        &*GET_AUCTION_INFO_PARAMS
+        &GET_AUCTION_INFO_PARAMS
     }
 }
 
@@ -348,7 +348,7 @@ pub struct GetAuctionInfoResult {
 
 impl DocExample for GetAuctionInfoResult {
     fn doc_example() -> &'static Self {
-        &*GET_AUCTION_INFO_RESULT
+        &GET_AUCTION_INFO_RESULT
     }
 }
 
@@ -476,7 +476,7 @@ pub struct GetAccountInfoParams {
 
 impl DocExample for GetAccountInfoParams {
     fn doc_example() -> &'static Self {
-        &*GET_ACCOUNT_INFO_PARAMS
+        &GET_ACCOUNT_INFO_PARAMS
     }
 }
 
@@ -489,13 +489,13 @@ pub struct GetAccountInfoResult {
     pub api_version: ProtocolVersion,
     /// The account.
     pub account: JsonAccount,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
 impl DocExample for GetAccountInfoResult {
     fn doc_example() -> &'static Self {
-        &*GET_ACCOUNT_INFO_RESULT
+        &GET_ACCOUNT_INFO_RESULT
     }
 }
 
@@ -673,7 +673,7 @@ pub struct GetDictionaryItemParams {
 
 impl DocExample for GetDictionaryItemParams {
     fn doc_example() -> &'static Self {
-        &*GET_DICTIONARY_ITEM_PARAMS
+        &GET_DICTIONARY_ITEM_PARAMS
     }
 }
 
@@ -688,13 +688,13 @@ pub struct GetDictionaryItemResult {
     pub dictionary_key: String,
     /// The stored value.
     pub stored_value: StoredValue,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
 impl DocExample for GetDictionaryItemResult {
     fn doc_example() -> &'static Self {
-        &*GET_DICTIONARY_ITEM_RESULT
+        &GET_DICTIONARY_ITEM_RESULT
     }
 }
 
@@ -782,7 +782,7 @@ pub struct QueryGlobalStateParams {
 
 impl DocExample for QueryGlobalStateParams {
     fn doc_example() -> &'static Self {
-        &*QUERY_GLOBAL_STATE_PARAMS
+        &QUERY_GLOBAL_STATE_PARAMS
     }
 }
 
@@ -797,13 +797,13 @@ pub struct QueryGlobalStateResult {
     pub block_header: Option<JsonBlockHeader>,
     /// The stored value.
     pub stored_value: StoredValue,
-    /// The merkle proof.
+    /// The Merkle proof.
     pub merkle_proof: String,
 }
 
 impl DocExample for QueryGlobalStateResult {
     fn doc_example() -> &'static Self {
-        &*QUERY_GLOBAL_STATE_RESULT
+        &QUERY_GLOBAL_STATE_RESULT
     }
 }
 
@@ -873,7 +873,7 @@ pub struct QueryBalanceParams {
 
 impl DocExample for QueryBalanceParams {
     fn doc_example() -> &'static Self {
-        &*QUERY_BALANCE_PARAMS
+        &QUERY_BALANCE_PARAMS
     }
 }
 
@@ -889,7 +889,7 @@ pub struct QueryBalanceResult {
 
 impl DocExample for QueryBalanceResult {
     fn doc_example() -> &'static Self {
-        &*QUERY_BALANCE_RESULT
+        &QUERY_BALANCE_RESULT
     }
 }
 
@@ -908,7 +908,10 @@ impl RpcWithParams for QueryBalance {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         let state_root_hash = match params.state_identifier {
-            None => match effect_builder.get_highest_block_header_from_storage().await {
+            None => match effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+            {
                 None => {
                     return Err(Error::new(
                         ErrorCode::NoSuchBlock,
@@ -996,7 +999,7 @@ pub struct GetTrieParams {
 
 impl DocExample for GetTrieParams {
     fn doc_example() -> &'static Self {
-        &*GET_TRIE_PARAMS
+        &GET_TRIE_PARAMS
     }
 }
 
@@ -1017,7 +1020,7 @@ pub struct GetTrieResult {
 
 impl DocExample for GetTrieResult {
     fn doc_example() -> &'static Self {
-        &*GET_TRIE_RESULT
+        &GET_TRIE_RESULT
     }
 }
 
@@ -1061,7 +1064,7 @@ type QuerySuccess = (
     Vec<TrieMerkleProof<Key, DomainStoredValue>>,
 );
 
-/// Runs a global state query and returns a tuple of the domain stored value and merkle proof of the
+/// Runs a global state query and returns a tuple of the domain stored value and Merkle proof of the
 /// value.
 ///
 /// On error, a `warp_json_rpc::Error` is returned suitable for sending as a JSON-RPC response.

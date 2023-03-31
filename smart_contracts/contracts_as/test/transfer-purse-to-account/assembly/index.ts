@@ -33,8 +33,7 @@ export function delegate(): void {
         return;
     }
     let amount = amountResult.value;
-    let message = "";
-    const result = transferFromPurseToAccount(<URef>mainPurse, <Uint8Array>destinationAccountAddrArg, amount);
+    const result = transferFromPurseToAccount(<URef>mainPurse, destinationAccountAddrArg, amount);
     if (result.isErr) {
         let error = result.err;
         error.revert();

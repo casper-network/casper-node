@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn should_construct_reserved_error() {
         const EXPECTED_WITH_DATA: &str =
-            r#"{"code":-32700,"message":"Parse error","data":{"context":"TEST","id":1314}}"#;
+            r#"{"code":-32700,"message":"Parse error","data":{"id":1314,"context":"TEST"}}"#;
         const EXPECTED_WITHOUT_DATA: &str = r#"{"code":-32601,"message":"Method not found"}"#;
         const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
 
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn should_construct_custom_error() {
         const EXPECTED_WITH_DATA: &str =
-            r#"{"code":-123,"message":"Valid test error","data":{"context":"TEST","id":1314}}"#;
+            r#"{"code":-123,"message":"Valid test error","data":{"id":1314,"context":"TEST"}}"#;
         const EXPECTED_WITHOUT_DATA: &str = r#"{"code":-123,"message":"Valid test error"}"#;
         const EXPECTED_WITH_BAD_DATA: &str = r#"{"code":-32603,"message":"Internal error","data":"failed to json-encode additional info in json-rpc error: won't encode"}"#;
 

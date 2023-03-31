@@ -10,8 +10,7 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-
-## [Unreleased]
+## Unreleased
 
 ### Added
 * Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
@@ -24,6 +23,15 @@ All notable changes to this project will be documented in this file.  The format
 * Lift the temporary limit of the size of individual values stored in global state.
 * Lift the temporary limit of the global maximum delegator capacity.
 * Providing incorrect Wasm for execution will cause the default 2.5CSPR to be charged.
+* Update the default `control_flow` opcode cost from `440` to `440000`.
+
+
+
+## 3.0.0
+
+### Changed
+* Implement more precise control over opcode costs that lowers the gas cost.
+* Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5CSPR.
 
 
 

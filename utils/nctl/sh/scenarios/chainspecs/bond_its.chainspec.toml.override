@@ -3,7 +3,7 @@ round_seigniorage_rate = [0, 1]
 validator_slots = 6
 
 [highway]
-maximum_round_exponent = 14
+maximum_round_length = '17seconds'
 
 [deploys]
 block_max_transfer_count = 1

@@ -36,7 +36,7 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &tmp_dir.path(),
+        tmp_dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -46,7 +46,7 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
     let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (Digest::hash(trie.to_bytes().unwrap()), trie))
         .collect();
 
     let ret = store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap();

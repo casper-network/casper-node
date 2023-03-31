@@ -227,30 +227,10 @@ where
         &mut self,
         entry_points: &EntryPoints,
     ) -> Result<Vec<u8>, Error> {
-        let export_section = self
-            .try_get_module()?
-            .export_section()
-            .ok_or_else(|| Error::FunctionNotFound(String::from("Missing Export Section")))?;
-
+        let module = self.try_get_module()?.clone();
         let entry_point_names: Vec<&str> = entry_points.keys().map(|s| s.as_str()).collect();
-
-        let maybe_missing_name: Option<String> = entry_point_names
-            .iter()
-            .find(|name| {
-                !export_section
-                    .entries()
-                    .iter()
-                    .any(|export_entry| export_entry.field() == **name)
-            })
-            .map(|s| String::from(*s));
-
-        if let Some(missing_name) = maybe_missing_name {
-            Err(Error::FunctionNotFound(missing_name))
-        } else {
-            let mut module = self.try_get_module()?.clone();
-            pwasm_utils::optimize(&mut module, entry_point_names)?;
-            parity_wasm::serialize(module).map_err(Error::ParityWasm)
-        }
+        let module_bytes = wasm_prep::get_module_from_entry_points(entry_point_names, module)?;
+        Ok(module_bytes)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -670,7 +650,7 @@ where
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             mint::METHOD_MINT_INTO_EXISTING_PURSE => (|| {
-                mint_runtime.charge_system_contract_call(mint_costs.mint)?;
+                mint_runtime.charge_system_contract_call(mint_costs.mint_into_existing_purse)?;
 
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let existing_purse: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
@@ -905,7 +885,7 @@ where
             })(),
 
             auction::METHOD_REDELEGATE => (|| {
-                runtime.charge_system_contract_call(auction_costs.undelegate)?;
+                runtime.charge_system_contract_call(auction_costs.redelegate)?;
 
                 let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
@@ -974,7 +954,7 @@ where
             })(),
 
             auction::METHOD_ACTIVATE_BID => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+                runtime.charge_system_contract_call(auction_costs.activate_bid)?;
 
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;

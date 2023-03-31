@@ -3,11 +3,11 @@
 #![cfg(test)]
 use std::{
     collections::{BTreeSet, HashMap},
-    fmt::{self, Debug, Display, Formatter},
     iter,
+    sync::Arc,
 };
 
-use derive_more::From;
+use derive_more::{Display, From};
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -17,57 +17,46 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
-use casper_types::{testing::TestRng, ProtocolVersion};
+use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff};
 
 use super::*;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
-        fake_deploy_acceptor::FakeDeployAcceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        small_network::GossipedAddress,
+        network::{GossipedAddress, Identity as NetworkIdentity},
         storage::{self, Storage},
     },
     effect::{
         announcements::{
-            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement,
             GossiperAnnouncement, RpcServerAnnouncement,
         },
         incoming::{
-            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
-            NetResponseIncoming, TrieDemand, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, MarkBlockCompletedRequest},
         Responder,
     },
-    fatal,
     protocol::Message as NodeMessage,
-    reactor::{self, EventQueueHandle, Runner},
+    reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::{
         self,
-        network::{Network, NetworkedReactor},
-        ConditionCheckReactor,
+        network::{NetworkedReactor, TestingNetwork},
+        ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{Deploy, NodeId},
+    types::{Block, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, NodeId},
     utils::WithDir,
     NodeRng,
 };
 
-const MAX_ASSOCIATED_KEYS: u32 = 100;
+const RECENT_ERA_COUNT: u64 = 5;
+const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
+const EXPECTED_GOSSIP_TARGET: GossipTarget = GossipTarget::All;
 
 /// Top-level event for the reactor.
-#[derive(Debug, From, Serialize)]
+#[derive(Debug, From, Serialize, Display)]
 #[must_use]
 enum Event {
     #[from]
@@ -83,54 +72,22 @@ enum Event {
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
-    #[from]
-    ControlAnnouncement(ControlAnnouncement),
-    #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(contract_runtime::Event),
-    #[from]
-    ContractRuntimeRequest(ContractRuntimeRequest),
-    #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming),
-    #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
-    #[from]
-    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
-    #[from]
-    NetRequestIncoming(NetRequestIncoming),
-    #[from]
-    NetResponseIncoming(NetResponseIncoming),
-    #[from]
-    TrieRequestIncoming(TrieRequestIncoming),
-    #[from]
-    TrieDemand(TrieDemand),
-    #[from]
-    TrieResponseIncoming(TrieResponseIncoming),
-    #[from]
-    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for Event {
-    fn as_control(&self) -> Option<&ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ref ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+    fn is_control(&self) -> bool {
+        false
     }
 
     fn try_into_control(self) -> Option<ControlAnnouncement> {
-        if let Self::ControlAnnouncement(ctrl_ann) = self {
-            Some(ctrl_ann)
-        } else {
-            None
-        }
+        None
     }
 }
 
@@ -140,56 +97,27 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
     }
 }
 
-impl From<ConsensusRequest> for Event {
-    fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
+trait Unhandled {}
+
+impl<T: Unhandled> From<T> for Event {
+    fn from(_: T) -> Self {
+        unimplemented!("not handled in gossiper tests")
     }
 }
 
-impl From<ContractRuntimeAnnouncement> for Event {
-    fn from(_request: ContractRuntimeAnnouncement) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl Display for Event {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Event::Network(event) => write!(formatter, "event: {}", event),
-            Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
-            Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
-            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
-            Event::MarkBlockCompletedRequest(req) => {
-                write!(formatter, "mark block completed: {}", req)
-            }
-            Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
-            Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
-            Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
-            Event::RpcServerAnnouncement(ann) => {
-                write!(formatter, "api server announcement: {}", ann)
-            }
-            Event::DeployAcceptorAnnouncement(ann) => {
-                write!(formatter, "deploy-acceptor announcement: {}", ann)
-            }
-            Event::DeployGossiperAnnouncement(ann) => {
-                write!(formatter, "deploy-gossiper announcement: {}", ann)
-            }
-            Event::ContractRuntime(event) => {
-                write!(formatter, "contract-runtime event: {:?}", event)
-            }
-            Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::AddressGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::TrieDemand(inner) => write!(formatter, "demand: {}", inner),
-            Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
-            Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
-        }
-    }
-}
+impl Unhandled for ConsensusDemand {}
+impl Unhandled for ControlAnnouncement {}
+impl Unhandled for FatalAnnouncement {}
+impl Unhandled for ConsensusMessageIncoming {}
+impl Unhandled for GossiperIncoming<Block> {}
+impl Unhandled for GossiperIncoming<FinalitySignature> {}
+impl Unhandled for GossiperIncoming<GossipedAddress> {}
+impl Unhandled for NetRequestIncoming {}
+impl Unhandled for NetResponseIncoming {}
+impl Unhandled for TrieRequestIncoming {}
+impl Unhandled for TrieDemand {}
+impl Unhandled for TrieResponseIncoming {}
+impl Unhandled for FinalitySignatureIncoming {}
 
 /// Error type returned by the test reactor.
 #[derive(Debug, Error)]
@@ -202,8 +130,7 @@ struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     fake_deploy_acceptor: FakeDeployAcceptor,
-    deploy_gossiper: Gossiper<Deploy, Event>,
-    contract_runtime: ContractRuntime,
+    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
     _storage_tempdir: TempDir,
 }
 
@@ -220,6 +147,9 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
+        _chainspec: Arc<Chainspec>,
+        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        _network_identity: NetworkIdentity,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
@@ -233,30 +163,17 @@ impl reactor::Reactor for Reactor {
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             "test",
-        )
-        .unwrap();
-
-        let contract_runtime_config = contract_runtime::Config::default();
-        let contract_runtime = ContractRuntime::new(
-            ProtocolVersion::from_parts(1, 0, 0),
-            storage.root_path(),
-            &contract_runtime_config,
-            WasmConfig::default(),
-            SystemConfig::default(),
-            MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            registry,
+            MAX_TTL,
+            RECENT_ERA_COUNT,
+            Some(registry),
+            false,
         )
         .unwrap();
 
         let fake_deploy_acceptor = FakeDeployAcceptor::new();
-        let deploy_gossiper = Gossiper::new_for_partial_items(
+        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
             "deploy_gossiper",
             config,
-            get_deploy_from_storage,
             registry,
         )?;
 
@@ -265,13 +182,10 @@ impl reactor::Reactor for Reactor {
             storage,
             fake_deploy_acceptor,
             deploy_gossiper,
-            contract_runtime,
             _storage_tempdir: storage_tempdir,
         };
 
-        let effects = Effects::new();
-
-        Ok((reactor, effects))
+        Ok((reactor, Effects::new()))
     }
 
     fn dispatch_event(
@@ -280,6 +194,7 @@ impl reactor::Reactor for Reactor {
         rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
+        trace!(?event);
         match event {
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -290,11 +205,51 @@ impl reactor::Reactor for Reactor {
                 self.fake_deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::DeployGossiper(super::Event::ItemReceived {
+                item_id,
+                source,
+                target,
+            }) => {
+                // Ensure the correct target type for deploys is provided.
+                assert_eq!(target, EXPECTED_GOSSIP_TARGET);
+                let event = super::Event::ItemReceived {
+                    item_id,
+                    source,
+                    target,
+                };
+                reactor::wrap_effects(
+                    Event::DeployGossiper,
+                    self.deploy_gossiper
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             Event::DeployGossiper(event) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::NetworkRequest(NetworkRequest::Gossip {
+                payload,
+                gossip_target,
+                count,
+                exclude,
+                auto_closing_responder,
+            }) => {
+                // Ensure the correct target type for deploys is carried through to the `Network`.
+                assert_eq!(gossip_target, EXPECTED_GOSSIP_TARGET);
+                let request = NetworkRequest::Gossip {
+                    payload,
+                    gossip_target,
+                    count,
+                    exclude,
+                    auto_closing_responder,
+                };
+                reactor::wrap_effects(
+                    Event::Network,
+                    self.network
+                        .handle_event(effect_builder, rng, request.into()),
+                )
+            }
             Event::NetworkRequest(request) => reactor::wrap_effects(
                 Event::Network,
                 self.network
@@ -305,12 +260,6 @@ impl reactor::Reactor for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::MarkBlockCompletedRequest(_) => {
-                panic!("gossiper tests should never mark blocks completed")
-            }
-            Event::ControlAnnouncement(ctrl_ann) => {
-                unreachable!("unhandled control announcement: {}", ctrl_ann)
-            }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
                 responder,
@@ -327,8 +276,9 @@ impl reactor::Reactor for Reactor {
                 source,
             }) => {
                 let event = super::Event::ItemReceived {
-                    item_id: *deploy.id(),
+                    item_id: deploy.gossip_id(),
                     source,
+                    target: deploy.gossip_target(),
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
             }
@@ -336,97 +286,32 @@ impl reactor::Reactor for Reactor {
                 deploy: _,
                 source: _,
             }) => Effects::new(),
-            Event::DeployGossiperAnnouncement(_ann) => {
-                // We do not care about deploy gossiper announcements in the gossiper test.
-                Effects::new()
-            }
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+                item,
+                sender,
+            }) => reactor::wrap_effects(
+                Event::DeployAcceptor,
+                self.fake_deploy_acceptor.handle_event(
+                    effect_builder,
+                    rng,
+                    deploy_acceptor::Event::Accept {
+                        deploy: item,
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    },
+                ),
+            ),
+            Event::DeployGossiperAnnouncement(_ann) => Effects::new(),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
-            ),
-            Event::ContractRuntimeRequest(req) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 Event::DeployGossiper,
                 self.deploy_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            Event::NetRequestIncoming(incoming) => reactor::wrap_effects(
-                Event::Storage,
-                self.storage
-                    .handle_event(effect_builder, rng, incoming.into()),
-            ),
-            Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
-                NetResponse::Deploy(ref serialized_item) => {
-                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
-                        serialized_item,
-                    ) {
-                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                            return fatal!(
-                                effect_builder,
-                                "peer did not have deploy with hash {}: {}",
-                                deploy_hash,
-                                sender,
-                            )
-                            .ignore();
-                        }
-                        Err(error) => {
-                            return fatal!(
-                                effect_builder,
-                                "failed to decode deploy from {}: {}",
-                                sender,
-                                error
-                            )
-                            .ignore();
-                        }
-                    };
-                    reactor::wrap_effects(
-                        Event::DeployAcceptor,
-                        self.fake_deploy_acceptor.handle_event(
-                            effect_builder,
-                            rng,
-                            deploy_acceptor::Event::Accept {
-                                deploy,
-                                source: Source::Peer(sender),
-                                maybe_responder: None,
-                            },
-                        ),
-                    )
-                }
-                other @ (NetResponse::FinalizedApprovals(_)
-                | NetResponse::Block(_)
-                | NetResponse::GossipedAddress(_)
-                | NetResponse::BlockAndMetadataByHeight(_)
-                | NetResponse::BlockAndDeploys(_)
-                | NetResponse::BlockHeaderByHash(_)
-                | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)
-                | NetResponse::BlockHeadersBatch(_)
-                | NetResponse::FinalitySignatures(_)) => {
-                    fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
-                }
-            },
-            other @ (Event::ConsensusMessageIncoming(_)
-            | Event::FinalitySignatureIncoming(_)
-            | Event::AddressGossiperIncoming(_)
-            | Event::TrieRequestIncoming(_)
-            | Event::TrieDemand(_)
-            | Event::TrieResponseIncoming(_)) => {
-                fatal!(effect_builder, "should not receive {:?}", other).ignore()
-            }
         }
-    }
-
-    fn maybe_exit(&self) -> Option<crate::reactor::ReactorExit> {
-        unimplemented!()
     }
 }
 
@@ -452,7 +337,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
+    let mut network = TestingNetwork::<Reactor>::new();
 
     // Add `network_size` nodes.
     let node_ids = network.add_nodes(rng, network_size).await;
@@ -460,7 +345,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
         let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
-        (*deploy.id(), deploy)
+        (*deploy.hash(), deploy)
     })
     .take(deploy_count)
     .unzip();
@@ -509,7 +394,7 @@ async fn should_get_from_alternate_source() {
     const TIMEOUT: Duration = Duration::from_secs(2);
 
     NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
+    let mut network = TestingNetwork::<Reactor>::new();
     let mut rng = crate::new_rng();
 
     // Add `NETWORK_SIZE` nodes.
@@ -517,7 +402,7 @@ async fn should_get_from_alternate_source() {
 
     // Create random deploy.
     let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
-    let deploy_id = *deploy.id();
+    let deploy_id = *deploy.hash();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
@@ -583,7 +468,7 @@ async fn should_timeout_gossip_response() {
     const TIMEOUT: Duration = Duration::from_secs(2);
 
     NetworkController::<NodeMessage>::create_active();
-    let mut network = Network::<Reactor>::new();
+    let mut network = TestingNetwork::<Reactor>::new();
     let mut rng = crate::new_rng();
 
     // The target number of peers to infect with a given piece of data.
@@ -596,7 +481,7 @@ async fn should_timeout_gossip_response() {
 
     // Create random deploy.
     let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
-    let deploy_id = *deploy.id();
+    let deploy_id = *deploy.hash();
 
     // Give the deploy to node 0 to be gossiped.
     network
@@ -645,4 +530,224 @@ async fn should_timeout_gossip_response() {
     network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
 
     NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_timeout_new_item_from_peer() {
+    const NETWORK_SIZE: usize = 2;
+    const VALIDATE_AND_STORE_TIMEOUT: Duration = Duration::from_secs(1);
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = TestingNetwork::<Reactor>::new();
+    let mut test_rng = crate::new_rng();
+    let rng = &mut test_rng;
+
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
+    let node_0 = node_ids[0];
+    let node_1 = node_ids[1];
+    // Set the timeout on node 0 low for testing.
+    let reactor_0 = network
+        .nodes_mut()
+        .get_mut(&node_0)
+        .unwrap()
+        .reactor_mut()
+        .inner_mut();
+    reactor_0.deploy_gossiper.validate_and_store_timeout = VALIDATE_AND_STORE_TIMEOUT;
+    // Switch off the fake deploy acceptor on node 0 so that once the new deploy is received, no
+    // component triggers the `ItemReceived` event.
+    reactor_0.fake_deploy_acceptor.set_active(false);
+
+    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+
+    // Give the deploy to node 1 to gossip to node 0.
+    network
+        .process_injected_effect_on(&node_1, announce_deploy_received(deploy.clone(), None))
+        .await;
+
+    // Run the network until node 1 has sent the gossip request and node 0 has handled it to the
+    // point where the `NewItemBody` announcement has been received).
+    let got_new_item_body_announcement = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody { .. })
+        )
+    };
+    network
+        .crank_all_until(&node_0, rng, got_new_item_body_announcement, TIMEOUT)
+        .await;
+
+    // Run node 0 until it receives its own `CheckItemReceivedTimeout` event.
+    let received_timeout_event = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiper(super::Event::CheckItemReceivedTimeout { .. })
+        )
+    };
+    network
+        .crank_until(&node_0, rng, received_timeout_event, TIMEOUT)
+        .await;
+
+    // Ensure node 0 makes a `FinishedGossiping` announcement.
+    let made_finished_gossiping_announcement = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_))
+        )
+    };
+    network
+        .crank_until(&node_0, rng, made_finished_gossiping_announcement, TIMEOUT)
+        .await;
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_not_gossip_old_stored_item_again() {
+    const NETWORK_SIZE: usize = 2;
+    const TIMEOUT: Duration = Duration::from_secs(2);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = TestingNetwork::<Reactor>::new();
+    let mut test_rng = crate::new_rng();
+    let rng = &mut test_rng;
+
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
+    let node_0 = node_ids[0];
+
+    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+
+    // Store the deploy on node 0.
+    let store_deploy = |effect_builder: EffectBuilder<Event>| {
+        effect_builder
+            .put_deploy_to_storage(deploy.clone())
+            .ignore()
+    };
+    network
+        .process_injected_effect_on(&node_0, store_deploy)
+        .await;
+
+    // Node 1 sends a gossip message to node 0.
+    network
+        .process_injected_effect_on(&node_0, |effect_builder| {
+            let event = Event::DeployGossiperIncoming(GossiperIncoming {
+                sender: node_ids[1],
+                message: Box::new(Message::Gossip(deploy.gossip_id())),
+            });
+            effect_builder
+                .into_inner()
+                .schedule(event, QueueKind::Gossip)
+                .ignore()
+        })
+        .await;
+
+    // Run node 0 until it has handled the gossip message and checked if the deploy is already
+    // stored.
+    let checked_if_stored = |event: &Event| -> bool {
+        matches!(
+            event,
+            Event::DeployGossiper(super::Event::IsStoredResult { .. })
+        )
+    };
+    network
+        .crank_until(&node_0, rng, checked_if_stored, TIMEOUT)
+        .await;
+    // Assert the message did not cause a new entry in the gossip table and spawned no new events.
+    assert!(network
+        .nodes()
+        .get(&node_0)
+        .unwrap()
+        .reactor()
+        .inner()
+        .deploy_gossiper
+        .table
+        .is_empty());
+    assert!(matches!(
+        network.crank(&node_0, rng).await,
+        TryCrankOutcome::NoEventsToProcess
+    ));
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+enum Unexpected {
+    Response,
+    GetItem,
+    Item,
+}
+
+async fn should_ignore_unexpected_message(message_type: Unexpected) {
+    const NETWORK_SIZE: usize = 2;
+    const TIMEOUT: Duration = Duration::from_secs(2);
+
+    NetworkController::<NodeMessage>::create_active();
+    let mut network = TestingNetwork::<Reactor>::new();
+    let mut test_rng = crate::new_rng();
+    let rng = &mut test_rng;
+
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
+    let node_0 = node_ids[0];
+
+    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+
+    let message = match message_type {
+        Unexpected::Response => Message::GossipResponse {
+            item_id: deploy.gossip_id(),
+            is_already_held: false,
+        },
+        Unexpected::GetItem => Message::GetItem(deploy.gossip_id()),
+        Unexpected::Item => Message::Item(deploy),
+    };
+
+    // Node 1 sends an unexpected message to node 0.
+    network
+        .process_injected_effect_on(&node_0, |effect_builder| {
+            let event = Event::DeployGossiperIncoming(GossiperIncoming {
+                sender: node_ids[1],
+                message: Box::new(message),
+            });
+            effect_builder
+                .into_inner()
+                .schedule(event, QueueKind::Gossip)
+                .ignore()
+        })
+        .await;
+
+    // Run node 0 until it has handled the gossip message.
+    let received_gossip_message =
+        |event: &Event| -> bool { matches!(event, Event::DeployGossiperIncoming(..)) };
+    network
+        .crank_until(&node_0, rng, received_gossip_message, TIMEOUT)
+        .await;
+    // Assert the message did not cause a new entry in the gossip table and spawned no new events.
+    assert!(network
+        .nodes()
+        .get(&node_0)
+        .unwrap()
+        .reactor()
+        .inner()
+        .deploy_gossiper
+        .table
+        .is_empty());
+    assert!(matches!(
+        network.crank(&node_0, rng).await,
+        TryCrankOutcome::NoEventsToProcess
+    ));
+
+    NetworkController::<NodeMessage>::remove_active();
+}
+
+#[tokio::test]
+async fn should_ignore_unexpected_response_message() {
+    should_ignore_unexpected_message(Unexpected::Response).await
+}
+
+#[tokio::test]
+async fn should_ignore_unexpected_get_item_message() {
+    should_ignore_unexpected_message(Unexpected::GetItem).await
+}
+
+#[tokio::test]
+async fn should_ignore_unexpected_item_message() {
+    should_ignore_unexpected_message(Unexpected::Item).await
 }

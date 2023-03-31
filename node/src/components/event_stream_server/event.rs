@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp};
 use itertools::Itertools;
@@ -7,7 +10,8 @@ use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalityS
 
 #[derive(Debug)]
 pub enum Event {
-    BlockAdded(Box<Block>),
+    Initialize,
+    BlockAdded(Arc<Block>),
     DeployAccepted(Box<Deploy>),
     DeployProcessed {
         deploy_hash: DeployHash,
@@ -18,7 +22,7 @@ pub enum Event {
     DeploysExpired(Vec<DeployHash>),
     Fault {
         era_id: EraId,
-        public_key: PublicKey,
+        public_key: Box<PublicKey>,
         timestamp: Timestamp,
     },
     FinalitySignature(Box<FinalitySignature>),
@@ -31,6 +35,7 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Event::Initialize => write!(formatter, "initialize"),
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
             Event::DeployAccepted(deploy_hash) => {
                 write!(formatter, "deploy accepted {}", deploy_hash)

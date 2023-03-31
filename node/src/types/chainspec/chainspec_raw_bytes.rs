@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::bytesrepr::Bytes;
 
 /// The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, JsonSchema)]
 pub struct ChainspecRawBytes {
     #[schemars(
         with = "String",
@@ -22,6 +22,41 @@ pub struct ChainspecRawBytes {
         description = "Hex-encoded raw bytes of the current global_state.toml file."
     )]
     maybe_global_state_bytes: Option<Bytes>,
+}
+
+impl std::fmt::Debug for ChainspecRawBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let genesis_accounts_bytes_owned: Bytes;
+        let global_state_bytes_owned: Bytes;
+        f.debug_struct("ChainspecRawBytes")
+            .field(
+                "chainspec_bytes",
+                &self.chainspec_bytes[0..16].to_ascii_uppercase(),
+            )
+            .field(
+                "maybe_genesis_accounts_bytes",
+                match self.maybe_genesis_accounts_bytes.as_ref() {
+                    Some(genesis_accounts_bytes) => {
+                        genesis_accounts_bytes_owned =
+                            genesis_accounts_bytes[0..16].to_ascii_uppercase().into();
+                        &genesis_accounts_bytes_owned
+                    }
+                    None => &self.maybe_genesis_accounts_bytes,
+                },
+            )
+            .field(
+                "maybe_global_state_bytes",
+                match self.maybe_global_state_bytes.as_ref() {
+                    Some(global_state_bytes) => {
+                        global_state_bytes_owned =
+                            global_state_bytes[0..16].to_ascii_uppercase().into();
+                        &global_state_bytes_owned
+                    }
+                    None => &self.maybe_global_state_bytes,
+                },
+            )
+            .finish()
+    }
 }
 
 impl ChainspecRawBytes {

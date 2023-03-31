@@ -25,7 +25,7 @@ export function testRuntimeArgs(): bool {
         new Pair("arg3", CLValue.fromU512(U512.fromU64(123456789))),
     ]);
     let bytes = runtimeArgs.toBytes();
-    return checkArraysEqual(typedToArray(truth), bytes);
+    return checkArraysEqual<u8, Array<u8>>(truth, bytes);
 }
 
 export function testRuntimeArgs_Empty(): bool {
@@ -42,5 +42,5 @@ export function testRuntimeArgs_Empty(): bool {
 
     let runtimeArgs = new RuntimeArgs();
     let bytes = runtimeArgs.toBytes();
-    return checkArraysEqual(typedToArray(truth), bytes);
+    return checkArraysEqual<u8, Array<u8>>(truth, bytes);
 }

@@ -1,11 +1,11 @@
 import * as externals from "./externals";
-import {arrayToTyped} from "./utils";
-import {UREF_SERIALIZED_LENGTH} from "./constants";
-import {URef} from "./uref";
-import {AccountHash} from "./key";
-import { fromBytesArray } from "./bytesrepr";
-import {Error, ErrorCode} from "./error";
-import {readHostBuffer} from "./index";
+import { arrayToTyped } from "./utils";
+import { UREF_SERIALIZED_LENGTH } from "./constants";
+import { URef } from "./uref";
+import { AccountHash } from "./key";
+import { fromBytesArray, Result } from "./bytesrepr";
+import { Error, ErrorCode } from "./error";
+import { readHostBuffer } from "./index";
 
 /**
  * Enum representing the possible results of adding an associated key to an account.
@@ -176,9 +176,7 @@ export function removeAssociatedKey(accountHash: AccountHash): RemoveKeyFailure 
  * @returns The [[URef]] that can be used to access the main purse.
  */
 export function getMainPurse(): URef {
-    let data = new Uint8Array(UREF_SERIALIZED_LENGTH);
-    data.fill(0);
-    externals.get_main_purse(data.dataStart);
+    const data = getMainPurseBytes();
     let urefResult = URef.fromBytes(data);
     return urefResult.unwrap();
 }
@@ -200,18 +198,34 @@ export function listAuthorizationKeys(): Array<AccountHash> {
     if (totalKeys[0] == 0) {
         return new Array<AccountHash>();
     }
+    let fromBytesAccountHash = function (bytes: StaticArray<u8>): Result<AccountHash> { return AccountHash.fromBytes(bytes.slice(0)); }
 
     let keyBytes = readHostBuffer(resultSize[0]);
     let maybeKeys = fromBytesArray<AccountHash>(
         keyBytes,
-        AccountHash.fromBytes);
+        fromBytesAccountHash);
 
     if (maybeKeys.hasError()) {
-      Error.fromErrorCode(ErrorCode.Deserialize).revert();
-      unreachable();
+        Error.fromErrorCode(ErrorCode.Deserialize).revert();
+        unreachable();
     }
 
     let result = maybeKeys.value;
     result.sort();
     return result;
+}
+
+/**
+ * Gets the [[URef]] representing the main purse of the account in raw bytes form.
+ *
+ * Useful in scenarios where main purse does not need to be parsed, and can be
+ * immediatelly passed in raw bytes form to avoid deserialization and serialization.
+ *
+ * @internal
+ * @returns The [[URef]] that can be used to access the main purse.
+ */
+export function getMainPurseBytes(): StaticArray<u8> {
+    let data = new StaticArray<u8>(UREF_SERIALIZED_LENGTH);
+    externals.get_main_purse(changetype<usize>(data));
+    return data;
 }

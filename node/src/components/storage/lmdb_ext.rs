@@ -92,6 +92,10 @@ pub(super) trait TransactionExt {
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
 
+    /// Returns `true` if the given key has an entry in the given database.
+    fn value_exists<K: AsRef<[u8]>>(&mut self, db: Database, key: &K)
+        -> Result<bool, LmdbExtError>;
+
     /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
     /// serialization.
     fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
@@ -150,6 +154,19 @@ where
     }
 
     #[inline]
+    fn value_exists<K: AsRef<[u8]>>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError> {
+        match self.get(db, key) {
+            Ok(_raw) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    #[inline]
     fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
         &mut self,
         db: Database,
@@ -168,6 +185,7 @@ where
 /// In case the `value` is of the `UnbondingPurse` type it uses the specialized
 /// function to provide compatibility with the legacy version of the `UnbondingPurse` struct.
 /// See [`serialize_unbonding_purse`] for more details.
+// TODO: Get rid of the 'static bound.
 pub(crate) fn serialize_internal<V: 'static + Serialize>(
     value: &V,
 ) -> Result<Vec<u8>, LmdbExtError> {

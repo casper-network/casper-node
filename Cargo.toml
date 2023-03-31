@@ -10,9 +10,7 @@ members = [
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
     "types",
-    "utils/dry-run-deploys",
     "utils/global-state-update-gen",
-    "utils/retrieve-state",
     "utils/validation",
 ]
 
@@ -25,9 +23,7 @@ default-members = [
     "json_rpc",
     "node",
     "types",
-    "utils/dry-run-deploys",
     "utils/global-state-update-gen",
-    "utils/retrieve-state",
     "utils/validation",
 ]
 

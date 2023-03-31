@@ -211,7 +211,7 @@ impl TestFixture {
                 0 => SseData::random_block_added(rng),
                 1 => {
                     let (event, deploy) = SseData::random_deploy_accepted(rng);
-                    assert!(deploys.insert(*deploy.id(), deploy).is_none());
+                    assert!(deploys.insert(*deploy.hash(), deploy).is_none());
                     event
                 }
                 2 => SseData::random_deploy_processed(rng),
@@ -267,14 +267,24 @@ impl TestFixture {
             config,
             self.storage_dir.path().to_path_buf(),
             self.protocol_version,
-        )
-        .unwrap();
-        assert!(server.inner.is_some());
+        );
+        server.listen().unwrap();
+        assert!(server.sse_server.is_some());
 
-        self.first_event_id = server.inner.as_ref().unwrap().event_indexer.current_index();
+        self.first_event_id = server
+            .sse_server
+            .as_ref()
+            .unwrap()
+            .event_indexer
+            .current_index();
 
-        let first_event_id = server.inner.as_ref().unwrap().event_indexer.current_index();
-        let server_address = server.inner.as_ref().unwrap().listening_address;
+        let first_event_id = server
+            .sse_server
+            .as_ref()
+            .unwrap()
+            .event_indexer
+            .current_index();
+        let server_address = server.sse_server.as_ref().unwrap().listening_address;
         let events = self.events.clone();
         let server_stopper = self.server_stopper.clone();
 
@@ -1179,9 +1189,6 @@ async fn should_limit_concurrent_subscribers() {
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
 fn schema_test() {
-    // To generate the contents to replace the input JSON files, run the test
-    // and print the `actual_schema`  by uncommenting the `println!`
-    // towards the end of the test.
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")

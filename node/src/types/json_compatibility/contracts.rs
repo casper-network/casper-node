@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::json_compatibility::vectorize;
 use casper_types::{
-    Contract as DomainContract, ContractHash, ContractPackage as DomainContractPackage,
-    ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, ProtocolVersion, URef,
+    contracts::ContractPackageStatus, Contract as DomainContract, ContractHash,
+    ContractPackage as DomainContractPackage, ContractPackageHash, ContractWasmHash, EntryPoint,
+    NamedKey, ProtocolVersion, URef,
 };
 
 #[derive(
@@ -71,6 +72,7 @@ pub struct ContractPackage {
     versions: Vec<ContractVersion>,
     disabled_versions: Vec<DisabledVersion>,
     groups: Vec<Groups>,
+    lock_status: ContractPackageStatus,
 }
 
 impl From<&DomainContractPackage> for ContractPackage {
@@ -108,6 +110,7 @@ impl From<&DomainContractPackage> for ContractPackage {
             versions,
             disabled_versions,
             groups,
+            lock_status: contract_package.get_lock_status(),
         }
     }
 }

@@ -8,7 +8,7 @@ use rand::Rng;
 
 use casper_types::{
     account::{Account, AccountHash},
-    system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot},
+    system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
 };
 
@@ -21,8 +21,10 @@ pub struct StateTracker<T> {
     total_supply: U512,
     total_supply_key: Key,
     accounts_cache: BTreeMap<AccountHash, Account>,
+    unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
     bids_cache: Option<Bids>,
+    seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
 }
 
 impl<T: StateReader> StateTracker<T> {
@@ -44,8 +46,10 @@ impl<T: StateReader> StateTracker<T> {
             total_supply_key,
             total_supply: total_supply.into_t().expect("should be U512"),
             accounts_cache: BTreeMap::new(),
+            unbonds_cache: BTreeMap::new(),
             purses_cache: BTreeMap::new(),
             bids_cache: None,
+            seigniorage_recipients: None,
         }
     }
 
@@ -185,6 +189,10 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
     pub fn read_snapshot(&mut self) -> (Key, SeigniorageRecipientsSnapshot) {
+        if let Some(key_and_snapshot) = &self.seigniorage_recipients {
+            return key_and_snapshot.clone();
+        }
+
         // Read the key under which the snapshot is stored.
         let validators_key = self.reader.get_seigniorage_recipients_key();
 
@@ -194,7 +202,9 @@ impl<T: StateReader> StateTracker<T> {
             .as_cl_value()
             .cloned()
             .expect("should be cl value");
-        (validators_key, cl_value.into_t().expect("should convert"))
+        let snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
+        self.seigniorage_recipients = Some((validators_key, snapshot.clone()));
+        (validators_key, snapshot)
     }
 
     /// Reads the bids from the global state.
@@ -209,16 +219,14 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     /// Sets the bid for the given account.
-    pub fn set_bid(&mut self, public_key: PublicKey, bid: Bid) {
+    pub fn set_bid(&mut self, public_key: PublicKey, bid: Bid, slash: bool) {
         let maybe_current_bid = self.get_bids().get(&public_key).cloned();
 
-        let new_amount = match bid.total_staked_amount() {
-            Ok(amount) => amount,
-            Err(e) => {
-                eprintln!("invalid new bid for {:?}: {:?}", public_key, e);
-                return;
-            }
-        };
+        let new_amount = *bid.staked_amount();
+        let old_amount = maybe_current_bid
+            .as_ref()
+            .map(|bid| self.get_purse_balance(*bid.bonding_purse()))
+            .unwrap_or_else(U512::zero);
 
         // we called `get_bids` above, so `bids_cache` will be `Some`
         self.bids_cache
@@ -233,23 +241,134 @@ impl<T: StateReader> StateTracker<T> {
 
         // Update the bonding purses - this will also take care of the total supply changes.
         if let Some(old_bid) = maybe_current_bid {
-            self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
+            // only zero the bonding purse and write the balance to the new purse if the new one is
+            // different (just to save unnecessary writes)
+            if old_bid.bonding_purse() != bid.bonding_purse() {
+                self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
+                self.set_purse_balance(*bid.bonding_purse(), old_amount);
+            }
+            //
+            for (delegator_pub_key, delegator) in old_bid.delegators() {
+                // skip zeroing purses of delegators whose purses don't change - that will be
+                // handled later
+                if bid
+                    .delegators()
+                    .get(delegator_pub_key)
+                    .map(|new_delegator| new_delegator.bonding_purse() == delegator.bonding_purse())
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                // zero the old purse if we are going to transfer the funds to a new purse, or if
+                // we're supposed to slash the delegator
+                if slash || bid.delegators().contains_key(delegator_pub_key) {
+                    // if we're transferring funds to a new purse, set the new purse balance to the
+                    // old amount
+                    let old_amount = self.get_purse_balance(*delegator.bonding_purse());
+                    if let Some(new_delegator) = bid.delegators().get(delegator_pub_key) {
+                        self.set_purse_balance(*new_delegator.bonding_purse(), old_amount);
+                    }
+                    self.set_purse_balance(*delegator.bonding_purse(), U512::zero());
+                } else {
+                    let amount = self.get_purse_balance(*delegator.bonding_purse());
+                    self.create_unbonding_purse(
+                        *delegator.bonding_purse(),
+                        &public_key,
+                        delegator_pub_key,
+                        amount,
+                    );
+                }
+            }
         }
-        self.set_purse_balance(*bid.bonding_purse(), new_amount);
+
+        if (slash && new_amount != old_amount) || new_amount > old_amount {
+            self.set_purse_balance(*bid.bonding_purse(), new_amount);
+        } else if new_amount < old_amount {
+            self.create_unbonding_purse(
+                *bid.bonding_purse(),
+                &public_key,
+                &public_key,
+                old_amount - new_amount,
+            );
+        }
+
+        for (delegator_public_key, delegator) in bid.delegators() {
+            let old_amount = self.get_purse_balance(*delegator.bonding_purse());
+            let new_amount = *delegator.staked_amount();
+            if (slash && new_amount != old_amount) || new_amount > old_amount {
+                self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
+            } else if new_amount < old_amount {
+                self.create_unbonding_purse(
+                    *delegator.bonding_purse(),
+                    &public_key,
+                    delegator_public_key,
+                    old_amount - new_amount,
+                );
+            }
+        }
     }
 
-    /// Generates the writes to the global state that will remove the pending withdraws of all the
-    /// old validators that will cease to be validators.
-    pub fn remove_withdraws(&mut self, removed: &BTreeSet<PublicKey>) {
-        let withdraws = self.reader.get_unbonds();
-        let withdraw_keys: BTreeSet<_> = withdraws.keys().collect();
-        for (key, value) in removed
-            .iter()
-            .map(PublicKey::to_account_hash)
-            .filter(|acc| withdraw_keys.contains(&acc))
-            .map(|acc| (Key::Withdraw(acc), StoredValue::Withdraw(vec![])))
-        {
-            self.write_entry(key, value);
+    /// Generates the writes to the global state that will remove the pending withdraws and unbonds
+    /// of all the old validators that will cease to be validators, and slashes their unbonding
+    /// purses.
+    pub fn remove_withdraws_and_unbonds(&mut self, removed: &BTreeSet<PublicKey>) {
+        let withdraws = self.reader.get_withdraws();
+        let unbonds = self.reader.get_unbonds();
+        for removed_validator in removed {
+            let acc = removed_validator.to_account_hash();
+            if let Some(withdraw_set) = withdraws.get(&acc) {
+                for withdraw in withdraw_set {
+                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
+            }
+
+            if let Some(unbond_set) = unbonds.get(&acc) {
+                for unbond in unbond_set {
+                    self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+            }
         }
+    }
+
+    pub fn create_unbonding_purse(
+        &mut self,
+        bonding_purse: URef,
+        validator_key: &PublicKey,
+        unbonder_key: &PublicKey,
+        amount: U512,
+    ) {
+        let account_hash = validator_key.to_account_hash();
+        let unbonding_era = self.read_snapshot().1.keys().next().copied().unwrap();
+        let unbonding_purses = match self.unbonds_cache.entry(account_hash) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let existing_purses = self
+                    .reader
+                    .query(Key::Unbond(account_hash))
+                    .and_then(|stored_val| stored_val.as_unbonding().cloned())
+                    .unwrap_or_default();
+                entry.insert(existing_purses)
+            }
+        };
+        // Take the first era from the snapshot as the unbonding era.
+        let new_purse = UnbondingPurse::new(
+            bonding_purse,
+            validator_key.clone(),
+            unbonder_key.clone(),
+            unbonding_era,
+            amount,
+            None,
+        );
+
+        // This doesn't actually transfer or create any funds - the funds will be transferred from
+        // the bonding purse to the unbonder's main purse later by the auction contract.
+        unbonding_purses.push(new_purse);
+        let unbonding_purses = unbonding_purses.clone();
+        self.write_entry(
+            Key::Unbond(account_hash),
+            StoredValue::Unbonding(unbonding_purses),
+        );
     }
 }

@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.4.8")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.4.13")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -20,20 +20,19 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
+#![allow(clippy::bool_comparison)]
 
+pub mod cli;
 pub(crate) mod components;
 mod config_migration;
 mod data_migration;
 pub(crate) mod effect;
-pub(crate) mod logging;
+pub mod logging;
 pub(crate) mod protocol;
 pub(crate) mod reactor;
 #[cfg(test)]
 pub(crate) mod testing;
 pub(crate) mod tls;
-
-// Public API
-pub mod cli;
 pub mod types;
 pub mod utils;
 pub use components::{
@@ -41,6 +40,7 @@ pub use components::{
     rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };
+pub use reactor::main_reactor::Config as MainReactorConfig;
 pub use utils::WithDir;
 
 use std::sync::{atomic::AtomicUsize, Arc};
@@ -52,16 +52,19 @@ use rand::SeedableRng;
 use signal_hook::{consts::TERM_SIGNALS, flag};
 
 pub(crate) use components::{
-    block_proposer::Config as BlockProposerConfig,
+    block_accumulator::Config as BlockAccumulatorConfig,
+    block_synchronizer::Config as BlockSynchronizerConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
+    deploy_buffer::Config as DeployBufferConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig,
+    network::Config as NetworkConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
-    small_network::Config as SmallNetworkConfig,
+    upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub(crate) use types::NodeRng;
 

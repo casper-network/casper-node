@@ -93,6 +93,7 @@ alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accou
 
 # Views #2: node.
 alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
+alias nctl-dport='source $NCTL/sh/node/dport.sh'
 alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_stderr.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log_stdout.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'

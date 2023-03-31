@@ -4,16 +4,15 @@ import { typedToArray } from "../../assembly/utils";
 import { Pair } from "../../assembly/pair";
 
 export function testHex2Bin(): bool {
-    let truth = hex2bin("deadbeef");
-    let lhs = typedToArray(truth);
+    let lhs = hex2bin("deadbeef");
     let rhs: Array<u8> = [222, 173, 190, 239];
-    return checkArraysEqual(lhs, rhs);
+    return checkArraysEqual<u8>(lhs, rhs);
 }
 
 export function testcheckArraysEqual(): bool {
-    assert(checkArraysEqual(<u8[]>[], <u8[]>[]));
-    assert(!checkArraysEqual(<u8[]>[1, 2, 3], <u8[]>[1]));
-    return checkArraysEqual(<u8[]>[1, 2, 3], <u8[]>[1, 2, 3]);
+    assert(checkArraysEqual<u8, Array<u8>>(<u8[]>[], <u8[]>[]));
+    assert(!checkArraysEqual<u8, Array<u8>>(<u8[]>[1, 2, 3], <u8[]>[1]));
+    return checkArraysEqual<u8, Array<u8>>(<u8[]>[1, 2, 3], <u8[]>[1, 2, 3]);
 }
 
 export function testItemsEqual(): bool {
@@ -25,7 +24,7 @@ export function testItemsEqual(): bool {
 export function testItemsNotEqual(): bool {
     let lhs1: u32[] = [1,2,3,4,5];
     let rhs1: u32[] = [1,2,3,4,5,6];
-    
+
     let lhs2: u32[] = [1,2,3,4,5,6];
     let rhs2: u32[] = [1,2,3,4,5];
     assert(!checkItemsEqual(lhs1, rhs1));

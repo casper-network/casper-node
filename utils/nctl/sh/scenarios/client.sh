@@ -282,6 +282,7 @@ function test_put_deploy() {
         --chain-name "$CHAIN_NAME" \
         --payment-amount "$PAYMENT" \
         --session-path "$CONTRACT_PATH" \
+        --ttl '5minutes' \
         --secret-key "$SIGNER_SECRET_KEY_PATH")
 
     # Check client responded
@@ -332,6 +333,7 @@ function test_make_deploy() {
         --payment-amount "$PAYMENT" \
         --output "$DEPLOY_FILE" \
         --session-path "$CONTRACT_PATH" \
+        --ttl '5minutes' \
         --secret-key "$SIGNER_SECRET_KEY_PATH"
 
     # Test Valid JSON
@@ -414,6 +416,7 @@ function test_transfer() {
         --payment-amount "$PAYMENT" \
         --target-account "$TRANSFER_TO" \
         --secret-key "$SIGNER_SECRET_KEY_PATH" \
+        --ttl '5minutes' \
         --transfer-id "$TRANSFER_ID"
     )
 
@@ -806,6 +809,7 @@ function test_make_transfer() {
         --target-account "$TRANSFER_TO" \
         --secret-key "$SIGNER_SECRET_KEY_PATH" \
         --transfer-id "$TRANSFER_ID" \
+        --ttl '5minutes' \
         --output "$DEPLOY_FILE"
 
     # Test Valid JSON
@@ -1300,12 +1304,10 @@ function get_keygen_algos() {
 function get_generate_completion_shells() {
     local OUTPUT
     OUTPUT=$($(get_path_to_client) generate-completion --help \
-        | grep 'possible values' \
-        | cut -d "[" -f2 \
+        | awk -F'possible values:' '{print $2}' \
         | cut -d "]" -f1 \
-        | awk -F'possible values: ' '{print $2}' \
         | tr -d "[:space:]" \
-        |sed 's/,/ /g')
+        | sed 's/,/ /g')
 
     # Check non-empty
     check_client_responded "$OUTPUT"
@@ -1317,11 +1319,12 @@ function get_generate_completion_shells() {
 function get_client_subcommand_list() {
     local OUTPUT
     OUTPUT=$($(get_path_to_client) --help \
-        | grep -A 999 SUBCOMMANDS \
-        | awk -F'    ' '{print $2}' \
+        | awk -v RS= 'NR==3' \
+        | sed -e '/^[ \t]\{3,\}/d' \
+        | awk '{print $1}' \
+        | sed -n '1!p' \
         | sort \
-        | uniq \
-        | sed '/^$/d')
+        | uniq)
 
     # Check non-empty
     check_client_responded "$OUTPUT"

@@ -13,7 +13,7 @@ source "$NCTL/sh/utils/main.sh"
 # ----------------------------------------------------------------
 
 # Base URL: nctl.
-_BASE_URL="http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com"
+_BASE_URL=${NCTL_REMOTE_BASE_URL:-"http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com"}
 
 # Set of remote files.
 _REMOTE_FILES=(
@@ -26,6 +26,7 @@ _REMOTE_FILES=(
     "transfer_to_account_u512.wasm"
     "undelegate.wasm"
     "withdraw_bid.wasm"
+    "global-state-update-gen"
 )
 
 function _main()
@@ -53,6 +54,7 @@ function _main()
         fi
     done
     chmod +x ./casper-node
+    chmod +x ./global-state-update-gen
     if [ "${#PROTOCOL_VERSION}" = '3' ]; then
         RC_VERSION=$(./casper-node --version | awk '{ print $2 }' |  awk -F'-' '{ print $1 }')
         cd ..

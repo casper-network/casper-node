@@ -46,7 +46,7 @@ export function counter_get(): void {
     Error.fromErrorCode(ErrorCode.ValueNotFound).revert();
     return;
   }
-  let value = fromBytesI32(<Uint8Array>countData).unwrap();
+  let value = fromBytesI32(<StaticArray<u8>>countData).unwrap();
   CL.ret(CLValue.fromI32(value));
 }
 

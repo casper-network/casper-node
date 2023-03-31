@@ -22,7 +22,7 @@ const CONTRACT_TRANSFER_TO_ACCOUNT_U512: &str = "transfer_to_account_u512.wasm";
 // This value is not systemic, as code is added the size of WASM will increase,
 // you can change this value to reflect the increase in WASM size.
 const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 97_569;
-const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 150_973_798_070;
+const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 375_298_466_170;
 
 /// Acceptable size regression/improvement in percentage.
 const SIZE_MARGIN: usize = 5;
@@ -65,6 +65,10 @@ fn host_function_metrics_has_acceptable_size() {
         "Performance improvement: contract host-function-metrics became only {} bytes long; please adjust this regression test.",
         size
     );
+    println!(
+        "contract host-function-metrics byte size: {}, ubound: {}",
+        size, HOST_FUNCTION_METRICS_MAX_SIZE
+    )
 }
 
 fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {
@@ -143,7 +147,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(create_account_exec_request(ACCOUNT0_ADDR))
         .expect_success()
         .commit()

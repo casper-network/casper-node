@@ -67,8 +67,5 @@ jobs:
       - name: doc
         run: make doc
 
-      - name: lockfile
-        run: cargo generate-lockfile
-
       - name: audit
         run: make audit

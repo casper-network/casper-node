@@ -7,7 +7,7 @@ const ARG_ACCOUNT = "account";
 
 export function call(): void {
   const knownAccountHashBytes = CL.getNamedArg(ARG_ACCOUNT);
-  let knownAccountHashResult = AccountHash.fromBytes(knownAccountHashBytes);
+  let knownAccountHashResult = AccountHash.fromBytes(knownAccountHashBytes.slice(0));
   if (knownAccountHashResult.hasError()) {
     Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
     return;

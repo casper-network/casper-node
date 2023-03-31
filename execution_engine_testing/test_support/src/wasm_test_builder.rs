@@ -178,6 +178,50 @@ impl GlobalStateMode {
 }
 
 impl LmdbWasmTestBuilder {
+    /// Upgrades the execution engine using the scratch trie.
+    pub fn upgrade_with_upgrade_request_using_scratch(
+        &mut self,
+        engine_config: EngineConfig,
+        upgrade_config: &mut UpgradeConfig,
+    ) -> &mut Self {
+        let pre_state_hash = self.post_state_hash.expect("should have state hash");
+        upgrade_config.with_pre_state_hash(pre_state_hash);
+
+        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
+        engine_state.update_config(engine_config);
+
+        let scratch_state = self.engine_state.get_scratch_engine_state();
+        let pre_state_hash = upgrade_config.pre_state_hash();
+        let mut result = scratch_state
+            .commit_upgrade(CorrelationId::new(), upgrade_config.clone())
+            .unwrap();
+        result.post_state_hash = self
+            .engine_state
+            .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())
+            .unwrap();
+        self.engine_state.flush_environment().unwrap();
+
+        let result = Ok(result);
+
+        if let Ok(UpgradeSuccess {
+            post_state_hash,
+            execution_effect: _,
+        }) = result
+        {
+            self.post_state_hash = Some(post_state_hash);
+
+            if let Ok(StoredValue::CLValue(cl_registry)) =
+                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
+            {
+                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                self.system_contract_registry = Some(registry);
+            }
+        }
+
+        self.upgrade_results.push(result);
+        self
+    }
+
     /// Returns an [`LmdbWasmTestBuilder`] with configuration.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
@@ -234,10 +278,6 @@ impl LmdbWasmTestBuilder {
     ) -> Self {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
-        let vesting_schedule_period_millis =
-            humantime::parse_duration(&chainspec_config.core_config.vesting_schedule_period)
-                .expect("should parse a vesting schedule period")
-                .as_millis() as u64;
 
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
@@ -245,7 +285,10 @@ impl LmdbWasmTestBuilder {
             chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.core_config.minimum_delegation_amount,
             chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
+            chainspec_config
+                .core_config
+                .vesting_schedule_period
+                .millis(),
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -383,18 +426,16 @@ impl LmdbWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let vesting_schedule_period_millis =
-            humantime::parse_duration(&chainspec_config.core_config.vesting_schedule_period)
-                .expect("should parse a vesting schedule period")
-                .as_millis() as u64;
-
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
             chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.core_config.minimum_delegation_amount,
             chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
+            chainspec_config
+                .core_config
+                .vesting_schedule_period
+                .millis(),
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -417,7 +458,7 @@ impl LmdbWasmTestBuilder {
         path
     }
 
-    /// Returns the file size on disk of the backing lmdb file behind DbGlobalState.
+    /// Returns the file size on disk of the backing lmdb file behind LmdbGlobalState.
     pub fn lmdb_on_disk_size(&self) -> Option<u64> {
         if let Some(path) = self.global_state_dir.as_ref() {
             let mut path = path.clone();
@@ -428,7 +469,7 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_db to flush these changes to LmdbGlobalState.
+    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
@@ -739,6 +780,8 @@ where
     }
 
     /// Upgrades the execution engine.
+    /// Deprecated - this path does not use the scratch trie and generates many interstitial commits
+    /// on upgrade.
     pub fn upgrade_with_upgrade_request(
         &mut self,
         engine_config: EngineConfig,
@@ -1435,7 +1478,7 @@ where
         self.engine_state
             .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
-            .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
+            .map(|bytes| bytesrepr::deserialize(bytes.into_inner().into()).unwrap())
     }
 
     /// Returns the costs related to interacting with the auction system contract.

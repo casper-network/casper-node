@@ -1,4 +1,6 @@
 //! Errors in constructing and validating indexed Merkle proofs, chunks with indexed Merkle proofs.
+use casper_types::bytesrepr;
+
 use crate::{ChunkWithProof, Digest};
 
 /// Possible hashing errors.
@@ -52,11 +54,17 @@ pub enum ChunkWithProofVerificationError {
     MerkleVerificationError(#[from] MerkleVerificationError),
 
     /// Empty Merkle proof for trie with chunk.
-    #[error("Chunk with proof has empty merkle proof: {chunk_with_proof:?}")]
+    #[error("Chunk with proof has empty Merkle proof: {chunk_with_proof:?}")]
     ChunkWithProofHasEmptyMerkleProof {
         /// Chunk with empty Merkle proof.
         chunk_with_proof: ChunkWithProof,
     },
+    /// Unexpected Merkle root hash.
+    #[error("Merkle proof has an unexpected root hash")]
+    UnexpectedRootHash,
+    /// Bytesrepr error.
+    #[error("Bytesrepr error computing chunkable hash: {0}")]
+    Bytesrepr(bytesrepr::Error),
 
     /// First digest in indexed Merkle proof did not match hash of chunk.
     #[error(

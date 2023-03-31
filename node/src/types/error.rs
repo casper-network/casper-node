@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -25,7 +26,7 @@ pub enum BlockCreationError {
     )]
     CouldNotCreateEraEnd {
         /// An optional `EraReport` we tried to use to construct an `EraEnd`.
-        maybe_era_report: Option<EraReport>,
+        maybe_era_report: Option<Box<EraReport>>,
         /// An optional map of the next era validator weights used to construct an `EraEnd`.
         maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     },
@@ -38,7 +39,7 @@ pub enum BlockCreationError {
 }
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
-#[derive(Error, Debug, Serialize)]
+#[derive(Error, Clone, Debug, PartialEq, Eq, Serialize, DataSize)]
 pub enum BlockValidationError {
     /// Problem serializing some of a block's data into bytes.
     #[error("{0}")]
@@ -147,19 +148,4 @@ pub(crate) enum BlockWithMetadataValidationError {
     BlockValidationError(#[from] BlockValidationError),
     #[error(transparent)]
     BlockHeaderWithMetadataValidationError(#[from] BlockHeaderWithMetadataValidationError),
-}
-
-#[derive(Error, Debug, PartialEq, Eq)]
-pub(crate) enum BlockHeadersBatchValidationError {
-    #[error("Batch has incorrect length. Expect: {expected}, got: {got}")]
-    IncorrectLength { expected: u64, got: u64 },
-    #[error("Returned batch is not continuous sequence of blocks of parent-child relationship.")]
-    BatchNotContinuous,
-    #[error("Empty batch")]
-    BatchEmpty,
-    #[error(
-        "Hash of the highest block from batch doesn't match expected.
-        Expected: {expected}, got: {got}."
-    )]
-    HighestBlockHashMismatch { expected: BlockHash, got: BlockHash },
 }

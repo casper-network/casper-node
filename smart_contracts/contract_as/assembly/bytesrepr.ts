@@ -50,7 +50,7 @@ export class Result<T> {
      * @param error Error value
      * @param position Position of input stream
      */
-    constructor(public ref: Ref<T> | null, public error: Error, public position: u32) {}
+    constructor(public ref: Ref<T> | null, public error: Error, public position: u32) { }
 
     /**
      * Assumes that reference wrapper contains a value and then returns it
@@ -112,19 +112,19 @@ export function toBytesU8(num: u8): u8[] {
  *
  * @returns A [[Result]] that contains the value of type `T`, or an error if deserialization failed.
  */
-export function fromBytesLoad<T>(bytes: Uint8Array): Result<T> {
+export function fromBytesLoad<T>(bytes: StaticArray<u8>): Result<T> {
     let expectedSize = changetype<i32>(sizeof<T>())
     if (bytes.length < expectedSize) {
         return new Result<T>(null, Error.EarlyEndOfStream, 0);
     }
-    const value = load<T>(bytes.dataStart);
+    const value = load<T>(changetype<usize>(bytes));
     return new Result<T>(new Ref<T>(value), Error.Ok, expectedSize);
 }
 
 /**
  * Deserializes a `u8` from an array of bytes.
  */
-export function fromBytesU8(bytes: Uint8Array): Result<u8> {
+export function fromBytesU8(bytes: StaticArray<u8>): Result<u8> {
     return fromBytesLoad<u8>(bytes);
 }
 
@@ -132,19 +132,15 @@ export function fromBytesU8(bytes: Uint8Array): Result<u8> {
  * Converts `u32` to little endian.
  */
 export function toBytesU32(num: u32): u8[] {
-    let bytes = new Uint8Array(4);
+    let bytes = new Array<u8>(4);
     store<u32>(bytes.dataStart, num);
-    let result = new Array<u8>(4);
-    for (var i = 0; i < 4; i++) {
-        result[i] = bytes[i];
-    }
-    return result;
+    return bytes;
 }
 
 /**
  * Deserializes a `u32` from an array of bytes.
  */
-export function fromBytesU32(bytes: Uint8Array): Result<u32> {
+export function fromBytesU32(bytes: StaticArray<u8>): Result<u32> {
     return fromBytesLoad<u32>(bytes);
 }
 
@@ -164,7 +160,7 @@ export function toBytesI32(num: i32): u8[] {
 /**
  * Deserializes an `i32` from an array of bytes.
  */
-export function fromBytesI32(bytes: Uint8Array): Result<i32> {
+export function fromBytesI32(bytes: StaticArray<u8>): Result<i32> {
     return fromBytesLoad<i32>(bytes);
 }
 
@@ -184,7 +180,7 @@ export function toBytesU64(num: u64): u8[] {
 /**
  * Deserializes a `u64` from an array of bytes.
  */
-export function fromBytesU64(bytes: Uint8Array): Result<u64> {
+export function fromBytesU64(bytes: StaticArray<u8>): Result<u64> {
     return fromBytesLoad<u64>(bytes);
 }
 
@@ -221,9 +217,9 @@ export function toBytesMap<K, V>(vecOfPairs: Array<Pair<K, V>>, serializeKey: (k
  * @returns An array of key-value pairs or an error in case of failure.
  */
 export function fromBytesMap<K, V>(
-    bytes: Uint8Array,
-    decodeKey: (bytes1: Uint8Array) => Result<K>,
-    decodeValue: (bytes2: Uint8Array) => Result<V>,
+    bytes: StaticArray<u8>,
+    decodeKey: (bytes1: StaticArray<u8>) => Result<K>,
+    decodeValue: (bytes2: StaticArray<u8>) => Result<V>,
 ): Result<Array<Pair<K, V>>> {
     const lengthResult = fromBytesU32(bytes);
     if (lengthResult.error != Error.Ok) {
@@ -241,7 +237,7 @@ export function fromBytesMap<K, V>(
         return new Result<Array<Pair<K, V>>>(ref, Error.Ok, lengthResult.position);
     }
 
-    bytes = bytes.subarray(currentPos);
+    bytes = StaticArray.fromArray(bytes.slice(currentPos));
 
     for (let i = 0; i < changetype<i32>(length); i++) {
         const keyResult = decodeKey(bytes);
@@ -250,7 +246,7 @@ export function fromBytesMap<K, V>(
         }
 
         currentPos += keyResult.position;
-        bytes = bytes.subarray(keyResult.position);
+        bytes = StaticArray.fromArray(bytes.slice(keyResult.position));
 
         let valueResult = decodeValue(bytes);
         if (valueResult.error != Error.Ok) {
@@ -258,7 +254,7 @@ export function fromBytesMap<K, V>(
         }
 
         currentPos += valueResult.position;
-        bytes = bytes.subarray(valueResult.position);
+        bytes = StaticArray.fromArray(bytes.slice(valueResult.position));
 
         let pair = new Pair<K, V>(keyResult.value, valueResult.value);
         result.push(pair);
@@ -272,29 +268,36 @@ export function fromBytesMap<K, V>(
  * Serializes a string into an array of bytes.
  */
 export function toBytesString(s: String): u8[] {
-    let bytes = toBytesU32(<u32>s.length);
-    return bytes.concat(typedToArray(encodeUTF8(s)));
+    // let utf8Len = String.UTF8.byteLength(s);
+    // NOTE: This measures length in codepoints which for ascii-only strings should be safe and efficient.
+    const len = s.length;
+    let buf = new Array<u8>(len + 4);
+    let ptr = buf.dataStart;
+
+    store<u32>(ptr, <u32>len);
+    ptr += 4;
+    String.UTF8.encodeUnsafe(changetype<usize>(s), len, ptr, false);
+    return buf;
 }
 
 /**
  * Deserializes a string from an array of bytes.
  */
-export function fromBytesString(s: Uint8Array): Result<String> {
-    var lenResult = fromBytesI32(s);
-    if (lenResult.error != Error.Ok) {
+export function fromBytesString(s: StaticArray<u8>): Result<String> {
+    if (s.length < 4) {
         return new Result<String>(null, Error.EarlyEndOfStream, 0);
     }
+    var leni32 = load<i32>(changetype<usize>(s));
 
-    let currentPos = lenResult.position;
+    let currentPos = 4;
 
-    const leni32 = lenResult.value;
     if (s.length < leni32 + 4) {
         return new Result<String>(null, Error.EarlyEndOfStream, 0);
     }
-    var result = "";
-    for (var i = 0; i < leni32; i++) {
-        result += String.fromCharCode(s[4 + i]);
-    }
+
+    // let text =s.slice(4, leni32 + 4);
+
+    let result = String.UTF8.decodeUnsafe(changetype<usize>(s) + 4, leni32, false);
     let ref = new Ref<String>(result);
     return new Result<String>(ref, Error.Ok, currentPos + leni32);
 }
@@ -346,26 +349,30 @@ export function toBytesVecT<T>(ts: Array<T>, encodeItem: (item: T) => Array<u8>)
  * @param bytes The array of bytes to be deserialized.
  * @param decodeItem A function deserializing a value of type `T`.
  */
-export function fromBytesArray<T>(bytes: Uint8Array, decodeItem: (bytes: Uint8Array) => Result<T>): Result<Array<T>> {
-    var lenResult = fromBytesI32(bytes);
-    if (lenResult.error != Error.Ok) {
+export function fromBytesArray<T>(bytes: StaticArray<u8>, decodeItem: (bytes: StaticArray<u8>) => Result<T>): Result<Array<T>> {
+    if (bytes.length < 4) {
         return new Result<Array<T>>(null, Error.EarlyEndOfStream, 0);
     }
 
-    let len = lenResult.value;
-    let currentPos = lenResult.position;
-    let head = bytes.subarray(currentPos);
+    let ptr = changetype<usize>(bytes);
+
+    var len = load<i32>(ptr);
+
+    let currentPos = 4;
+    ptr += 4;
+
+    let head = bytes.slice(4);
 
     let result: Array<T> = new Array<T>();
 
     for (let i = 0; i < len; ++i) {
-        let decodeResult = decodeItem(head);
+        let decodeResult = decodeItem(StaticArray.fromArray(head));
         if (decodeResult.error != Error.Ok) {
             return new Result<Array<T>>(null, decodeResult.error, 0);
         }
         currentPos += decodeResult.position;
         result.push(decodeResult.value);
-        head = head.subarray(decodeResult.position);
+        head = head.slice(decodeResult.position);
     }
 
     let ref = new Ref<Array<T>>(result);
@@ -375,7 +382,7 @@ export function fromBytesArray<T>(bytes: Uint8Array, decodeItem: (bytes: Uint8Ar
 /**
  * Deserializes a list of strings from an array of bytes.
  */
-export function fromBytesStringList(bytes: Uint8Array): Result<Array<String>> {
+export function fromBytesStringList(bytes: StaticArray<u8>): Result<Array<String>> {
     return fromBytesArray(bytes, fromBytesString);
 }
 

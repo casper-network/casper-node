@@ -48,7 +48,7 @@ pub struct SpeculativeExecParams {
 
 impl DocExample for SpeculativeExecParams {
     fn doc_example() -> &'static Self {
-        &*SPECULATIVE_EXEC_PARAMS
+        &SPECULATIVE_EXEC_PARAMS
     }
 }
 
@@ -67,7 +67,7 @@ pub struct SpeculativeExecResult {
 
 impl DocExample for SpeculativeExecResult {
     fn doc_example() -> &'static Self {
-        &*SPECULATIVE_EXEC_RESULT
+        &SPECULATIVE_EXEC_RESULT
     }
 }
 
@@ -102,7 +102,7 @@ impl RpcWithParams for SpeculativeExec {
         let result = effect_builder
             .make_request(
                 |responder| RpcRequest::SpeculativeDeployExecute {
-                    block_header: block.take_header(),
+                    block_header: Box::new(block.take_header()),
                     deploy: Box::new(deploy),
                     responder,
                 },
@@ -127,14 +127,14 @@ impl RpcWithParams for SpeculativeExec {
                 let rpc_error = match error {
                     EngineStateError::RootNotFound(_) => Error::new(ErrorCode::NoSuchStateRoot, ""),
                     EngineStateError::WasmPreprocessing(error) => {
-                        Error::new(ErrorCode::InvalidDeploy, &format!("{}", error))
+                        Error::new(ErrorCode::InvalidDeploy, format!("{}", error))
                     }
                     EngineStateError::InvalidDeployItemVariant(error) => {
-                        Error::new(ErrorCode::InvalidDeploy, &error)
+                        Error::new(ErrorCode::InvalidDeploy, error)
                     }
                     EngineStateError::InvalidProtocolVersion(_) => Error::new(
                         ErrorCode::InvalidDeploy,
-                        &format!("deploy used invalid protocol version {}", error),
+                        format!("deploy used invalid protocol version {}", error),
                     ),
                     EngineStateError::Deploy => Error::new(ErrorCode::InvalidDeploy, ""),
                     EngineStateError::Genesis(_)
@@ -158,11 +158,11 @@ impl RpcWithParams for SpeculativeExec {
                     | EngineStateError::FailedToGetWithdrawPurses
                     | EngineStateError::FailedToRetrieveUnbondingDelay
                     | EngineStateError::FailedToRetrieveEraId => {
-                        Error::new(ReservedErrorCode::InternalError, &format!("{}", error))
+                        Error::new(ReservedErrorCode::InternalError, format!("{}", error))
                     }
                     _ => Error::new(
                         ReservedErrorCode::InternalError,
-                        &format!("Unhandled engine state error: {}", error),
+                        format!("Unhandled engine state error: {}", error),
                     ),
                 };
                 Err(rpc_error)

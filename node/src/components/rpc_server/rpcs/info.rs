@@ -28,7 +28,7 @@ use crate::{
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
-    deploy_hash: *Deploy::doc_example().id(),
+    deploy_hash: *Deploy::doc_example().hash(),
     finalized_approvals: true,
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
@@ -77,7 +77,7 @@ fn finalized_approvals_default() -> bool {
 
 impl DocExample for GetDeployParams {
     fn doc_example() -> &'static Self {
-        &*GET_DEPLOY_PARAMS
+        &GET_DEPLOY_PARAMS
     }
 }
 
@@ -110,7 +110,7 @@ pub struct GetDeployResult {
 
 impl DocExample for GetDeployResult {
     fn doc_example() -> &'static Self {
-        &*GET_DEPLOY_RESULT
+        &GET_DEPLOY_RESULT
     }
 }
 
@@ -141,7 +141,7 @@ impl RpcWithParams for GetDeploy {
             .await;
 
         let (deploy, metadata_ext) = match maybe_deploy_and_metadata {
-            Some((deploy, metadata_ext)) => (deploy, metadata_ext),
+            Some(inner) => (inner.0, inner.1),
             None => {
                 let message = format!(
                     "failed to get {} and metadata from storage",
@@ -190,7 +190,7 @@ pub struct GetPeersResult {
 
 impl DocExample for GetPeersResult {
     fn doc_example() -> &'static Self {
-        &*GET_PEERS_RESULT
+        &GET_PEERS_RESULT
     }
 }
 
@@ -326,7 +326,7 @@ impl GetValidatorChangesResult {
 
 impl DocExample for GetValidatorChangesResult {
     fn doc_example() -> &'static Self {
-        &*GET_VALIDATOR_CHANGES_RESULT
+        &GET_VALIDATOR_CHANGES_RESULT
     }
 }
 
@@ -369,7 +369,7 @@ impl GetChainspecResult {
 
 impl DocExample for GetChainspecResult {
     fn doc_example() -> &'static Self {
-        &*GET_CHAINSPEC_RESULT
+        &GET_CHAINSPEC_RESULT
     }
 }
 

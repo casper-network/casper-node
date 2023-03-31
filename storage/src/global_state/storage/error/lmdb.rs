@@ -3,7 +3,6 @@ use std::sync;
 use lmdb as lmdb_external;
 use thiserror::Error;
 
-use casper_hashing::MerkleConstructionError;
 use casper_types::bytesrepr;
 
 use crate::global_state::storage::state::CommitError;
@@ -27,10 +26,6 @@ pub enum Error {
     /// Error committing to execution engine.
     #[error(transparent)]
     CommitError(#[from] CommitError),
-
-    /// Merkle proof construction error.
-    #[error("{0}")]
-    MerkleConstruction(#[from] MerkleConstructionError),
 }
 
 impl From<bytesrepr::Error> for Error {

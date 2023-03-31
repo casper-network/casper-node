@@ -164,3 +164,8 @@ notes
 
 # disk use reports
 **/disk_use_report.csv
+
+# index files for VSCode
+.lh/*
+
+*.patch
