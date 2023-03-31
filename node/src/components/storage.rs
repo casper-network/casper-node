@@ -271,6 +271,28 @@ pub(crate) enum HighestOrphanedBlockResult {
     MissingHeader(BlockHash),
 }
 
+impl Display for HighestOrphanedBlockResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            HighestOrphanedBlockResult::MissingHighestSequence => {
+                write!(f, "missing highest sequence")
+            }
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(height) => {
+                write!(f, "height not found in block height index: {}", height)
+            }
+            HighestOrphanedBlockResult::Orphan(block_header) => write!(
+                f,
+                "orphan, height={}, hash={}",
+                block_header.height(),
+                block_header.height()
+            ),
+            HighestOrphanedBlockResult::MissingHeader(block_hash) => {
+                write!(f, "missing header for block hash: {}", block_hash)
+            }
+        }
+    }
+}
+
 impl<REv> Component<REv> for Storage
 where
     REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
@@ -1283,13 +1305,6 @@ impl Storage {
             .map(|sequence| sequence.high())
     }
 
-    /// Retrieves the height of the lowest complete block (if any).
-    pub(crate) fn lowest_complete_block_height(&self) -> Option<u64> {
-        self.completed_blocks
-            .highest_sequence()
-            .map(|sequence| sequence.low())
-    }
-
     /// Retrieves the highest complete block from the storage, if one exists.
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
@@ -1299,33 +1314,6 @@ impl Storage {
         let maybe_block = self.get_highest_complete_block(&mut txn)?;
         txn.commit().expect("Could not commit transaction");
         Ok(maybe_block)
-    }
-
-    /// Retrieves the lowest complete block header from the storage, if one exists.
-    pub(crate) fn read_lowest_complete_block_header(
-        &self,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let lowest_complete_block_height = match self.lowest_complete_block_height() {
-            Some(height) => height,
-            None => {
-                return Ok(None);
-            }
-        };
-
-        let lowest_complete_block_hash =
-            match self.block_height_index.get(&lowest_complete_block_height) {
-                Some(hash) => hash,
-                None => {
-                    warn!("couldn't find the lowest complete block in block height index");
-                    return Ok(None);
-                }
-            };
-
-        // The `completed_blocks` contains blocks with sufficient finality signatures,
-        // so we don't need to check the sufficiency again.
-        let maybe_lowest_block_header =
-            self.read_block_header_by_hash(lowest_complete_block_hash)?;
-        Ok(maybe_lowest_block_header)
     }
 
     /// Retrieves the contiguous segment of the block chain starting at the highest known switch

@@ -668,16 +668,21 @@ impl MainReactor {
             .map_err(|err| err.to_string())?
             .last()
         {
-            if let Some(lowest_block_header) = self
-                .storage
-                .read_lowest_complete_block_header()
-                .map_err(|err| err.to_string())?
+            let maybe_highest_orphaned_block_header =
+                self.storage.get_highest_orphaned_block_header();
+
+            if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
+                maybe_highest_orphaned_block_header
             {
                 return Ok(is_at_ttl(
                     latest_switch_block_header.timestamp(),
-                    lowest_block_header.timestamp(),
+                    highest_orphaned_block_header.timestamp(),
                     self.chainspec.deploy_config.max_ttl,
                 ));
+            } else {
+                info!(result = %maybe_highest_orphaned_block_header,
+                    "KeepUp: unable to get highest orphaned block header (this problem should be transient), \
+                    assuming not synced to ttl");
             }
         }
 
