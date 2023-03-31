@@ -662,7 +662,12 @@ impl MainReactor {
             return Ok(false);
         }
 
-        if let Some(latest_switch_block_header) = &self.switch_block_header {
+        if let Some(latest_switch_block_header) = self
+            .storage
+            .read_highest_switch_block_headers(1)
+            .map_err(|err| err.to_string())?
+            .last()
+        {
             if let Some(lowest_block_header) = self
                 .storage
                 .read_lowest_complete_block_header()
