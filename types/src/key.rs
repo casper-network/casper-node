@@ -208,7 +208,7 @@ impl Display for FromStrError {
                 )
             }
             FromStrError::EraSummary(error) => {
-                write!(f, "era-summary from string error: {}", error)
+                write!(f, "era-summary-key from string error: {}", error)
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
@@ -1136,7 +1136,7 @@ mod tests {
         assert!(Key::from_formatted_str(ERA_SUMMARY_PREFIX)
             .unwrap_err()
             .to_string()
-            .starts_with("era-summary from string error"));
+            .starts_with("era-summary-key from string error"));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)

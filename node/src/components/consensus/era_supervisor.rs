@@ -1422,7 +1422,9 @@ async fn execute_finalized_block<REv>(
         }
     };
 
-    let activation_point_block_height = effect_builder.get_activation_point_era_id().await;
+    let activation_point_block_height = effect_builder
+        .get_key_block_height_for_activation_point()
+        .await;
 
     effect_builder
         .enqueue_block_for_execution(

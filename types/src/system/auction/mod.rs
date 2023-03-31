@@ -554,7 +554,6 @@ pub trait Auction:
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
-        // let era_id = detail::get_era_id(self)?;
 
         if reward_factors.keys().ne(seigniorage_recipients.keys()) {
             return Err(Error::MismatchedEraValidators);
@@ -640,7 +639,7 @@ pub trait Auction:
             }
         }
 
-        self.record_era_summary(era_info)?;
+        self.record_era_summary(EraId::new(u64::MAX), era_info)?;
 
         Ok(())
     }

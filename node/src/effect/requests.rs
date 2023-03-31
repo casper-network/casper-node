@@ -716,7 +716,8 @@ pub(crate) enum ContractRuntimeRequest {
         deploys: Vec<Deploy>,
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
-        activation_point_block_height: Option<u64>,
+        /// Height of the era before the activation point.
+        key_block_height_for_activation_point: u64,
     },
 
     /// Commit genesis chainspec.
@@ -808,7 +809,8 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for the block to execute; must correspond to the transfer and execution
         /// hashes of the `finalized_block` in that order.
         transfers: Vec<Deploy>,
-        activation_point_era_id: Option<u64>,
+        /// Height of the first block for an era previous to the activation point.
+        key_block_height_for_activation_point: u64,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
@@ -818,10 +820,7 @@ impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ContractRuntimeRequest::EnqueueBlockForExecution {
-                finalized_block,
-                deploys: _,
-                transfers: _,
-                activation_point_block_height: _,
+                finalized_block, ..
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }

@@ -126,8 +126,8 @@ async fn main() -> Result<(), anyhow::Error> {
             finalized_block,
             deploys,
             transfers,
-            activation_point_era_id.into(),
-            Some(100),
+            activation_point_era_id,
+            1000,
             100,
         )?;
         let elapsed_micros = start.elapsed().as_micros() as u64;

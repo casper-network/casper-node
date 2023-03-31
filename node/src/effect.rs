@@ -109,10 +109,10 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        ActivationPoint, Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload,
-        BlockSignatures, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
-        FinalizedBlock, Item, TimeDiff, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
+        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
+        TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -974,7 +974,8 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn get_activation_point_era_id(self) -> Option<u64>
+    /// Returns block height of an era previous to the activation point.
+    pub(crate) async fn get_key_block_height_for_activation_point(self) -> u64
     where
         REv: From<ChainspecLoaderRequest> + From<StorageRequest>,
     {
@@ -982,16 +983,10 @@ impl<REv> EffectBuilder<REv> {
             activation_point, ..
         } = self.get_current_run_info().await;
         info!(?activation_point, "get_activation_point_era_id");
-        match activation_point {
-            ActivationPoint::EraId(era_id) => self
-                .get_key_block_header_for_era_id_from_storage(era_id)
-                .await
-                .map(|block_header| block_header.height()),
-            ActivationPoint::Genesis(_timestamp) => {
-                // Nothing to do at the genesis
-                None
-            }
-        }
+        self.get_key_block_header_for_era_id_from_storage(activation_point.era_id())
+            .await
+            .map(|block_header| block_header.height())
+            .unwrap_or(0)
     }
 
     /// Get a trie by its hash key.
@@ -1246,7 +1241,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-        activation_point_era_id: Option<u64>,
+        activation_point_era_id: u64,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1258,7 +1253,7 @@ impl<REv> EffectBuilder<REv> {
                 finalized_block,
                 deploys,
                 transfers,
-                activation_point_era_id,
+                key_block_height_for_activation_point: activation_point_era_id,
                 responder,
             },
             QueueKind::Regular,
@@ -1278,7 +1273,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-        activation_point_block_height: Option<u64>,
+        activation_point_block_height: u64,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1288,7 +1283,7 @@ impl<REv> EffectBuilder<REv> {
                     finalized_block,
                     deploys,
                     transfers,
-                    activation_point_block_height,
+                    key_block_height_for_activation_point: activation_point_block_height,
                 },
                 QueueKind::Regular,
             )

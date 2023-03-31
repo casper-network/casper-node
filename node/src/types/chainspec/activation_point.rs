@@ -29,12 +29,6 @@ pub enum ActivationPoint {
     Genesis(Timestamp),
 }
 
-impl From<EraId> for ActivationPoint {
-    fn from(v: EraId) -> Self {
-        Self::EraId(v)
-    }
-}
-
 impl ActivationPoint {
     /// Returns whether we should upgrade the node due to the next era being at or after the upgrade
     /// activation point.

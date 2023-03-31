@@ -25,16 +25,20 @@ use crate::{
             BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
-    types::{ActivationPoint, Block, Deploy, DeployHeader, FinalizedBlock},
+    types::{Block, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
     storage::global_state::{CommitProvider, StateProvider},
 };
 
-fn generate_range_by_index(n: u64, m: u64, index: u64) -> Option<Range<u64>> {
-    let start = index.checked_mul(m)?;
-    let end = cmp::min(start.checked_add(m)?, n);
+fn generate_range_by_index(
+    highest_era: u64,
+    batch_size: u64,
+    batch_index: u64,
+) -> Option<Range<u64>> {
+    let start = batch_index.checked_mul(batch_size)?;
+    let end = cmp::min(start.checked_add(batch_size)?, highest_era);
     Some(start..end)
 }
 
@@ -58,6 +62,7 @@ fn calculate_purge_eras(
         Some(nth_chunk) => nth_chunk,
         None => {
             // Time went backwards, programmer error, etc
+            warn!(%activation_era_id, activation_height, current_height, batch_size, "unable to calculate eras to purge (activation height higher than the block height)");
             return None;
         }
     };
@@ -81,8 +86,8 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
-    activation_point: ActivationPoint,
-    activation_point_block_height: Option<u64>,
+    activation_point_era_id: EraId,
+    key_block_height_for_activation_point: u64,
     purge_batch_size: u64,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
@@ -208,57 +213,64 @@ pub fn execute_finalized_block(
 
     // Purging
 
-    match (activation_point, activation_point_block_height) {
-        (ActivationPoint::EraId(activation_point), Some(activation_point_block_height)) => {
-            let previous_block_height = finalized_block.height() - 1;
-
-            match calculate_purge_eras(
-                activation_point,
-                activation_point_block_height,
-                previous_block_height,
-                purge_batch_size,
-            ) {
-                Some(keys_to_purge) => {
-                    let first_key = keys_to_purge.first().copied();
-                    let last_key = keys_to_purge.last().copied();
-                    info!(previous_block_height, %activation_point_block_height, %state_root_hash, first_key=?first_key, last_key=?last_key, "commit_purge: preparing purge config");
-                    let purge_config = PurgeConfig::new(state_root_hash, keys_to_purge);
-                    match engine_state.commit_purge(CorrelationId::new(), purge_config) {
-                        Ok(PurgeResult::RootNotFound) => {
-                            error!(previous_block_height, %state_root_hash, "commit_purge: root not found");
-                        }
-                        Ok(PurgeResult::DoesNotExist) => {
-                            warn!(previous_block_height, %state_root_hash, "commit_purge: key does not exist");
-                        }
-                        Ok(PurgeResult::Success { post_state_hash }) => {
-                            info!(previous_block_height, %activation_point_block_height, %state_root_hash, %post_state_hash, first_key=?first_key, last_key=?last_key, "commit_purge: success");
-                            state_root_hash = post_state_hash;
-                        }
-                        Err(error) => {
-                            error!(previous_block_height, %activation_point_block_height, %error, "commit_purge: commit purge error");
-                            return Err(error.into());
-                        }
+    if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
+        match calculate_purge_eras(
+            activation_point_era_id,
+            key_block_height_for_activation_point,
+            previous_block_height,
+            purge_batch_size,
+        ) {
+            Some(keys_to_purge) => {
+                let first_key = keys_to_purge.first().copied();
+                let last_key = keys_to_purge.last().copied();
+                info!(
+                    previous_block_height,
+                    %key_block_height_for_activation_point,
+                    %state_root_hash,
+                    first_key=?first_key,
+                    last_key=?last_key,
+                    "commit_purge: preparing purge config");
+                let purge_config = PurgeConfig::new(state_root_hash, keys_to_purge);
+                match engine_state.commit_purge(CorrelationId::new(), purge_config) {
+                    Ok(PurgeResult::RootNotFound) => {
+                        error!(
+                            previous_block_height,
+                            %state_root_hash,
+                            "commit_purge: root not found");
+                    }
+                    Ok(PurgeResult::DoesNotExist) => {
+                        warn!(
+                            previous_block_height,
+                            %state_root_hash,
+                            "commit_purge: key does not exist");
+                    }
+                    Ok(PurgeResult::Success { post_state_hash }) => {
+                        info!(
+                            previous_block_height,
+                            %key_block_height_for_activation_point,
+                            %state_root_hash,
+                            %post_state_hash,
+                            first_key=?first_key,
+                            last_key=?last_key,
+                            "commit_purge: success");
+                        state_root_hash = post_state_hash;
+                    }
+                    Err(error) => {
+                        error!(
+                            previous_block_height,
+                            %key_block_height_for_activation_point,
+                            %error,
+                            "commit_purge: commit purge error");
+                        return Err(error.into());
                     }
                 }
-                None => {
-                    info!(previous_block_height, %activation_point_block_height, "commit_purge: nothing to do, no more eras to delete");
-                }
             }
-        }
-        (ActivationPoint::EraId(era_id), None) => {
-            info!(activation_point=?era_id, activation_point_block_height, "commit_purge: nothing to do; no activation block height found");
-        }
-        (ActivationPoint::Genesis(_timestamp), Some(activation_height)) => {
-            warn!(
-                activation_height,
-                "found activation block height but activation point is a genesis"
-            );
-        }
-        (ActivationPoint::Genesis(_timestamp), None) => {
-            warn!(
-                ?activation_point,
-                "activation point is genesis and no activation height found"
-            );
+            None => {
+                info!(
+                    previous_block_height,
+                    %key_block_height_for_activation_point,
+                    "commit_purge: nothing to do, no more eras to delete");
+            }
         }
     }
 
@@ -435,6 +447,7 @@ mod tests {
     #[test]
     fn calculation_is_safe_with_invalid_input() {
         assert_eq!(calculate_purge_eras(EraId::new(0), 0, 0, 0,), None);
+        assert_eq!(calculate_purge_eras(EraId::new(0), 0, 0, 5,), None);
         assert_eq!(calculate_purge_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
         assert_eq!(
             calculate_purge_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),

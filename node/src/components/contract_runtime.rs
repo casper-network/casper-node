@@ -326,7 +326,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
-                activation_point_era_id,
+                key_block_height_for_activation_point,
                 responder,
             } => {
                 trace!(
@@ -350,8 +350,8 @@ where
                             finalized_block,
                             deploys,
                             transfers,
-                            activation_point,
-                            activation_point_era_id,
+                            activation_point.era_id(),
+                            key_block_height_for_activation_point,
                             purge_batch_size,
                         )
                     })
@@ -365,7 +365,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
-                activation_point_block_height,
+                key_block_height_for_activation_point: activation_point_block_height,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
@@ -585,7 +585,7 @@ impl ContractRuntime {
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
         activation_point: ActivationPoint,
-        activation_point_era_id: Option<u64>,
+        key_block_height_for_activation_point: u64,
         purge_batch_size: u64,
     ) where
         REv: From<ContractRuntimeRequest>
@@ -609,8 +609,8 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
-                activation_point,
-                activation_point_era_id,
+                activation_point.era_id(),
+                key_block_height_for_activation_point,
                 purge_batch_size,
             )
         })
@@ -650,15 +650,13 @@ impl ContractRuntime {
             queue.remove(&new_execution_pre_state.next_block_height)
         };
 
-        let activation_point_block_height = effect_builder.get_activation_point_era_id().await;
-
         if let Some((finalized_block, deploys, transfers)) = next_block {
             effect_builder
                 .enqueue_block_for_execution(
                     finalized_block,
                     deploys,
                     transfers,
-                    activation_point_block_height,
+                    key_block_height_for_activation_point,
                 )
                 .await
         }
