@@ -284,7 +284,7 @@ impl Display for HighestOrphanedBlockResult {
                 f,
                 "orphan, height={}, hash={}",
                 block_header.height(),
-                block_header.height()
+                block_header.block_hash()
             ),
             HighestOrphanedBlockResult::MissingHeader(block_hash) => {
                 write!(f, "missing header for block hash: {}", block_hash)
