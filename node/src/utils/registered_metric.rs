@@ -2,7 +2,7 @@
 
 use prometheus::{
     core::{Atomic, Collector, GenericCounter, GenericGauge},
-    Counter, IntCounter, IntGauge, Registry,
+    Counter, Histogram, HistogramOpts, IntCounter, IntGauge, Registry,
 };
 
 /// A metric wrapper that will deregister the metric from a given registry on drop.
@@ -86,6 +86,14 @@ where
     }
 }
 
+impl RegisteredMetric<Histogram> {
+    /// Observes a given value.
+    #[inline]
+    pub(crate) fn observe(&self, v: f64) {
+        self.inner().observe(v)
+    }
+}
+
 impl<T> Drop for RegisteredMetric<T>
 where
     T: Collector + 'static,
@@ -127,6 +135,14 @@ pub(crate) trait RegistryExt {
         name: S1,
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error>;
+
+    /// Creates a new [`Histogram`] registered to this registry.
+    fn new_histogram<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+        buckets: Vec<f64>,
+    ) -> Result<RegisteredMetric<Histogram>, prometheus::Error>;
 }
 
 impl RegistryExt for Registry {
@@ -151,5 +167,16 @@ impl RegistryExt for Registry {
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error> {
         RegisteredMetric::new(self.clone(), IntGauge::new(name, help)?)
+    }
+
+    fn new_histogram<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+        buckets: Vec<f64>,
+    ) -> Result<RegisteredMetric<Histogram>, prometheus::Error> {
+        let histogram_opts = HistogramOpts::new(name, help).buckets(buckets);
+
+        RegisteredMetric::new(self.clone(), Histogram::with_opts(histogram_opts)?)
     }
 }
