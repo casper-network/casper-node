@@ -2,7 +2,7 @@
 
 use prometheus::{
     core::{Atomic, Collector, GenericCounter, GenericGauge},
-    Counter, Histogram, HistogramOpts, IntCounter, IntGauge, Registry,
+    Counter, Gauge, Histogram, HistogramOpts, IntCounter, IntGauge, Registry,
 };
 
 /// A metric wrapper that will deregister the metric from a given registry on drop.
@@ -61,13 +61,14 @@ impl<P> RegisteredMetric<GenericGauge<P>>
 where
     P: Atomic,
 {
-    /// Adds the given amount to gauge.
+    /// Decrements the gauge.
     #[inline]
-    pub(crate) fn add(&self, v: P::T) {
-        self.inner().add(v)
+    pub(crate) fn dec(&self) {
+        self.inner().dec()
     }
 
     /// Returns the gauge value.
+    #[cfg(test)]
     #[inline]
     pub(crate) fn get(&self) -> P::T {
         self.inner().get()
@@ -122,6 +123,21 @@ pub(crate) trait RegistryExt {
         help: S2,
     ) -> Result<RegisteredMetric<Counter>, prometheus::Error>;
 
+    /// Creates a new [`Histogram`] registered to this registry.
+    fn new_histogram<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+        buckets: Vec<f64>,
+    ) -> Result<RegisteredMetric<Histogram>, prometheus::Error>;
+
+    /// Creates a new [`Gauge`] registered to this registry.
+    fn new_gauge<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<Gauge>, prometheus::Error>;
+
     /// Creates a new [`IntCounter`] registered to this registry.
     fn new_int_counter<S1: Into<String>, S2: Into<String>>(
         &self,
@@ -135,14 +151,6 @@ pub(crate) trait RegistryExt {
         name: S1,
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error>;
-
-    /// Creates a new [`Histogram`] registered to this registry.
-    fn new_histogram<S1: Into<String>, S2: Into<String>>(
-        &self,
-        name: S1,
-        help: S2,
-        buckets: Vec<f64>,
-    ) -> Result<RegisteredMetric<Histogram>, prometheus::Error>;
 }
 
 impl RegistryExt for Registry {
@@ -153,6 +161,26 @@ impl RegistryExt for Registry {
     ) -> Result<RegisteredMetric<Counter>, prometheus::Error> {
         RegisteredMetric::new(self.clone(), Counter::new(name, help)?)
     }
+
+    fn new_gauge<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<Gauge>, prometheus::Error> {
+        RegisteredMetric::new(self.clone(), Gauge::new(name, help)?)
+    }
+
+    fn new_histogram<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+        buckets: Vec<f64>,
+    ) -> Result<RegisteredMetric<Histogram>, prometheus::Error> {
+        let histogram_opts = HistogramOpts::new(name, help).buckets(buckets);
+
+        RegisteredMetric::new(self.clone(), Histogram::with_opts(histogram_opts)?)
+    }
+
     fn new_int_counter<S1: Into<String>, S2: Into<String>>(
         &self,
         name: S1,
@@ -167,16 +195,5 @@ impl RegistryExt for Registry {
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error> {
         RegisteredMetric::new(self.clone(), IntGauge::new(name, help)?)
-    }
-
-    fn new_histogram<S1: Into<String>, S2: Into<String>>(
-        &self,
-        name: S1,
-        help: S2,
-        buckets: Vec<f64>,
-    ) -> Result<RegisteredMetric<Histogram>, prometheus::Error> {
-        let histogram_opts = HistogramOpts::new(name, help).buckets(buckets);
-
-        RegisteredMetric::new(self.clone(), Histogram::with_opts(histogram_opts)?)
     }
 }

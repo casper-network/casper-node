@@ -318,19 +318,6 @@ where
     (numerator + denominator / T::from(2)) / denominator
 }
 
-/// Creates a prometheus Histogram and registers it.
-pub(crate) fn register_histogram_metric(
-    registry: &Registry,
-    metric_name: &str,
-    metric_help: &str,
-    buckets: Vec<f64>,
-) -> Result<Histogram, prometheus::Error> {
-    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(buckets);
-    let histogram = Histogram::with_opts(histogram_opts)?;
-    registry.register(Box::new(histogram.clone()))?;
-    Ok(histogram)
-}
-
 /// Unregisters a metric from the Prometheus registry.
 #[macro_export]
 macro_rules! unregister_metric {

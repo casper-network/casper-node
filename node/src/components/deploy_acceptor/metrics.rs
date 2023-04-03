@@ -2,7 +2,7 @@ use prometheus::{Histogram, Registry};
 
 use casper_types::Timestamp;
 
-use crate::{unregister_metric, utils};
+use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
 
 const DEPLOY_ACCEPTED_NAME: &str = "deploy_acceptor_accepted_deploy";
 const DEPLOY_ACCEPTED_HELP: &str = "time in seconds to accept a deploy in the deploy acceptor";
@@ -20,9 +20,8 @@ const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
 #[derive(Debug)]
 pub(super) struct Metrics {
-    deploy_accepted: Histogram,
-    deploy_rejected: Histogram,
-    registry: Registry,
+    deploy_accepted: RegisteredMetric<Histogram>,
+    deploy_rejected: RegisteredMetric<Histogram>,
 }
 
 impl Metrics {
@@ -34,19 +33,16 @@ impl Metrics {
         )?;
 
         Ok(Self {
-            deploy_accepted: utils::register_histogram_metric(
-                registry,
+            deploy_accepted: registry.new_histogram(
                 DEPLOY_ACCEPTED_NAME,
                 DEPLOY_ACCEPTED_HELP,
                 common_buckets.clone(),
             )?,
-            deploy_rejected: utils::register_histogram_metric(
-                registry,
+            deploy_rejected: registry.new_histogram(
                 DEPLOY_REJECTED_NAME,
                 DEPLOY_REJECTED_HELP,
                 common_buckets,
             )?,
-            registry: registry.clone(),
         })
     }
 
@@ -58,12 +54,5 @@ impl Metrics {
     pub(super) fn observe_accepted(&self, start: Timestamp) {
         self.deploy_accepted
             .observe(start.elapsed().millis() as f64);
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.deploy_accepted);
-        unregister_metric!(self.registry, self.deploy_rejected);
     }
 }
