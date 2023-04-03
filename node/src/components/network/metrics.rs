@@ -6,7 +6,7 @@ use tracing::debug;
 use super::{outgoing::OutgoingMetrics, MessageKind};
 use crate::{
     unregister_metric,
-    utils::{RegisteredMetric, RegistryExt},
+    utils::registered_metric::{RegisteredMetric, RegistryExt},
 };
 
 /// Network-type agnostic networking metrics.
