@@ -11,7 +11,7 @@ pub mod execution_result;
 pub mod genesis;
 pub mod get_bids;
 pub mod op;
-pub mod purge;
+mod purge;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -50,7 +50,6 @@ use casper_types::{
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use self::purge::{PurgeConfig, PurgeResult};
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -63,6 +62,7 @@ pub use self::{
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
     get_bids::{GetBidsRequest, GetBidsResult},
+    purge::{PurgeConfig, PurgeResult},
     query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -448,7 +448,7 @@ where
         // Perform global state migrations that require state.
 
         if let Some(activation_point) = upgrade_config.activation_point() {
-            // Activation point is set to the next era after the current one.
+            // The highest stored era is the immediate predecessor of the activation point.
             let highest_era_info_id = activation_point.saturating_sub(1);
 
             // Start of the copy
@@ -465,12 +465,19 @@ where
                         .borrow_mut()
                         .force_write(Key::EraSummary, stored_value);
                 }
-                Some(_other_stored_value) => {
+                Some(other_stored_value) => {
                     // This should not happen as we only write EraInfo variants.
+                    error!(stored_value_type_name=%other_stored_value.type_name(),
+                        "EraInfo key contains unexpected StoredValue variant");
+                    return Err(Error::ProtocolUpgrade(
+                        ProtocolUpgradeError::UnexpectedStoredValueVariant,
+                    ));
                 }
                 None => {
                     // Can't find key
-                    // Most likely this chain did not yet ran an auction
+                    // Most likely this chain did not yet ran an auction, or recently completed a
+                    // purge
+                    warn!(?highest_era_info_key, "Unable to find era info entry");
                 }
             };
         }

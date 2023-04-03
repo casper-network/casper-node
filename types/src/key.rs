@@ -98,7 +98,7 @@ pub enum KeyTag {
     Withdraw = 8,
     Dictionary = 9,
     SystemContractRegistry = 10,
-    EraSummary = 14,
+    EraSummary = 11,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -709,7 +709,7 @@ impl FromBytes for Key {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=10) {
+        match rng.gen_range(0..=11) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -721,6 +721,7 @@ impl Distribution<Key> for Standard {
             8 => Key::Withdraw(rng.gen()),
             9 => Key::Dictionary(rng.gen()),
             10 => Key::SystemContractRegistry,
+            11 => Key::EraSummary,
             _ => unreachable!(),
         }
     }

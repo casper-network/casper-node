@@ -9,6 +9,7 @@ use std::{
 };
 
 use either::Either;
+use num_traits::FromPrimitive;
 use tracing::{error, warn};
 
 use casper_hashing::Digest;
@@ -20,7 +21,7 @@ use crate::{
         transaction_source::{Readable, Transaction, TransactionSource, Writable},
         trie::{
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
+            Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
         },
         trie_store::TrieStore,
     },
@@ -271,9 +272,10 @@ where
         match maybe_retrieved_trie_bytes
             .as_ref()
             .and_then(|bytes| bytes.first())
+            .and_then(|byte| TrieTag::from_u8(*byte))
         {
             // if this is a leaf don't parse (ie, the first byte is 0), just continue
-            Some(0) => continue,
+            Some(TrieTag::Leaf) => continue,
             // Either no entry under trie key or data is empty.  If data is empty then the trie is
             // corrupted. Either way treat as missing.
             None => {
@@ -540,12 +542,13 @@ where
     let path = key_bytes;
 
     let mut current_trie;
-    let mut current = root_bytes; //Bytes::from(root_bytes.to_bytes()?);
+    let mut current = root_bytes;
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
     loop {
-        current_trie = if current.first() == Some(&0) {
+        let current_trie_tag = current.first().and_then(|byte| TrieTag::from_u8(*byte));
+        current_trie = if current_trie_tag == Some(TrieTag::Leaf) {
             return Ok(TrieScanRaw::new(Either::Left(current), acc));
         } else {
             let (deserialized, _) = Trie::<K, V>::from_bytes(&current)?;
@@ -657,13 +660,17 @@ where
 
     // Check that tip is a leaf
     match tip {
-        Either::Left(_bytes)
+        Either::Left(bytes)
             if {
                 // Partially deserialize a key of a leaf node to ensure that we can only continue if
                 // the key matches what we're looking for.
-                let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&_bytes)?;
+                let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&bytes)?;
                 // _rem contains bytes of serialized V, but we don't need to inspect it.
-                assert_eq!(tag_u8, 0, "Tip contains Leaf bytes");
+                assert_eq!(
+                    TrieTag::from_u8(tag_u8),
+                    Some(TrieTag::Leaf),
+                    "Tip contains Leaf bytes"
+                );
                 key == *key_to_delete
             } => {}
         _ => return Ok(DeleteResult::DoesNotExist),

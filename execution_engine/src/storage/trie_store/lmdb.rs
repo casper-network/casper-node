@@ -116,6 +116,7 @@ use casper_types::{
     Key, StoredValue,
 };
 use lmdb::{Database, DatabaseFlags, Transaction};
+use num_traits::FromPrimitive;
 
 use casper_hashing::Digest;
 
@@ -124,7 +125,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::{DescendantsIterator, Trie},
+    trie::{DescendantsIterator, Trie, TrieTag},
     trie_store::{self, TrieStore},
 };
 
@@ -193,9 +194,10 @@ pub(crate) struct ScratchTrieStore {
 }
 
 fn trie_bytes_iter_children(trie_bytes: &[u8]) -> Result<DescendantsIterator, bytesrepr::Error> {
-    match trie_bytes.first() {
-        Some(tag) if tag == &0 => Ok(DescendantsIterator::ZeroOrOne(None)),
-        Some(_tag) => {
+    let trie_tag = trie_bytes.first().and_then(|byte| TrieTag::from_u8(*byte));
+    match trie_tag {
+        Some(TrieTag::Leaf) => Ok(DescendantsIterator::ZeroOrOne(None)),
+        Some(TrieTag::Node) | Some(TrieTag::Extension) => {
             // We can deserialize trie as we know this is either a node or an extension
             let trie: Trie<Key, StoredValue> = bytesrepr::deserialize_from_slice(trie_bytes)?;
             Ok(trie.iter_children())

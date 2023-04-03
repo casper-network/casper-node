@@ -5,11 +5,9 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self,
-        purge::{PurgeConfig, PurgeResult},
-        step::EvictItem,
-        DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-        GetEraValidatorsRequest, RewardItem, StepError, StepRequest, StepSuccess,
+        self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PurgeConfig,
+        PurgeResult, RewardItem, StepError, StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
