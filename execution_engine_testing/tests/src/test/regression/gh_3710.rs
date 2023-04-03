@@ -7,11 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{
-            self,
-            purge::{PurgeConfig, PurgeResult},
-            RewardItem,
-        },
+        engine_state::{self, PurgeConfig, PurgeResult, RewardItem},
         execution,
     },
     storage::global_state::{CommitProvider, StateProvider},
