@@ -2,7 +2,7 @@
 
 use prometheus::{
     core::{Atomic, Collector, GenericCounter, GenericGauge},
-    Counter, Gauge, Histogram, HistogramOpts, IntCounter, IntGauge, Registry,
+    Counter, Gauge, Histogram, HistogramOpts, HistogramTimer, IntCounter, IntGauge, Registry,
 };
 
 /// A metric wrapper that will deregister the metric from a given registry on drop.
@@ -92,6 +92,12 @@ impl RegisteredMetric<Histogram> {
     #[inline]
     pub(crate) fn observe(&self, v: f64) {
         self.inner().observe(v)
+    }
+
+    /// Creates a new histogram timer.
+    #[inline]
+    pub(crate) fn start_timer(&self) -> HistogramTimer {
+        self.inner().start_timer()
     }
 }
 

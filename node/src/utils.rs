@@ -32,7 +32,7 @@ use fs2::FileExt;
 use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
-use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
+use prometheus::{self, IntGauge};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -316,21 +316,6 @@ where
     T: Add<Output = T> + Div<Output = T> + From<u8> + Copy,
 {
     (numerator + denominator / T::from(2)) / denominator
-}
-
-/// Unregisters a metric from the Prometheus registry.
-#[macro_export]
-macro_rules! unregister_metric {
-    ($registry:expr, $metric:expr) => {
-        $registry
-            .unregister(Box::new($metric.clone()))
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    "unregistering {} failed: was not registered",
-                    stringify!($metric)
-                )
-            });
-    };
 }
 
 /// XORs two byte sequences.
