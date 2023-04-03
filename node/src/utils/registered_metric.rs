@@ -109,8 +109,7 @@ where
         if let Some(boxed_metric) = self.metric.take() {
             let desc = boxed_metric
                 .desc()
-                .iter()
-                .next()
+                .first()
                 .map(|desc| desc.fq_name.clone())
                 .unwrap_or_default();
             self.registry.unregister(boxed_metric).unwrap_or_else(|_| {
