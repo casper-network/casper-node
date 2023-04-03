@@ -542,7 +542,7 @@ impl RpcWithOptionalParamsExt for GetEraSummary {
                 .make_request(
                     |responder| RpcRequest::QueryGlobalState {
                         state_root_hash,
-                        base_key: Key::EraInfo(era_id),
+                        base_key: Key::EraSummary,
                         path: Vec::new(),
                         responder,
                     },
