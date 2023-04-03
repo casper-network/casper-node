@@ -1,8 +1,8 @@
 //! Self registereing and deregistering metrics support.
 
 use prometheus::{
-    core::{Atomic, Collector, GenericCounter},
-    IntCounter, IntGauge, Registry,
+    core::{Atomic, Collector, GenericCounter, GenericGauge},
+    Counter, IntCounter, IntGauge, Registry,
 };
 
 /// A metric wrapper that will deregister the metric from a given registry on drop.
@@ -33,9 +33,9 @@ where
         })
     }
 
-    /// Returns a reference to the inner metric.
+    /// Returns a reference to the wrapped metric.
     #[inline]
-    fn inner(&self) -> &T {
+    pub(crate) fn inner(&self) -> &T {
         self.metric.as_ref().expect("metric disappeared")
     }
 }
@@ -44,10 +44,45 @@ impl<P> RegisteredMetric<GenericCounter<P>>
 where
     P: Atomic,
 {
-    /// Increment the counter.
+    /// Increments the counter.
     #[inline]
     pub(crate) fn inc(&self) {
         self.inner().inc()
+    }
+
+    /// Increments the counter by set amount.
+    #[inline]
+    pub(crate) fn inc_by(&self, v: P::T) {
+        self.inner().inc_by(v)
+    }
+}
+
+impl<P> RegisteredMetric<GenericGauge<P>>
+where
+    P: Atomic,
+{
+    /// Adds the given amount to gauge.
+    #[inline]
+    pub(crate) fn add(&self, v: P::T) {
+        self.inner().add(v)
+    }
+
+    /// Returns the gauge value.
+    #[inline]
+    pub(crate) fn get(&self) -> P::T {
+        self.inner().get()
+    }
+
+    /// Increments the gauge.
+    #[inline]
+    pub(crate) fn inc(&self) {
+        self.inner().inc()
+    }
+
+    /// Sets the gauge value.
+    #[inline]
+    pub(crate) fn set(&self, v: P::T) {
+        self.inner().set(v)
     }
 }
 
@@ -73,6 +108,13 @@ where
 /// Extension trait for [`Registry`] instances.
 pub(crate) trait RegistryExt {
     /// Creates a new [`IntCounter`] registered to this registry.
+    fn new_counter<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<Counter>, prometheus::Error>;
+
+    /// Creates a new [`IntCounter`] registered to this registry.
     fn new_int_counter<S1: Into<String>, S2: Into<String>>(
         &self,
         name: S1,
@@ -88,6 +130,13 @@ pub(crate) trait RegistryExt {
 }
 
 impl RegistryExt for Registry {
+    fn new_counter<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<RegisteredMetric<Counter>, prometheus::Error> {
+        RegisteredMetric::new(self.clone(), Counter::new(name, help)?)
+    }
     fn new_int_counter<S1: Into<String>, S2: Into<String>>(
         &self,
         name: S1,
