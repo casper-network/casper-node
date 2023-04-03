@@ -1,4 +1,4 @@
-//! Self registereing and deregistering metrics support.
+//! Self registering and deregistering metrics support.
 
 use prometheus::{
     core::{Atomic, Collector, GenericCounter, GenericGauge},
