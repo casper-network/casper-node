@@ -1198,15 +1198,26 @@ impl BlockSynchronizer {
                 }
             }
         }
-        BlockSynchronizerProgress::Syncing(
-            builder.block_hash(),
-            builder.block_height(),
-            builder.last_progress_time().max(
-                self.global_sync
-                    .last_progress()
-                    .unwrap_or_else(Timestamp::zero),
-            ),
-        )
+
+        let last_progress_time = builder.last_progress_time().max(
+            self.global_sync
+                .last_progress()
+                .unwrap_or_else(Timestamp::zero),
+        );
+
+        if last_progress_time.elapsed() > self.config.progress_stall_threshold_interval {
+            BlockSynchronizerProgress::Stalled(
+                builder.block_hash(),
+                builder.block_height(),
+                last_progress_time,
+            )
+        } else {
+            BlockSynchronizerProgress::Syncing(
+                builder.block_hash(),
+                builder.block_height(),
+                last_progress_time,
+            )
+        }
     }
 
     fn status(&self) -> BlockSynchronizerStatus {
