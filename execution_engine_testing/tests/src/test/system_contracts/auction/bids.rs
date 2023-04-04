@@ -6,10 +6,10 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
-    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     core::{
@@ -3936,7 +3936,7 @@ fn should_enforce_minimum_delegation_amount() {
 
     builder.exec(add_bid_request_1).expect_success().commit();
 
-    for _ in 0..=DEFAULT_AUCTION_DELAY {
+    for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
@@ -4031,7 +4031,7 @@ fn should_allow_delegations_with_minimal_floor_amount() {
 
     builder.exec(add_bid_request_1).expect_success().commit();
 
-    for _ in 0..=DEFAULT_AUCTION_DELAY {
+    for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)

@@ -180,7 +180,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block: Option<BlockHeader>,
+    switch_block_header: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
@@ -452,7 +452,7 @@ impl reactor::Reactor for MainReactor {
                         let reactor_event =
                             MainEvent::EventStreamServer(event_stream_server::Event::Fault {
                                 era_id,
-                                public_key: *public_key,
+                                public_key,
                                 timestamp,
                             });
                         self.dispatch_event(effect_builder, rng, reactor_event)
@@ -866,20 +866,20 @@ impl reactor::Reactor for MainReactor {
             ),
 
             // This event gets emitted when we manage to read the era validators from the global
-            // states of an immediate switch block and its parent. Once that happens, we can check
+            // states of a block after an upgrade and its parent. Once that happens, we can check
             // for the signs of any changes happening during the upgrade and register the correct
             // set of validators in the validators matrix.
-            MainEvent::GotImmediateSwitchBlockEraValidators(
+            MainEvent::GotBlockAfterUpgradeEraValidators(
                 era_id,
                 parent_era_validators,
                 block_era_validators,
             ) => {
-                // `era_id`, being the era of the immediate switch block, will be absent in the
-                // validators stored in the immediate switch block - therefore we will use its
+                // `era_id`, being the era of the block after the upgrade, will be absent in the
+                // validators stored in the block after the upgrade - therefore we will use its
                 // successor for the comparison.
                 let era_to_check = era_id.successor();
-                // We read the validators for era_id+1 from the parent of the immediate switch
-                // block.
+                // We read the validators for era_id+1 from the parent of the block after the
+                // upgrade.
                 let validators_in_parent = match parent_era_validators.get(&era_to_check) {
                     Some(validators) => validators,
                     None => {
@@ -891,7 +891,7 @@ impl reactor::Reactor for MainReactor {
                         .ignore();
                     }
                 };
-                // We also read the validators from the immediate switch block itself.
+                // We also read the validators from the block after the upgrade itself.
                 let validators_in_block = match block_era_validators.get(&era_to_check) {
                     Some(validators) => validators,
                     None => {
@@ -906,7 +906,7 @@ impl reactor::Reactor for MainReactor {
                 // Decide which validators to use for `era_id` in the validators matrix.
                 let validators_to_register = if validators_in_parent == validators_in_block {
                     // Nothing interesting happened - register the regular validators, ie. the
-                    // ones stored for `era_id` in the parent of the immediate switch block.
+                    // ones stored for `era_id` in the parent of the block after the upgrade.
                     match parent_era_validators.get(&era_id) {
                         Some(validators) => validators,
                         None => {
@@ -920,8 +920,8 @@ impl reactor::Reactor for MainReactor {
                     }
                 } else {
                     // We had an upgrade changing the validators! We use the same validators that
-                    // will be used for the era after the immediate switch block, as we can't trust
-                    // the ones we would use normally.
+                    // will be used for the era after the upgrade, as we can't trust the ones we
+                    // would use normally.
                     validators_in_block
                 };
                 let mut effects = self.update_validator_weights(
@@ -1159,7 +1159,7 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            switch_block: None,
+            switch_block_header: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
         };
@@ -1394,18 +1394,22 @@ impl MainReactor {
                 block.hash(),
             );
             if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
+                match self
+                    .switch_block_header
+                    .as_ref()
+                    .map(|header| header.height())
+                {
                     Some(current_height) => {
                         if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
+                            self.switch_block_header = Some(block.header().clone());
                         }
                     }
                     None => {
-                        self.switch_block = Some(block.header().clone());
+                        self.switch_block_header = Some(block.header().clone());
                     }
                 }
             } else {
-                self.switch_block = None;
+                self.switch_block_header = None;
             }
         } else {
             error!(

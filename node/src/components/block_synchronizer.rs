@@ -52,10 +52,10 @@ use crate::{
     reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, Chainspec, Deploy, FinalitySignature, FinalitySignatureId, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk,
-        ValidatorMatrix,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
+        FinalitySignature, FinalitySignatureId, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -321,7 +321,7 @@ impl BlockSynchronizer {
             }
         }
 
-        let (block_header, maybe_sigs) = sync_leap.highest_block_header();
+        let (block_header, maybe_sigs) = sync_leap.highest_block_header_and_signatures();
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder))
                 if builder.block_hash() == block_header.block_hash() =>
@@ -557,7 +557,11 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<BlockHeader>(block_hash, node_id, EmptyValidationMetadata)
+                            .fetch::<BlockHeader>(
+                                block_hash,
+                                node_id,
+                                Box::new(EmptyValidationMetadata),
+                            )
                             .event(Event::BlockHeaderFetched)
                     }))
                 }
@@ -565,7 +569,7 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, node_id, EmptyValidationMetadata)
+                            .fetch::<Block>(block_hash, node_id, Box::new(EmptyValidationMetadata))
                             .event(Event::BlockFetched)
                     }))
                 }
@@ -578,14 +582,18 @@ impl BlockSynchronizer {
                     {
                         debug!(%validator, %peer, "attempting to fetch FinalitySignature");
                         builder.register_finality_signature_pending(validator.clone());
-                        let id = FinalitySignatureId {
+                        let id = Box::new(FinalitySignatureId {
                             block_hash,
                             era_id,
                             public_key: validator,
-                        };
+                        });
                         results.extend(
                             effect_builder
-                                .fetch::<FinalitySignature>(id, peer, EmptyValidationMetadata)
+                                .fetch::<FinalitySignature>(
+                                    id,
+                                    peer,
+                                    Box::new(EmptyValidationMetadata),
+                                )
                                 .event(Event::FinalitySignatureFetched),
                         );
                     }
@@ -614,7 +622,7 @@ impl BlockSynchronizer {
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         debug!("attempting to fetch BlockExecutionResultsOrChunk");
                         effect_builder
-                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, checksum)
+                            .fetch::<BlockExecutionResultsOrChunk>(id, node_id, Box::new(checksum))
                             .event(move |result| Event::ExecutionResultsFetched {
                                 block_hash,
                                 result,
@@ -633,7 +641,11 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<LegacyDeploy>(deploy_hash, node_id, EmptyValidationMetadata)
+                            .fetch::<LegacyDeploy>(
+                                deploy_hash,
+                                node_id,
+                                Box::new(EmptyValidationMetadata),
+                            )
                             .event(move |result| Event::DeployFetched {
                                 block_hash,
                                 result: Either::Left(result),
@@ -644,7 +656,7 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Deploy>(deploy_id, node_id, EmptyValidationMetadata)
+                            .fetch::<Deploy>(deploy_id, node_id, Box::new(EmptyValidationMetadata))
                             .event(move |result| Event::DeployFetched {
                                 block_hash,
                                 result: Either::Right(result),
@@ -654,14 +666,11 @@ impl BlockSynchronizer {
                 NeedNext::EnqueueForExecution(block_hash, _) => {
                     if false == builder.should_fetch_execution_state() {
                         builder.set_in_flight_latch();
-                        results.extend(
-                            effect_builder
-                                .make_block_executable(block_hash)
-                                .event(move |result| Event::MadeFinalizedBlock {
-                                    block_hash,
-                                    result,
-                                }),
-                        )
+                        if builder.execution_unattempted() {
+                            results.extend(effect_builder.make_block_executable(block_hash).event(
+                                move |result| Event::MadeFinalizedBlock { block_hash, result },
+                            ))
+                        }
                     }
                 }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
@@ -707,7 +716,9 @@ impl BlockSynchronizer {
                             .fetch::<SyncLeap>(
                                 SyncLeapIdentifier::sync_to_historical(builder.block_hash()),
                                 node_id,
-                                chainspec.clone(),
+                                Box::new(SyncLeapValidationMetaData::from_chainspec(
+                                    chainspec.as_ref(),
+                                )),
                             )
                             .event(Event::SyncLeapFetched)
                     }))
@@ -1346,7 +1357,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     }
 
                     // this is a request that's separate from a typical block synchronizer flow;
-                    // it's sent when we need to sync global states of an immediate switch block
+                    // it's sent when we need to sync global states of block after an upgrade
                     // and its parent in order to check whether the validators have been
                     // changed by the upgrade
                     BlockSynchronizerRequest::SyncGlobalStates(mut global_states) => {

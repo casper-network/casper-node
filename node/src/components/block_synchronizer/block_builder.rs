@@ -250,6 +250,10 @@ impl BlockBuilder {
         matches!(self.execution_progress, ExecutionProgress::Started)
     }
 
+    pub(super) fn execution_unattempted(&self) -> bool {
+        matches!(self.execution_progress, ExecutionProgress::Idle)
+    }
+
     pub(super) fn register_block_execution_not_enqueued(&mut self) {
         warn!("failed to enqueue block for execution");
         // reset latch and try again
@@ -264,21 +268,19 @@ impl BlockBuilder {
             error!(%error, "register block execution enqueued failed");
             self.abort()
         } else {
-            match (
-                self.should_fetch_execution_state,
-                self.execution_progress.start(),
-            ) {
-                (true, _) => {
+            if self.should_fetch_execution_state {
+                let block_hash = self.block_hash();
+                error!(%block_hash, "invalid attempt to start block execution on historical block");
+                self.abort();
+                return;
+            }
+
+            match self.execution_progress.start() {
+                None => {
                     let block_hash = self.block_hash();
-                    error!(%block_hash, "invalid attempt to start block execution on historical block");
-                    self.abort();
+                    warn!(%block_hash, "invalid attempt to start block execution");
                 }
-                (false, None) => {
-                    let block_hash = self.block_hash();
-                    error!(%block_hash, "invalid attempt to start block execution");
-                    self.abort();
-                }
-                (false, Some(executing_progress)) => {
+                Some(executing_progress) => {
                     self.touch();
                     self.execution_progress = executing_progress;
                 }
@@ -287,21 +289,18 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_block_executed(&mut self) {
-        match (
-            self.should_fetch_execution_state,
-            self.execution_progress.finish(),
-        ) {
-            (true, _) => {
+        if self.should_fetch_execution_state {
+            let block_hash = self.block_hash();
+            error!(%block_hash, "invalid attempt to finish block execution on historical block");
+            self.abort();
+        }
+
+        match self.execution_progress.finish() {
+            None => {
                 let block_hash = self.block_hash();
-                error!(%block_hash, "invalid attempt to finish block execution on historical block");
-                self.abort();
+                warn!(%block_hash, "invalid attempt to finish block execution");
             }
-            (false, None) => {
-                let block_hash = self.block_hash();
-                error!(%block_hash, "invalid attempt to finish block execution");
-                self.abort();
-            }
-            (false, Some(executing_progress)) => {
+            Some(executing_progress) => {
                 self.touch();
                 self.execution_progress = executing_progress;
             }
@@ -409,6 +408,7 @@ impl BlockBuilder {
         if let Some(era_id) = self.era_id {
             if let Some(evw) = validator_matrix.validator_weights(era_id) {
                 self.validator_weights = Some(evw);
+                self.touch();
             }
         }
     }

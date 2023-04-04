@@ -56,3 +56,14 @@ unset OPTIND
 unset COMPILE_MODE #clean all envvar garbage we may have produced. 
 
 popd || exit
+
+# Build client utility.
+pushd "$NCTL_CASPER_CLIENT_HOME" || exit
+
+if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+    cargo build
+else
+    cargo build --release
+fi
+
+popd || exit

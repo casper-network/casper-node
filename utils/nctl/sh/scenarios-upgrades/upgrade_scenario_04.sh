@@ -51,7 +51,7 @@ function _main()
     # Set initial protocol version for use later.
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
-    ACTIVATION_POINT="$(get_chain_era)"
+    ACTIVATION_POINT="$(($(get_chain_era) + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"

@@ -94,8 +94,8 @@ impl MainReactor {
                         (duration, effects)
                     }
                     GenesisInstruction::NonValidator(duration, effects) => {
-                        info!("CatchUp: switch to KeepUp at genesis");
-                        self.state = ReactorState::KeepUp;
+                        info!("CatchUp: non-validator committed genesis");
+                        self.state = ReactorState::CatchUp;
                         (duration, effects)
                     }
                     GenesisInstruction::Fatal(msg) => (
@@ -293,6 +293,21 @@ impl MainReactor {
     }
 
     fn commit_genesis(&mut self, effect_builder: EffectBuilder<MainEvent>) -> GenesisInstruction {
+        let genesis_timestamp = match self
+            .chainspec
+            .protocol_config
+            .activation_point
+            .genesis_timestamp()
+        {
+            None => {
+                return GenesisInstruction::Fatal(
+                    "CommitGenesis: invalid chainspec activation point".to_string(),
+                );
+            }
+            Some(timestamp) => timestamp,
+        };
+
+        // global state starts empty and gets populated based upon chainspec artifacts
         let post_state_hash = match self.contract_runtime.commit_genesis(
             self.chainspec.clone().as_ref(),
             self.chainspec_raw_bytes.clone().as_ref(),
@@ -303,45 +318,46 @@ impl MainReactor {
             }
         };
 
-        let genesis_timestamp = match self
-            .chainspec
-            .protocol_config
-            .activation_point
-            .genesis_timestamp()
-        {
-            None => {
-                return GenesisInstruction::Fatal("must have genesis timestamp".to_string());
-            }
-            Some(timestamp) => timestamp,
-        };
-
         info!(
             %post_state_hash,
             %genesis_timestamp,
             network_name = %self.chainspec.network_config.name,
-            "successfully ran genesis"
+            "CommitGenesis: successful commit; initializing contract runtime"
         );
 
-        let next_block_height = 0;
+        let genesis_block_height = 0;
         self.initialize_contract_runtime(
-            next_block_height,
+            genesis_block_height,
             post_state_hash,
             BlockHash::default(),
             Digest::default(),
         );
 
-        let finalized_block = FinalizedBlock::new(
+        let era_id = EraId::default();
+
+        // as this is a genesis validator, there is no historical syncing necessary
+        // thus, the retrograde latch is immediately set
+        self.validator_matrix
+            .register_retrograde_latch(Some(era_id));
+
+        // new networks will create a switch block at genesis to
+        // surface the genesis validators. older networks did not
+        // have this behavior.
+        let genesis_switch_block = FinalizedBlock::new(
             BlockPayload::default(),
             Some(EraReport::default()),
             genesis_timestamp,
-            EraId::default(),
-            next_block_height,
+            era_id,
+            genesis_block_height,
             PublicKey::System,
         );
 
+        // this genesis block has no deploys, and will get
+        // handed off to be stored & marked complete after
+        // sufficient finality signatures have been collected.
         let effects = effect_builder
             .enqueue_block_for_execution(
-                finalized_block,
+                genesis_switch_block,
                 vec![],
                 MetaBlockState::new_not_to_be_gossiped(),
             )
@@ -353,9 +369,11 @@ impl MainReactor {
             .accounts_config
             .is_genesis_validator(self.validator_matrix.public_signing_key())
         {
+            // validators should switch over and start making blocks
             GenesisInstruction::Validator(Duration::ZERO, effects)
         } else {
-            GenesisInstruction::NonValidator(Duration::ZERO, effects)
+            // non-validators should start receiving gossip about the block at height 1 soon
+            GenesisInstruction::NonValidator(self.control_logic_default_delay.into(), effects)
         }
     }
 
@@ -371,7 +389,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         info!("{:?}: committing upgrade", self.state);
-        let previous_block_header = match &self.switch_block {
+        let previous_block_header = match &self.switch_block_header {
             None => {
                 return Err("switch_block should be Some".to_string());
             }
@@ -444,7 +462,7 @@ impl MainReactor {
     }
 
     pub(super) fn should_commit_upgrade(&self) -> bool {
-        let highest_switch_block_header = match &self.switch_block {
+        let highest_switch_block_header = match &self.switch_block_header {
             None => {
                 return false;
             }
@@ -534,7 +552,7 @@ impl MainReactor {
                 Ok(highest_switch_block_header) => highest_switch_block_header,
                 Err(err) => return Err(err.to_string()),
             };
-        self.switch_block = maybe_highest_switch_block_header.first().cloned();
+        self.switch_block_header = maybe_highest_switch_block_header.first().cloned();
         Ok(())
     }
 }
