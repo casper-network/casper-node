@@ -452,7 +452,7 @@ attempt_execution_threshold = 3
 dead_air_interval = '3min'
 
 # Time after which the block acceptors are considered old and can be purged.
-purge_interval = '1min'
+purge_interval = '5min'
 
 
 # ================================================

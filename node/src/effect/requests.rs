@@ -699,7 +699,7 @@ pub(crate) enum RpcRequest {
         /// retrieve it.
         only_from_available_block_range: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<BlockWithMetadata>>,
+        responder: Responder<Option<Box<BlockWithMetadata>>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -752,7 +752,7 @@ pub(crate) enum RpcRequest {
         /// Whether to return finalized approvals.
         finalized_approvals: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
+        responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
     },
     /// Return the connected peers.
     GetPeers {
@@ -1025,7 +1025,7 @@ pub(crate) struct FetcherRequest<T: FetchItem> {
     /// The peer id of the peer to be asked if the item is not held locally
     pub(crate) peer: NodeId,
     /// Metadata used during validation of the fetched item.
-    pub(crate) validation_metadata: T::ValidationMetadata,
+    pub(crate) validation_metadata: Box<T::ValidationMetadata>,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
 }

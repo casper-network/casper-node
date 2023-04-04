@@ -1,3 +1,5 @@
+#![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
+
 //! Consensus service is a component that will be communicating with the reactor.
 //! It will receive events (like incoming message event or create new message event)
 //! and propagate them to the underlying consensus protocol.
@@ -676,10 +678,10 @@ impl EraSupervisor {
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         sender: NodeId,
-        request: ConsensusRequestMessage,
+        request: Box<ConsensusRequestMessage>,
         auto_closing_responder: AutoClosingResponder<protocol::Message>,
     ) -> Effects<Event> {
-        let ConsensusRequestMessage { era_id, payload } = request;
+        let ConsensusRequestMessage { era_id, payload } = *request;
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
             None => {

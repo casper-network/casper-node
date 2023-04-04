@@ -7,13 +7,13 @@ pub(crate) struct ItemHandle<T>
 where
     T: FetchItem,
 {
-    validation_metadata: T::ValidationMetadata,
+    validation_metadata: Box<T::ValidationMetadata>,
     responders: Vec<FetchResponder<T>>,
 }
 
 impl<T: FetchItem> ItemHandle<T> {
     pub(super) fn new(
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
         responder: FetchResponder<T>,
     ) -> Self {
         Self {

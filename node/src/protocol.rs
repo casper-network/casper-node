@@ -291,7 +291,7 @@ where
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming {
                 sender,
-                message,
+                message: Box::new(message),
                 ticket,
             }
             .into(),
@@ -301,80 +301,86 @@ where
             }
             Message::BlockGossiper(message) => GossiperIncoming {
                 sender,
-                message,
+                message: Box::new(message),
                 ticket,
             }
             .into(),
             Message::DeployGossiper(message) => GossiperIncoming {
                 sender,
-                message,
+
+                message: Box::new(message),
                 ticket,
             }
             .into(),
             Message::FinalitySignatureGossiper(message) => GossiperIncoming {
                 sender,
-                message,
+                message: Box::new(message),
                 ticket,
             }
             .into(),
             Message::AddressGossiper(message) => GossiperIncoming {
                 sender,
-                message,
+
+                message: Box::new(message),
                 ticket,
             }
             .into(),
             Message::GetRequest { tag, serialized_id } => match tag {
                 Tag::Deploy => NetRequestIncoming {
                     sender,
-                    message: NetRequest::Deploy(serialized_id),
+                    message: Box::new(NetRequest::Deploy(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::LegacyDeploy => NetRequestIncoming {
                     sender,
-                    message: NetRequest::LegacyDeploy(serialized_id),
+
+                    message: Box::new(NetRequest::LegacyDeploy(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::Block => NetRequestIncoming {
                     sender,
-                    message: NetRequest::Block(serialized_id),
+                    message: Box::new(NetRequest::Block(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::BlockHeader => NetRequestIncoming {
                     sender,
-                    message: NetRequest::BlockHeader(serialized_id),
+                    message: Box::new(NetRequest::BlockHeader(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieRequestIncoming {
                     sender,
-                    message: TrieRequest(serialized_id),
+                    message: Box::new(TrieRequest(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::FinalitySignature => NetRequestIncoming {
                     sender,
-                    message: NetRequest::FinalitySignature(serialized_id),
+
+                    message: Box::new(NetRequest::FinalitySignature(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::SyncLeap => NetRequestIncoming {
                     sender,
-                    message: NetRequest::SyncLeap(serialized_id),
+                    message: Box::new(NetRequest::SyncLeap(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::ApprovalsHashes => NetRequestIncoming {
                     sender,
-                    message: NetRequest::ApprovalsHashes(serialized_id),
+
+                    message: Box::new(NetRequest::ApprovalsHashes(serialized_id)),
                     ticket,
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetRequestIncoming {
                     sender,
-                    message: NetRequest::BlockExecutionResults(serialized_id),
+
+                    message: Box::new(NetRequest::BlockExecutionResults(serialized_id)),
                     ticket,
                 }
                 .into(),
@@ -385,55 +391,59 @@ where
             } => match tag {
                 Tag::Deploy => NetResponseIncoming {
                     sender,
-                    message: NetResponse::Deploy(serialized_item),
+                    message: Box::new(NetResponse::Deploy(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::LegacyDeploy => NetResponseIncoming {
                     sender,
-                    message: NetResponse::LegacyDeploy(serialized_item),
+
+                    message: Box::new(NetResponse::LegacyDeploy(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::Block => NetResponseIncoming {
                     sender,
-                    message: NetResponse::Block(serialized_item),
+                    message: Box::new(NetResponse::Block(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::BlockHeader => NetResponseIncoming {
                     sender,
-                    message: NetResponse::BlockHeader(serialized_item),
+
+                    message: Box::new(NetResponse::BlockHeader(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
-                    message: TrieResponse(serialized_item.to_vec()),
+
+                    message: Box::new(TrieResponse(serialized_item.to_vec())),
                     ticket,
                 }
                 .into(),
                 Tag::FinalitySignature => NetResponseIncoming {
                     sender,
-                    message: NetResponse::FinalitySignature(serialized_item),
+
+                    message: Box::new(NetResponse::FinalitySignature(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::SyncLeap => NetResponseIncoming {
                     sender,
-                    message: NetResponse::SyncLeap(serialized_item),
+                    message: Box::new(NetResponse::SyncLeap(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::ApprovalsHashes => NetResponseIncoming {
                     sender,
-                    message: NetResponse::ApprovalsHashes(serialized_item),
+                    message: Box::new(NetResponse::ApprovalsHashes(serialized_item)),
                     ticket,
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetResponseIncoming {
                     sender,
-                    message: NetResponse::BlockExecutionResults(serialized_item),
+                    message: Box::new(NetResponse::BlockExecutionResults(serialized_item)),
                     ticket,
                 }
                 .into(),
@@ -459,7 +469,7 @@ where
             Message::GetRequest { tag, serialized_id } if tag == Tag::TrieOrChunk => {
                 let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
                     sender,
-                    request_msg: TrieRequest(serialized_id),
+                    request_msg: Box::new(TrieRequest(serialized_id)),
                     auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                 });
 
@@ -469,7 +479,7 @@ where
                 let (ev, fut) =
                     effect_builder.create_request_parts(move |responder| ConsensusDemand {
                         sender,
-                        request_msg,
+                        request_msg: Box::new(request_msg),
                         auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                     });
 

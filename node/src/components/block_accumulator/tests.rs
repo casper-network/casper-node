@@ -22,7 +22,10 @@ use reactor::ReactorEvent;
 
 use crate::{
     components::{
-        consensus::tests::utils::{ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID},
+        consensus::tests::utils::{
+            ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID, BOB_PUBLIC_KEY,
+            BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
+        },
         network::Identity as NetworkIdentity,
         storage::{self, Storage},
     },
@@ -1172,6 +1175,42 @@ fn accumulator_purge() {
 
     // Entries we modified earlier should be purged.
     block_accumulator.purge();
+    // Acceptors for blocks 1 and 2 should not have been purged because they
+    // have strict finality.
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_1.hash()));
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_2.hash()));
+    assert!(block_accumulator
+        .block_acceptors
+        .contains_key(block_3.hash()));
+    // We should have kept only the timestamps for the first peer.
+    assert!(block_accumulator
+        .peer_block_timestamps
+        .contains_key(&peer_1));
+    assert!(!block_accumulator
+        .peer_block_timestamps
+        .contains_key(&peer_2));
+
+    {
+        // Modify the `strict_finality` flag in the acceptors for blocks 1 and
+        // 2.
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_1.hash())
+            .unwrap()
+            .set_sufficient_finality(false);
+        block_accumulator
+            .block_acceptors
+            .get_mut(block_2.hash())
+            .unwrap()
+            .set_sufficient_finality(false);
+    }
+
+    // Entries we modified earlier should be purged.
+    block_accumulator.purge();
     // Acceptors for blocks 1 and 2 should have been purged.
     assert!(!block_accumulator
         .block_acceptors
@@ -1301,6 +1340,126 @@ fn accumulator_purge() {
         assert!(!block_accumulator
             .block_acceptors
             .contains_key(out_of_range_block.hash()));
+
+        // Now replace the local tip with something else (in this case we'll
+        // have no local tip) so that previously created blocks no longer have
+        // purge immunity.
+        block_accumulator.local_tip.take();
+        // Do the purge.
+        block_accumulator.purge();
+        // Block 3 is no longer the local tip, and given that it's old, the
+        // blocks should have been purged.
+        assert!(block_accumulator.block_acceptors.is_empty());
+    }
+
+    // Create a future block after block 3.
+    let future_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() + block_accumulator.attempt_execution_threshold,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let future_block_sig = FinalitySignature::create(
+        *future_block.hash(),
+        future_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the future block with sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *future_block.hash(),
+            Some(future_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(future_block.hash())
+            .unwrap();
+        let mut state = MetaBlockState::new();
+        state.register_has_sufficient_finality();
+        let meta_block = MetaBlock::new(future_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(future_block_sig, Some(peer_1), VALIDATOR_SLOTS)
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Create a future block after block 3, but which will not have strict
+    // finality.
+    let future_unsigned_block = Arc::new(Block::random_with_specifics(
+        &mut rng,
+        block_3.header().era_id(),
+        block_3.height() + block_accumulator.attempt_execution_threshold * 2,
+        block_3.protocol_version(),
+        false,
+        None,
+    ));
+    let future_unsigned_block_sig = FinalitySignature::create(
+        *future_unsigned_block.hash(),
+        future_unsigned_block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    {
+        // Insert the future unsigned block without sufficient finality.
+        block_accumulator.upsert_acceptor(
+            *future_unsigned_block.hash(),
+            Some(future_unsigned_block.header().era_id()),
+            Some(peer_1),
+        );
+        let acceptor = block_accumulator
+            .block_acceptors
+            .get_mut(future_unsigned_block.hash())
+            .unwrap();
+        let state = MetaBlockState::new();
+        let meta_block = MetaBlock::new(future_unsigned_block.clone(), vec![], state);
+        acceptor
+            .register_finality_signature(future_unsigned_block_sig, Some(peer_1), VALIDATOR_SLOTS)
+            .unwrap();
+        acceptor.register_block(meta_block, Some(peer_2)).unwrap();
+    }
+
+    // Make sure block with sufficient finality doesn't get purged.
+    {
+        // Make block 3 the local tip again.
+        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
+            block_3.header().height(),
+            block_3.header().era_id(),
+        ));
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(future_block.hash()));
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(future_unsigned_block.hash()));
+
+        // Change the timestamps to old ones so that all blocks would normally
+        // get purged.
+        let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
+        for (_, acceptor) in block_accumulator.block_acceptors.iter_mut() {
+            acceptor.set_last_progress(last_progress);
+        }
+        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+            for (_, timestamp) in timestamps.iter_mut() {
+                *timestamp = last_progress;
+            }
+        }
+        // Do the purge.
+        block_accumulator.purge();
+        // Neither should the future block with sufficient finality.
+        assert!(block_accumulator
+            .block_acceptors
+            .contains_key(future_block.hash()));
+        // But the future block without sufficient finality should have been
+        // purged.
+        assert!(!block_accumulator
+            .block_acceptors
+            .contains_key(future_unsigned_block.hash()));
 
         // Now replace the local tip with something else (in this case we'll
         // have no local tip) so that previously created blocks no longer have
@@ -1743,5 +1902,186 @@ async fn block_accumulator_reactor_flow() {
         assert!(!block_accumulator
             .block_acceptors
             .contains_key(old_era_block.hash()));
+    }
+}
+
+#[tokio::test]
+async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
+    let mut rng = TestRng::new();
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let mut runner: Runner<MockReactor> = Runner::new(
+        (),
+        Arc::new(chainspec),
+        Arc::new(chainspec_raw_bytes),
+        &mut rng,
+    )
+    .await
+    .unwrap();
+
+    // Create 1 block.
+    let block_1 = generate_non_genesis_block(&mut rng);
+
+    // Also create 2 peers.
+    let peer_1 = NodeId::random(&mut rng);
+    let peer_2 = NodeId::random(&mut rng);
+
+    let fin_sig_bob = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &BOB_SECRET_KEY,
+        BOB_PUBLIC_KEY.clone(),
+    );
+
+    let fin_sig_carol = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &CAROL_SECRET_KEY,
+        CAROL_PUBLIC_KEY.clone(),
+    );
+
+    let fin_sig_alice = FinalitySignature::create(
+        *block_1.hash(),
+        block_1.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+
+    // Register the era in the validator matrix so the block is valid.
+    {
+        let mut validator_matrix = runner.reactor_mut().validator_matrix.clone();
+        let weights = EraValidatorWeights::new(
+            block_1.header().era_id(),
+            BTreeMap::from([
+                (ALICE_PUBLIC_KEY.clone(), 10.into()), /* Less weight so that the sig from Alice
+                                                        * would not have sufficient finality */
+                (BOB_PUBLIC_KEY.clone(), 100.into()),
+                (CAROL_PUBLIC_KEY.clone(), 100.into()),
+            ]),
+            Ratio::new(1, 3),
+        );
+        validator_matrix.register_era_validator_weights(weights);
+    }
+
+    // Register signatures for block 1.
+    {
+        let effect_builder = runner.effect_builder();
+        let reactor = runner.reactor_mut();
+
+        let block_accumulator = &mut reactor.block_accumulator;
+        block_accumulator.register_local_tip(0, 0.into());
+
+        let event = super::Event::ReceivedFinalitySignature {
+            finality_signature: Box::new(fin_sig_bob.clone()),
+            sender: peer_1,
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+
+        let event = super::Event::ReceivedFinalitySignature {
+            finality_signature: Box::new(fin_sig_carol.clone()),
+            sender: peer_1,
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+
+        // Register the finality signature created by Alice (this validator) after executing the
+        // block.
+        let event = super::Event::CreatedFinalitySignature {
+            finality_signature: Box::new(fin_sig_alice.clone()),
+        };
+        let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
+        assert!(effects.is_empty());
+    }
+
+    // Register block 1 as received from peer.
+    {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let event = super::Event::ReceivedBlock {
+                    block: Arc::new(block_1.clone()),
+                    sender: peer_2,
+                };
+                effect_builder
+                    .into_inner()
+                    .schedule(event, QueueKind::Validation)
+                    .ignore()
+            })
+            .await;
+        for _ in 0..6 {
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+                time::sleep(POLL_INTERVAL).await;
+            }
+        }
+        let expected_block = runner
+            .reactor()
+            .storage
+            .read_block(block_1.hash())
+            .unwrap()
+            .unwrap();
+        assert_eq!(expected_block, block_1);
+        let expected_block_signatures = runner
+            .reactor()
+            .storage
+            .get_finality_signatures_for_block(*block_1.hash());
+        assert_eq!(
+            expected_block_signatures
+                .and_then(|sigs| sigs.get_finality_signature(&fin_sig_alice.public_key))
+                .unwrap(),
+            fin_sig_alice
+        );
+    }
+
+    // Now add a delay between when the finality signature is created and registered in the
+    // accumulator. Usually registering the created finality signature and the executed block
+    // happen immediately but if the event queue is backed up the event to register the executed
+    // block can be delayed. Since we would purge an acceptor if the purge interval has passed,
+    // we want to simulate a situation in which the purge interval was exceeded in order to test
+    // the special case that if an acceptor that had sufficient finality, it is not purged.
+    tokio::time::sleep(
+        Duration::from(runner.reactor().block_accumulator.purge_interval) + Duration::from_secs(1),
+    )
+    .await;
+
+    // Register block 1 as having been executed by Alice (this node).
+    {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let mut meta_block_state = MetaBlockState::new_already_stored();
+                meta_block_state.register_as_executed();
+                let event = super::Event::ExecutedBlock {
+                    meta_block: MetaBlock::new(
+                        Arc::new(block_1.clone()),
+                        Vec::new(),
+                        meta_block_state,
+                    ),
+                };
+                effect_builder
+                    .into_inner()
+                    .schedule(event, QueueKind::Regular)
+                    .ignore()
+            })
+            .await;
+        let mut finished = false;
+        while !finished {
+            let mut retry_count = 5;
+            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+                retry_count -= 1;
+                if retry_count == 0 {
+                    finished = true;
+                    break;
+                }
+                time::sleep(POLL_INTERVAL).await;
+            }
+        }
+
+        // Expect that the block was marked complete by the event generated by the accumulator.
+        let expected_block = runner
+            .reactor()
+            .storage
+            .read_highest_complete_block()
+            .unwrap()
+            .unwrap();
+        assert_eq!(expected_block.height(), block_1.height());
     }
 }

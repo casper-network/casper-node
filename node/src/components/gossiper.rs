@@ -601,7 +601,7 @@ where
                 sender,
                 message,
                 ticket: _, // TODO: Sensibly process ticket.
-            }) => match message {
+            }) => match *message {
                 Message::Gossip(item_id) => {
                     Self::is_stored(effect_builder, item_id.clone()).event(move |result| {
                         Event::IsStoredResult {
@@ -708,7 +708,7 @@ where
                 sender,
                 message,
                 ticket: _, // TODO: Properly handle `ticket`.
-            }) => match message {
+            }) => match *message {
                 Message::Gossip(item_id) => {
                     let target = <T as SmallGossipItem>::id_as_item(&item_id).gossip_target();
                     let action = self.table.new_complete_data(&item_id, Some(sender), target);

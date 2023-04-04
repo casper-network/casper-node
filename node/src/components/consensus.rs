@@ -395,7 +395,7 @@ where
                 message,
                 ticket,
             }) => {
-                let rv = self.handle_message(effect_builder, rng, sender, message);
+                let rv = self.handle_message(effect_builder, rng, sender, *message);
                 drop(ticket);
                 rv
             }

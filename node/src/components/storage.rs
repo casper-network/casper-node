@@ -637,7 +637,7 @@ impl Storage {
             }
         }
 
-        match incoming.message {
+        match *(incoming.message) {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
@@ -701,7 +701,7 @@ impl Storage {
                 if let Some(item) = opt_item.as_ref() {
                     if item.block_hash != id.block_hash || item.era_id != id.era_id {
                         return Err(GetRequestError::FinalitySignatureIdMismatch {
-                            requested_id: Box::new(id),
+                            requested_id: id,
                             finality_signature: Box::new(item.clone()),
                         });
                     }

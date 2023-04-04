@@ -634,7 +634,7 @@ async fn should_not_gossip_old_stored_item_again() {
         .process_injected_effect_on(&node_0, |effect_builder| {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
-                message: Message::Gossip(deploy.gossip_id()),
+                message: Box::new(Message::Gossip(deploy.gossip_id())),
                 ticket: Arc::new(Ticket::create_dummy()),
             });
             effect_builder
@@ -707,7 +707,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
         .process_injected_effect_on(&node_0, |effect_builder| {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
-                message,
+                message: Box::new(message),
                 ticket: Arc::new(Ticket::create_dummy()),
             });
             effect_builder
