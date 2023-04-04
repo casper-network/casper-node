@@ -639,14 +639,21 @@ impl LargestSpecimen for DeployHashWithApprovals {
 
 impl LargestSpecimen for Deploy {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        // Note: Deploys have a maximum size enforced on their serialized representation. A deploy
+        //       generated here is guaranteed to exceed this maximum size due to the session code
+        //       being this maximum size already (see the [`LargestSpecimen`] implementation of
+        //       [`ExecutableDeployItem`]). For this reason, we leave `dependencies` and `payment`
+        //       small.
         Deploy::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
-            vec![/* Legacy field, always empty */],
+            Default::default(), // See note.
             largest_chain_name(estimator),
             LargestSpecimen::largest_specimen(estimator, cache),
-            LargestSpecimen::largest_specimen(estimator, cache),
+            ExecutableDeployItem::Transfer {
+                args: Default::default(), // See note.
+            },
             &LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
