@@ -676,9 +676,10 @@ impl LargestSpecimen for ExecutableDeployItem {
         //
         // However, this does not hold true for all encoding schemes: An inefficient encoding can
         // easily, via `RuntimeArgs`, result in a much larger encoded size, e.g. when encoding an
-        // array of 1-byte elements in JSON.
+        // array of 1-byte elements in a format that uses string quoting and a delimiter to seperate
+        // elements.
         //
-        // We compromise in not supporting encodings this inefficient and add 10 * a 32-bit integer
+        // We compromise by not supporting encodings this inefficient and add 10 * a 32-bit integer
         // as a safety margin for tags and length prefixes.
         let max_size_with_margin =
             estimator.parameter::<i32>("max_deploy_size").max(0) as usize + 10 * 4;
