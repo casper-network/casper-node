@@ -79,45 +79,29 @@ pub(crate) trait SizeEstimator {
     /// Estimate the serialized size of a value.
     fn estimate<T: Serialize>(&self, val: &T) -> usize;
 
-    /// Retrieves a parameter.
-    ///
-    /// Parameters indicate potential specimens which values to expect, e.g. a maximum number of
-    /// items configured for a specific collection. If `None` is returned a default should be used
-    /// by the caller, or a panic produced.
-    fn get_parameter(&self, name: &'static str) -> Option<i64>;
-
     /// Requires a parameter.
     ///
-    /// Like `get_parameter`, but does not accept `None` as an answer, and it
-    /// returns the parameter converted to the asked type.
+    /// Parameters indicate potential specimens which values to expect, e.g. a maximum number of
+    /// items configured for a specific collection.
     ///
     /// ## Panics
     ///
     /// - If the named parameter is not set, panics.
-    /// - If `T` cannot be converted from `i64`.
-    fn require_parameter<T: TryFrom<i64>>(&self, name: &'static str) -> T {
-        let value = self
-            .get_parameter(name)
-            .unwrap_or_else(|| panic!("missing parameter \"{}\" for specimen estimation", name));
-
-        T::try_from(value).unwrap_or_else(|_| {
-            panic!(
-                "Failed to convert the parameter `{name}` of value `{value}` to the type `{}`",
-                core::any::type_name::<T>()
-            )
-        })
-    }
+    /// - If `T` is of an invalid type.
+    fn parameter<T: TryFrom<i64>>(&self, name: &'static str) -> T;
 
     /// Require a parameter, cast into a boolean.
     ///
-    /// See `require_parameter` for details. Will return `false` if the stored value is `0`,
+    /// See [`parameter`] for details. Will return `false` if the stored value is `0`,
     /// otherwise `true`.
+    ///
+    /// This method exists because `bool` does not implement `TryFrom<i64>`.
     ///
     /// ## Panics
     ///
-    /// Same as `require_parameter`.
-    fn require_parameter_bool(&self, name: &'static str) -> bool {
-        self.require_parameter::<i64>(name) != 0
+    /// Same as [`parameter`].
+    fn parameter_bool(&self, name: &'static str) -> bool {
+        self.parameter::<i64>(name) != 0
     }
 }
 
@@ -177,7 +161,7 @@ pub(crate) fn vec_prop_specimen<T: LargestSpecimen, E: SizeEstimator>(
     parameter_name: &'static str,
     cache: &mut Cache,
 ) -> Vec<T> {
-    let mut count = estimator.require_parameter(parameter_name);
+    let mut count = estimator.parameter(parameter_name);
     if count < 0 {
         count = 0;
     }
@@ -198,7 +182,7 @@ where
     K: Ord + LargeUniqueSequence<E> + Sized,
     E: SizeEstimator,
 {
-    let mut count = estimator.require_parameter(parameter_name);
+    let mut count = estimator.parameter(parameter_name);
     if count < 0 {
         count = 0;
     }
@@ -221,7 +205,7 @@ where
     T: Ord + LargeUniqueSequence<E> + Sized,
     E: SizeEstimator,
 {
-    let mut count = estimator.require_parameter(parameter_name);
+    let mut count = estimator.parameter(parameter_name);
     if count < 0 {
         count = 0;
     }
@@ -624,11 +608,11 @@ impl LargestSpecimen for BlockPayload {
 
         let deploys = vec![
             large_deploy_hash_with_approvals.clone();
-            estimator.require_parameter::<usize>("max_deploys_per_block")
+            estimator.parameter::<usize>("max_deploys_per_block")
         ];
         let transfers = vec![
             large_deploy_hash_with_approvals;
-            estimator.require_parameter::<usize>("max_transfers_per_block")
+            estimator.parameter::<usize>("max_transfers_per_block")
         ];
 
         BlockPayload::new(
@@ -644,8 +628,8 @@ impl LargestSpecimen for DeployHashWithApprovals {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         // Note: This is an upper bound, the actual value is lower. We are keeping the order of
         //       magnitude intact though.
-        let max_items = estimator.require_parameter::<usize>("max_deploys_per_block")
-            + estimator.require_parameter::<usize>("max_transfers_per_block");
+        let max_items = estimator.parameter::<usize>("max_deploys_per_block")
+            + estimator.parameter::<usize>("max_transfers_per_block");
         DeployHashWithApprovals::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             btree_set_distinct(estimator, max_items, cache),
@@ -697,7 +681,7 @@ impl LargestSpecimen for ExecutableDeployItem {
         // We compromise in not supporting encodings this inefficient and add 10 * a 32-bit integer
         // as a safety margin for tags and length prefixes.
         let max_size_with_margin =
-            estimator.require_parameter::<i32>("max_deploy_size").max(0) as usize + 10 * 4;
+            estimator.parameter::<i32>("max_deploy_size").max(0) as usize + 10 * 4;
 
         ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::from(vec_of_largest_specimen(
@@ -739,7 +723,7 @@ impl LargestSpecimen for SecretKey {
 
 impl<T: LargestSpecimen> LargestSpecimen for ValidatorMap<T> {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        let max_validators = estimator.require_parameter("validator_count");
+        let max_validators = estimator.parameter("validator_count");
 
         ValidatorMap::from_iter(
             std::iter::repeat_with(|| LargestSpecimen::largest_specimen(estimator, cache))
@@ -824,7 +808,7 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
 
 /// Returns the largest string allowed for a chain name.
 fn largest_chain_name<E: SizeEstimator>(estimator: &E) -> String {
-    string_max_characters(estimator.require_parameter("network_name_limit"))
+    string_max_characters(estimator.parameter("network_name_limit"))
 }
 
 /// Returns a string with `len`s characters of the largest possible size.
@@ -838,10 +822,10 @@ fn string_max_characters(max_char: usize) -> String {
 ///
 /// See the [`max_rounds_per_era`] function.
 pub(crate) fn estimator_max_rounds_per_era(estimator: &impl SizeEstimator) -> usize {
-    let minimum_era_height = estimator.require_parameter("minimum_era_height");
-    let era_duration_ms = TimeDiff::from_millis(estimator.require_parameter("era_duration_ms"));
+    let minimum_era_height = estimator.parameter("minimum_era_height");
+    let era_duration_ms = TimeDiff::from_millis(estimator.parameter("era_duration_ms"));
     let minimum_round_length_ms =
-        TimeDiff::from_millis(estimator.require_parameter("minimum_round_length_ms"));
+        TimeDiff::from_millis(estimator.parameter("minimum_round_length_ms"));
 
     max_rounds_per_era(minimum_era_height, era_duration_ms, minimum_round_length_ms)
         .try_into()

@@ -199,7 +199,7 @@ mod specimen_support {
                     LargestSpecimen::largest_specimen(estimator, cache),
                 ),
                 EvidenceDiscriminants::Endorsements => {
-                    if estimator.require_parameter_bool("endorsements_enabled") {
+                    if estimator.parameter_bool("endorsements_enabled") {
                         Evidence::Endorsements {
                             endorsement1: LargestSpecimen::largest_specimen(estimator, cache),
                             unit1: LargestSpecimen::largest_specimen(estimator, cache),

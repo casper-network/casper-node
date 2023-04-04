@@ -444,7 +444,7 @@ mod specimen_support {
         P: Serialize + LargestSpecimen,
     {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            let largest_network_name = estimator.require_parameter("network_name_limit");
+            let largest_network_name = estimator.parameter("network_name_limit");
 
             largest_variant::<Self, MessageDiscriminants, _, _>(
                 estimator,
@@ -495,34 +495,8 @@ impl<'a> NetworkMessageEstimator<'a> {
     pub(crate) fn new(chainspec: &'a Chainspec) -> Self {
         Self { chainspec }
     }
-}
 
-/// Encoding helper function.
-///
-/// Encodes a message in the same manner the network component would before sending it.
-fn serialize_net_message<T>(data: &T) -> Vec<u8>
-where
-    T: Serialize,
-{
-    BincodeFormat::default()
-        .serialize_arbitrary(data)
-        .expect("did not expect serialization to fail")
-}
-
-/// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message<E: SizeEstimator>(
-    estimator: &E,
-    cache: &mut Cache,
-) -> Vec<u8> {
-    let specimen = Message::<protocol::Message>::largest_specimen(estimator, cache);
-    serialize_net_message(&specimen)
-}
-
-impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
-    fn estimate<T: Serialize>(&self, val: &T) -> usize {
-        serialize_net_message(&val).len()
-    }
-
+    /// Returns a parameter by name as `i64`.
     fn get_parameter(&self, name: &'static str) -> Option<i64> {
         Some(match name {
             // The name limit will be larger than the actual name, so it is a safe upper bound.
@@ -577,6 +551,46 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
             // parameter should ideally be removed entirely.
             "endorsements_enabled" => 0,
             _ => return None,
+        })
+    }
+}
+
+/// Encoding helper function.
+///
+/// Encodes a message in the same manner the network component would before sending it.
+fn serialize_net_message<T>(data: &T) -> Vec<u8>
+where
+    T: Serialize,
+{
+    BincodeFormat::default()
+        .serialize_arbitrary(data)
+        .expect("did not expect serialization to fail")
+}
+
+/// Creates a serialized specimen of the largest possible networking message.
+pub(crate) fn generate_largest_message<E: SizeEstimator>(
+    estimator: &E,
+    cache: &mut Cache,
+) -> Vec<u8> {
+    let specimen = Message::<protocol::Message>::largest_specimen(estimator, cache);
+    serialize_net_message(&specimen)
+}
+
+impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
+    fn estimate<T: Serialize>(&self, val: &T) -> usize {
+        serialize_net_message(&val).len()
+    }
+
+    fn parameter<T: std::convert::TryFrom<i64>>(&self, name: &'static str) -> T {
+        let value = self
+            .get_parameter(name)
+            .unwrap_or_else(|| panic!("missing parameter \"{}\" for specimen estimation", name));
+
+        T::try_from(value).unwrap_or_else(|_| {
+            panic!(
+                "Failed to convert the parameter `{name}` of value `{value}` to the type `{}`",
+                core::any::type_name::<T>()
+            )
         })
     }
 }

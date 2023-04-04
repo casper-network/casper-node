@@ -235,8 +235,7 @@ mod specimen_support {
                                 estimator, cache
                             ))
                         );
-                        estimator
-                            .require_parameter("max_pointer_per_node")
+                        estimator.parameter("max_pointer_per_node")
                     ],
                 },
                 TrieMerkleProofStepDiscriminants::Extension => TrieMerkleProofStep::Extension {
