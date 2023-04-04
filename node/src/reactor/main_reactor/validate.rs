@@ -33,7 +33,7 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
-        if self.switch_block.is_none() {
+        if self.switch_block_header.is_none() {
             // validate status is only checked at switch blocks
             return ValidateInstruction::NonSwitchBlock;
         }

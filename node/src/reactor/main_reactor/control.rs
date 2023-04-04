@@ -389,7 +389,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         info!("{:?}: committing upgrade", self.state);
-        let previous_block_header = match &self.switch_block {
+        let previous_block_header = match &self.switch_block_header {
             None => {
                 return Err("switch_block should be Some".to_string());
             }
@@ -462,7 +462,7 @@ impl MainReactor {
     }
 
     pub(super) fn should_commit_upgrade(&self) -> bool {
-        let highest_switch_block_header = match &self.switch_block {
+        let highest_switch_block_header = match &self.switch_block_header {
             None => {
                 return false;
             }
@@ -552,7 +552,7 @@ impl MainReactor {
                 Ok(highest_switch_block_header) => highest_switch_block_header,
                 Err(err) => return Err(err.to_string()),
             };
-        self.switch_block = maybe_highest_switch_block_header.first().cloned();
+        self.switch_block_header = maybe_highest_switch_block_header.first().cloned();
         Ok(())
     }
 }

@@ -6,7 +6,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{EraId, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -597,7 +597,11 @@ impl MainReactor {
                 if block_header.is_genesis() {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }
-                if self.sync_back_is_ttl() {
+                // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12 hours
+                // we require sync back to see a contiguous / unbroken range of at least 12 hours
+                // worth of blocks. note however that we measure from the start of the active era
+                // (for consensus reasons), so this can be up to TTL + era length in practice
+                if !self.sync_to_genesis && self.synced_to_ttl()? {
                     return Ok(Some(SyncBackInstruction::TtlSynced));
                 }
                 let parent_hash = block_header.parent_hash();
@@ -653,20 +657,104 @@ impl MainReactor {
         }
     }
 
-    fn sync_back_is_ttl(&self) -> bool {
-        if false == self.sync_to_genesis {
-            // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12 hours
-            // we require sync back to see a contiguous / unbroken range of at least 12 hours
-            // worth of blocks. note however that we measure from the start of the active era
-            // (for consensus reasons), so this can be up to TTL + era length in practice
-            if let Some(block_header) = &self.switch_block {
-                let diff = self.chainspec.deploy_config.max_ttl;
-                let cutoff = block_header.timestamp().saturating_sub(diff);
-                let block_time = block_header.timestamp();
-                // this node is configured to only sync to ttl, and we may have reached ttl
-                return block_time < cutoff;
+    fn synced_to_ttl(&self) -> Result<bool, String> {
+        if let Some(latest_switch_block_header) = self
+            .storage
+            .read_highest_switch_block_headers(1)
+            .map_err(|err| err.to_string())?
+            .last()
+        {
+            let maybe_highest_orphaned_block_header =
+                self.storage.get_highest_orphaned_block_header();
+
+            if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
+                maybe_highest_orphaned_block_header
+            {
+                return Ok(is_timestamp_at_ttl(
+                    latest_switch_block_header.timestamp(),
+                    highest_orphaned_block_header.timestamp(),
+                    self.chainspec.deploy_config.max_ttl,
+                ));
+            } else {
+                info!(result = %maybe_highest_orphaned_block_header,
+                    "KeepUp: unable to get highest orphaned block header (this problem should be transient), \
+                    assuming not synced to ttl");
             }
         }
-        false
+
+        Ok(false)
+    }
+}
+
+fn is_timestamp_at_ttl(
+    latest_switch_block_timestamp: Timestamp,
+    lowest_block_timestamp: Timestamp,
+    max_ttl: TimeDiff,
+) -> bool {
+    lowest_block_timestamp < latest_switch_block_timestamp.saturating_sub(max_ttl)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use casper_types::{TimeDiff, Timestamp};
+
+    use crate::reactor::main_reactor::keep_up::is_timestamp_at_ttl;
+
+    const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
+
+    #[test]
+    fn should_be_at_ttl() {
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-10 00:00:00.000").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+    }
+
+    #[test]
+    fn should_not_be_at_ttl() {
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-14 00:00:00.000").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(!is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+    }
+
+    #[test]
+    fn should_detect_ttl_at_the_boundary() {
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-12 23:59:59.999").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-13 00:00:00.000").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(!is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-13 00:00:00.001").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(!is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
     }
 }

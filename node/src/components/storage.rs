@@ -271,6 +271,28 @@ pub(crate) enum HighestOrphanedBlockResult {
     MissingHeader(BlockHash),
 }
 
+impl Display for HighestOrphanedBlockResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            HighestOrphanedBlockResult::MissingHighestSequence => {
+                write!(f, "missing highest sequence")
+            }
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(height) => {
+                write!(f, "height not found in block height index: {}", height)
+            }
+            HighestOrphanedBlockResult::Orphan(block_header) => write!(
+                f,
+                "orphan, height={}, hash={}",
+                block_header.height(),
+                block_header.block_hash()
+            ),
+            HighestOrphanedBlockResult::MissingHeader(block_hash) => {
+                write!(f, "missing header for block hash: {}", block_hash)
+            }
+        }
+    }
+}
+
 impl<REv> Component<REv> for Storage
 where
     REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
