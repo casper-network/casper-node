@@ -40,11 +40,6 @@ impl Approval {
     pub fn signature(&self) -> &Signature {
         &self.signature
     }
-
-    /// Constructs an `Approval` directly without any checks or additional calculations.
-    pub fn from_parts(signer: PublicKey, signature: Signature) -> Self {
-        Approval { signer, signature }
-    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -87,5 +82,40 @@ impl FromBytes for Approval {
         let (signature, remainder) = Signature::from_bytes(remainder)?;
         let approval = Approval { signer, signature };
         Ok((approval, remainder))
+    }
+}
+
+mod specimen_support {
+    use std::collections::BTreeSet;
+
+    use casper_types::PublicKey;
+
+    use crate::utils::specimen::{Cache, LargeUniqueSequence, LargestSpecimen, SizeEstimator};
+
+    use super::Approval;
+
+    impl LargestSpecimen for Approval {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            Approval {
+                signer: LargestSpecimen::largest_specimen(estimator, cache),
+                signature: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl<E> LargeUniqueSequence<E> for Approval
+    where
+        Self: Sized + Ord,
+        E: SizeEstimator,
+    {
+        fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
+            PublicKey::large_unique_sequence(estimator, count, cache)
+                .into_iter()
+                .map(|public_key| Approval {
+                    signer: public_key,
+                    signature: LargestSpecimen::largest_specimen(estimator, cache),
+                })
+                .collect()
+        }
     }
 }

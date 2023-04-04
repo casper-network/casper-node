@@ -31,7 +31,7 @@ use crate::{
     },
     protocol::Message,
     types::{
-        Approval, ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
+        ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
         BlockHeader, BlockPayload, Deploy, DeployHashWithApprovals, DeployId, FinalitySignature,
         FinalitySignatureId, FinalizedBlock, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
@@ -675,33 +675,6 @@ impl LargestSpecimen for DeployId {
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
-    }
-}
-
-impl LargestSpecimen for Approval {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        Approval::from_parts(
-            LargestSpecimen::largest_specimen(estimator, cache),
-            LargestSpecimen::largest_specimen(estimator, cache),
-        )
-    }
-}
-
-impl<E> LargeUniqueSequence<E> for Approval
-where
-    Self: Sized + Ord,
-    E: SizeEstimator,
-{
-    fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
-        PublicKey::large_unique_sequence(estimator, count, cache)
-            .into_iter()
-            .map(|public_key| {
-                Approval::from_parts(
-                    public_key,
-                    LargestSpecimen::largest_specimen(estimator, cache),
-                )
-            })
-            .collect()
     }
 }
 
