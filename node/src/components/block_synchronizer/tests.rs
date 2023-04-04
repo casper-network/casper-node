@@ -1108,22 +1108,10 @@ async fn having_block_body_for_block_without_deploys_requires_only_signatures() 
         BlockAcquisitionState::HaveBlock(acquired_block, _, _) if acquired_block.hash() == block.hash()
     );
 
-    let expected_effects = std::cmp::min(
-        validators_private_keys.len() - validators_private_keys.len() / 3 - 1,
-        MAX_SIMULTANEOUS_PEERS,
-    );
-
     // Since the block doesn't have any deploys,
     // the next step should be to fetch the finality signatures for strict finality.
-    let events = need_next(
-        &mut rng,
-        &mock_reactor,
-        &mut block_synchronizer,
-        expected_effects,
-    )
-    .await;
-
-    for event in events {
+    let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
+    for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,
             MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
@@ -1444,15 +1432,6 @@ async fn fwd_sync_is_finished_when_block_is_marked_complete() {
         mock_reactor.effect_builder(),
         &mut rng,
         Event::MarkBlockExecuted(*block.hash()),
-    );
-    assert_eq!(effects.len(), 0);
-    let effects = block_synchronizer.handle_event(
-        mock_reactor.effect_builder(),
-        &mut rng,
-        Event::MarkBlockCompleted {
-            block_hash: *block.hash(),
-            is_new: true,
-        },
     );
     assert_eq!(effects.len(), 0);
 
