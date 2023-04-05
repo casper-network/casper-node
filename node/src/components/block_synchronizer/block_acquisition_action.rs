@@ -321,10 +321,7 @@ fn enough_signatures(
     is_checkable: bool,
     is_historical: bool,
 ) -> bool {
-    if is_checkable {
-        // Normal blocks:
-        signature_weight.is_sufficient(false == is_historical)
-    } else {
+    if is_historical && !is_checkable {
         // Legacy blocks:
         matches!((legacy_required_finality, signature_weight), |(
             LegacyRequiredFinality::Any,
@@ -334,6 +331,9 @@ fn enough_signatures(
             SignatureWeight::Weak | SignatureWeight::Strict
         )
             | (LegacyRequiredFinality::Strict, SignatureWeight::Strict))
+    } else {
+        // Normal blocks, either forward or historical
+        signature_weight.is_sufficient(true)
     }
 }
 
@@ -350,7 +350,9 @@ mod tests {
             false,
         );
 
-        assert!(result == true);
+        // When syncing forward blocks, SignatureWeight::Strict is required
+        // so SignatureWeight::Insufficient is not enough
+        assert!(result == false);
     }
 
     #[test]
@@ -362,7 +364,9 @@ mod tests {
             false,
         );
 
-        assert!(result == true);
+        // When syncing forward blocks, SignatureWeight::Strict is required
+        // so SignatureWeight::Weak is not enough
+        assert!(result == false);
     }
 
     #[test]
@@ -398,7 +402,9 @@ mod tests {
             false,
         );
 
-        assert!(result == true);
+        // When syncing forward blocks, SignatureWeight::Strict is required
+        // so SignatureWeight::Weak is not enough
+        assert!(result == false);
     }
 
     #[test]
@@ -686,7 +692,9 @@ mod tests {
             true,
         );
 
-        assert!(result == true);
+        // If syncing a historical block that is checkable, SignatureWeight::Strict is required
+        // so SignatureWeight::Weak is not enough
+        assert!(result == false);
     }
 
     #[test]
@@ -722,7 +730,9 @@ mod tests {
             true,
         );
 
-        assert!(result == true);
+        // If syncing a historical block that is checkable, SignatureWeight::Strict is required
+        // so SignatureWeight::Weak is not enough
+        assert!(result == false);
     }
 
     #[test]
@@ -758,7 +768,9 @@ mod tests {
             true,
         );
 
-        assert!(result == true);
+        // If syncing a historical block that is checkable, SignatureWeight::Strict is required
+        // so SignatureWeight::Weak is not enough
+        assert!(result == false);
     }
 
     #[test]
