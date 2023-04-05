@@ -145,7 +145,6 @@ mod partial_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        // let mut txn = environment.create_read_write_txn()?;
         match checked_delete::<K, V, _, _, E>(
             correlation_id,
             environment,
