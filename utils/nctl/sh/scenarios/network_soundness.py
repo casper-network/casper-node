@@ -211,13 +211,8 @@ def run_health_checks():
                 node))
             logs_with_chunk_indicator += 1
 
-    # We might get extremely unlucky with the random number generator and
-    # send all huge deploys to the same node. In such case, logs from this
-    # node will not contain chunking indicator.
-    # To avoid test flakiness, we allow half of the nodes to not
-    # have the chunking indicator in the logs after test finishes.
     if logs_with_chunk_indicator == 0:
-        log("*** at least one node should have chunking indicator in logs")
+        log("*** at least one node should have chunking indicator in logs ***")
         os._exit(1)
     return
 
