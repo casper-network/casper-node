@@ -183,8 +183,42 @@ def start_sending_huge_deploys():
 
 def test_timer_thread(secs):
     sleep(secs)
-    log("*** " + str(secs) + " secs passed - finishing test ***")
+    log("*** " + str(secs) + " secs passed - running health checks ***")
+    run_health_checks()
+    log("*** test finished successfully ***")
     os._exit(0)
+
+
+def run_health_checks():
+    global current_node_count
+    logs_with_chunk_indicator = 0
+    for node in range(1, current_node_count):
+        chunk_indicator_found = False
+        path_to_logs = "./utils/nctl/assets/net-1/nodes/node-{}/logs".format(
+            node)
+        for filename in os.listdir(path_to_logs):
+            if filename != "stderr.log":
+                handle = open(path_to_logs + "/" + filename, "r")
+                for line in handle:
+                    if re.search("chunk #3", line):
+                        chunk_indicator_found = True
+                handle.close()
+        if not chunk_indicator_found:
+            log("*** didn't find 'chunk #3' in log files of node {} ***".
+                format(node))
+        else:
+            log("*** found 'chunk #3' in log files of node {} ***".format(
+                node))
+            logs_with_chunk_indicator += 1
+
+    # We might get extremely unlucky with the random number generator and
+    # send all huge deploys to the same node. In such case, logs from this
+    # node will not contain chunking indicator.
+    # To avoid test flakiness, we allow half of the nodes to not
+    # have the chunking indicator in the logs after test finishes.
+    if logs_with_chunk_indicator == 0:
+        log("*** at least one node should have chunking indicator in logs")
+        os._exit(1)
     return
 
 
