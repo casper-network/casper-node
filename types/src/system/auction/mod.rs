@@ -639,7 +639,7 @@ pub trait Auction:
             }
         }
 
-        self.record_era_summary(EraId::new(u64::MAX), era_info)?;
+        self.record_era_info(EraId::new(u64::MAX), era_info)?;
 
         Ok(())
     }

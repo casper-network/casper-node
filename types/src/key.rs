@@ -1016,6 +1016,13 @@ mod tests {
                 "Key::SystemContractRegistry({})",
                 base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_PADDING_KEY)
             )
+        );
+        assert_eq!(
+            format!("{}", ERA_SUMMARY_KEY),
+            format!(
+                "Key::EraSummary({})",
+                base16::encode_lower(&ERA_SUMMARY_PADDING_KEY)
+            )
         )
     }
 

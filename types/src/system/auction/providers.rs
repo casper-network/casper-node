@@ -53,7 +53,7 @@ pub trait StorageProvider {
     ) -> Result<(), Error>;
 
     /// Records era summary.
-    fn record_era_summary(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error>;
+    fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error>;
 
     /// Writes a `SeigniorageRecipientsSnapshot` to global state and charges for bytes stored.
     ///

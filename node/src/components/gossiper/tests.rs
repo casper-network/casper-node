@@ -394,7 +394,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
             ),
-            Event::Chainspec(_request) => todo!(),
+            Event::Chainspec(_request) => unreachable!("This event is currently not used in the test reactor and does not need to be wired up"),
         }
     }
 

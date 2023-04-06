@@ -60,8 +60,8 @@ fn calculate_purge_eras(
         Some(nth_chunk) => nth_chunk,
         None => {
             // Time went backwards, programmer error, etc
-            warn!(%activation_era_id, activation_height, current_height, batch_size, "unable to calculate eras to purge (activation height higher than the block height)");
-            return None;
+            error!(%activation_era_id, activation_height, current_height, batch_size, "unable to calculate eras to purge (activation height higher than the block height)");
+            panic!("activation height higher than the block height");
         }
     };
 
