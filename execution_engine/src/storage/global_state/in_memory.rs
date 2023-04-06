@@ -290,10 +290,11 @@ impl StateProvider for InMemoryGlobalState {
         mut root: Digest,
         keys_to_delete: &[Key],
     ) -> Result<DeleteResult, Self::Error> {
+        let mut txn = self.environment.create_read_write_txn()?;
         for key in keys_to_delete {
             match delete::<Key, StoredValue, _, _, Self::Error>(
                 correlation_id,
-                self.environment.deref(),
+                &mut txn,
                 self.trie_store.deref(),
                 &root,
                 key,
@@ -304,6 +305,7 @@ impl StateProvider for InMemoryGlobalState {
                 other => return Ok(other),
             }
         }
+        txn.commit()?;
         Ok(DeleteResult::Deleted(root))
     }
 }

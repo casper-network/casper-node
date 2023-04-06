@@ -295,10 +295,12 @@ impl StateProvider for LmdbGlobalState {
     ) -> Result<DeleteResult, Self::Error> {
         let scratch_trie_store = self.get_scratch_store();
 
+        let mut txn = scratch_trie_store.create_read_write_txn()?;
+
         for key in keys {
             let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
                 correlation_id,
-                &scratch_trie_store,
+                &mut txn,
                 &scratch_trie_store,
                 &state_root_hash,
                 key,
@@ -310,6 +312,8 @@ impl StateProvider for LmdbGlobalState {
                 other => return Ok(other),
             }
         }
+
+        txn.commit()?;
 
         scratch_trie_store.write_root_to_db(state_root_hash)?;
         Ok(DeleteResult::Deleted(state_root_hash))
