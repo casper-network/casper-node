@@ -9,6 +9,7 @@ pub(crate) mod fmt_limit;
 pub(crate) mod opt_display;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
+pub(crate) mod specimen;
 pub(crate) mod umask;
 pub mod work_queue;
 

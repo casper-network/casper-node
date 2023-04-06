@@ -10,6 +10,7 @@ use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 
 use crate::{
     components::{
@@ -30,7 +31,8 @@ use crate::{
 };
 
 /// Reactor message.
-#[derive(Clone, From, Serialize, Deserialize)]
+#[derive(Clone, From, Serialize, Deserialize, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Message {
     /// Consensus component message.
     #[from]
@@ -213,6 +215,49 @@ impl Debug for Message {
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()
             }
+        }
+    }
+}
+mod specimen_support {
+    use crate::utils::specimen::{
+        largest_get_request, largest_get_response, largest_variant, Cache, LargestSpecimen,
+        SizeEstimator,
+    };
+
+    use super::{Message, MessageDiscriminants};
+
+    impl LargestSpecimen for Message {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    MessageDiscriminants::Consensus => {
+                        Message::Consensus(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::ConsensusRequest => Message::ConsensusRequest(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                    MessageDiscriminants::BlockGossiper => {
+                        Message::BlockGossiper(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::DeployGossiper => {
+                        Message::DeployGossiper(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::FinalitySignatureGossiper => {
+                        Message::FinalitySignatureGossiper(LargestSpecimen::largest_specimen(
+                            estimator, cache,
+                        ))
+                    }
+                    MessageDiscriminants::AddressGossiper => Message::AddressGossiper(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                    MessageDiscriminants::GetRequest => largest_get_request(estimator, cache),
+                    MessageDiscriminants::GetResponse => largest_get_response(estimator, cache),
+                    MessageDiscriminants::FinalitySignature => Message::FinalitySignature(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                },
+            )
         }
     }
 }

@@ -2249,3 +2249,150 @@ where
         Some(self.params.min_block_time())
     }
 }
+
+mod specimen_support {
+    use std::collections::BTreeSet;
+
+    use crate::{
+        components::consensus::{utils::ValidatorIndex, ClContext},
+        utils::specimen::{
+            btree_map_distinct_from_prop, btree_set_distinct_from_prop, largest_variant,
+            vec_prop_specimen, Cache, LargeUniqueSequence, LargestSpecimen, SizeEstimator,
+        },
+    };
+
+    use super::{
+        message::{
+            Content, ContentDiscriminants, Message, MessageDiscriminants, SignedMessage,
+            SyncResponse,
+        },
+        proposal::Proposal,
+        SyncRequest,
+    };
+
+    impl LargestSpecimen for Message<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    MessageDiscriminants::SyncResponse => {
+                        Message::SyncResponse(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::Proposal => Message::Proposal {
+                        round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                        instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                        proposal: LargestSpecimen::largest_specimen(estimator, cache),
+                    },
+                    MessageDiscriminants::Signed => {
+                        Message::Signed(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::Evidence => Message::Evidence(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                },
+            )
+        }
+    }
+
+    impl LargestSpecimen for SyncRequest<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            SyncRequest {
+                round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                proposal_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                has_proposal: LargestSpecimen::largest_specimen(estimator, cache),
+                first_validator_idx: LargestSpecimen::largest_specimen(estimator, cache),
+                echoes: LargestSpecimen::largest_specimen(estimator, cache),
+                true_votes: LargestSpecimen::largest_specimen(estimator, cache),
+                false_votes: LargestSpecimen::largest_specimen(estimator, cache),
+                active: LargestSpecimen::largest_specimen(estimator, cache),
+                faulty: LargestSpecimen::largest_specimen(estimator, cache),
+                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl<E> LargeUniqueSequence<E> for ValidatorIndex
+    where
+        E: SizeEstimator,
+    {
+        fn large_unique_sequence(
+            _estimator: &E,
+            count: usize,
+            _cache: &mut Cache,
+        ) -> BTreeSet<Self> {
+            Iterator::map((0..u32::MAX).rev(), ValidatorIndex::from)
+                .take(count)
+                .collect()
+        }
+    }
+
+    impl LargestSpecimen for SyncResponse<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            SyncResponse {
+                round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                proposal_or_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                echo_sigs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+                true_vote_sigs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+                false_vote_sigs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+                signed_messages: vec_prop_specimen(estimator, "validator_count", cache),
+                evidence: vec_prop_specimen(estimator, "validator_count", cache),
+                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl LargestSpecimen for Proposal<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            Proposal {
+                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
+                maybe_block: LargestSpecimen::largest_specimen(estimator, cache),
+                maybe_parent_round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                inactive: Some(btree_set_distinct_from_prop(
+                    estimator,
+                    "validator_count",
+                    cache,
+                )),
+            }
+        }
+    }
+
+    impl LargestSpecimen for ValidatorIndex {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            u32::largest_specimen(estimator, cache).into()
+        }
+    }
+
+    impl LargestSpecimen for SignedMessage<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            SignedMessage::sign_new(
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            )
+        }
+    }
+
+    impl LargestSpecimen for Content<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            if let Some(item) = cache.get::<Self>() {
+                return item.clone();
+            }
+
+            let item = largest_variant::<Self, ContentDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    ContentDiscriminants::Echo => {
+                        Content::Echo(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    ContentDiscriminants::Vote => {
+                        Content::Vote(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                }
+            });
+            cache.set(item).clone()
+        }
+    }
+}

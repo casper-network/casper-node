@@ -15,7 +15,6 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
@@ -148,10 +147,12 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting faulty.;
-        let min_rounds_per_era = chainspec.core_config.minimum_era_height.max(
-            (TimeDiff::from_millis(1) + chainspec.core_config.era_duration) / minimum_round_length,
+        let max_rounds_per_era = max_rounds_per_era(
+            chainspec.core_config.minimum_era_height,
+            chainspec.core_config.era_duration,
+            minimum_round_length,
         );
-        let endorsement_evidence_limit = min_rounds_per_era
+        let endorsement_evidence_limit = max_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
@@ -647,24 +648,84 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum HighwayMessage<C>
-where
-    C: Context,
-{
-    NewVertex(Vertex<C>),
-    // A dependency request. u64 is a random UUID identifying the request.
-    RequestDependency(u64, Dependency<C>),
-    RequestDependencyByHeight {
-        uuid: u64,
-        vid: ValidatorIndex,
-        unit_seq_number: u64,
-    },
-    LatestStateRequest(IndexPanorama),
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::{
+        highway_core::{
+            highway::{Dependency, Vertex},
+            state::IndexPanorama,
+        },
+        traits::Context,
+        utils::ValidatorIndex,
+    };
+
+    #[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum HighwayMessage<C>
+    where
+        C: Context,
+    {
+        NewVertex(Vertex<C>),
+        // A dependency request. u64 is a random UUID identifying the request.
+        RequestDependency(u64, Dependency<C>),
+        RequestDependencyByHeight {
+            uuid: u64,
+            vid: ValidatorIndex,
+            unit_seq_number: u64,
+        },
+        LatestStateRequest(IndexPanorama),
+    }
+}
+pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
+
+mod specimen_support {
+    use crate::{
+        components::consensus::ClContext,
+        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
+    };
+
+    use super::{HighwayMessage, HighwayMessageDiscriminants};
+
+    impl LargestSpecimen for HighwayMessage<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    HighwayMessageDiscriminants::NewVertex => HighwayMessage::NewVertex(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                    HighwayMessageDiscriminants::RequestDependency => {
+                        HighwayMessage::RequestDependency(
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                        )
+                    }
+                    HighwayMessageDiscriminants::RequestDependencyByHeight => {
+                        HighwayMessage::RequestDependencyByHeight {
+                            uuid: LargestSpecimen::largest_specimen(estimator, cache),
+                            vid: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit_seq_number: LargestSpecimen::largest_specimen(estimator, cache),
+                        }
+                    }
+                    HighwayMessageDiscriminants::LatestStateRequest => {
+                        HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
+                            estimator, cache,
+                        ))
+                    }
+                }
+            })
+        }
+    }
 }
 
 impl<C: Context> HighwayMessage<C> {
@@ -1045,4 +1106,19 @@ where
     fn next_round_length(&self) -> Option<TimeDiff> {
         self.highway.next_round_length()
     }
+}
+
+/// Maximum possible rounds in one era.
+///
+/// It is the maximum of:
+/// - The era duration divided by the minimum round length, that is the maximum number of blocks
+///   that can fit within the duration of one era,
+/// - The minimum era height, which is the minimum number of blocks for an era to be considered
+///   complete.
+pub fn max_rounds_per_era(
+    minimum_era_height: u64,
+    era_duration: TimeDiff,
+    minimum_round_length: TimeDiff,
+) -> u64 {
+    minimum_era_height.max((TimeDiff::from_millis(1) + era_duration) / minimum_round_length)
 }
