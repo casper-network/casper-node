@@ -1088,7 +1088,6 @@ mod tests {
             let parsed_key = Key::from_formatted_str(&string).unwrap();
             assert_eq!(parsed_key, *key, "{string} (key = {key:?})");
         }
-        dbg!(Key::EraSummary.to_formatted_string());
     }
 
     #[test]
