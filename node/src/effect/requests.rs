@@ -365,6 +365,13 @@ pub(crate) enum StorageRequest {
         /// Responder, responded to once the approvals are written.
         responder: Responder<()>,
     },
+    /// Retrieve switch block height with given era ID.
+    GetSwitchBlockHeightAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<u64>>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -433,6 +440,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
+            }
+            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block height at era id {}", era_id)
             }
         }
     }

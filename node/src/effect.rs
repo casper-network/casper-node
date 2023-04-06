@@ -983,10 +983,16 @@ impl<REv> EffectBuilder<REv> {
             activation_point, ..
         } = self.get_current_run_info().await;
         info!(?activation_point, "get_activation_point_era_id");
-        self.get_key_block_header_for_era_id_from_storage(activation_point.era_id())
-            .await
-            .map(|block_header| block_header.height())
-            .unwrap_or(0)
+
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeightAtEraId {
+                era_id: activation_point.era_id(),
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+        .unwrap_or(0)
     }
 
     /// Get a trie by its hash key.
