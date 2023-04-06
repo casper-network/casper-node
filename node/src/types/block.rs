@@ -2299,7 +2299,54 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     style A fill:#ffcc66,stroke:#333,stroke-width:4px
+///     style B fill:#ffcc66,stroke:#333,stroke-width:4px
+///     style Q fill:#ADD8E6,stroke:#333,stroke-width:4px
+///     style S fill:#ADD8E6,stroke:#333,stroke-width:4px
+///     title[FinalitySignature lifecycle]
+///     title---Start
+///     style title fill:#FFF,stroke:#FFF
+///     linkStyle 0 stroke-width:0;
+///     Start --> A["Validators"]
+///     Start --> B["Non-validators"]
+///     A --> C["Validator creates FS"]
+///     A --> D["Received</br>broadcasted FS"]
+///     A --> E["Received</br>gossiped FS"]
+///     D --> I
+///     E --> I
+///     H --> End
+///     C --> G["Put FS to storage"]
+///     G --> H["Broadcast FS to Validators"]
+///     G --> I["Register FS</br>in BlockAccumulator"]
+///     I --> J{"Has sufficient</br>finality</br>and block?"}
+///     J --> |Yes| K["Put all FS</br>to storage"]
+///     J --> |No| L["Keep waiting</br>for more</br>signatures"]
+///     B --> F["Keeping up with</br>the network"]
+///     F --> M["Received</br>gossiped FS"]
+///     M --> N["Register FS</br>in BlockAccumulator"]
+///     N --> O{"Has sufficient</br>finality</br>and block?"}
+///     O --> |No| L
+///     O --> |Yes| P["Put all FS</br>to storage"]
+///     P --> Q["Initiate <b>forward</b></br>sync process</br><i>(click)</i>"]
+///     Q --> R["If forward or historical sync</br>process fetched and</br>stored additional FS</br>register them in</br>BlockAccumulator"]
+///     B --> S["Initiate <b>historical</b></br>sync process</br><i>(click)</i>"]
+///     S --> R
+///     click Q "../components/block_synchronizer/block_acquisition/enum.BlockAcquisitionState.html"
+///     click S "../components/block_synchronizer/block_acquisition/enum.BlockAcquisitionState.html"
+///     R --> End
+///     K --> End
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, DataSize, Eq, JsonSchema)]
+#[schemars(
+    description = "A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should \
+    wait until the signers' combined weight exceeds their fault tolerance threshold before accepting the block as \
+    finalized."
+)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
