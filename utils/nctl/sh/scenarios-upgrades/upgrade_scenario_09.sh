@@ -47,7 +47,7 @@ function _main()
     # Set initial protocol version for use later.
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
-    ACTIVATION_POINT="$(get_chain_era)"
+    ACTIVATION_POINT="$(($(get_chain_era) + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
     PRE_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
@@ -107,7 +107,7 @@ function _step_03()
             stage="$STAGE_ID" \
             verbose=false \
             node="$i" \
-            era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
+            era="$ACTIVATION_POINT"
         echo ""
     done
 
@@ -207,7 +207,7 @@ function _stage_node_with_trusted_hash()
         stage="$STAGE_ID" \
         verbose=false \
         node="$NODE_ID" \
-        era="$((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
+        era="$ACTIVATION_POINT"
     echo ""
 
     source "$NCTL/sh/node/start.sh" node="$NODE_ID" hash="$BLOCK_HASH"
