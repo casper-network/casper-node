@@ -4,10 +4,12 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 
 use super::GossipItem;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 #[serde(bound = "for<'a> T: Deserialize<'a>")]
 pub(crate) enum Message<T: GossipItem> {
     /// Gossiped out to random peers to notify them of an item we hold.
@@ -40,6 +42,42 @@ impl<T: GossipItem> Display for Message<T> {
             ),
             Message::GetItem(item_id) => write!(formatter, "gossip-get-item({})", item_id),
             Message::Item(item) => write!(formatter, "gossip-item({})", item.gossip_id()),
+        }
+    }
+}
+
+mod specimen_support {
+    use crate::{
+        components::gossiper::GossipItem,
+        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
+    };
+
+    use super::{Message, MessageDiscriminants};
+
+    impl<T> LargestSpecimen for Message<T>
+    where
+        T: GossipItem + LargestSpecimen,
+        <T as GossipItem>::Id: LargestSpecimen,
+    {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    MessageDiscriminants::Gossip => {
+                        Message::Gossip(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::GossipResponse => Message::GossipResponse {
+                        item_id: LargestSpecimen::largest_specimen(estimator, cache),
+                        is_already_held: LargestSpecimen::largest_specimen(estimator, cache),
+                    },
+                    MessageDiscriminants::GetItem => {
+                        Message::GetItem(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::Item => {
+                        Message::Item(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                },
+            )
         }
     }
 }
