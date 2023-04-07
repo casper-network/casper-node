@@ -984,9 +984,14 @@ impl<REv> EffectBuilder<REv> {
         } = self.get_current_run_info().await;
         info!(?activation_point, "get_activation_point_era_id");
 
+        let era_before = activation_point
+            .era_id()
+            .checked_sub(1)
+            .unwrap_or(EraId::new(0));
+
         self.make_request(
             |responder| StorageRequest::GetSwitchBlockHeightAtEraId {
-                era_id: activation_point.era_id(),
+                era_id: era_before,
                 responder,
             },
             QueueKind::Regular,
