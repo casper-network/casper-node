@@ -27,7 +27,7 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            PurgeConfig, PurgeResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
+            PruneConfig, PruneResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
             UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
@@ -99,7 +99,7 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    purge_results: Vec<Result<PurgeResult, engine_state::Error>>,
+    prune_results: Vec<Result<PruneResult, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
@@ -138,7 +138,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             engine_state: Rc::clone(&self.engine_state),
             exec_results: self.exec_results.clone(),
             upgrade_results: self.upgrade_results.clone(),
-            purge_results: self.purge_results.clone(),
+            prune_results: self.prune_results.clone(),
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
@@ -164,7 +164,7 @@ impl InMemoryWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            purge_results: Vec::new(),
+            prune_results: Vec::new(),
             genesis_hash: maybe_post_state_hash,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
@@ -239,7 +239,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            purge_results: Vec::new(),
+            prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
@@ -339,7 +339,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            purge_results: Vec::new(),
+            prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
@@ -1303,40 +1303,42 @@ where
             .handle_payment_costs()
     }
 
-    /// Commit a purge of leaf nodes from the tip of the merkle trie.
-    pub fn commit_purge(&mut self, purge_config: PurgeConfig) -> &mut Self {
+    /// Commit a prune of leaf nodes from the tip of the merkle trie.
+    pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
         let result = self
             .engine_state
-            .commit_purge(CorrelationId::new(), purge_config);
+            .commit_prune(CorrelationId::new(), prune_config);
 
-        if let Ok(PurgeResult::Success { post_state_hash }) = &result {
+        if let Ok(PruneResult::Success { post_state_hash }) = &result {
             self.post_state_hash = Some(*post_state_hash);
         }
 
-        self.purge_results.push(result);
+        self.prune_results.push(result);
         self
     }
-    /// Returns a `Result` containing an [`PurgeResult`].
-    pub fn get_purge_result(
+
+    /// Returns a `Result` containing a [`PruneResult`].
+    pub fn get_prune_result(
         &self,
         index: usize,
-    ) -> Option<&Result<PurgeResult, engine_state::Error>> {
-        self.purge_results.get(index)
+    ) -> Option<&Result<PruneResult, engine_state::Error>> {
+        self.prune_results.get(index)
     }
-    /// Expects a purge success.
-    pub fn expect_purge_success(&mut self) -> &mut Self {
+
+    /// Expects a prune success.
+    pub fn expect_prune_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let result = self
-            .purge_results
+            .prune_results
             .last()
             .expect("Expected to be called after a system upgrade.")
             .as_ref();
 
-        let purge_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
-        match purge_result {
-            PurgeResult::RootNotFound => panic!("Root not found"),
-            PurgeResult::DoesNotExist => panic!("Does not exists"),
-            PurgeResult::Success { .. } => {}
+        let prune_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
+        match prune_result {
+            PruneResult::RootNotFound => panic!("Root not found"),
+            PruneResult::DoesNotExist => panic!("Does not exists"),
+            PruneResult::Success { .. } => {}
         }
 
         self

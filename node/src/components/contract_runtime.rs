@@ -143,7 +143,7 @@ pub(crate) struct ContractRuntime {
     /// Cached instance of a [`SystemContractRegistry`].
     system_contract_registry: Option<SystemContractRegistry>,
     activation_point: ActivationPoint,
-    purge_batch_size: u64,
+    prune_batch_size: u64,
 }
 
 impl Debug for ContractRuntime {
@@ -339,7 +339,7 @@ where
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 let activation_point = self.activation_point;
-                let purge_batch_size = self.purge_batch_size;
+                let prune_batch_size = self.prune_batch_size;
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -352,7 +352,7 @@ where
                             transfers,
                             activation_point.era_id(),
                             key_block_height_for_activation_point,
-                            purge_batch_size,
+                            prune_batch_size,
                         )
                     })
                     .await;
@@ -365,7 +365,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
-                key_block_height_for_activation_point: activation_point_block_height,
+                key_block_height_for_activation_point,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
@@ -375,7 +375,7 @@ where
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
                 let protocol_version = self.protocol_version;
                 let activation_point = self.activation_point;
-                let purge_batch_size = self.purge_batch_size;
+                let prune_batch_size = self.prune_batch_size;
                 if self.execution_pre_state.lock().unwrap().next_block_height
                     == finalized_block.height()
                 {
@@ -391,8 +391,8 @@ where
                             deploys,
                             transfers,
                             activation_point,
-                            activation_point_block_height,
-                            purge_batch_size,
+                            key_block_height_for_activation_point,
+                            prune_batch_size,
                         )
                         .ignore(),
                     )
@@ -439,7 +439,7 @@ impl ContractRuntime {
         max_delegator_size_limit: u32,
         minimum_delegation_amount: u64,
         activation_point: ActivationPoint,
-        purge_batch_size: u64,
+        prune_batch_size: u64,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -488,7 +488,7 @@ impl ContractRuntime {
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
             activation_point,
-            purge_batch_size,
+            prune_batch_size,
         })
     }
 
@@ -586,7 +586,7 @@ impl ContractRuntime {
         transfers: Vec<Deploy>,
         activation_point: ActivationPoint,
         key_block_height_for_activation_point: u64,
-        purge_batch_size: u64,
+        prune_batch_size: u64,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -611,7 +611,7 @@ impl ContractRuntime {
                 transfers,
                 activation_point.era_id(),
                 key_block_height_for_activation_point,
-                purge_batch_size,
+                prune_batch_size,
             )
         })
         .await

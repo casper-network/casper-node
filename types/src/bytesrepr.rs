@@ -136,15 +136,7 @@ impl Display for Error {
 /// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
 /// are consumed in the operation.
 pub fn deserialize<T: FromBytes>(bytes: Vec<u8>) -> Result<T, Error> {
-    deserialize_from_slice(&bytes)
-}
-
-/// Deserializes `bytes` into an instance of `T`.
-///
-/// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
-/// are consumed in the operation.
-pub fn deserialize_from_slice<T: FromBytes>(bytes: &[u8]) -> Result<T, Error> {
-    let (t, remainder) = FromBytes::from_bytes(bytes)?;
+    let (t, remainder) = FromBytes::from_bytes(&bytes)?;
     if remainder.is_empty() {
         Ok(t)
     } else {

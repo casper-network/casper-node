@@ -1,12 +1,14 @@
 //! Core types for a Merkle Trie
 
 use std::{
-    collections::VecDeque,
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
+    iter::Flatten,
     mem::MaybeUninit,
+    slice,
 };
 
+use either::Either;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use serde::{
@@ -438,36 +440,69 @@ impl<K, V> Trie<K, V> {
     pub fn iter_children(&self) -> DescendantsIterator {
         match self {
             Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
-            Trie::Node { pointer_block } => {
-                let iter: VecDeque<Pointer> = pointer_block.0.iter().flatten().copied().collect();
-                DescendantsIterator::PointerBlock { iter }
-            }
+            Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
+                iter: pointer_block.0.iter().flatten(),
+            },
             Trie::Extension { pointer, .. } => {
                 DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
             }
         }
     }
 }
+
+pub(crate) type LazyTrieLeaf<K, V> = Either<Bytes, Trie<K, V>>;
+
+pub(crate) fn lazy_trie_deserialize<K, V>(
+    bytes: Bytes,
+) -> Result<LazyTrieLeaf<K, V>, bytesrepr::Error>
+where
+    K: FromBytes,
+    V: FromBytes,
+{
+    let current_trie_tag = bytes.first().copied().and_then(TrieTag::from_u8);
+
+    if current_trie_tag == Some(TrieTag::Leaf) {
+        Ok(Either::Left(bytes))
+    } else {
+        let deserialized: Trie<K, V> = bytesrepr::deserialize(bytes.into())?;
+        Ok(Either::Right(deserialized))
+    }
+}
+
+pub(crate) fn lazy_trie_iter_children<K, V>(
+    trie_bytes: &LazyTrieLeaf<K, V>,
+) -> DescendantsIterator {
+    match trie_bytes {
+        Either::Left(_) => {
+            // Leaf bytes does not have any children
+            DescendantsIterator::ZeroOrOne(None)
+        }
+        Either::Right(trie) => {
+            // Trie::Node or Trie::Extension has children
+            trie.iter_children()
+        }
+    }
+}
+
 /// An iterator over the descendants of a trie node.
-pub enum DescendantsIterator {
+pub enum DescendantsIterator<'a> {
     /// A leaf (zero descendants) or extension (one descendant) being iterated.
     ZeroOrOne(Option<Digest>),
     /// A pointer block being iterated.
     PointerBlock {
         /// An iterator over the non-None entries of the `PointerBlock`.
-        // iter: Flatten<slice::Iter<'a, Option<Pointer>>>,
-        iter: VecDeque<Pointer>,
+        iter: Flatten<slice::Iter<'a, Option<Pointer>>>,
     },
 }
 
-impl Iterator for DescendantsIterator {
+impl<'a> Iterator for DescendantsIterator<'a> {
     type Item = Digest;
 
     fn next(&mut self) -> Option<Self::Item> {
         match *self {
             DescendantsIterator::ZeroOrOne(ref mut maybe_digest) => maybe_digest.take(),
             DescendantsIterator::PointerBlock { ref mut iter } => {
-                iter.pop_front().map(|pointer| *pointer.hash())
+                iter.next().map(|pointer| *pointer.hash())
             }
         }
     }

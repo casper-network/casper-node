@@ -20,6 +20,7 @@ use crate::{
     storage::{
         transaction_source::{Readable, Writable},
         trie::{
+            self,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
             Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
         },
@@ -546,13 +547,12 @@ where
     let mut acc: Parents<K, V> = Vec::new();
 
     loop {
-        let current_trie_tag = current.first().and_then(|byte| TrieTag::from_u8(*byte));
-        current_trie = if current_trie_tag == Some(TrieTag::Leaf) {
-            return Ok(TrieScanRaw::new(Either::Left(current), acc));
-        } else {
-            let (deserialized, _) = Trie::<K, V>::from_bytes(&current)?;
-            deserialized
+        let maybe_trie_leaf = trie::lazy_trie_deserialize(current)?;
+        current_trie = match maybe_trie_leaf {
+            leaf_bytes @ Either::Left(_) => return Ok(TrieScanRaw::new(leaf_bytes, acc)),
+            Either::Right(trie_object) => trie_object,
         };
+
         match current_trie {
             _leaf @ Trie::Leaf { .. } => {
                 // since we are checking if this is a leaf and skipping, we do not expect to ever
@@ -647,7 +647,6 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    // let mut txn = environment.create_read_write_txn()?;
     let root_trie_bytes = match store.get_raw(txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,

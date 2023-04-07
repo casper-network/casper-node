@@ -79,7 +79,7 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 #[cfg(not(feature = "fast-sync"))]
 use tracing::warn;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -974,7 +974,8 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Returns block height of an era previous to the activation point.
+    /// Returns the key block height for the current protocol version's activation point, i.e. the
+    /// height of the final block of the previous protocol version.
     pub(crate) async fn get_key_block_height_for_activation_point(self) -> u64
     where
         REv: From<ChainspecLoaderRequest> + From<StorageRequest>,
@@ -982,7 +983,6 @@ impl<REv> EffectBuilder<REv> {
         let CurrentRunInfo {
             activation_point, ..
         } = self.get_current_run_info().await;
-        info!(?activation_point, "get_activation_point_era_id");
 
         let era_before = activation_point
             .era_id()
@@ -1252,7 +1252,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-        activation_point_era_id: u64,
+        key_block_height_for_activation_point: u64,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1264,7 +1264,7 @@ impl<REv> EffectBuilder<REv> {
                 finalized_block,
                 deploys,
                 transfers,
-                key_block_height_for_activation_point: activation_point_era_id,
+                key_block_height_for_activation_point,
                 responder,
             },
             QueueKind::Regular,
@@ -1284,7 +1284,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
-        activation_point_block_height: u64,
+        key_block_height_for_activation_point: u64,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1294,7 +1294,7 @@ impl<REv> EffectBuilder<REv> {
                     finalized_block,
                     deploys,
                     transfers,
-                    key_block_height_for_activation_point: activation_point_block_height,
+                    key_block_height_for_activation_point,
                 },
                 QueueKind::Regular,
             )

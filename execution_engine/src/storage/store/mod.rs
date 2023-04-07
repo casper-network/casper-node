@@ -49,28 +49,10 @@ pub trait Store<K, V> {
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
-        self.put_raw(txn, &key.to_bytes()?, Cow::Owned(value.to_bytes()?))
-    }
-
-    /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an
-    /// error of type `Self::Error` if that fails.
-    ///
-    /// This accepts a [`Cow`] object as a value to allow different implementations to choose if
-    /// they want to use owned value (i.e. put it in a cache without cloning) or the raw bytes
-    /// (write it into a persistent store).
-    fn put_raw<T>(
-        &self,
-        txn: &mut T,
-        key_bytes: &[u8],
-        value_bytes: Cow<'_, [u8]>,
-    ) -> Result<(), Self::Error>
-    where
-        T: Writable<Handle = Self::Handle>,
-        K: ToBytes,
-        Self::Error: From<T::Error>,
-    {
+        let key_bytes = key.to_bytes()?;
+        let value_bytes = value.to_bytes()?;
         let handle = self.handle();
-        txn.write(handle, key_bytes, &value_bytes)
+        txn.write(handle, &key_bytes, &value_bytes)
             .map_err(Into::into)
     }
 
@@ -84,5 +66,27 @@ pub trait Store<K, V> {
     {
         let handle = self.handle();
         Ok(txn.read(handle, key.as_ref())?)
+    }
+
+    /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an
+    /// error of type `Self::Error` if that fails.
+    ///
+    /// This accepts a [`Cow`] object as a value to allow different implementations to choose if
+    /// they want to use owned value (i.e. put it in a cache without cloning) or the raw bytes
+    /// (write it into a persistent store).
+    fn put_raw<T>(
+        &self,
+        txn: &mut T,
+        key: &K,
+        value_bytes: Cow<'_, [u8]>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        K: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        let handle = self.handle();
+        txn.write(handle, key.as_ref(), &value_bytes)
+            .map_err(Into::into)
     }
 }

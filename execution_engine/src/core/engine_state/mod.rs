@@ -11,7 +11,7 @@ pub mod execution_result;
 pub mod genesis;
 pub mod get_bids;
 pub mod op;
-mod purge;
+mod prune;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -62,7 +62,7 @@ pub use self::{
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
     get_bids::{GetBidsRequest, GetBidsResult},
-    purge::{PurgeConfig, PurgeResult},
+    prune::{PruneConfig, PruneResult},
     query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -450,8 +450,6 @@ where
         if let Some(activation_point) = upgrade_config.activation_point() {
             // The highest stored era is the immediate predecessor of the activation point.
             let highest_era_info_id = activation_point.saturating_sub(1);
-
-            // Start of the copy
             let highest_era_info_key = Key::EraInfo(highest_era_info_id);
 
             let get_result = tracking_copy
@@ -476,7 +474,7 @@ where
                 None => {
                     // Can't find key
                     // Most likely this chain did not yet ran an auction, or recently completed a
-                    // purge
+                    // prune
                     warn!(?highest_era_info_key, "Unable to find era info entry");
                 }
             };
@@ -2126,24 +2124,24 @@ where
         RuntimeStack::new_system_call_stack(max_height)
     }
 
-    /// Commit a purge of leaf nodes from the tip of the merkle trie.
-    pub fn commit_purge(
+    /// Commit a prune of leaf nodes from the tip of the merkle trie.
+    pub fn commit_prune(
         &self,
         correlation_id: CorrelationId,
-        purge_config: PurgeConfig,
-    ) -> Result<PurgeResult, Error> {
-        let state_root_hash = purge_config.pre_state_hash();
+        prune_config: PruneConfig,
+    ) -> Result<PruneResult, Error> {
+        let state_root_hash = prune_config.pre_state_hash();
 
         // Validate the state root hash just to make sure we can safely short circuit in case the
         // list of keys is empty.
         match self.tracking_copy(state_root_hash)? {
-            None => return Ok(PurgeResult::RootNotFound),
+            None => return Ok(PruneResult::RootNotFound),
             Some(_tracking_copy) => {}
         };
 
-        let keys_to_delete = purge_config.keys_to_delete();
+        let keys_to_delete = prune_config.keys_to_prune();
         if keys_to_delete.is_empty() {
-            return Ok(PurgeResult::Success {
+            return Ok(PruneResult::Success {
                 post_state_hash: state_root_hash,
             });
         }
@@ -2153,10 +2151,10 @@ where
             .delete_keys(correlation_id, state_root_hash, keys_to_delete)
         {
             Ok(DeleteResult::Deleted(post_state_hash)) => {
-                Ok(PurgeResult::Success { post_state_hash })
+                Ok(PruneResult::Success { post_state_hash })
             }
-            Ok(DeleteResult::DoesNotExist) => Ok(PurgeResult::DoesNotExist),
-            Ok(DeleteResult::RootNotFound) => Ok(PurgeResult::RootNotFound),
+            Ok(DeleteResult::DoesNotExist) => Ok(PruneResult::DoesNotExist),
+            Ok(DeleteResult::RootNotFound) => Ok(PruneResult::RootNotFound),
             Err(error) => Err(Error::Exec(error.into())),
         }
     }

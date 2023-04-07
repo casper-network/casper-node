@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{self, PurgeConfig, PurgeResult, RewardItem},
+        engine_state::{self, PruneConfig, PruneResult, RewardItem},
         execution,
     },
     storage::global_state::{CommitProvider, StateProvider},
@@ -110,40 +110,40 @@ fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
 
 #[ignore]
 #[test]
-fn gh_3710_commit_purge_with_empty_keys_should_be_noop() {
+fn gh_3710_commit_prune_with_empty_keys_should_be_noop() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
-    let purge_config = PurgeConfig::new(builder.get_post_state_hash(), Vec::new());
+    let prune_config = PruneConfig::new(builder.get_post_state_hash(), Vec::new());
 
-    builder.commit_purge(purge_config).expect_purge_success();
+    builder.commit_prune(prune_config).expect_prune_success();
 }
 
 #[ignore]
 #[test]
-fn gh_3710_commit_purge_should_validate_state_root_hash() {
+fn gh_3710_commit_prune_should_validate_state_root_hash() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
-    let purge_config = PurgeConfig::new(Digest::hash("foobar"), Vec::new());
+    let prune_config = PruneConfig::new(Digest::hash("foobar"), Vec::new());
 
-    builder.commit_purge(purge_config);
+    builder.commit_prune(prune_config);
 
-    let purge_result = builder
-        .get_purge_result(0)
-        .expect("should have purge result");
-    assert!(builder.get_purge_result(1).is_none());
+    let prune_result = builder
+        .get_prune_result(0)
+        .expect("should have prune result");
+    assert!(builder.get_prune_result(1).is_none());
 
     assert!(
-        matches!(purge_result, Ok(PurgeResult::RootNotFound)),
+        matches!(prune_result, Ok(PruneResult::RootNotFound)),
         "{:?}",
-        purge_result
+        prune_result
     );
 }
 
 #[ignore]
 #[test]
-fn gh_3710_commit_purge_should_delete_values() {
+fn gh_3710_commit_prune_should_delete_values() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
@@ -158,12 +158,12 @@ fn gh_3710_commit_purge_should_delete_values() {
         .try_into()
         .expect("auction delay should be positive");
 
-    let keys_before_purge = builder
+    let keys_before_prune = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should obtain all given keys");
 
     assert_eq!(
-        keys_before_purge.len(),
+        keys_before_prune.len(),
         FIXTURE_N_ERAS + 1 + auction_delay as usize
     );
 
@@ -182,38 +182,38 @@ fn gh_3710_commit_purge_should_delete_values() {
             .union(&BTreeSet::from_iter(batch_2.iter()))
             .collect::<BTreeSet<_>>()
             .len(),
-        keys_before_purge.len(),
+        keys_before_prune.len(),
         "sanity check"
     );
 
-    // Process purge of first batch
+    // Process prune of first batch
     let pre_state_hash = builder.get_post_state_hash();
 
-    let purge_config_1 = PurgeConfig::new(pre_state_hash, batch_1);
+    let prune_config_1 = PruneConfig::new(pre_state_hash, batch_1);
 
-    builder.commit_purge(purge_config_1).expect_purge_success();
+    builder.commit_prune(prune_config_1).expect_prune_success();
     let post_state_hash_batch_1 = builder.get_post_state_hash();
     assert_ne!(pre_state_hash, post_state_hash_batch_1);
 
-    let keys_after_batch_1_purge = builder
+    let keys_after_batch_1_prune = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should obtain all given keys");
 
-    assert_eq!(keys_after_batch_1_purge.len(), 2);
+    assert_eq!(keys_after_batch_1_prune.len(), 2);
 
-    // Process purge of second batch
+    // Process prune of second batch
     let pre_state_hash = builder.get_post_state_hash();
 
-    let purge_config_2 = PurgeConfig::new(pre_state_hash, batch_2);
-    builder.commit_purge(purge_config_2).expect_purge_success();
+    let prune_config_2 = PruneConfig::new(pre_state_hash, batch_2);
+    builder.commit_prune(prune_config_2).expect_prune_success();
     let post_state_hash_batch_2 = builder.get_post_state_hash();
     assert_ne!(pre_state_hash, post_state_hash_batch_2);
 
-    let keys_after_batch_2_purge = builder
+    let keys_after_batch_2_prune = builder
         .get_keys(KeyTag::EraInfo)
         .expect("should obtain all given keys");
 
-    assert_eq!(keys_after_batch_2_purge.len(), 0);
+    assert_eq!(keys_after_batch_2_prune.len(), 0);
 }
 
 const DEFAULT_REWARD_AMOUNT: u64 = 1_000_000;

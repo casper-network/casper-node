@@ -1422,7 +1422,7 @@ async fn execute_finalized_block<REv>(
         }
     };
 
-    let activation_point_block_height = effect_builder
+    let key_block_height_for_activation_point = effect_builder
         .get_key_block_height_for_activation_point()
         .await;
 
@@ -1431,7 +1431,7 @@ async fn execute_finalized_block<REv>(
             finalized_block,
             deploys,
             transfers,
-            activation_point_block_height,
+            key_block_height_for_activation_point,
         )
         .await
 }

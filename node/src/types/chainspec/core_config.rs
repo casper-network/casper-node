@@ -37,7 +37,7 @@ pub struct CoreConfig {
     /// The minimum bound of motes that can be delegated to a validator.
     pub(crate) minimum_delegation_amount: u64,
     /// Global state purge batch size (0 means the feature is off in the current protocol version).
-    pub(crate) purge_batch_size: u64,
+    pub(crate) prune_batch_size: u64,
 }
 
 #[cfg(test)]
@@ -58,7 +58,7 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let max_stored_value_size = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
-        let purge_batch_size = rng.gen_range(0..100);
+        let prune_batch_size = rng.gen_range(0..100);
 
         CoreConfig {
             era_duration,
@@ -72,7 +72,7 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             max_stored_value_size,
             minimum_delegation_amount,
-            purge_batch_size,
+            prune_batch_size,
         }
     }
 }
@@ -91,7 +91,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.max_stored_value_size.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
-        buffer.extend(self.purge_batch_size.to_bytes()?);
+        buffer.extend(self.prune_batch_size.to_bytes()?);
         Ok(buffer)
     }
 
@@ -107,7 +107,7 @@ impl ToBytes for CoreConfig {
             + self.max_runtime_call_stack_height.serialized_length()
             + self.max_stored_value_size.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
-            + self.purge_batch_size.serialized_length()
+            + self.prune_batch_size.serialized_length()
     }
 }
 
@@ -124,7 +124,7 @@ impl FromBytes for CoreConfig {
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (max_stored_value_size, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
-        let (purge_batch_size, remainder) = u64::from_bytes(remainder)?;
+        let (prune_batch_size, remainder) = u64::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -137,7 +137,7 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             max_stored_value_size,
             minimum_delegation_amount,
-            purge_batch_size,
+            prune_batch_size,
         };
         Ok((config, remainder))
     }

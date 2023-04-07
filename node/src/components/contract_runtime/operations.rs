@@ -6,8 +6,8 @@ use tracing::{debug, error, info, trace, warn};
 use casper_execution_engine::{
     core::engine_state::{
         self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PurgeConfig,
-        PurgeResult, RewardItem, StepError, StepRequest, StepSuccess,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PruneConfig,
+        PruneResult, RewardItem, StepError, StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
@@ -86,7 +86,7 @@ pub fn execute_finalized_block(
     transfers: Vec<Deploy>,
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
-    purge_batch_size: u64,
+    prune_batch_size: u64,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -216,33 +216,33 @@ pub fn execute_finalized_block(
             activation_point_era_id,
             key_block_height_for_activation_point,
             previous_block_height,
-            purge_batch_size,
+            prune_batch_size,
         ) {
-            Some(keys_to_purge) => {
-                let first_key = keys_to_purge.first().copied();
-                let last_key = keys_to_purge.last().copied();
+            Some(keys_to_prune) => {
+                let first_key = keys_to_prune.first().copied();
+                let last_key = keys_to_prune.last().copied();
                 info!(
                     previous_block_height,
                     %key_block_height_for_activation_point,
                     %state_root_hash,
                     first_key=?first_key,
                     last_key=?last_key,
-                    "commit_purge: preparing purge config");
-                let purge_config = PurgeConfig::new(state_root_hash, keys_to_purge);
-                match engine_state.commit_purge(CorrelationId::new(), purge_config) {
-                    Ok(PurgeResult::RootNotFound) => {
+                    "commit_prune: preparing purge config");
+                let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
+                match engine_state.commit_prune(CorrelationId::new(), prune_config) {
+                    Ok(PruneResult::RootNotFound) => {
                         error!(
                             previous_block_height,
                             %state_root_hash,
-                            "commit_purge: root not found");
+                            "commit_prune: root not found");
                     }
-                    Ok(PurgeResult::DoesNotExist) => {
+                    Ok(PruneResult::DoesNotExist) => {
                         warn!(
                             previous_block_height,
                             %state_root_hash,
-                            "commit_purge: key does not exist");
+                            "commit_prune: key does not exist");
                     }
-                    Ok(PurgeResult::Success { post_state_hash }) => {
+                    Ok(PruneResult::Success { post_state_hash }) => {
                         info!(
                             previous_block_height,
                             %key_block_height_for_activation_point,
@@ -250,7 +250,7 @@ pub fn execute_finalized_block(
                             %post_state_hash,
                             first_key=?first_key,
                             last_key=?last_key,
-                            "commit_purge: success");
+                            "commit_prune: success");
                         state_root_hash = post_state_hash;
                     }
                     Err(error) => {
@@ -258,7 +258,7 @@ pub fn execute_finalized_block(
                             previous_block_height,
                             %key_block_height_for_activation_point,
                             %error,
-                            "commit_purge: commit purge error");
+                            "commit_prune: commit purge error");
                         return Err(error.into());
                     }
                 }
@@ -267,7 +267,7 @@ pub fn execute_finalized_block(
                 info!(
                     previous_block_height,
                     %key_block_height_for_activation_point,
-                    "commit_purge: nothing to do, no more eras to delete");
+                    "commit_prune: nothing to do, no more eras to delete");
             }
         }
     }

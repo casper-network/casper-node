@@ -16,8 +16,12 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let _counter = TestValue::before_operation(TestOperation::Delete);
     let delete_result =
-        operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete)?;
+        operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete);
+    let counter = TestValue::after_operation(TestOperation::Delete);
+    assert_eq!(counter, 0, "Delete should never deserialize a value");
+    let delete_result = delete_result?;
     if let DeleteResult::Deleted(new_root) = delete_result {
         operations::check_integrity::<K, V, T, S, E>(correlation_id, txn, store, vec![new_root])?;
     }
@@ -345,7 +349,12 @@ mod full_tries {
             }
         }
         for key in keys_to_delete.iter() {
-            match delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key)? {
+            let _counter = TestValue::before_operation(TestOperation::Delete);
+            let delete_result =
+                delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key);
+            let counter = TestValue::after_operation(TestOperation::Delete);
+            assert_eq!(counter, 0, "Delete should never deserialize a value");
+            match delete_result? {
                 DeleteResult::Deleted(new_root) => {
                     expected_root = new_root;
                 }

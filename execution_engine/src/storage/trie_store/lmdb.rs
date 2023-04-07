@@ -106,8 +106,6 @@
 use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
-    convert::TryFrom,
-    ops::Deref,
     sync::{Arc, Mutex},
 };
 
@@ -116,7 +114,6 @@ use casper_types::{
     Key, StoredValue,
 };
 use lmdb::{Database, DatabaseFlags, Transaction};
-use num_traits::FromPrimitive;
 
 use casper_hashing::Digest;
 
@@ -125,7 +122,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::{DescendantsIterator, Trie, TrieTag},
+    trie::{self, LazyTrieLeaf, Trie},
     trie_store::{self, TrieStore},
 };
 
@@ -193,19 +190,6 @@ pub(crate) struct ScratchTrieStore {
     pub(crate) env: Arc<LmdbEnvironment>,
 }
 
-fn trie_bytes_iter_children(trie_bytes: &[u8]) -> Result<DescendantsIterator, bytesrepr::Error> {
-    let trie_tag = trie_bytes.first().and_then(|byte| TrieTag::from_u8(*byte));
-    match trie_tag {
-        Some(TrieTag::Leaf) => Ok(DescendantsIterator::ZeroOrOne(None)),
-        Some(TrieTag::Node) | Some(TrieTag::Extension) => {
-            // We can deserialize trie as we know this is either a node or an extension
-            let trie: Trie<Key, StoredValue> = bytesrepr::deserialize_from_slice(trie_bytes)?;
-            Ok(trie.iter_children())
-        }
-        None => Err(bytesrepr::Error::Formatting),
-    }
-}
-
 impl ScratchTrieStore {
     /// Creates a new ScratchTrieStore.
     pub fn new(store: Arc<LmdbTrieStore>, env: Arc<LmdbEnvironment>) -> Self {
@@ -219,40 +203,32 @@ impl ScratchTrieStore {
     /// Writes only tries which are both under the given `state_root` and dirty to the underlying db
     /// while maintaining the invariant that children must be written before parent nodes.
     pub fn write_root_to_db(self, state_root: Digest) -> Result<(), error::Error> {
-        let env = self.env;
-        let store = self.store;
-        let cache = &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
-
-        let (is_root_dirty, root_trie) = cache
-            .get(&state_root)
-            .ok_or(CommitError::TrieNotFoundInCache(state_root))?;
-
-        // Early exit if there is no work to do.
-        if !is_root_dirty {
-            return Ok(());
+        let cache = &*self.cache.lock().map_err(|_| error::Error::Poison)?;
+        if !cache.contains_key(&state_root) {
+            return Err(CommitError::TrieNotFoundInCache(state_root).into());
         }
 
-        let mut txn = env.create_read_write_txn()?;
-        let mut tries_to_visit =
-            vec![(state_root, root_trie, trie_bytes_iter_children(root_trie)?)];
+        let mut tries_to_write = vec![state_root];
+        let mut txn = self.env.create_read_write_txn()?;
 
-        while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
-            if let Some(descendant) = descendants_iterator.next() {
-                tries_to_visit.push((digest, current_trie, descendants_iterator));
-                // Only if a node is marked as dirty in the cache do we want to visit it's
-                // children.
-                if let Some((true, child_trie)) = cache.get(&descendant) {
-                    let children = trie_bytes_iter_children(child_trie)?;
-                    tries_to_visit.push((descendant, child_trie, children));
-                }
+        while let Some(trie_hash) = tries_to_write.pop() {
+            let trie_bytes = if let Some((true, trie_bytes)) = cache.get(&trie_hash) {
+                trie_bytes
             } else {
-                Store::<Digest, Trie<Key, StoredValue>>::put_raw(
-                    store.deref(),
-                    &mut txn,
-                    &digest.value(),
-                    Cow::Borrowed(current_trie),
-                )?;
-            }
+                // We don't have this trie in the scratch store or it's not dirty - do nothing.
+                continue;
+            };
+
+            let lazy_trie: LazyTrieLeaf<Key, StoredValue> =
+                trie::lazy_trie_deserialize(trie_bytes.clone())?;
+            tries_to_write.extend(trie::lazy_trie_iter_children(&lazy_trie));
+
+            Store::<Digest, Trie<Key, StoredValue>>::put_raw(
+                &*self.store,
+                &mut txn,
+                &trie_hash,
+                Cow::Borrowed(trie_bytes),
+            )?;
         }
 
         txn.commit()?;
@@ -296,29 +272,23 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         Trie<Key, StoredValue>: ToBytes,
         Self::Error: From<T::Error>,
     {
-        self.put_raw(txn, key.as_ref(), Cow::Owned(value.to_bytes()?))
+        self.put_raw(txn, key, Cow::Owned(value.to_bytes()?))
     }
 
     fn put_raw<'a, T>(
         &self,
         _txn: &mut T,
-        key_bytes: &[u8],
+        key: &Digest,
         value_bytes: Cow<'a, [u8]>,
     ) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
         Self::Error: From<T::Error>,
     {
-        debug_assert_eq!(
-            key_bytes.len(),
-            32,
-            "Should only use Digest bytes in this impl"
-        );
-        let key = Digest::try_from(key_bytes).unwrap(); // SAFETY: we're inside impl Store<Digest, ...>
         self.cache
             .lock()
             .map_err(|_| error::Error::Poison)?
-            .insert(key, (true, Bytes::from(value_bytes.into_owned())));
+            .insert(*key, (true, Bytes::from(value_bytes.into_owned())));
         Ok(())
     }
 

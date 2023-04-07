@@ -726,7 +726,7 @@ pub(crate) enum ContractRuntimeRequest {
         deploys: Vec<Deploy>,
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
-        /// Height of the era before the activation point.
+        /// The key block height for the current protocol version's activation point.
         key_block_height_for_activation_point: u64,
     },
 
@@ -819,7 +819,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for the block to execute; must correspond to the transfer and execution
         /// hashes of the `finalized_block` in that order.
         transfers: Vec<Deploy>,
-        /// Height of the first block for an era previous to the activation point.
+        /// The key block height for the current protocol version's activation point.
         key_block_height_for_activation_point: u64,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,

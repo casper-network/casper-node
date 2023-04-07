@@ -119,8 +119,7 @@ impl LmdbGlobalState {
     }
 }
 
-#[doc(hidden)]
-pub fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), error::Error> {
+fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), error::Error> {
     let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
     Ok((root_hash, root))
 }
