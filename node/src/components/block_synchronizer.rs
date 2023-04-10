@@ -294,6 +294,9 @@ impl BlockSynchronizer {
             self.max_simultaneous_peers,
             self.config.peer_refresh_interval,
             self.chainspec.core_config.legacy_required_finality,
+            self.chainspec
+                .core_config
+                .start_protocol_version_with_strict_finality_signatures_required,
         );
         if should_fetch_execution_state {
             self.historical.replace(builder);
@@ -344,6 +347,9 @@ impl BlockSynchronizer {
                         self.max_simultaneous_peers,
                         self.config.peer_refresh_interval,
                         self.chainspec.core_config.legacy_required_finality,
+                        self.chainspec
+                            .core_config
+                            .start_protocol_version_with_strict_finality_signatures_required,
                     );
                     apply_sigs(&mut builder, maybe_sigs);
                     if should_fetch_execution_state {

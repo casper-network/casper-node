@@ -8,7 +8,7 @@ use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::PublicKey;
+use casper_types::{ProtocolVersion, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -381,7 +381,7 @@ impl BlockAcquisitionState {
                 checksum,
             ) if is_historical => {
                 let is_checkable = checksum.is_checkable();
-                signatures.set_is_checkable(is_checkable);
+                signatures.set_is_legacy(!is_checkable);
                 if is_checkable {
                     Ok(BlockAcquisitionAction::approvals_hashes(
                         block, peer_list, rng,
@@ -484,6 +484,8 @@ impl BlockAcquisitionState {
     pub(super) fn register_block_header(
         &mut self,
         header: BlockHeader,
+        strict_finality_protocol_version: ProtocolVersion,
+        is_historical: bool,
     ) -> Result<Option<Acceptance>, BlockAcquisitionError> {
         let new_state = match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
@@ -493,6 +495,10 @@ impl BlockAcquisitionState {
                         block_hash,
                         header.height()
                     );
+                    if is_historical && header.protocol_version() < strict_finality_protocol_version
+                    {
+                        signatures.set_is_legacy(true);
+                    }
                     BlockAcquisitionState::HaveBlockHeader(Box::new(header), signatures.clone())
                 } else {
                     return Err(BlockAcquisitionError::BlockHashMismatch {
@@ -722,11 +728,21 @@ impl BlockAcquisitionState {
                 ..,
             ) => {
                 maybe_block_hash = Some(*block.hash());
-                currently_acquiring_sigs = !acquired_signatures.is_checkable()
+                currently_acquiring_sigs = acquired_signatures.is_legacy()
                     && acquired_deploys.needs_deploy().is_none()
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict;
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
-                None
+                if acquired_signatures.is_legacy()
+                    && acquired_deploys.needs_deploy().is_none()
+                    && acquired_signatures.has_sufficient_finality(is_historical, true)
+                {
+                    Some(BlockAcquisitionState::HaveStrictFinalitySignatures(
+                        block.clone(),
+                        acquired_signatures.clone(),
+                    ))
+                } else {
+                    None
+                }
             }
             BlockAcquisitionState::HaveAllDeploys(block, acquired_signatures) => {
                 maybe_block_hash = Some(*block.hash());

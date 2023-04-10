@@ -8,7 +8,7 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
+use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},
@@ -73,6 +73,7 @@ pub(super) struct BlockBuilder {
     block_hash: BlockHash,
     should_fetch_execution_state: bool,
     requires_strict_finality: bool,
+    strict_finality_protocol_version: ProtocolVersion,
     peer_list: PeerList,
 
     // progress tracking
@@ -107,6 +108,7 @@ impl BlockBuilder {
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
+        strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
         BlockBuilder {
             block_hash,
@@ -119,6 +121,7 @@ impl BlockBuilder {
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
             requires_strict_finality,
+            strict_finality_protocol_version,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
@@ -136,6 +139,7 @@ impl BlockBuilder {
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
+        strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
         let block_hash = block_header.block_hash();
         let era_id = Some(block_header.era_id());
@@ -168,6 +172,7 @@ impl BlockBuilder {
             peer_list,
             should_fetch_execution_state,
             requires_strict_finality,
+            strict_finality_protocol_version,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
@@ -446,7 +451,11 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let era_id = block_header.era_id();
-        let acceptance = self.acquisition_state.register_block_header(block_header);
+        let acceptance = self.acquisition_state.register_block_header(
+            block_header,
+            self.strict_finality_protocol_version,
+            self.should_fetch_execution_state,
+        );
         self.handle_acceptance(maybe_peer, acceptance)?;
         self.era_id = Some(era_id);
         Ok(())

@@ -19,7 +19,7 @@ enum SignatureState {
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 pub(super) struct SignatureAcquisition {
     inner: BTreeMap<PublicKey, SignatureState>,
-    maybe_is_checkable: Option<bool>,
+    maybe_is_legacy: Option<bool>,
     signature_weight: SignatureWeight,
     legacy_required_finality: LegacyRequiredFinality,
 }
@@ -33,10 +33,10 @@ impl SignatureAcquisition {
             .into_iter()
             .map(|validator| (validator, SignatureState::Vacant))
             .collect();
-        let maybe_is_checkable = None;
+        let maybe_is_legacy = None;
         SignatureAcquisition {
             inner,
-            maybe_is_checkable,
+            maybe_is_legacy,
             signature_weight: SignatureWeight::Insufficient,
             legacy_required_finality,
         }
@@ -100,16 +100,12 @@ impl SignatureAcquisition {
         })
     }
 
-    pub(super) fn have_no_vacant(&self) -> bool {
-        self.inner.iter().all(|(_, v)| *v != SignatureState::Vacant)
+    pub(super) fn set_is_legacy(&mut self, is_legacy: bool) {
+        self.maybe_is_legacy = Some(is_legacy);
     }
 
-    pub(super) fn set_is_checkable(&mut self, is_checkable: bool) {
-        self.maybe_is_checkable = Some(is_checkable)
-    }
-
-    pub(super) fn is_checkable(&self) -> bool {
-        self.maybe_is_checkable.unwrap_or(false)
+    pub(super) fn is_legacy(&self) -> bool {
+        self.maybe_is_legacy.unwrap_or(false)
     }
 
     pub(super) fn signature_weight(&self) -> SignatureWeight {
@@ -127,7 +123,7 @@ impl SignatureAcquisition {
         is_historical: bool,
         requires_strict_finality: bool,
     ) -> bool {
-        if is_historical && !self.is_checkable() {
+        if is_historical && self.is_legacy() {
             match self.legacy_required_finality {
                 LegacyRequiredFinality::Strict => self
                     .signature_weight
@@ -157,6 +153,12 @@ mod tests {
     use num_rational::Ratio;
     use rand::Rng;
     use std::iter::repeat_with;
+
+    impl SignatureAcquisition {
+        pub(super) fn have_no_vacant(&self) -> bool {
+            self.inner.iter().all(|(_, v)| *v != SignatureState::Vacant)
+        }
+    }
 
     fn keypair(rng: &mut TestRng) -> (PublicKey, SecretKey) {
         let secret = SecretKey::random(rng);
