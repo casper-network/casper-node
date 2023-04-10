@@ -5,7 +5,9 @@ use datasize::DataSize;
 use casper_types::PublicKey;
 
 use super::block_acquisition::Acceptance;
-use crate::types::{EraValidatorWeights, FinalitySignature, SignatureWeight};
+use crate::types::{
+    chainspec::LegacyRequiredFinality, EraValidatorWeights, FinalitySignature, SignatureWeight,
+};
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 enum SignatureState {
@@ -19,10 +21,14 @@ pub(super) struct SignatureAcquisition {
     inner: BTreeMap<PublicKey, SignatureState>,
     maybe_is_checkable: Option<bool>,
     signature_weight: SignatureWeight,
+    legacy_required_finality: LegacyRequiredFinality,
 }
 
 impl SignatureAcquisition {
-    pub(super) fn new(validators: Vec<PublicKey>) -> Self {
+    pub(super) fn new(
+        validators: Vec<PublicKey>,
+        legacy_required_finality: LegacyRequiredFinality,
+    ) -> Self {
         let inner = validators
             .into_iter()
             .map(|validator| (validator, SignatureState::Vacant))
@@ -32,6 +38,7 @@ impl SignatureAcquisition {
             inner,
             maybe_is_checkable,
             signature_weight: SignatureWeight::Insufficient,
+            legacy_required_finality,
         }
     }
 
@@ -108,6 +115,34 @@ impl SignatureAcquisition {
     pub(super) fn signature_weight(&self) -> SignatureWeight {
         self.signature_weight
     }
+
+    // Determines signature weight sufficiency based on the type of sync (forward or historical) and
+    // the protocol version that the block was created with (pre-1.5 or post-1.5)
+    // `requires_strict_finality` determines what the caller requires with regards to signature
+    // sufficiency:
+    //      * false means that the caller considers `Weak` finality as sufficient
+    //      * true means that the caller considers `Strict` finality as sufficient
+    pub(super) fn has_sufficient_finality(
+        &self,
+        is_historical: bool,
+        requires_strict_finality: bool,
+    ) -> bool {
+        if is_historical && !self.is_checkable() {
+            match self.legacy_required_finality {
+                LegacyRequiredFinality::Strict => self
+                    .signature_weight
+                    .is_sufficient(requires_strict_finality),
+                LegacyRequiredFinality::Weak => {
+                    self.signature_weight == SignatureWeight::Strict
+                        || self.signature_weight == SignatureWeight::Weak
+                }
+                LegacyRequiredFinality::Any => true,
+            }
+        } else {
+            self.signature_weight
+                .is_sufficient(requires_strict_finality)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -160,8 +195,10 @@ mod tests {
             finality_threshold,
         );
         assert_eq!(U512::from(10), weights.get_total_weight());
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validators.iter().map(|(p, _)| p.clone()).collect(),
+            LegacyRequiredFinality::Strict,
+        );
 
         // Signature for the validator #0 weighting 1:
         let (public_0, secret_0) = validators.get(0).unwrap();
@@ -259,8 +296,10 @@ mod tests {
             Ratio::new(1, 3), // Highway finality
         );
         assert_eq!(U512::from(10), weights.get_total_weight());
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validators.iter().map(|(p, _)| p.clone()).collect(),
+            LegacyRequiredFinality::Strict,
+        );
 
         // Signature for an already stored validator:
         let (public_0, secret_0) = validators.first().unwrap();
@@ -296,8 +335,10 @@ mod tests {
             Ratio::new(1, 3), // Highway finality
         );
         assert_eq!(U512::from(10), weights.get_total_weight());
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validators.iter().map(|(p, _)| p.clone()).collect(),
+            LegacyRequiredFinality::Strict,
+        );
 
         let (public_0, secret_0) = validators.first().unwrap();
 
@@ -334,8 +375,10 @@ mod tests {
             Ratio::new(1, 10), // Low finality threshold
         );
         assert_eq!(U512::from(10), weights.get_total_weight());
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validators.iter().map(|(p, _)| p.clone()).collect(),
+            LegacyRequiredFinality::Strict,
+        );
 
         // Set the validator #0 weighting 1 as pending:
         let (public_0, secret_0) = validators.get(0).unwrap();
@@ -376,8 +419,10 @@ mod tests {
     fn register_pending_an_unknown_validator_works() {
         let rng = &mut TestRng::new();
         let validators = repeat_with(|| keypair(rng)).take(4).collect_vec();
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validators.iter().map(|(p, _)| p.clone()).collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validators.iter().map(|(p, _)| p.clone()).collect(),
+            LegacyRequiredFinality::Strict,
+        );
 
         // Set a new validator as pending:
         let (public, _secret) = keypair(rng);

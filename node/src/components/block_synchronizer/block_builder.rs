@@ -21,8 +21,8 @@ use super::{
 use crate::{
     types::{
         chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockHash, BlockHeader, BlockSignatures, DeployHash, DeployId, EraValidatorWeights,
-        FinalitySignature, NodeId, ValidatorMatrix,
+        BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights,
+        FinalitySignature, FinalizedBlock, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -106,6 +106,7 @@ impl BlockBuilder {
         requires_strict_finality: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> Self {
         BlockBuilder {
             block_hash,
@@ -113,7 +114,7 @@ impl BlockBuilder {
             validator_weights: None,
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
-                SignatureAcquisition::new(vec![]),
+                SignatureAcquisition::new(vec![], legacy_required_finality),
             ),
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
@@ -125,6 +126,7 @@ impl BlockBuilder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new_from_sync_leap(
         block_header: &BlockHeader,
         maybe_sigs: Option<&BlockSignatures>,
@@ -133,11 +135,14 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> Self {
         let block_hash = block_header.block_hash();
         let era_id = Some(block_header.era_id());
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validator_weights.validator_public_keys().cloned().collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validator_weights.validator_public_keys().cloned().collect(),
+            legacy_required_finality,
+        );
         if let Some(signatures) = maybe_sigs {
             for finality_signature in signatures.finality_signatures() {
                 let _ =
@@ -240,10 +245,23 @@ impl BlockBuilder {
     }
 
     pub(super) fn is_finished(&self) -> bool {
-        matches!(
-            self.acquisition_state,
-            BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-        )
+        match self.acquisition_state {
+            BlockAcquisitionState::Initialized(_, _)
+            | BlockAcquisitionState::HaveBlockHeader(_, _)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(_, _)
+            | BlockAcquisitionState::HaveBlock(_, _, _)
+            | BlockAcquisitionState::HaveGlobalState(_, _, _, _)
+            | BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _)
+            | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
+            | BlockAcquisitionState::HaveAllDeploys(_, _)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _)
+            | BlockAcquisitionState::Failed(_, _) => {
+                //TODO: does failed also mean finished?
+                false
+            }
+            BlockAcquisitionState::Complete(_, _) => true,
+        }
     }
 
     pub(super) fn is_executing(&self) -> bool {
@@ -254,55 +272,66 @@ impl BlockBuilder {
         matches!(self.execution_progress, ExecutionProgress::Idle)
     }
 
-    pub(super) fn register_block_execution_not_enqueued(&mut self) {
-        warn!("failed to enqueue block for execution");
-        // reset latch and try again
-        self.touch();
+    pub(super) fn register_block_execution_enqueued(&mut self) {
+        if self.should_fetch_execution_state {
+            let block_hash = self.block_hash();
+            error!(%block_hash, "invalid attempt to start block execution on historical block");
+            self.abort();
+            return;
+        }
+
+        match self.execution_progress.start() {
+            None => {
+                let block_hash = self.block_hash();
+                warn!(%block_hash, "invalid attempt to start block execution");
+            }
+            Some(executing_progress) => {
+                self.touch();
+                self.execution_progress = executing_progress;
+            }
+        }
     }
 
-    pub(super) fn register_block_execution_enqueued(&mut self) {
+    pub(super) fn register_made_finalized_block(
+        &mut self,
+        block: FinalizedBlock,
+        deploys: Vec<Deploy>,
+    ) {
+        if let Err(error) = self.acquisition_state.register_made_finalized_block(
+            self.should_fetch_execution_state,
+            block,
+            deploys,
+        ) {
+            error!(%error, "register finalized block failed");
+            self.abort()
+        } else {
+            self.touch();
+        }
+    }
+
+    pub(super) fn register_block_executed(&mut self) {
         if let Err(error) = self
             .acquisition_state
-            .register_block_execution_enqueued(self.should_fetch_execution_state)
+            .register_block_executed(self.should_fetch_execution_state)
         {
-            error!(%error, "register block execution enqueued failed");
+            error!(%error, "register block executed failed");
             self.abort()
         } else {
             if self.should_fetch_execution_state {
                 let block_hash = self.block_hash();
-                error!(%block_hash, "invalid attempt to start block execution on historical block");
+                error!(%block_hash, "invalid attempt to finish block execution on historical block");
                 self.abort();
-                return;
             }
 
-            match self.execution_progress.start() {
+            match self.execution_progress.finish() {
                 None => {
                     let block_hash = self.block_hash();
-                    warn!(%block_hash, "invalid attempt to start block execution");
+                    warn!(%block_hash, "invalid attempt to finish block execution");
                 }
                 Some(executing_progress) => {
                     self.touch();
                     self.execution_progress = executing_progress;
                 }
-            }
-        }
-    }
-
-    pub(super) fn register_block_executed(&mut self) {
-        if self.should_fetch_execution_state {
-            let block_hash = self.block_hash();
-            error!(%block_hash, "invalid attempt to finish block execution on historical block");
-            self.abort();
-        }
-
-        match self.execution_progress.finish() {
-            None => {
-                let block_hash = self.block_hash();
-                warn!(%block_hash, "invalid attempt to finish block execution");
-            }
-            Some(executing_progress) => {
-                self.touch();
-                self.execution_progress = executing_progress;
             }
         }
     }
@@ -344,7 +373,6 @@ impl BlockBuilder {
         &mut self,
         rng: &mut NodeRng,
         max_simultaneous_peers: usize,
-        legacy_required_finality: LegacyRequiredFinality,
     ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
@@ -388,7 +416,6 @@ impl BlockBuilder {
             validator_weights,
             rng,
             self.should_fetch_execution_state,
-            legacy_required_finality,
             max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
@@ -450,6 +477,25 @@ impl BlockBuilder {
     pub(super) fn register_finality_signature_pending(&mut self, validator: PublicKey) {
         self.acquisition_state
             .register_finality_signature_pending(validator);
+    }
+
+    pub(super) fn switch_to_have_strict_finality(
+        &mut self,
+        block_hash: BlockHash,
+    ) -> Result<(), Error> {
+        match self
+            .acquisition_state
+            .switch_to_have_strict_finality(block_hash, self.should_fetch_execution_state)
+        {
+            Ok(()) => {
+                self.touch();
+                Ok(())
+            }
+            Err(error) => {
+                self.abort();
+                Err(Error::BlockAcquisition(error))
+            }
+        }
     }
 
     pub(super) fn register_finality_signature(
