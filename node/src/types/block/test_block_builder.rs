@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::BLOCK_REWARD, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512, testing::TestRng,
+    system::auction::BLOCK_REWARD, testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey,
+    Timestamp, U512,
 };
 use rand::Rng;
 

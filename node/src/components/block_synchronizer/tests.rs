@@ -11,10 +11,7 @@ use std::{
 
 use casper_types::{AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, URef, U512};
 use derive_more::From;
-use rand::{
-    seq::IteratorRandom,
-    Rng,
-};
+use rand::{seq::IteratorRandom, Rng};
 
 use casper_types::testing::TestRng;
 
