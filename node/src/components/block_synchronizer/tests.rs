@@ -12,7 +12,6 @@ use std::{
 use casper_types::{AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, URef, U512};
 use derive_more::From;
 use rand::{
-    distributions::{Distribution, Standard},
     seq::IteratorRandom,
     Rng,
 };
@@ -26,9 +25,8 @@ use crate::{
         consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
     },
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    testing::test_block_builder::TestBlockBuilder,
     tls::KeyFingerprint,
-    types::DeployId,
+    types::{DeployId, TestBlockBuilder},
     utils,
 };
 
@@ -148,14 +146,12 @@ impl TestEnv {
 
         validator_matrix
     }
-}
 
-impl Distribution<TestEnv> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TestEnv {
+    fn random(rng: &mut TestRng) -> TestEnv {
         let num_validators: usize = rng.gen_range(3..100);
         let validator_keys: Vec<Arc<SecretKey>> = iter::repeat(())
             .take(num_validators)
-            .map(|_| Arc::new(rng.gen()))
+            .map(|_| Arc::new(SecretKey::random(rng)))
             .collect();
 
         let num_peers = rng.gen_range(10..20);
@@ -247,7 +243,7 @@ impl BlockSynchronizer {
 async fn global_state_sync_wont_stall_with_bad_peers() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env = rng.gen::<TestEnv>().with_block(
+    let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .deploys([Deploy::random(&mut rng)].iter())
@@ -387,7 +383,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
 async fn should_not_stall_after_registering_new_era_validator_weights() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
 
@@ -463,7 +459,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
 #[test]
 fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     let mut rng = TestRng::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
@@ -488,7 +484,7 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
 async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
@@ -530,7 +526,7 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
 async fn fwd_sync_gets_peers_only_form_accumulator() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
@@ -563,7 +559,7 @@ async fn fwd_sync_gets_peers_only_form_accumulator() {
 async fn sync_starts_with_header_fetch() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let peers = test_env.peers();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -602,7 +598,7 @@ async fn sync_starts_with_header_fetch() {
 async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let peers = test_env.peers();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -660,7 +656,7 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
 async fn registering_header_successfully_triggers_signatures_fetch_for_weak_finality() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -733,7 +729,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
 async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -860,7 +856,7 @@ async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body(
 async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interval() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -944,7 +940,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
 async fn next_action_for_have_weak_finality_is_fetching_block_body() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1009,7 +1005,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
 async fn registering_block_body_transitions_builder_to_have_block_state() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1093,7 +1089,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
 async fn having_block_body_for_block_without_deploys_requires_only_signatures() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1150,7 +1146,7 @@ async fn having_block_body_for_block_without_deploys_requires_only_signatures() 
 async fn having_block_body_for_block_with_deploys_requires_approvals_hashes() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env = rng.gen::<TestEnv>().with_block(
+    let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .deploys([Deploy::random(&mut rng)].iter())
@@ -1220,7 +1216,7 @@ async fn registering_approvals_hashes_triggers_fetch_for_deploys() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
     let deploys = [Deploy::random(&mut rng)];
-    let test_env = rng.gen::<TestEnv>().with_block(
+    let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .deploys(deploys.iter())
@@ -1309,7 +1305,7 @@ async fn registering_approvals_hashes_triggers_fetch_for_deploys() {
 async fn fwd_have_block_with_strict_finality_requires_block_enqueue_for_execution() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1353,7 +1349,7 @@ async fn fwd_have_block_with_strict_finality_requires_block_enqueue_for_executio
 async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_created() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1426,7 +1422,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
 async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1500,7 +1496,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
 async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -1564,7 +1560,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
 #[test]
 fn builders_are_purged_when_requested() {
     let mut rng = TestRng::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
@@ -1607,7 +1603,7 @@ fn builders_are_purged_when_requested() {
 async fn synchronizer_halts_if_block_cannot_be_made_executable() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env: TestEnv = rng.gen();
+    let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();

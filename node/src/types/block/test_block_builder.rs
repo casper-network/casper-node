@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::BLOCK_REWARD, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    system::auction::BLOCK_REWARD, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512, testing::TestRng,
 };
 use rand::Rng;
 
@@ -11,17 +11,15 @@ use crate::{
     types::{Block, BlockHash, BlockPayload, Deploy, DeployHashWithApprovals, FinalizedBlock},
 };
 
-const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
-
 pub(crate) struct TestBlockBuilder {
+    parent_hash: Option<BlockHash>,
+    state_root_hash: Option<Digest>,
+    timestamp: Option<Timestamp>,
     era: Option<u64>,
     height: Option<u64>,
     protocol_version: ProtocolVersion,
-    is_switch: Option<bool>,
     deploys: Vec<Deploy>,
-    state_root_hash: Option<Digest>,
-    parent_hash: Option<BlockHash>,
-    timestamp: Option<Timestamp>,
+    is_switch: Option<bool>,
 }
 
 impl TestBlockBuilder {
@@ -38,20 +36,9 @@ impl TestBlockBuilder {
         }
     }
 
-    pub(crate) fn era(mut self, era: u64) -> Self {
-        self.era = Some(era);
-        self
-    }
-
     #[allow(unused)]
-    pub(crate) fn height(mut self, height: u64) -> Self {
-        self.height = Some(height);
-        self
-    }
-
-    #[allow(unused)]
-    pub(crate) fn switch_block(mut self, is_switch: bool) -> Self {
-        self.is_switch = Some(is_switch);
+    pub(crate) fn parent_hash(mut self, parent_hash: BlockHash) -> Self {
+        self.parent_hash = Some(parent_hash);
         self
     }
 
@@ -62,8 +49,19 @@ impl TestBlockBuilder {
     }
 
     #[allow(unused)]
-    pub(crate) fn parent_hash(mut self, parent_hash: BlockHash) -> Self {
-        self.parent_hash = Some(parent_hash);
+    pub(crate) fn timestamp(mut self, timestamp: Timestamp) -> Self {
+        self.timestamp = Some(timestamp);
+        self
+    }
+
+    pub(crate) fn era(mut self, era: u64) -> Self {
+        self.era = Some(era);
+        self
+    }
+
+    #[allow(unused)]
+    pub(crate) fn height(mut self, height: u64) -> Self {
+        self.height = Some(height);
         self
     }
 
@@ -76,12 +74,12 @@ impl TestBlockBuilder {
     }
 
     #[allow(unused)]
-    pub(crate) fn timestamp(mut self, timestamp: Timestamp) -> Self {
-        self.timestamp = Some(timestamp);
+    pub(crate) fn switch_block(mut self, is_switch: bool) -> Self {
+        self.is_switch = Some(is_switch);
         self
     }
 
-    pub(crate) fn build<R: Rng + ?Sized>(self, rng: &mut R) -> Block {
+    pub(crate) fn build(self, rng: &mut TestRng) -> Block {
         let state_root_hash = if let Some(root_hash) = self.state_root_hash {
             root_hash
         } else {
@@ -91,7 +89,7 @@ impl TestBlockBuilder {
         let era = if let Some(era) = self.era {
             era
         } else {
-            rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK)
+            rng.gen_range(0..super::MAX_ERA_FOR_RANDOM_BLOCK)
         };
 
         let height = if let Some(height) = self.height {
