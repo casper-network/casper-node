@@ -4,18 +4,15 @@
 # ----------------------------------------------------------------
 
 # 1. Start v1 running at current mainnet commit.
-# 2. Waits for genesis era to complete.
-# 4. Delegates from an unused account.
-# 5. Waits for the auction delay to take effect.
-# 7. Asserts delegation is in auction info.
-# 7. Undelegate
-# 8. Stages the network for emergency upgrade.
-# 9. Assert v2 nodes run & the chain advances (new blocks are generated).
-# 10. Waits 1 era.
-# 13. Waits for the auction delay to take effect.
-# 15. Asserts delegatee is NO LONGER in auction info.
-# 16. Run Health Checks
-# 17. Successful test cleanup.
+# 2. Wait for genesis era to complete.
+# 3. Delegate from an unused account.
+# 4. Wait for the auction delay to take effect.
+# 5. Asserts delegation is in auction info.
+# 6. Undelegate.
+# 7. Perform an emergency upgrade and assert validator set has changed.
+# 8. Asserts delegatee is NO LONGER in auction info.
+# 9. Run health checks.
+# 10. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -50,10 +47,9 @@ function _main()
     _step_05
     _step_06
     _step_07
-    #_step_08
+    _step_08
     _step_09
     _step_10
-    _step_11
 }
 
 function _custom_validators_state_update_config()
@@ -82,7 +78,7 @@ EOF
     echo $TEMPFILE
 }
 
-# Step 01: Start network from pre-built stage.
+# Step 01: Start v1 running at current mainnet commit.
 function _step_01()
 {
     local STAGE_ID=${1}
@@ -103,7 +99,7 @@ function _step_01()
     source "$NCTL/sh/node/start.sh" node=all
 }
 
-# Step 02: Await era-id >= 1.
+# Step 02: Wait for genesis era to complete.
 function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
@@ -111,12 +107,13 @@ function _step_02()
     do_await_genesis_era_to_complete 'false'
 }
 
-# Step 03: Delegate from a nodes account
+# Step 03: Delegate from an unused account.
 function _step_03()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
     local AMOUNT=${3:-'500000000000'}
+    local NODE_PUBLIC_KEY
 
     log_step_upgrades 3 "Delegating $AMOUNT from account-$ACCOUNT_ID to validator-$NODE_ID"
 
@@ -124,16 +121,19 @@ function _step_03()
             amount="$AMOUNT" \
             delegator="$ACCOUNT_ID" \
             validator="$NODE_ID"
+
+    NODE_PUBLIC_KEY=$(nctl-view-node-status node=$NODE_ID | grep our_public_signing_key | cut -c 30-95)
+    log "Delegated to validator: $NODE_PUBLIC_KEY"
 }
 
-# Step 04: Await 2 eras
+# Step 04: Wait for the auction delay to take effect.
 function _step_04()
 {
     log_step_upgrades 4 "Awaiting Auction_Delay = 1 + 1"
     nctl-await-n-eras offset='2' sleep_interval='2.0' timeout='300'
 }
 
-# Step 05: Assert USER_ID is a delegatee
+# Step 05: Asserts delegation is in auction info.
 function _step_05()
 {
     local USER_ID=${1:-'7'}
@@ -154,7 +154,6 @@ function _step_05()
         if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
             log "... user-$USER_ID found in auction info delegators!"
             log "... public_key_hex: $HEX"
-#            echo "$AUCTION_INFO_FOR_HEX"
             break
         else
             TIMEOUT_SEC=$((TIMEOUT_SEC + 1))
@@ -162,19 +161,15 @@ function _step_05()
             sleep 1
             if [ "$TIMEOUT_SEC" = '60' ]; then
                 log "ERROR: Could not find $HEX in auction info delegators!"
-#                echo "$(nctl-view-chain-auction-info)"
                 exit 1
             fi
         fi
     done
 
-    echo "CURRENT ERA: $(nctl-view-chain-era)"
-#    nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    echo "CURRENT ERA: $(nctl-view-chain-era)"
 }
 
-# Step 06: Undelegate previous user
+# Step 06: Undelegate.
 function _step_06()
 {
     local NODE_ID=${1:-'5'}
@@ -188,16 +183,10 @@ function _step_06()
             delegator="$ACCOUNT_ID" \
             validator="$NODE_ID"
 
-    echo "CURRENT ERA: $(nctl-view-chain-era)"
-    #nctl-view-chain-auction-info
-    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    #nctl-view-chain-auction-info
-    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    #nctl-view-chain-auction-info
-    echo "CURRENT ERA: $(nctl-view-chain-era)"
+    nctl-await-n-eras offset='2' sleep_interval='2.0' timeout='300'
 }
 
-# Emergency Restart this bitch with a validator swap
+# Step 07: Perform an emergency upgrade and assert validator set has changed.
 function _step_07()
 {
     local ACTIVATE_ERA
@@ -233,10 +222,6 @@ function _step_07()
     OLD_VALIDATORS_ERA_ID=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.era_id')
     OLD_VALIDATORS_PUBLIC_KEYS=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.validator_weights[].public_key' | sort)
 
-    echo "********************************************"
-    echo $OLD_VALIDATORS_PUBLIC_KEYS
-    echo "********************************************"
-
     do_node_stop_all
 
     _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$GS_PARAMS"
@@ -247,17 +232,12 @@ function _step_07()
         log "...starting $NODE_ID"
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
-    #sleep 10
 
     nctl-await-n-eras offset='3' sleep_interval='2.0' timeout='300'
 
     AUCTION_INFO=$(nctl-view-chain-auction-info)
     NEW_VALIDATORS_ERA_ID=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.era_id')
     NEW_VALIDATORS_PUBLIC_KEYS=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.validator_weights[].public_key' | sort)
-
-    echo "********************************************"
-    echo $NEW_VALIDATORS_PUBLIC_KEYS
-    echo "********************************************"
 
     if [[ "$OLD_VALIDATORS_PUBLIC_KEYS" == "$NEW_VALIDATORS_PUBLIC_KEYS" ]]
     then
@@ -272,20 +252,8 @@ function _step_07()
     rm -f $TEMPFILE
 }
 
-#function _step_08()
-#{
-#    log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
-#    echo "CURRENT ERA: $(nctl-view-chain-era)"
-#    #nctl-view-chain-auction-info
-#    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-#    #nctl-view-chain-auction-info
-#    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-#    #nctl-view-chain-auction-info
-#    echo "CURRENT ERA: $(nctl-view-chain-era)"
-#}
-
-# Step 08: Assert USER_ID is NOT a delegatee
-function _step_09()
+# Step 08: Asserts delegatee is NO LONGER in auction info.
+function _step_08()
 {
     local USER_ID=${1:-'7'}
     local USER_PATH
@@ -296,25 +264,22 @@ function _step_09()
     HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
     AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
 
-    log_step_upgrades 9 "Asserting user-$USER_ID is NOT a delegatee"
+    log_step_upgrades 8 "Asserting user-$USER_ID is NOT a delegatee"
 
     if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
         log "ERROR: user-$USER_ID found in auction info delegators!"
         log "... public_key_hex: $HEX"
-        echo "$AUCTION_INFO_FOR_HEX"
         exit 1
     else
         log "... Could not find $HEX in auction info delegators! [expected]"
     fi
-
-    nctl-view-chain-auction-info
 }
 
-# Step 10: Run NCTL health checks
-function _step_10()
+# Step 9: Run health checks.
+function _step_09()
 {
     # restarts=5 - Nodes that upgrade
-    log_step_upgrades 10 "running health checks"
+    log_step_upgrades 9 "running health checks"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors='0' \
             equivocators='0' \
@@ -324,8 +289,8 @@ function _step_10()
             ejections=0
 }
 
-# Step 11: Terminate.
-function _step_11()
+# Step 11: Successful test cleanup.
+function _step_10()
 {
     log_step_upgrades 11 "test successful - tidying up"
 
