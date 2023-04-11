@@ -24,6 +24,7 @@ pub(crate) struct TestBlockBuilder {
 }
 
 impl TestBlockBuilder {
+    #[allow(unused)]
     pub(crate) fn new() -> Self {
         Self {
             era: None,
@@ -55,6 +56,7 @@ impl TestBlockBuilder {
         self
     }
 
+    #[allow(unused)]
     pub(crate) fn era(mut self, era: u64) -> Self {
         self.era = Some(era);
         self
@@ -66,6 +68,7 @@ impl TestBlockBuilder {
         self
     }
 
+    #[allow(unused)]
     pub(crate) fn deploys<'a, I: IntoIterator<Item = &'a Deploy>>(
         mut self,
         deploys_iter: I,
@@ -80,6 +83,7 @@ impl TestBlockBuilder {
         self
     }
 
+    #[allow(unused)]
     pub(crate) fn build(self, rng: &mut TestRng) -> Block {
         let state_root_hash = if let Some(root_hash) = self.state_root_hash {
             root_hash
