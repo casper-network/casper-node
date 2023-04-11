@@ -340,7 +340,6 @@ mod tests {
 
     use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
     use crate::testing::init_logging;
-    use casper_types::crypto;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);

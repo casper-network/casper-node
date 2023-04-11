@@ -7,8 +7,7 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_types::{
-    system::auction::DelegationRate, testing::TestRng, EraId, Motes, PublicKey, SecretKey,
-    TimeDiff, Timestamp, U512,
+    system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{

@@ -11,7 +11,6 @@ use tokio::time;
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
-    crypto,
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
     EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, U512,

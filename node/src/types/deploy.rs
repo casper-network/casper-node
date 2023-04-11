@@ -1514,7 +1514,7 @@ mod tests {
     use std::{iter, time::Duration};
 
     use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
-    use casper_types::{bytesrepr::Bytes, crypto, CLValue};
+    use casper_types::{bytesrepr::Bytes, CLValue};
 
     use super::*;
 

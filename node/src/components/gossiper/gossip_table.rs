@@ -475,7 +475,7 @@ mod tests {
 
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, TimeDiff};
 
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
     use crate::{logging, utils::DisplayIter};

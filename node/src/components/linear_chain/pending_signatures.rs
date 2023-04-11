@@ -146,7 +146,7 @@ impl PendingSignatures {
 mod tests {
     use super::*;
     use crate::types::FinalitySignature;
-    use casper_types::{crypto, crypto::generate_ed25519_keypair, testing::TestRng, EraId};
+    use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng, EraId};
 
     use std::collections::BTreeMap;
 

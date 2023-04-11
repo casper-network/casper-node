@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::Serialize;
 
-use casper_types::{TimeDiff, Timestamp};
+use casper_types::Timestamp;
 
 use super::Source;
 use crate::{
