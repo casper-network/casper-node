@@ -1881,13 +1881,13 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves an `Account` from global state if present.
     pub(crate) async fn get_account_from_global_state(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         account_key: Key,
     ) -> Option<Account>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(prestate_hash, account_key, vec![]);
+        let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
             Ok(_) | Err(_) => None,
@@ -1897,13 +1897,13 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves the balance of a purse, returns `None` if no purse is present.
     pub(crate) async fn check_purse_balance(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         main_purse: URef,
     ) -> Option<U512>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let balance_request = BalanceRequest::new(prestate_hash, main_purse);
+        let balance_request = BalanceRequest::new(state_root_hash, main_purse);
         match self.get_balance(balance_request).await {
             Ok(balance_result) => {
                 if let Some(motes) = balance_result.motes() {
@@ -1918,14 +1918,14 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves an `Contract` from global state if present.
     pub(crate) async fn get_contract_for_validation(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
     ) -> Option<Box<Contract>>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        let query_request = QueryRequest::new(state_root_hash, query_key, path);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
@@ -1938,14 +1938,14 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves an `ContractPackage` from global state if present.
     pub(crate) async fn get_contract_package_for_validation(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
     ) -> Option<Box<ContractPackage>>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        let query_request = QueryRequest::new(state_root_hash, query_key, path);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 value.as_contract_package().map(|pkg| Box::new(pkg.clone()))
