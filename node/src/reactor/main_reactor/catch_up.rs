@@ -108,7 +108,7 @@ impl MainReactor {
                 // trusted block hash to be provided via the config file
                 info!("CatchUp: local tip detected, no trusted hash");
                 if block.header().is_switch_block() {
-                    self.switch_block = Some(block.header().clone());
+                    self.switch_block_header = Some(block.header().clone());
                 }
                 Either::Left(SyncIdentifier::LocalTip(
                     *block.hash(),
@@ -116,7 +116,7 @@ impl MainReactor {
                     block.header().era_id(),
                 ))
             }
-            Ok(None) if self.switch_block.is_none() => {
+            Ok(None) if self.switch_block_header.is_none() => {
                 // no trusted hash, no local block, might be genesis
                 self.catch_up_check_genesis()
             }

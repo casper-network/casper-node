@@ -462,6 +462,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "strum",
  "tempfile",
  "thiserror",
  "tracing",
@@ -586,6 +587,7 @@ dependencies = [
  "static_assertions",
  "stats_alloc",
  "structopt",
+ "strum",
  "sys-info",
  "tempfile",
  "thiserror",
@@ -4370,22 +4372,23 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.21.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaf86bbcfd1fa9670b7a129f64fc0c9fcbbfe4f1bc4210e9e98fe71ffc12cde2"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 dependencies = [
  "strum_macros",
 ]
 
 [[package]]
 name = "strum_macros"
-version = "0.21.1"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d06aaeeee809dbc59eb4556183dd927df67db1540de5be8d3ec0b6636358a5ec"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
 dependencies = [
- "heck 0.3.3",
+ "heck 0.4.1",
  "proc-macro2 1.0.53",
  "quote 1.0.26",
+ "rustversion",
  "syn 1.0.109",
 ]
 

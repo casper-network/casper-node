@@ -180,7 +180,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block: Option<BlockHeader>,
+    switch_block_header: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
@@ -1159,7 +1159,7 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            switch_block: None,
+            switch_block_header: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
         };
@@ -1394,18 +1394,22 @@ impl MainReactor {
                 block.hash(),
             );
             if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
+                match self
+                    .switch_block_header
+                    .as_ref()
+                    .map(|header| header.height())
+                {
                     Some(current_height) => {
                         if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
+                            self.switch_block_header = Some(block.header().clone());
                         }
                     }
                     None => {
-                        self.switch_block = Some(block.header().clone());
+                        self.switch_block_header = Some(block.header().clone());
                     }
                 }
             } else {
-                self.switch_block = None;
+                self.switch_block_header = None;
             }
         } else {
             error!(

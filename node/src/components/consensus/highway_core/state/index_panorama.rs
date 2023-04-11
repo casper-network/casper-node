@@ -54,3 +54,16 @@ impl IndexPanorama {
         validator_map
     }
 }
+
+mod specimen_support {
+    use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
+
+    use super::IndexObservation;
+
+    impl LargestSpecimen for IndexObservation {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            // This is the largest variant since the other one is empty:
+            IndexObservation::NextSeq(LargestSpecimen::largest_specimen(estimator, cache))
+        }
+    }
+}

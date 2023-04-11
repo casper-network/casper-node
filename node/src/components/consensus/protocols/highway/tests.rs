@@ -13,6 +13,7 @@ use crate::{
             state::{self, tests::ALICE, Observation, Panorama},
             State,
         },
+        max_rounds_per_era,
         protocols::highway::{
             config::Config as HighwayConfig, HighwayMessage, HighwayProtocol, ACTION_ID_VERTEX,
         },
@@ -219,4 +220,15 @@ fn detect_doppelganger() {
         }
     }
     panic!("failed to return DoppelgangerDetected effect");
+}
+
+#[test]
+fn max_rounds_per_era_returns_the_correct_value_for_prod_chainspec_value() {
+    let max_rounds_per_era = max_rounds_per_era(
+        20,
+        TimeDiff::from_seconds(120 * 60),
+        TimeDiff::from_millis(32768),
+    );
+
+    assert_eq!(219, max_rounds_per_era);
 }
