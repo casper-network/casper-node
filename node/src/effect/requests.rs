@@ -698,7 +698,7 @@ pub(crate) enum RpcRequest {
         /// retrieve it.
         only_from_available_block_range: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<BlockWithMetadata>>,
+        responder: Responder<Option<Box<BlockWithMetadata>>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -751,7 +751,7 @@ pub(crate) enum RpcRequest {
         /// Whether to return finalized approvals.
         finalized_approvals: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadataExt)>>,
+        responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
     },
     /// Return the connected peers.
     GetPeers {
@@ -1024,7 +1024,7 @@ pub(crate) struct FetcherRequest<T: FetchItem> {
     /// The peer id of the peer to be asked if the item is not held locally
     pub(crate) peer: NodeId,
     /// Metadata used during validation of the fetched item.
-    pub(crate) validation_metadata: T::ValidationMetadata,
+    pub(crate) validation_metadata: Box<T::ValidationMetadata>,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
 }
@@ -1057,7 +1057,6 @@ impl Display for TrieAccumulatorRequest {
 pub(crate) struct SyncGlobalStateRequest {
     pub(crate) block_hash: BlockHash,
     pub(crate) state_root_hash: Digest,
-    pub(crate) peers: HashSet<NodeId>,
     #[serde(skip)]
     pub(crate) responder:
         Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
@@ -1150,15 +1149,6 @@ pub(crate) enum BlockAccumulatorRequest {
         block_hash: BlockHash,
         responder: Responder<Option<Vec<NodeId>>>,
     },
-    GetBlock {
-        block_hash: BlockHash,
-        responder: Responder<Option<Arc<Block>>>,
-    },
-    GetFinalitySignature {
-        block_hash: BlockHash,
-        public_key: PublicKey,
-        responder: Responder<Option<FinalitySignature>>,
-    },
 }
 
 impl Display for BlockAccumulatorRequest {
@@ -1166,20 +1156,6 @@ impl Display for BlockAccumulatorRequest {
         match self {
             BlockAccumulatorRequest::GetPeersForBlock { block_hash, .. } => {
                 write!(f, "get peers for {}", block_hash)
-            }
-            BlockAccumulatorRequest::GetBlock { block_hash, .. } => {
-                write!(f, "get block for {}", block_hash)
-            }
-            BlockAccumulatorRequest::GetFinalitySignature {
-                block_hash,
-                public_key,
-                ..
-            } => {
-                write!(
-                    f,
-                    "get finality signature of {} for {}",
-                    public_key, block_hash
-                )
             }
         }
     }
@@ -1189,7 +1165,7 @@ impl Display for BlockAccumulatorRequest {
 pub(crate) enum BlockSynchronizerRequest {
     NeedNext,
     DishonestPeers,
-    SyncGlobalStates(Vec<(BlockHash, Digest)>, Vec<NodeId>),
+    SyncGlobalStates(Vec<(BlockHash, Digest)>),
     Status {
         responder: Responder<BlockSynchronizerStatus>,
     },
@@ -1207,7 +1183,7 @@ impl Display for BlockSynchronizerRequest {
             BlockSynchronizerRequest::Status { .. } => {
                 write!(f, "block synchronizer request: status")
             }
-            BlockSynchronizerRequest::SyncGlobalStates(_, _) => {
+            BlockSynchronizerRequest::SyncGlobalStates(_) => {
                 write!(f, "request to sync global states")
             }
         }

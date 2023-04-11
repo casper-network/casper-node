@@ -35,7 +35,7 @@ If you try to invoke the contract before these variables are set, then you'll ge
 
 | feature | cost             |
 |---------|------------------|
-| faucet install | `77_924_962_810` |
-| faucet set variables | `1_649_988_470` |
-| faucet call by installer | `4_128_188_320` |
-| faucet call by user | `5_096_960_260` |
+| faucet install | `73_606_599_170` |
+| faucet set variables | `628_969_490` |
+| faucet call by installer | `3_124_766_440` |
+| faucet call by user | `3_397_763_400` |

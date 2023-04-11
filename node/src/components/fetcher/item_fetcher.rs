@@ -52,7 +52,7 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         effect_builder: EffectBuilder<REv>,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where
@@ -65,7 +65,8 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
             id,
             peer,
             validation_metadata,
-            maybe_item: Box::new(result),
+            // TODO: Change signature of `get_locally` to return boxed item instead of boxing here.
+            maybe_item: result.map(Box::new),
             responder,
         })
     }
@@ -84,7 +85,7 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         effect_builder: EffectBuilder<REv>,
         id: T::Id,
         peer: NodeId,
-        validation_metadata: T::ValidationMetadata,
+        validation_metadata: Box<T::ValidationMetadata>,
         responder: FetchResponder<T>,
     ) -> Effects<Event<T>>
     where
@@ -97,12 +98,12 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
         match item_handles.entry(id.clone()).or_default().entry(peer) {
             Entry::Occupied(mut entry) => {
                 let handle = entry.get_mut();
-                if *handle.validation_metadata() != validation_metadata {
+                if handle.validation_metadata() != &*validation_metadata {
                     let error = Error::ValidationMetadataMismatch {
-                        id,
+                        id: Box::new(id),
                         peer,
                         current: Box::new(handle.validation_metadata().clone()),
-                        new: Box::new(validation_metadata),
+                        new: validation_metadata,
                     };
                     error!(%error, "failed to fetch");
                     return responder.respond(Err(error)).ignore();
@@ -127,7 +128,10 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
 
                 self.signal(
                     id.clone(),
-                    Err(Error::CouldNotConstructGetRequest { id, peer }),
+                    Err(Error::CouldNotConstructGetRequest {
+                        id: Box::new(id),
+                        peer,
+                    }),
                     peer,
                 )
             }

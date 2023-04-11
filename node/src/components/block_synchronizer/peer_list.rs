@@ -165,8 +165,10 @@ impl PeerList {
     }
 
     pub(super) fn qualified_peers(&self, rng: &mut NodeRng) -> Vec<NodeId> {
-        let up_to = self.max_simultaneous_peers as usize;
+        self.qualified_peers_up_to(rng, self.max_simultaneous_peers as usize)
+    }
 
+    pub(super) fn qualified_peers_up_to(&self, rng: &mut NodeRng, up_to: usize) -> Vec<NodeId> {
         // get most useful up to limit
         let mut peers = self.get_random_peers_by_quality(rng, up_to, PeerQuality::Reliable);
 

@@ -1,11 +1,12 @@
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
     effect::{EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::{MainEvent, MainReactor},
+    storage::HighestOrphanedBlockResult,
     NodeRng,
 };
 
@@ -25,11 +26,14 @@ impl MainReactor {
         rng: &mut NodeRng,
     ) -> ValidateInstruction {
         let queue_depth = self.contract_runtime.queue_depth();
-        if self.contract_runtime.queue_depth() > 0 {
-            debug!("Validate: should_validate queue_depth {}", queue_depth);
-            return ValidateInstruction::KeepUp;
+        if queue_depth > 0 {
+            warn!("Validate: should_validate queue_depth {}", queue_depth);
+            return ValidateInstruction::CheckLater(
+                "allow time for contract runtime execution to occur".to_string(),
+                self.control_logic_default_delay.into(),
+            );
         }
-        if self.switch_block.is_none() {
+        if self.switch_block_header.is_none() {
             // validate status is only checked at switch blocks
             return ValidateInstruction::NonSwitchBlock;
         }
@@ -79,11 +83,10 @@ impl MainReactor {
             Some(header) => header,
         };
         debug!(
-            state = %self.state,
             era = highest_switch_block_header.era_id().value(),
             block_hash = %highest_switch_block_header.block_hash(),
             height = highest_switch_block_header.height(),
-            "highest_switch_block_header"
+            "{}: highest_switch_block_header", self.state
         );
 
         if let Some(current_era) = self.consensus.current_era() {
@@ -105,7 +108,10 @@ impl MainReactor {
             Some(weights) => weights,
         };
         if !highest_era_weights.contains_key(self.consensus.public_key()) {
-            debug!(state = %self.state,"highest_era_weights does not contain signing_public_key");
+            info!(
+                "{}: highest_era_weights does not contain signing_public_key",
+                self.state
+            );
             return Ok(None);
         }
 
@@ -113,15 +119,32 @@ impl MainReactor {
             .deploy_buffer
             .have_full_ttl_of_deploys(highest_switch_block_header)
         {
-            debug!(state = %self.state,"sufficient deploy TTL awareness to safely participate in consensus");
+            if let HighestOrphanedBlockResult::Orphan(header) =
+                self.storage.get_highest_orphaned_block_header()
+            {
+                self.validator_matrix
+                    .register_retrograde_latch(Some(header.era_id()));
+            } else {
+                return Err(
+                    "get_highest_orphaned_block_header failed to produce record".to_string()
+                );
+            }
+            debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
         } else {
-            info!(state = %self.state,"insufficient deploy TTL awareness to safely participate in consensus");
+            info!(
+                "{}: insufficient deploy TTL awareness to safely participate in consensus",
+                self.state
+            );
             return Ok(None);
         }
 
         let era_id = highest_switch_block_header.era_id();
         if self.upgrade_watcher.should_upgrade_after(era_id) {
-            debug!(state = %self.state, era_id = era_id.value(), "upgrade required after given era");
+            info!(
+                "{}: upgrade required after era {}",
+                self.state,
+                era_id.value()
+            );
             return Ok(None);
         }
 

@@ -1,9 +1,13 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    mem,
+};
 
 use derive_more::From;
 use serde::Serialize;
 
 use casper_types::{system::auction::EraValidators, EraId};
+use static_assertions::const_assert;
 
 use crate::{
     components::{
@@ -46,11 +50,15 @@ use crate::{
     },
 };
 
+// Enforce an upper bound for the `MainEvent` size, which is already quite hefty.
+// 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.
+// 200 is where the `large_enum_variant` clippy lint draws the line as well.
+const _MAIN_EVENT_SIZE: usize = mem::size_of::<MainEvent>();
+const_assert!(_MAIN_EVENT_SIZE <= 192);
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
-// Note: The large enum size must be reigned in eventually. This is a stopgap for now.
-#[allow(clippy::large_enum_variant)]
 pub(crate) enum MainEvent {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
@@ -237,8 +245,8 @@ pub(crate) enum MainEvent {
     #[from]
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
 
-    // Event related to figuring out validators for immediate switch blocks.
-    GotImmediateSwitchBlockEraValidators(EraId, EraValidators, EraValidators),
+    // Event related to figuring out validators for blocks after upgrades.
+    GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
 }
 
 impl ReactorEvent for MainEvent {
@@ -351,7 +359,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
             MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
             MainEvent::UnexecutedBlockAnnouncement(_) => "UnexecutedBlockAnnouncement",
-            MainEvent::GotImmediateSwitchBlockEraValidators(_, _, _) => {
+            MainEvent::GotBlockAfterUpgradeEraValidators(_, _, _) => {
                 "GotImmediateSwitchBlockEraValidators"
             }
         }
@@ -533,10 +541,10 @@ impl Display for MainEvent {
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
             MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::UnexecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
-            MainEvent::GotImmediateSwitchBlockEraValidators(era_id, _, _) => {
+            MainEvent::GotBlockAfterUpgradeEraValidators(era_id, _, _) => {
                 write!(
                     f,
-                    "got immediate switch block era validators for era {}",
+                    "got era validators for block after an upgrade in era {}",
                     era_id
                 )
             }

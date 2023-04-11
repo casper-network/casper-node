@@ -84,7 +84,10 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     identity::Identity,
     insights::NetworkInsights,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+    message::{
+        generate_largest_message, EstimatorWeights, FromIncoming, Message, MessageKind,
+        NetworkMessageEstimator, Payload,
+    },
 };
 use self::{
     blocklist::BlocklistJustification,
@@ -906,7 +909,7 @@ where
                     nonce,
                     span,
                 } => span.in_scope(|| {
-                    debug!("enqueuing ping to be sent");
+                    trace!("enqueuing ping to be sent");
                     self.send_message(peer_id, Arc::new(Message::Ping { nonce }), None);
                 }),
             }

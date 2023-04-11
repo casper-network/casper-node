@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use casper_types::ExecutionResult;
 
-use crate::types::{Block, DeployHash, DeployHeader};
+use crate::types::{ActivationPoint, Block, DeployHash, DeployHeader};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
@@ -58,6 +58,21 @@ impl MetaBlock {
         self.state = self.state.merge(other.state)?;
 
         Ok(self)
+    }
+
+    /// Is this a switch block?
+    pub(crate) fn is_switch_block(&self) -> bool {
+        self.block.header.is_switch_block()
+    }
+
+    /// Is this the last block before a protocol version upgrade?
+    pub(crate) fn is_upgrade_boundary(&self, activation_point: ActivationPoint) -> bool {
+        match activation_point {
+            ActivationPoint::EraId(era_id) => {
+                self.is_switch_block() && self.block.header.era_id.successor() == era_id
+            }
+            ActivationPoint::Genesis(_) => false,
+        }
     }
 }
 

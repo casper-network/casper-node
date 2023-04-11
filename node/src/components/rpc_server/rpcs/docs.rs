@@ -28,7 +28,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 4, 8);
+    ProtocolVersion::from_parts(1, 4, 13);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 

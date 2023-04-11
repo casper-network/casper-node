@@ -27,7 +27,7 @@ impl SignatureGossipTracker {
         }
     }
 
-    pub(super) fn register_signature(&mut self, signature_id: FinalitySignatureId) {
+    pub(super) fn register_signature(&mut self, signature_id: Box<FinalitySignatureId>) {
         // ignore the signature if it's from an older era
         if signature_id.era_id < self.era_id {
             return;
@@ -41,7 +41,7 @@ impl SignatureGossipTracker {
         self.finished_gossiping
             .entry(signature_id.block_hash)
             .or_default()
-            .push(signature_id);
+            .push(*signature_id);
     }
 
     fn finished_gossiping_enough(&self, validator_weights: &EraValidatorWeights) -> bool {

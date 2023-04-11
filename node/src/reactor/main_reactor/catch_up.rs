@@ -8,6 +8,7 @@ use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
+        sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
         ValidatorBoundComponent,
     },
@@ -107,7 +108,7 @@ impl MainReactor {
                 // trusted block hash to be provided via the config file
                 info!("CatchUp: local tip detected, no trusted hash");
                 if block.header().is_switch_block() {
-                    self.switch_block = Some(block.header().clone());
+                    self.switch_block_header = Some(block.header().clone());
                 }
                 Either::Left(SyncIdentifier::LocalTip(
                     *block.hash(),
@@ -115,7 +116,7 @@ impl MainReactor {
                     block.header().era_id(),
                 ))
             }
-            Ok(None) if self.switch_block.is_none() => {
+            Ok(None) if self.switch_block_header.is_none() => {
                 // no trusted hash, no local block, might be genesis
                 self.catch_up_check_genesis()
             }
@@ -328,9 +329,16 @@ impl MainReactor {
             );
         }
 
+        // latch accumulator progress to allow sync-leap time to do work
+        self.block_accumulator.reset_last_progress();
+
         let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(block_hash);
-        let effects =
-            self.request_leap_if_not_redundant(sync_leap_identifier, effect_builder, peers_to_ask);
+        let effects = effect_builder.immediately().event(move |_| {
+            MainEvent::SyncLeaper(sync_leaper::Event::AttemptLeap {
+                sync_leap_identifier,
+                peers_to_ask,
+            })
+        });
         CatchUpInstruction::Do(self.control_logic_default_delay.into(), effects)
     }
 
@@ -349,8 +357,6 @@ impl MainReactor {
             %block_hash,
             "CatchUp: leap received"
         );
-
-        self.last_sync_leap_highest_block_hash = Some(block_hash);
 
         if let Err(msg) = self.update_highest_switch_block() {
             return CatchUpInstruction::Fatal(msg);

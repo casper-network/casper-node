@@ -48,33 +48,33 @@ pub(crate) enum Event {
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
     /// The result of the `DeployAcceptor` storing the approvals from a `Deploy` provided by a
     /// peer.
     StoredFinalizedApprovals {
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying the highest available `BlockHeader` from the storage component.
     GetBlockHeaderResult {
-        event_metadata: EventMetadata,
-        maybe_block_header: Box<Option<BlockHeader>>,
+        event_metadata: Box<EventMetadata>,
+        maybe_block_header: Option<Box<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for the `Account` associated with the `Deploy`.
     GetAccountResult {
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         maybe_account: Option<Account>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying the balance of the `Account` associated with the `Deploy`.
     GetBalanceResult {
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         maybe_balance_value: Option<U512>,
         account_hash: AccountHash,
@@ -82,21 +82,21 @@ pub(crate) enum Event {
     },
     /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         is_payment: bool,
         contract_hash: ContractHash,
-        maybe_contract: Option<Contract>,
+        maybe_contract: Option<Box<Contract>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for a `ContractPackage` to verify the executable logic.
     GetContractPackageResult {
-        event_metadata: EventMetadata,
+        event_metadata: Box<EventMetadata>,
         prestate_hash: Digest,
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<ContractPackage>,
+        maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     },
 }

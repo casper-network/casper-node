@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -15,10 +12,13 @@ use crate::{
         fetcher::{EmptyValidationMetadata, FetchItem},
     },
     types::{
-        Block, BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock,
-        NodeId, SignatureWeight,
+        ActivationPoint, BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature,
+        MetaBlock, NodeId, SignatureWeight,
     },
 };
+
+#[cfg(test)]
+use rand::Rng as _;
 
 #[derive(DataSize, Debug)]
 pub(super) struct BlockAcceptor {
@@ -27,6 +27,7 @@ pub(super) struct BlockAcceptor {
     signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
     peers: BTreeSet<NodeId>,
     last_progress: Timestamp,
+    our_signature: Option<FinalitySignature>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -56,23 +57,12 @@ impl BlockAcceptor {
             signatures: BTreeMap::new(),
             peers: peers.into_iter().collect(),
             last_progress: Timestamp::now(),
+            our_signature: None,
         }
     }
 
     pub(super) fn peers(&self) -> &BTreeSet<NodeId> {
         &self.peers
-    }
-
-    pub(super) fn block(&self) -> Option<Arc<Block>> {
-        self.meta_block
-            .as_ref()
-            .map(|meta_block| Arc::clone(&meta_block.block))
-    }
-
-    pub(super) fn finality_signature(&self, public_key: &PublicKey) -> Option<FinalitySignature> {
-        self.signatures
-            .get(public_key)
-            .map(|(finality_signature, _peer)| finality_signature.clone())
     }
 
     pub(super) fn register_peer(&mut self, peer: NodeId) {
@@ -129,12 +119,21 @@ impl BlockAcceptor {
         &mut self,
         finality_signature: FinalitySignature,
         peer: Option<NodeId>,
+        validator_slots: u32,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
         if self.block_hash != finality_signature.block_hash {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash,
                 actual: finality_signature.block_hash,
             });
+        }
+        if let Some(node_id) = peer {
+            // We multiply the number of validators by 2 to get the maximum of signatures, because
+            // of the theoretically possible scenario when we're collecting sigs but are
+            // not yet able to validate them (no validator weights). We should allow to
+            // absorb more than theoretical limit (but not much more) so we don't fill
+            // all slots with invalid sigs:
+            check_signatures_from_peer_bound(validator_slots * 2, node_id, &self.signatures)?;
         }
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
@@ -357,8 +356,29 @@ impl BlockAcceptor {
         self.block_hash
     }
 
+    pub(super) fn is_upgrade_boundary(
+        &self,
+        activation_point: Option<ActivationPoint>,
+    ) -> Option<bool> {
+        match (&self.meta_block, activation_point) {
+            (None, _) => None,
+            (Some(_), None) => Some(false),
+            (Some(meta_block), Some(activation_point)) => {
+                Some(meta_block.is_upgrade_boundary(activation_point))
+            }
+        }
+    }
+
     pub(super) fn last_progress(&self) -> Timestamp {
         self.last_progress
+    }
+
+    pub(super) fn our_signature(&self) -> Option<&FinalitySignature> {
+        self.our_signature.as_ref()
+    }
+
+    pub(super) fn set_our_signature(&mut self, signature: FinalitySignature) {
+        self.our_signature = Some(signature);
     }
 
     /// Removes finality signatures that have the wrong era ID or are signed by non-validators.
@@ -415,6 +435,24 @@ impl BlockAcceptor {
     }
 }
 
+/// Returns an error if the peer has sent too many finality signatures.
+fn check_signatures_from_peer_bound(
+    limit: u32,
+    peer: NodeId,
+    signatures: &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
+) -> Result<(), AcceptorError> {
+    let signatures_for_peer = signatures
+        .values()
+        .filter(|(_fin_sig, nodes)| nodes.contains(&peer))
+        .count();
+
+    if signatures_for_peer < limit as usize {
+        Ok(())
+    } else {
+        Err(AcceptorError::TooManySignatures { peer, limit })
+    }
+}
+
 #[cfg(test)]
 impl BlockAcceptor {
     pub(super) fn executed(&self) -> bool {
@@ -451,5 +489,78 @@ impl BlockAcceptor {
         &mut self,
     ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
         &mut self.signatures
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use casper_types::testing::TestRng;
+    //use crate::types::NodeId;
+    //use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn check_signatures_from_peer_bound_works() {
+        let rng = &mut TestRng::new();
+        let max_signatures = 3;
+        let peer_to_check = NodeId::random(rng);
+
+        let mut signatures = BTreeMap::new();
+        // Insert only the peer to check:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(peer_to_check);
+                nodes
+            }),
+        );
+        // Insert an unrelated peer:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(NodeId::random(rng));
+                nodes
+            }),
+        );
+        // Insert both the peer to check and an unrelated one:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(NodeId::random(rng));
+                nodes.insert(peer_to_check);
+                nodes
+            }),
+        );
+
+        // The peer has send only 2 signatures, so adding a new signature should pass:
+        assert!(matches!(
+            check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
+            Ok(())
+        ));
+
+        // Let's insert once again both the peer to check and an unrelated one:
+        signatures.insert(
+            PublicKey::random(rng),
+            (random_finality_signature(rng), {
+                let mut nodes = BTreeSet::new();
+                nodes.insert(NodeId::random(rng));
+                nodes.insert(peer_to_check);
+                nodes
+            }),
+        );
+
+        // Now this should fail:
+        assert!(matches!(
+            check_signatures_from_peer_bound(max_signatures, peer_to_check, &signatures),
+            Err(AcceptorError::TooManySignatures { peer, limit })
+                if peer == peer_to_check && limit == max_signatures
+        ));
+    }
+
+    fn random_finality_signature(rng: &mut TestRng) -> FinalitySignature {
+        FinalitySignature::random_for_block(BlockHash::random(rng), rng.gen())
     }
 }

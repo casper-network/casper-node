@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -23,9 +20,9 @@ use super::{
 };
 use crate::{
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, DeployHash, DeployId, EraValidatorWeights, FinalitySignature, NodeId,
-        ValidatorMatrix,
+        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
+        BlockHash, BlockHeader, BlockSignatures, DeployHash, DeployId, EraValidatorWeights,
+        FinalitySignature, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -253,6 +250,10 @@ impl BlockBuilder {
         matches!(self.execution_progress, ExecutionProgress::Started)
     }
 
+    pub(super) fn execution_unattempted(&self) -> bool {
+        matches!(self.execution_progress, ExecutionProgress::Idle)
+    }
+
     pub(super) fn register_block_execution_not_enqueued(&mut self) {
         warn!("failed to enqueue block for execution");
         // reset latch and try again
@@ -267,21 +268,19 @@ impl BlockBuilder {
             error!(%error, "register block execution enqueued failed");
             self.abort()
         } else {
-            match (
-                self.should_fetch_execution_state,
-                self.execution_progress.start(),
-            ) {
-                (true, _) => {
+            if self.should_fetch_execution_state {
+                let block_hash = self.block_hash();
+                error!(%block_hash, "invalid attempt to start block execution on historical block");
+                self.abort();
+                return;
+            }
+
+            match self.execution_progress.start() {
+                None => {
                     let block_hash = self.block_hash();
-                    error!(%block_hash, "invalid attempt to start block execution on historical block");
-                    self.abort();
+                    warn!(%block_hash, "invalid attempt to start block execution");
                 }
-                (false, None) => {
-                    let block_hash = self.block_hash();
-                    error!(%block_hash, "invalid attempt to start block execution");
-                    self.abort();
-                }
-                (false, Some(executing_progress)) => {
+                Some(executing_progress) => {
                     self.touch();
                     self.execution_progress = executing_progress;
                 }
@@ -290,21 +289,18 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_block_executed(&mut self) {
-        match (
-            self.should_fetch_execution_state,
-            self.execution_progress.finish(),
-        ) {
-            (true, _) => {
+        if self.should_fetch_execution_state {
+            let block_hash = self.block_hash();
+            error!(%block_hash, "invalid attempt to finish block execution on historical block");
+            self.abort();
+        }
+
+        match self.execution_progress.finish() {
+            None => {
                 let block_hash = self.block_hash();
-                error!(%block_hash, "invalid attempt to finish block execution on historical block");
-                self.abort();
+                warn!(%block_hash, "invalid attempt to finish block execution");
             }
-            (false, None) => {
-                let block_hash = self.block_hash();
-                error!(%block_hash, "invalid attempt to finish block execution");
-                self.abort();
-            }
-            (false, Some(executing_progress)) => {
+            Some(executing_progress) => {
                 self.touch();
                 self.execution_progress = executing_progress;
             }
@@ -348,6 +344,7 @@ impl BlockBuilder {
         &mut self,
         rng: &mut NodeRng,
         max_simultaneous_peers: usize,
+        legacy_required_finality: LegacyRequiredFinality,
     ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
@@ -370,21 +367,28 @@ impl BlockBuilder {
         }
         let era_id = match self.era_id {
             None => {
+                // if we don't have the era_id, we only have block_hash, thus get block_header
                 return BlockAcquisitionAction::block_header(&self.peer_list, rng, self.block_hash);
             }
             Some(era_id) => era_id,
         };
         let validator_weights = match &self.validator_weights {
             None => {
-                return BlockAcquisitionAction::era_validators(era_id);
+                return BlockAcquisitionAction::era_validators(&self.peer_list, rng, era_id);
             }
-            Some(validator_weights) => validator_weights,
+            Some(validator_weights) => {
+                if validator_weights.is_empty() {
+                    return BlockAcquisitionAction::era_validators(&self.peer_list, rng, era_id);
+                }
+                validator_weights
+            }
         };
         match self.acquisition_state.next_action(
             &self.peer_list,
             validator_weights,
             rng,
             self.should_fetch_execution_state,
+            legacy_required_finality,
             max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
@@ -404,6 +408,7 @@ impl BlockBuilder {
         if let Some(era_id) = self.era_id {
             if let Some(evw) = validator_matrix.validator_weights(era_id) {
                 self.validator_weights = Some(evw);
+                self.touch();
             }
         }
     }
@@ -621,5 +626,9 @@ impl BlockBuilder {
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
         self.in_flight_latch = None;
+    }
+
+    pub(crate) fn peer_list(&self) -> &PeerList {
+        &self.peer_list
     }
 }
