@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::TimeDiff;
+use casper_types::TimeDiff;
 
 /// Block proposer configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Clone)]

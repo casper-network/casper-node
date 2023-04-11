@@ -11,18 +11,17 @@ use datasize::DataSize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use crate::{
-    components::consensus::{
-        consensus_protocol::BlockContext,
-        highway_core::{
-            active_validator::{ActiveValidator, Effect},
-            evidence::EvidenceError,
-            state::{Fault, State, UnitError, Weight},
-            validators::{Validator, Validators},
-        },
-        traits::Context,
+use casper_types::{TimeDiff, Timestamp};
+
+use crate::components::consensus::{
+    consensus_protocol::BlockContext,
+    highway_core::{
+        active_validator::{ActiveValidator, Effect},
+        evidence::EvidenceError,
+        state::{Fault, State, UnitError, Weight},
+        validators::{Validator, Validators},
     },
-    types::{TimeDiff, Timestamp},
+    traits::Context,
 };
 
 use super::{
@@ -771,21 +770,20 @@ impl<C: Context> Highway<C> {
 pub(crate) mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 
-    use crate::{
-        components::consensus::{
-            highway_core::{
-                evidence::{Evidence, EvidenceError},
-                highway::{
-                    vertex::Ping, Dependency, Highway, SignedWireUnit, UnitError, Vertex,
-                    VertexError, WireUnit,
-                },
-                highway_testing::TEST_INSTANCE_ID,
-                state::{tests::*, Panorama, State},
-                validators::Validators,
+    use casper_types::Timestamp;
+
+    use crate::components::consensus::{
+        highway_core::{
+            evidence::{Evidence, EvidenceError},
+            highway::{
+                vertex::Ping, Dependency, Highway, SignedWireUnit, UnitError, Vertex, VertexError,
+                WireUnit,
             },
-            traits::ValidatorSecret,
+            highway_testing::TEST_INSTANCE_ID,
+            state::{tests::*, Panorama, State},
+            validators::Validators,
         },
-        types::Timestamp,
+        traits::ValidatorSecret,
     };
 
     pub(crate) fn test_validators() -> Validators<u32> {

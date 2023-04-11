@@ -475,8 +475,10 @@ mod tests {
 
     use rand::Rng;
 
+    use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
-    use crate::{logging, testing::TestRng, types::TimeDiff, utils::DisplayIter};
+    use crate::{logging, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;

@@ -35,7 +35,7 @@ pub(crate) mod utils;
 
 // Public API
 pub mod cli;
-pub mod crypto;
+//pub mod crypto;
 pub mod types;
 
 pub use components::{

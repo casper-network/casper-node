@@ -4,11 +4,13 @@ use num::rational::Ratio;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    TimeDiff,
+};
 
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::types::TimeDiff;
+use casper_types::testing::TestRng;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -42,11 +44,11 @@ pub struct CoreConfig {
 impl CoreConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let era_duration = TimeDiff::from(rng.gen_range(600_000..604_800_000));
+        let era_duration = TimeDiff::from_seconds(rng.gen_range(600..604_800));
         let minimum_era_height = rng.gen_range(5..100);
         let validator_slots = rng.gen();
         let auction_delay = rng.gen::<u32>() as u64;
-        let locked_funds_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
+        let locked_funds_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
         let unbonding_delay = rng.gen_range(1..1_000_000_000);
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1..1_000_000_000),

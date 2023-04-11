@@ -8,8 +8,10 @@ use datasize::DataSize;
 use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
 
+use casper_types::Timestamp;
+
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{Approval, DeployHash, DeployHeader, Timestamp};
+use crate::types::{Approval, DeployHash, DeployHeader};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -152,7 +154,9 @@ pub(super) fn prune_pending_deploys(
 
 #[cfg(test)]
 mod tests {
-    use crate::{testing, testing::TestRng};
+    use casper_types::testing::TestRng;
+
+    use crate::testing;
 
     use super::*;
 

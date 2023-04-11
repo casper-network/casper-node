@@ -6,11 +6,13 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
+use casper_types::{
+    system::auction::DelegationRate, testing::TestRng, EraId, Motes, PublicKey, SecretKey,
+    TimeDiff, Timestamp, U512,
+};
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
-    crypto::AsymmetricKeyExt,
     reactor::participating,
     testing::{
         self,
@@ -20,7 +22,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHash, Chainspec, NodeId, Timestamp,
+        ActivationPoint, BlockHash, Chainspec, NodeId,
     },
     utils::{External, Loadable, WithDir},
     NodeRng,
@@ -116,11 +118,11 @@ impl TestChain {
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
         chainspec.protocol_config.activation_point =
-            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
+            ActivationPoint::Genesis(Timestamp::now() + TimeDiff::from_seconds(45));
 
         chainspec.core_config.minimum_era_height = 4;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
-        chainspec.core_config.era_duration = 10.into();
+        chainspec.core_config.era_duration = TimeDiff::from_millis(0);
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
 

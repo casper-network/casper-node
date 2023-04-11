@@ -7,9 +7,9 @@ use once_cell::sync::Lazy;
 use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 /// The network identifier for a node.
 ///

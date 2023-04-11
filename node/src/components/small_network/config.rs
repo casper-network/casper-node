@@ -5,7 +5,7 @@ use std::str::FromStr;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::TimeDiff;
+use casper_types::TimeDiff;
 
 use super::PayloadWeights;
 

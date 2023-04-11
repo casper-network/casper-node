@@ -2,7 +2,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use crate::types::TimeDiff;
+use casper_types::TimeDiff;
 
 const DEFAULT_SYNC_TIMEOUT: &str = "5min";
 

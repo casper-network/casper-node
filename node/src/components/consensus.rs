@@ -29,7 +29,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::{EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey, Timestamp, U512};
 
 use crate::{
     components::Component,
@@ -45,7 +45,7 @@ use crate::{
     fatal,
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload},
     NodeRng,
 };
 

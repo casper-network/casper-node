@@ -51,8 +51,8 @@ impl SignatureCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, types::FinalitySignature};
-    use casper_types::{EraId, Signature};
+    use crate::types::FinalitySignature;
+    use casper_types::{testing::TestRng, EraId, Signature};
 
     use std::collections::BTreeMap;
 

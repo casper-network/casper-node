@@ -11,13 +11,14 @@ use tokio::time;
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
+    crypto,
     system::auction::{Bids, DelegationRate},
-    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    testing::TestRng,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{
     components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
-    crypto::AsymmetricKeyExt,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{
@@ -31,12 +32,10 @@ use crate::{
         participating::{self, ParticipatingEvent},
         Reactor, ReactorExit, Runner,
     },
-    testing::{
-        self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
-    },
+    testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, Deploy, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, Deploy, ExitCode,
     },
     utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -105,7 +104,7 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        let genesis_time = Timestamp::now() + 45000.into();
+        let genesis_time = Timestamp::now() + TimeDiff::from_seconds(45);
         info!(
             "creating test chain configuration, genesis: {}",
             genesis_time
@@ -114,7 +113,7 @@ impl TestChain {
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
-        chainspec.core_config.era_duration = 10.into();
+        chainspec.core_config.era_duration = TimeDiff::from_millis(10);
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
 
@@ -438,7 +437,7 @@ async fn dont_upgrade_without_switch_block() {
     // Eras have exactly two blocks each, and there is one block per second.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 2;
-    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
 
     let mut net = chain
@@ -535,7 +534,7 @@ async fn should_store_finalized_approvals() {
     // Eras have exactly two blocks each, and there is one block per second.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 2;
-    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
 
     let mut net = chain

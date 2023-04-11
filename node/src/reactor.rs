@@ -59,9 +59,11 @@ use tracing_futures::Instrument;
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
+use casper_types::Timestamp;
+
 use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
-    types::{ExitCode, Timestamp},
+    types::ExitCode,
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,

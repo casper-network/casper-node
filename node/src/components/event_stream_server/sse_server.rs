@@ -34,14 +34,16 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey};
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
 
 use super::DeployGetter;
-use crate::types::{
-    BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp,
-};
+use crate::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
 #[cfg(test)]
-use crate::{crypto::AsymmetricKeyExt, testing, testing::TestRng, types::Block};
+use crate::{testing, types::Block};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -585,7 +587,8 @@ mod tests {
     use std::iter;
 
     use super::*;
-    use crate::{logging, testing::TestRng};
+    use crate::logging;
+    use casper_types::testing::TestRng;
 
     async fn should_filter_out(
         event: &ServerSentEvent,

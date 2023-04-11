@@ -5,9 +5,11 @@ use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
+use casper_types::{TimeDiff, Timestamp};
+
 use crate::{
     components::block_proposer::DeployInfo,
-    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals, Timestamp},
+    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals},
 };
 
 #[derive(Debug, Error)]
