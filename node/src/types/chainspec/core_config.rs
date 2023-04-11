@@ -195,6 +195,10 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.minimum_block_time.to_bytes()?);
         buffer.extend(self.validator_slots.to_bytes()?);
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
+        buffer.extend(
+            self.start_protocol_version_with_strict_finality_signatures_required
+                .to_bytes()?,
+        );
         buffer.extend(self.legacy_required_finality.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
@@ -216,6 +220,9 @@ impl ToBytes for CoreConfig {
             + self.minimum_block_time.serialized_length()
             + self.validator_slots.serialized_length()
             + self.finality_threshold_fraction.serialized_length()
+            + self
+                .start_protocol_version_with_strict_finality_signatures_required
+                .serialized_length()
             + self.legacy_required_finality.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
