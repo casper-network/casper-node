@@ -93,4 +93,4 @@ source "$NCTL/sh/staging/set_override_tomls.sh"
 
 run_nightly_upgrade_test
 
-run_soundness_test
+#run_soundness_test

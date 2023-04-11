@@ -8,7 +8,8 @@
 # 4. Delegates from an unused account.
 # 5. Waits for the auction delay to take effect.
 # 7. Asserts delegation is in auction info.
-# 8. Stages the network for upgrade.
+# 7. Undelegate
+# 8. Stages the network for emergency upgrade.
 # 9. Assert v2 nodes run & the chain advances (new blocks are generated).
 # 10. Waits 1 era.
 # 13. Waits for the auction delay to take effect.
@@ -49,7 +50,7 @@ function _main()
     _step_05
     _step_06
     _step_07
-    _step_08
+    #_step_08
     _step_09
     _step_10
     _step_11
@@ -125,7 +126,7 @@ function _step_03()
             validator="$NODE_ID"
 }
 
-# Step 04: Await 1 era
+# Step 04: Await 2 eras
 function _step_04()
 {
     log_step_upgrades 4 "Awaiting Auction_Delay = 1 + 1"
@@ -153,7 +154,7 @@ function _step_05()
         if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
             log "... user-$USER_ID found in auction info delegators!"
             log "... public_key_hex: $HEX"
-            echo "$AUCTION_INFO_FOR_HEX"
+#            echo "$AUCTION_INFO_FOR_HEX"
             break
         else
             TIMEOUT_SEC=$((TIMEOUT_SEC + 1))
@@ -161,14 +162,14 @@ function _step_05()
             sleep 1
             if [ "$TIMEOUT_SEC" = '60' ]; then
                 log "ERROR: Could not find $HEX in auction info delegators!"
-                echo "$(nctl-view-chain-auction-info)"
+#                echo "$(nctl-view-chain-auction-info)"
                 exit 1
             fi
         fi
     done
 
     echo "CURRENT ERA: $(nctl-view-chain-era)"
-    nctl-view-chain-auction-info
+#    nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
     echo "CURRENT ERA: $(nctl-view-chain-era)"
 }
@@ -188,11 +189,11 @@ function _step_06()
             validator="$NODE_ID"
 
     echo "CURRENT ERA: $(nctl-view-chain-era)"
-    nctl-view-chain-auction-info
+    #nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    nctl-view-chain-auction-info
+    #nctl-view-chain-auction-info
     nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    nctl-view-chain-auction-info
+    #nctl-view-chain-auction-info
     echo "CURRENT ERA: $(nctl-view-chain-era)"
 }
 
@@ -207,6 +208,11 @@ function _step_07()
     local PROTOCOL_VERSION
     local GS_PARAMS
     local STATE_SOURCE_PATH
+    local AUCTION_INFO
+    local OLD_VALIDATORS_ERA_ID
+    local NEW_VALIDATORS_ERA_ID
+    local OLD_VALIDATORS_PUBLIC_KEYS
+    local NEW_VALIDATORS_PUBLIC_KEYS
 
     ACTIVATE_ERA="$(get_chain_era)"
     ERA_ID=$((ACTIVATE_ERA - 1))
@@ -223,6 +229,14 @@ function _step_07()
     log "...trusted hash = $TRUSTED_HASH"
     log "...new protocol version = $PROTOCOL_VERSION"
 
+    AUCTION_INFO=$(nctl-view-chain-auction-info)
+    OLD_VALIDATORS_ERA_ID=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.era_id')
+    OLD_VALIDATORS_PUBLIC_KEYS=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.validator_weights[].public_key' | sort)
+
+    echo "********************************************"
+    echo $OLD_VALIDATORS_PUBLIC_KEYS
+    echo "********************************************"
+
     do_node_stop_all
 
     _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$GS_PARAMS"
@@ -233,22 +247,42 @@ function _step_07()
         log "...starting $NODE_ID"
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
-    sleep 10
+    #sleep 10
+
+    nctl-await-n-eras offset='3' sleep_interval='2.0' timeout='300'
+
+    AUCTION_INFO=$(nctl-view-chain-auction-info)
+    NEW_VALIDATORS_ERA_ID=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.era_id')
+    NEW_VALIDATORS_PUBLIC_KEYS=$(echo $AUCTION_INFO | jq '.auction_state.era_validators' | jq '.[1]' | jq '.validator_weights[].public_key' | sort)
+
+    echo "********************************************"
+    echo $NEW_VALIDATORS_PUBLIC_KEYS
+    echo "********************************************"
+
+    if [[ "$OLD_VALIDATORS_PUBLIC_KEYS" == "$NEW_VALIDATORS_PUBLIC_KEYS" ]]
+    then
+        log "ERROR :: Validator set did not change after an emergency upgrade"
+        log "ERROR :: Old validators (era=$OLD_VALIDATORS_ERA_ID): $OLD_VALIDATORS_PUBLIC_KEYS"
+        log "ERROR :: New validators (era=$NEW_VALIDATORS_ERA_ID): $NEW_VALIDATORS_PUBLIC_KEYS"
+        exit 1
+    else
+        log "Validator set has been correctly updated"
+    fi
 
     rm -f $TEMPFILE
 }
 
-function _step_08()
-{
-    log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
-    echo "CURRENT ERA: $(nctl-view-chain-era)"
-    nctl-view-chain-auction-info
-    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    nctl-view-chain-auction-info
-    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
-    nctl-view-chain-auction-info
-    echo "CURRENT ERA: $(nctl-view-chain-era)"
-}
+#function _step_08()
+#{
+#    log_step_upgrades 8 "Awaiting Auction_Delay = 1 + 1"
+#    echo "CURRENT ERA: $(nctl-view-chain-era)"
+#    #nctl-view-chain-auction-info
+#    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+#    #nctl-view-chain-auction-info
+#    nctl-await-n-eras offset='1' sleep_interval='2.0' timeout='300'
+#    #nctl-view-chain-auction-info
+#    echo "CURRENT ERA: $(nctl-view-chain-era)"
+#}
 
 # Step 08: Assert USER_ID is NOT a delegatee
 function _step_09()
