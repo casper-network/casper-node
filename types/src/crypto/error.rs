@@ -18,7 +18,6 @@ use crate::file_utils::{ReadFileError, WriteFileError};
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "std", test), derive(Error))]
-#[non_exhaustive]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
     #[cfg_attr(any(feature = "std", test), error("asymmetric key error: {0}"))]
@@ -36,7 +35,7 @@ pub enum Error {
 
     /// Signature error.
     #[cfg_attr(any(feature = "std", test), error("error in signature"))]
-    SignatureError,
+    SignatureError(SignatureError),
 
     /// Error trying to manipulate the system key.
     #[cfg_attr(
@@ -60,8 +59,8 @@ impl From<base16::DecodeError> for Error {
 }
 
 impl From<SignatureError> for Error {
-    fn from(_error: SignatureError) -> Self {
-        Error::SignatureError
+    fn from(error: SignatureError) -> Self {
+        Error::SignatureError(error)
     }
 }
 
