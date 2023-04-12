@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(test)]
 pub(crate) mod test_block_builder;
 
 mod approvals_hashes;

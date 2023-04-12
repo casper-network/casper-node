@@ -272,6 +272,11 @@ impl BlockSynchronizer {
     }
 
     /// Registers a block for synchronization.
+    ///
+    /// Returns `true` if a block was registered for synchronization successfully.
+    /// Will return `false` if there was an attempt to register the same block hash
+    /// again while the synchronizer was working on the same block. The synchronizer
+    /// will continue work on the block in that case.
     pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,

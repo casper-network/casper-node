@@ -212,7 +212,7 @@ fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
 }
 
 impl BlockSynchronizer {
-    // Create an initialized block synchronizer with default config and maximum 5 simultaneous peers
+    // Create an initialized block synchronizer with default config and MAX_SIMULTANEOUS_PEERS peers
     fn new_initialized(rng: &mut TestRng, validator_matrix: ValidatorMatrix) -> BlockSynchronizer {
         let mut block_synchronizer = BlockSynchronizer::new(
             Config::default(),
@@ -249,7 +249,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Set up the synchronizer for the test block such that the next step is getting global state
@@ -272,9 +272,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     register_multiple_signatures(
         historical_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
     assert!(
         historical_builder.register_block(block, None).is_ok(),
@@ -284,9 +284,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     register_multiple_signatures(
         historical_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .skip(validators_private_keys.len() / 3 + 1),
+            .skip(validators_secret_keys.len() / 3 + 1),
     );
 
     // At this point, the next step the synchronizer takes should be to get global state
@@ -520,7 +520,7 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
 }
 
 #[tokio::test]
-async fn fwd_sync_gets_peers_only_form_accumulator() {
+async fn fwd_sync_gets_peers_only_from_accumulator() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
     let test_env = TestEnv::random(&mut rng);
@@ -723,14 +723,14 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
 }
 
 #[tokio::test]
-async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body() {
+async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
     let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -757,8 +757,8 @@ async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body(
     let signature = FinalitySignature::create(
         *block.hash(),
         block.header().era_id(),
-        validators_private_keys[0].as_ref(),
-        PublicKey::from(validators_private_keys[0].as_ref()),
+        validators_secret_keys[0].as_ref(),
+        PublicKey::from(validators_secret_keys[0].as_ref()),
     );
     assert!(signature.is_verified().is_ok());
     let effects = block_synchronizer.handle_event(
@@ -775,7 +775,7 @@ async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body(
     // The peer limit should still be in place.
     assert_eq!(
         effects.len(),
-        std::cmp::min(validators_private_keys.len() - 1, MAX_SIMULTANEOUS_PEERS)
+        std::cmp::min(validators_secret_keys.len() - 1, MAX_SIMULTANEOUS_PEERS)
     );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
@@ -788,15 +788,15 @@ async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body(
                 assert!(peers.contains(&peer));
                 assert_eq!(id.block_hash, *block.hash());
                 assert_eq!(id.era_id, block.header().era_id());
-                assert_ne!(id.public_key, PublicKey::from(validators_private_keys[0].as_ref()));
+                assert_ne!(id.public_key, PublicKey::from(validators_secret_keys[0].as_ref()));
             }
         );
     }
 
     // Register finality signatures to reach weak finality
-    let num_sigs_required_for_weak_finality = validators_private_keys.len() / 3;
+    let num_sigs_required_for_weak_finality = validators_secret_keys.len() / 3 + 1;
     let mut generated_effects = Effects::new();
-    for private_key in validators_private_keys
+    for secret_key in validators_secret_keys
         .iter()
         .skip(1)
         .take(num_sigs_required_for_weak_finality)
@@ -805,8 +805,8 @@ async fn registering_signatures_for_weak_finality_triggers_fetch_for_block_body(
         let signature = FinalitySignature::create(
             *block.hash(),
             block.header().era_id(),
-            private_key.as_ref(),
-            PublicKey::from(private_key.as_ref()),
+            secret_key.as_ref(),
+            PublicKey::from(secret_key.as_ref()),
         );
         assert!(signature.is_verified().is_ok());
         let effects = block_synchronizer.handle_event(
@@ -941,7 +941,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -962,9 +962,9 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
 
     // Check the block acquisition state
@@ -1006,7 +1006,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1027,9 +1027,9 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
 
     // Check the block acquisition state
@@ -1090,7 +1090,7 @@ async fn having_block_body_for_block_without_deploys_requires_only_signatures() 
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1111,9 +1111,9 @@ async fn having_block_body_for_block_without_deploys_requires_only_signatures() 
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
 
     assert!(fwd_builder.register_block(block, None).is_ok());
@@ -1152,7 +1152,7 @@ async fn having_block_body_for_block_with_deploys_requires_approvals_hashes() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1173,9 +1173,9 @@ async fn having_block_body_for_block_with_deploys_requires_approvals_hashes() {
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
 
     assert!(fwd_builder.register_block(block, None).is_ok());
@@ -1222,7 +1222,7 @@ async fn registering_approvals_hashes_triggers_fetch_for_deploys() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1243,9 +1243,9 @@ async fn registering_approvals_hashes_triggers_fetch_for_deploys() {
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
 
     assert!(fwd_builder.register_block(block, None).is_ok());
@@ -1306,7 +1306,7 @@ async fn fwd_have_block_with_strict_finality_requires_block_enqueue_for_executio
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1324,7 +1324,7 @@ async fn fwd_have_block_with_strict_finality_requires_block_enqueue_for_executio
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
     // Register finality signatures to reach strict finality
-    register_multiple_signatures(fwd_builder, block, validators_private_keys.iter());
+    register_multiple_signatures(fwd_builder, block, validators_secret_keys.iter());
 
     assert!(fwd_builder.register_block(block, None).is_ok());
 
@@ -1350,7 +1350,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1371,18 +1371,18 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .skip(validators_private_keys.len() / 3 + 1),
+            .skip(validators_secret_keys.len() / 3 + 1),
     );
 
     assert_matches!(
@@ -1423,7 +1423,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1444,18 +1444,18 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .skip(validators_private_keys.len() / 3 + 1),
+            .skip(validators_secret_keys.len() / 3 + 1),
     );
 
     let event = Event::MadeFinalizedBlock {
@@ -1497,7 +1497,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1518,18 +1518,18 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .skip(validators_private_keys.len() / 3 + 1),
+            .skip(validators_secret_keys.len() / 3 + 1),
     );
 
     fwd_builder.register_block_execution_enqueued();
@@ -1604,7 +1604,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let validators_private_keys = test_env.validator_keys();
+    let validators_secret_keys = test_env.validator_keys();
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
@@ -1624,18 +1624,18 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .take(validators_private_keys.len() / 3 + 1),
+            .take(validators_secret_keys.len() / 3 + 1),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
         block,
-        validators_private_keys
+        validators_secret_keys
             .iter()
-            .skip(validators_private_keys.len() / 3 + 1),
+            .skip(validators_secret_keys.len() / 3 + 1),
     );
 
     // Block should have strict finality and will require to be executed
