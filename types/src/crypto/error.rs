@@ -15,7 +15,7 @@ use thiserror::Error;
 use crate::file_utils::{ReadFileError, WriteFileError};
 
 /// Cryptographic errors.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "std", test), derive(Error))]
 pub enum Error {
@@ -34,6 +34,7 @@ pub enum Error {
     FromBase64(base64::DecodeError),
 
     /// Signature error.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     #[cfg_attr(any(feature = "std", test), error("error in signature"))]
     SignatureError(SignatureError),
 
