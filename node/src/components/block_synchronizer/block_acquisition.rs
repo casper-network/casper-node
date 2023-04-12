@@ -445,18 +445,16 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveFinalizedBlock(block_hash, block, deploys, enqueued) => {
                 if is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
+                } else if *enqueued == false {
+                    Ok(BlockAcquisitionAction::enqueue_block_for_execution(
+                        block_hash,
+                        block.clone(),
+                        deploys.clone(),
+                    ))
                 } else {
-                    if *enqueued == false {
-                        Ok(BlockAcquisitionAction::enqueue_block_for_execution(
-                            block_hash,
-                            block.clone(),
-                            deploys.clone(),
-                        ))
-                    } else {
-                        // if the block was already enqueued for execution just wait, there's
-                        // nothing else to do
-                        Ok(BlockAcquisitionAction::need_nothing(*block_hash))
-                    }
+                    // if the block was already enqueued for execution just wait, there's
+                    // nothing else to do
+                    Ok(BlockAcquisitionAction::need_nothing(*block_hash))
                 }
             }
             BlockAcquisitionState::Complete(block_hash, ..) => {
