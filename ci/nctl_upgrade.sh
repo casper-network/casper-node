@@ -148,11 +148,6 @@ function start_upgrade_scenario_9() {
     nctl-exec-upgrade-scenario-9
 }
 
-function start_upgrade_scenario_11() {
-    log "... Starting Upgrade Scenario 11"
-    nctl-exec-upgrade-scenario-11
-}
-
 function start_upgrade_scenario_10() {
     log "... Setting up custom starting version"
     local PATH_TO_STAGE
@@ -171,6 +166,11 @@ function start_upgrade_scenario_10() {
 
     log "... Starting Upgrade Scenario 10"
     nctl-exec-upgrade-scenario-10
+}
+
+function start_upgrade_scenario_11() {
+    log "... Starting Upgrade Scenario 11"
+    nctl-exec-upgrade-scenario-11
 }
 
 # ----------------------------------------------------------------
