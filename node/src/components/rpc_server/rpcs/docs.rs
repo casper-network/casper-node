@@ -39,7 +39,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
         url: "https://casperlabs.io".to_string(),
     };
     let license = OpenRpcLicenseField {
-        name: "CasperLabs Open Source License Version 1.0".to_string(),
+        name: "Casper Labs Open Source License Version 1.0".to_string(),
         url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
     };
     let info = OpenRpcInfoField {
@@ -498,7 +498,7 @@ mod tests {
             url: "https://casperlabs.io".to_string(),
         };
         let license = OpenRpcLicenseField {
-            name: "CasperLabs Open Source License Version 1.0".to_string(),
+            name: "Casper Labs Open Source License Version 1.0".to_string(),
             url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
                 .to_string(),
         };

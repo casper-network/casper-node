@@ -9,11 +9,11 @@
         "title": "Client API of Casper Node",
         "description": "This describes the JSON-RPC 2.0 API of a node on the Casper network.",
         "contact": {
-          "name": "CasperLabs",
+          "name": "Casper Labs",
           "url": "https://casperlabs.io"
         },
         "license": {
-          "name": "CasperLabs Open Source License Version 1.0",
+          "name": "Casper Labs Open Source License Version 1.0",
           "url": "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
         }
       },
@@ -3379,7 +3379,7 @@
             "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info).",
             "anyOf": [
               {
-                "description": "A CasperLabs value.",
+                "description": "A Casper Labs value.",
                 "type": "object",
                 "required": [
                   "CLValue"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-# Images used in this script are build in CasperLabs/buildenv repo
+# Images used in this script are build in Casper Labs/buildenv repo
 
 # This allows make commands without local build environment setup or
 # using an OS version other than locally installed.
