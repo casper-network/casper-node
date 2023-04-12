@@ -686,8 +686,9 @@ impl BlockSynchronizer {
                         }
                     }
                 }
-                NeedNext::EnqueueForExecution(block_hash, _, finalized_block, deploys) => results
-                    .extend(
+                NeedNext::EnqueueForExecution(block_hash, _, finalized_block, deploys) => {
+                    builder.set_in_flight_latch();
+                    results.extend(
                         effect_builder
                             .enqueue_block_for_execution(
                                 *finalized_block,
@@ -695,7 +696,8 @@ impl BlockSynchronizer {
                                 MetaBlockState::new_already_stored(),
                             )
                             .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
-                    ),
+                    )
+                }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
                     // Only mark the block complete if we're syncing historical
                     // because we have global state and execution effects (if

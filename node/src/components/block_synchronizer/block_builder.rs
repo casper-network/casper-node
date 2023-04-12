@@ -260,7 +260,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::HaveAllDeploys(_, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _, _)
             | BlockAcquisitionState::Failed(_, _) => {
                 //TODO: does failed also mean finished?
                 false
@@ -280,9 +280,16 @@ impl BlockBuilder {
     pub(super) fn register_block_execution_enqueued(&mut self) {
         if self.should_fetch_execution_state {
             let block_hash = self.block_hash();
-            error!(%block_hash, "invalid attempt to start block execution on historical block");
+            error!(%block_hash, "invalid attempt to enqueue historical block for execution");
             self.abort();
             return;
+        }
+
+        if let Err(error) = self.acquisition_state.register_block_execution_enqueued() {
+            error!(%error, "register block execution enqueued failed");
+            self.abort()
+        } else {
+            self.touch();
         }
 
         match self.execution_progress.start() {
