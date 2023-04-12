@@ -69,7 +69,7 @@ def invoke(command, quiet=False):
                                           command]).decode("utf-8").rstrip()
         return result
     except subprocess.CalledProcessError as e:
-        log("command returned non-zero code - that is expected since the node is temporarily down"
+        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
             )
         return ""
     finally:
