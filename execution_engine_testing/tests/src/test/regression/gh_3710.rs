@@ -329,7 +329,6 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
     );
 }
 
-#[cfg(feature = "fixture-generators")]
 mod fixture {
     use std::collections::BTreeMap;
 
@@ -342,8 +341,12 @@ mod fixture {
     use super::{FIXTURE_N_ERAS, GH_3710_FIXTURE};
     use crate::{lmdb_fixture, test::regression::gh_3710::DEFAULT_REWARD_AMOUNT};
 
+    #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
     #[test]
     fn generate_era_info_bloat_fixture() {
+        if !lmdb_fixture::is_fixture_generator_enabled() {
+            return;
+        }
         // To generate this fixture again you have to re-run this code release-1.4.13.
         let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
         lmdb_fixture::generate_fixture(GH_3710_FIXTURE, genesis_request, |builder| {

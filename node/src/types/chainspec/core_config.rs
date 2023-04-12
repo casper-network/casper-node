@@ -36,7 +36,7 @@ pub struct CoreConfig {
     pub(crate) max_stored_value_size: u32,
     /// The minimum bound of motes that can be delegated to a validator.
     pub(crate) minimum_delegation_amount: u64,
-    /// Global state purge batch size (0 means the feature is off in the current protocol version).
+    /// Global state prune batch size (0 means the feature is off in the current protocol version).
     pub(crate) prune_batch_size: u64,
 }
 

@@ -200,8 +200,8 @@ impl ScratchTrieStore {
         }
     }
 
-    /// Writes only tries which are both under the given `state_root` and dirty to the underlying db
-    /// while maintaining the invariant that children must be written before parent nodes.
+    /// Writes only tries which are both under the given `state_root` and dirty to the underlying
+    /// db.
     pub fn write_root_to_db(self, state_root: Digest) -> Result<(), error::Error> {
         let cache = &*self.cache.lock().map_err(|_| error::Error::Poison)?;
         if !cache.contains_key(&state_root) {

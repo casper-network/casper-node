@@ -40,6 +40,18 @@ pub trait Store<K, V> {
         }
     }
 
+    /// Returns an optional value (may exist or not) as read through a transaction, or an error
+    /// of the associated `Self::Error` variety.
+    fn get_raw<T>(&self, txn: &T, key: &K) -> Result<Option<Bytes>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        K: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        let handle = self.handle();
+        Ok(txn.read(handle, key.as_ref())?)
+    }
+
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
     fn put<T>(&self, txn: &mut T, key: &K, value: &V) -> Result<(), Self::Error>
@@ -54,18 +66,6 @@ pub trait Store<K, V> {
         let handle = self.handle();
         txn.write(handle, &key_bytes, &value_bytes)
             .map_err(Into::into)
-    }
-
-    /// Returns an optional value (may exist or not) as read through a transaction, or an error
-    /// of the associated `Self::Error` variety.
-    fn get_raw<T>(&self, txn: &T, key: &K) -> Result<Option<Bytes>, Self::Error>
-    where
-        T: Readable<Handle = Self::Handle>,
-        K: AsRef<[u8]>,
-        Self::Error: From<T::Error>,
-    {
-        let handle = self.handle();
-        Ok(txn.read(handle, key.as_ref())?)
     }
 
     /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an

@@ -45,7 +45,6 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
-    cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
@@ -371,9 +370,8 @@ pub struct Storage {
     enable_mem_deduplication: bool,
     /// Pool of loaded items.
     deploy_cache: BlobCache<<Deploy as Item>::Id>,
-    /// A map of era ID to a block height.
-    #[data_size(skip)]
-    switch_block_height_by_era_id_cache: RefCell<BTreeMap<EraId, u64>>,
+    /// A map of era ID to the height of the switch block for that era.
+    switch_block_height_by_era_id_cache: BTreeMap<EraId, u64>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -927,11 +925,19 @@ impl Storage {
             } => responder
                 .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
-            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, responder } => responder
-                .respond(
-                    self.get_switch_block_height_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?,
-                )
-                .ignore(),
+            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                if let Some(block_height) = self.switch_block_height_by_era_id_cache.get(&era_id) {
+                    return Ok(responder.respond(Some(*block_height)).ignore());
+                }
+                let block_header = match self.get_switch_block_header_by_era_id(&mut txn, era_id)? {
+                    Some(block_header) => block_header,
+                    None => return Ok(responder.respond(None).ignore()),
+                };
+                self.switch_block_height_by_era_id_cache
+                    .insert(era_id, block_header.height());
+                responder.respond(Some(block_header.height())).ignore()
+            }
         })
     }
 
@@ -1081,41 +1087,6 @@ impl Storage {
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
-    }
-
-    /// Retrieves single switch block height by era ID by looking it up in the index and then
-    /// updating cached block heights.
-    fn get_switch_block_height_by_era_id<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<u64>, Error> {
-        debug!(switch_block_era_id_index = ?self.switch_block_era_id_index);
-        let maybe_block_height = self
-            .switch_block_height_by_era_id_cache
-            .borrow()
-            .get(&era_id)
-            .copied();
-        match maybe_block_height {
-            Some(block_height) => Ok(Some(block_height)),
-            None => {
-                let result = self
-                    .switch_block_era_id_index
-                    .get(&era_id)
-                    .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
-                    .transpose()?;
-                match result {
-                    Some(block_header) => {
-                        let block_height = block_header.height();
-                        self.switch_block_height_by_era_id_cache
-                            .borrow_mut()
-                            .insert(era_id, block_height);
-                        Ok(Some(block_height))
-                    }
-                    None => Ok(None),
-                }
-            }
-        }
     }
 
     /// Retrieves a single block header by deploy hash by looking it up in the index and returning

@@ -272,8 +272,7 @@ where
         // Optimization: Don't look for descendants of leaves.
         match maybe_retrieved_trie_bytes
             .as_ref()
-            .and_then(|bytes| bytes.first())
-            .and_then(|byte| TrieTag::from_u8(*byte))
+            .and_then(|bytes| trie::lazy_trie_tag(bytes))
         {
             // if this is a leaf don't parse (ie, the first byte is 0), just continue
             Some(TrieTag::Leaf) => continue,
@@ -428,7 +427,6 @@ impl<K, V> TrieScan<K, V> {
 /// "tip", along the with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
 fn scan<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     key_bytes: &[u8],
@@ -442,74 +440,14 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let path = key_bytes;
-
-    let mut current = root.to_owned();
-    let mut depth: usize = 0;
-    let mut acc: Parents<K, V> = Vec::new();
-
-    loop {
-        match current {
-            leaf @ Trie::Leaf { .. } => {
-                return Ok(TrieScan::new(leaf, acc));
-            }
-            Trie::Node { pointer_block } => {
-                let index = {
-                    assert!(depth < path.len(), "depth must be < {}", path.len());
-                    path[depth]
-                };
-                let maybe_pointer: Option<Pointer> = {
-                    let index: usize = index.into();
-                    assert!(index < RADIX, "index must be < {}", RADIX);
-                    pointer_block[index]
-                };
-                let pointer = match maybe_pointer {
-                    Some(pointer) => pointer,
-                    None => {
-                        return Ok(TrieScan::new(Trie::Node { pointer_block }, acc));
-                    }
-                };
-                match store.get(txn, pointer.hash())? {
-                    Some(next) => {
-                        current = next;
-                        depth += 1;
-                        acc.push((index, Trie::Node { pointer_block }))
-                    }
-                    None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from path: {:?})",
-                            pointer.hash(),
-                            path
-                        );
-                    }
-                }
-            }
-            Trie::Extension { affix, pointer } => {
-                let sub_path = &path[depth..depth + affix.len()];
-                if sub_path != affix.as_slice() {
-                    return Ok(TrieScan::new(Trie::Extension { affix, pointer }, acc));
-                }
-                match store.get(txn, pointer.hash())? {
-                    Some(next) => {
-                        let index = {
-                            assert!(depth < path.len(), "depth must be < {}", path.len());
-                            path[depth]
-                        };
-                        current = next;
-                        depth += affix.len();
-                        acc.push((index, Trie::Extension { affix, pointer }))
-                    }
-                    None => {
-                        panic!(
-                            "No trie value at key: {:?} (reading from path: {:?})",
-                            pointer.hash(),
-                            path
-                        );
-                    }
-                }
-            }
-        }
-    }
+    let root_bytes = root.to_bytes()?;
+    let TrieScanRaw { tip, parents } =
+        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
+    let tip = match tip {
+        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
+        Either::Right(tip) => tip,
+    };
+    Ok(TrieScan::new(tip, parents))
 }
 
 struct TrieScanRaw<K, V> {
@@ -525,7 +463,6 @@ impl<K, V> TrieScanRaw<K, V> {
 
 /// Just like scan, however we don't parse the tip.
 fn scan_raw<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     key_bytes: &[u8],
@@ -632,8 +569,8 @@ pub enum DeleteResult {
 }
 
 /// Delete provided key from a global state so it is not reachable from a resulting state root hash.
-pub fn delete<K, V, T, S, E>(
-    correlation_id: CorrelationId,
+pub(crate) fn delete<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -654,7 +591,7 @@ where
 
     let key_bytes = key_to_delete.to_bytes()?;
     let TrieScanRaw { tip, mut parents } =
-        scan_raw::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, root_trie_bytes)?;
+        scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
 
     // Check that tip is a leaf
     match tip {
@@ -663,11 +600,13 @@ where
                 // Partially deserialize a key of a leaf node to ensure that we can only continue if
                 // the key matches what we're looking for.
                 let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&bytes)?;
+                let trie_tag = TrieTag::from_u8(tag_u8);
                 // _rem contains bytes of serialized V, but we don't need to inspect it.
                 assert_eq!(
-                    TrieTag::from_u8(tag_u8),
+                    trie_tag,
                     Some(TrieTag::Leaf),
-                    "Tip contains Leaf bytes"
+                    "Tip should contain leaf bytes, but has tag {:?}",
+                    trie_tag
                 );
                 key == *key_to_delete
             } => {}
@@ -1103,7 +1042,7 @@ pub enum WriteResult {
 }
 
 pub fn write<K, V, T, S, E>(
-    correlation_id: CorrelationId,
+    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -1127,7 +1066,7 @@ where
             };
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScan { tip, parents } =
-                scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
+                scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.

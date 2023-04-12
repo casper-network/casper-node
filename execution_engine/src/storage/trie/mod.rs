@@ -452,6 +452,10 @@ impl<K, V> Trie<K, V> {
 
 pub(crate) type LazyTrieLeaf<K, V> = Either<Bytes, Trie<K, V>>;
 
+pub(crate) fn lazy_trie_tag(bytes: &[u8]) -> Option<TrieTag> {
+    bytes.first().copied().and_then(TrieTag::from_u8)
+}
+
 pub(crate) fn lazy_trie_deserialize<K, V>(
     bytes: Bytes,
 ) -> Result<LazyTrieLeaf<K, V>, bytesrepr::Error>
@@ -459,9 +463,9 @@ where
     K: FromBytes,
     V: FromBytes,
 {
-    let current_trie_tag = bytes.first().copied().and_then(TrieTag::from_u8);
+    let trie_tag = lazy_trie_tag(&bytes);
 
-    if current_trie_tag == Some(TrieTag::Leaf) {
+    if trie_tag == Some(TrieTag::Leaf) {
         Ok(Either::Left(bytes))
     } else {
         let deserialized: Trie<K, V> = bytesrepr::deserialize(bytes.into())?;

@@ -45,7 +45,7 @@ fn generate_range_by_index(
 /// Outcomes:
 /// * Ok(Some(range)) -- these keys should be purged
 /// * Ok(None) -- nothing to do, either done, or there is not enough eras to purge
-fn calculate_purge_eras(
+fn calculate_prune_eras(
     activation_era_id: EraId,
     activation_height: u64,
     current_height: u64,
@@ -212,7 +212,7 @@ pub fn execute_finalized_block(
     // Purging
 
     if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
-        match calculate_purge_eras(
+        match calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
             previous_block_height,
@@ -444,11 +444,11 @@ mod tests {
     use super::*;
     #[test]
     fn calculation_is_safe_with_invalid_input() {
-        assert_eq!(calculate_purge_eras(EraId::new(0), 0, 0, 0,), None);
-        assert_eq!(calculate_purge_eras(EraId::new(0), 0, 0, 5,), None);
-        assert_eq!(calculate_purge_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 5,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
         assert_eq!(
-            calculate_purge_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),
+            calculate_prune_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),
             None
         );
     }
@@ -456,9 +456,9 @@ mod tests {
     fn calculation_is_lazy() {
         // NOTE: Range of EraInfos is lazy, so it does not consume memory, but getting the last
         // batch out of u64::MAX of erainfos needs to iterate over all chunks.
-        assert!(calculate_purge_eras(EraId::new(u64::MAX), 0, u64::MAX, 100,).is_none(),);
+        assert!(calculate_prune_eras(EraId::new(u64::MAX), 0, u64::MAX, 100,).is_none(),);
         assert_eq!(
-            calculate_purge_eras(EraId::new(u64::MAX), 1, 100, 100,)
+            calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100,)
                 .unwrap()
                 .len(),
             100
@@ -473,7 +473,7 @@ mod tests {
         // batch size 1
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -482,7 +482,7 @@ mod tests {
             Some(vec![Key::EraInfo(EraId::new(0))])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -491,7 +491,7 @@ mod tests {
             Some(vec![Key::EraInfo(EraId::new(1))])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -500,7 +500,7 @@ mod tests {
             Some(vec![Key::EraInfo(EraId::new(2))])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 3,
@@ -509,7 +509,7 @@ mod tests {
             Some(vec![Key::EraInfo(EraId::new(3))])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 4,
@@ -518,7 +518,7 @@ mod tests {
             Some(vec![Key::EraInfo(EraId::new(4))])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 5,
@@ -527,14 +527,14 @@ mod tests {
             None,
         );
         assert_eq!(
-            calculate_purge_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 1),
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 1),
             None,
         );
 
         // batch size 2
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -546,7 +546,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -558,7 +558,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -567,7 +567,7 @@ mod tests {
             Some(vec![Key::EraInfo(EraId::new(4))])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 3,
@@ -576,14 +576,14 @@ mod tests {
             None
         );
         assert_eq!(
-            calculate_purge_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 2),
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 2),
             None,
         );
 
         // batch size 3
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -596,7 +596,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -609,7 +609,7 @@ mod tests {
         );
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -618,14 +618,14 @@ mod tests {
             None
         );
         assert_eq!(
-            calculate_purge_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 3),
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 3),
             None,
         );
 
         // batch size 4
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -639,7 +639,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -649,7 +649,7 @@ mod tests {
         );
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -658,14 +658,14 @@ mod tests {
             None
         );
         assert_eq!(
-            calculate_purge_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 4),
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 4),
             None,
         );
 
         // batch size 5
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -680,7 +680,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -690,7 +690,7 @@ mod tests {
         );
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -699,14 +699,14 @@ mod tests {
             None
         );
         assert_eq!(
-            calculate_purge_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 5),
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 5),
             None,
         );
 
         // batch size 6
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -721,7 +721,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -731,7 +731,7 @@ mod tests {
         );
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -740,14 +740,14 @@ mod tests {
             None
         );
         assert_eq!(
-            calculate_purge_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 6),
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 6),
             None,
         );
 
         // batch size max
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
@@ -762,7 +762,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
@@ -772,7 +772,7 @@ mod tests {
         );
 
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
@@ -781,7 +781,7 @@ mod tests {
             None
         );
         assert_eq!(
-            calculate_purge_eras(
+            calculate_prune_eras(
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 u64::MAX,
