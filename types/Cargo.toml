@@ -68,8 +68,6 @@ std = ["derp", "getrandom/std", "humantime", "once_cell", "pem", "serde_json/pre
 testing = ["proptest", "proptest-derive", "rand_pcg", "strum"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
-# DEPRECATED - enabling `std` has no effect.
-#std = []
 
 [[bench]]
 name = "bytesrepr_bench"

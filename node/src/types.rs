@@ -40,7 +40,6 @@ pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub(crate) use shared_object::SharedObject;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
-// pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}
