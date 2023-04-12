@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, iter};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -74,6 +74,15 @@ impl TestBlockBuilder {
         deploys_iter: I,
     ) -> Self {
         self.deploys = deploys_iter.into_iter().cloned().collect();
+        self
+    }
+
+    #[allow(unused)]
+    pub(crate) fn random_deploys(mut self, count: usize, rng: &mut TestRng) -> Self {
+        self.deploys = iter::repeat(())
+            .take(count)
+            .map(|_| Deploy::random(rng))
+            .collect();
         self
     }
 

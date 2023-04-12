@@ -243,7 +243,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys([Deploy::random(&mut rng)].iter())
+            .random_deploys(1, &mut rng)
             .build(&mut rng),
     );
     let peers = test_env.peers();
@@ -1146,7 +1146,7 @@ async fn having_block_body_for_block_with_deploys_requires_approvals_hashes() {
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys([Deploy::random(&mut rng)].iter())
+            .random_deploys(1, &mut rng)
             .build(&mut rng),
     );
     let peers = test_env.peers();
