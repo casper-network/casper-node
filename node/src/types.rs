@@ -13,7 +13,6 @@ mod node_id;
 mod peers_map;
 mod shared_object;
 mod status_feed;
-// mod timestamp;
 
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
