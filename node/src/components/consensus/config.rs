@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use datasize::DataSize;
-use serde::{ Serialize, Deserialize };
+use serde::{Deserialize, Serialize};
 
 use casper_types::{PublicKey, SecretKey};
 
