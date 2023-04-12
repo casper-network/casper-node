@@ -5,7 +5,7 @@ mod error;
 
 #[cfg(any(feature = "std", test))]
 pub use asymmetric_key::generate_ed25519_keypair;
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub use asymmetric_key::gens;
 pub use asymmetric_key::{
     sign, verify, AsymmetricType, PublicKey, SecretKey, Signature, ED25519_TAG, SECP256K1_TAG,

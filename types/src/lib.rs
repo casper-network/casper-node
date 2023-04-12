@@ -35,8 +35,10 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
+#[cfg(any(feature = "std", test))]
+pub mod file_utils;
 mod gas;
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
 mod json_pretty_printer;
 mod key;
@@ -77,8 +79,6 @@ pub use deploy_info::DeployInfo;
 pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
-#[cfg(any(feature = "std", test))]
-pub mod file_utils;
 pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]

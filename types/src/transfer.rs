@@ -378,7 +378,7 @@ impl Distribution<TransferAddr> for Standard {
 }
 
 /// Generators for [`Transfer`]
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::{prop::option, Arbitrary, Strategy};
 

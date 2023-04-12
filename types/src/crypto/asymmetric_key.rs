@@ -136,20 +136,31 @@ where
     /// by `AsymmetricType::to_hex()`.
     fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
         if input.as_ref().len() < 2 {
-            return Err(Error::AsymmetricKey("too short".to_string()));
+            return Err(Error::AsymmetricKey(
+                "failed to decode from hex: too short".to_string(),
+            ));
         }
 
-        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
+        let (tag_hex, key_hex) = input.as_ref().split_at(2);
 
-        let tag = checksummed_hex::decode(&tag_bytes)?;
-        let key_bytes = checksummed_hex::decode(&key_bytes)?;
+        let tag = checksummed_hex::decode(tag_hex)?;
+        let key_bytes = checksummed_hex::decode(key_hex)?;
 
         match tag[0] {
+            SYSTEM_TAG => {
+                if key_bytes.is_empty() {
+                    Ok(Self::system())
+                } else {
+                    Err(Error::AsymmetricKey(
+                        "failed to decode from hex: invalid system variant".to_string(),
+                    ))
+                }
+            }
             ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
             SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
             _ => Err(Error::AsymmetricKey(format!(
-                "invalid tag.  Expected {} or {}, got {}",
-                ED25519_TAG, SECP256K1_TAG, tag[0]
+                "failed to decode from hex: invalid tag.  Expected {}, {} or {}, got {}",
+                SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
             ))),
         }
     }
@@ -480,6 +491,11 @@ impl PublicKey {
     /// Creates an `AccountHash` from a given `PublicKey` instance.
     pub fn to_account_hash(&self) -> AccountHash {
         AccountHash::from(self)
+    }
+
+    /// Returns `true` if this public key is of the `System` variant.
+    pub fn is_system(&self) -> bool {
+        matches!(self, PublicKey::System)
     }
 
     fn variant_name(&self) -> &str {
@@ -1168,7 +1184,7 @@ mod detail {
     ///
     /// The wrapped contents are the result of calling `t_as_ref()` on the type.
     #[derive(Serialize, Deserialize)]
-    pub enum AsymmetricTypeAsBytes {
+    pub(super) enum AsymmetricTypeAsBytes {
         System,
         Ed25519(Vec<u8>),
         Secp256k1(Vec<u8>),
@@ -1194,7 +1210,7 @@ mod detail {
         }
     }
 
-    pub fn serialize<'a, T, S>(value: &'a T, serializer: S) -> Result<S::Ok, S::Error>
+    pub(super) fn serialize<'a, T, S>(value: &'a T, serializer: S) -> Result<S::Ok, S::Error>
     where
         T: AsymmetricType<'a>,
         Vec<u8>: From<&'a T>,
@@ -1208,7 +1224,7 @@ mod detail {
         AsymmetricTypeAsBytes::from(value).serialize(serializer)
     }
 
-    pub fn deserialize<'a, 'de, T, D>(deserializer: D) -> Result<T, D::Error>
+    pub(super) fn deserialize<'a, 'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where
         T: AsymmetricType<'a>,
         Vec<u8>: From<&'a T>,

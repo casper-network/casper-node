@@ -122,7 +122,7 @@ impl FromBytes for ActionThresholds {
 }
 
 #[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
 

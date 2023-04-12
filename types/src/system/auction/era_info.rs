@@ -235,7 +235,7 @@ impl CLTyped for EraInfo {
 }
 
 /// Generators for [`SeigniorageAllocation`] and [`EraInfo`]
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens {
     use proptest::{
         collection::{self, SizeRange},
