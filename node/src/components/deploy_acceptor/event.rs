@@ -9,7 +9,6 @@ use crate::{
     types::{BlockHeader, Deploy},
 };
 
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Timestamp, U512,
@@ -68,14 +67,14 @@ pub(crate) enum Event {
     /// The result of querying global state for the `Account` associated with the `Deploy`.
     GetAccountResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         maybe_account: Option<Account>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying the balance of the `Account` associated with the `Deploy`.
     GetBalanceResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         maybe_balance_value: Option<U512>,
         account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
@@ -83,7 +82,7 @@ pub(crate) enum Event {
     /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_hash: ContractHash,
         maybe_contract: Option<Box<Contract>>,
@@ -92,7 +91,7 @@ pub(crate) enum Event {
     /// The result of querying global state for a `ContractPackage` to verify the executable logic.
     GetContractPackageResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
@@ -160,46 +159,46 @@ impl Display for Event {
             Event::GetBlockHeaderResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "received highest block from storage to validate deploy with hash: {}.",
+                    "received highest block from storage to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }
             Event::GetAccountResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "verifying account to validate deploy with hash {}.",
+                    "verifying account to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }
             Event::GetBalanceResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "verifying account balance to validate deploy with hash {}.",
+                    "verifying account balance to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }
             Event::GetContractResult {
                 event_metadata,
-                prestate_hash,
+                block_header,
                 ..
             } => {
                 write!(
                     formatter,
-                    "verifying contract to validate deploy with hash {} with state hash: {}.",
+                    "verifying contract to validate deploy with hash {} with state hash {}",
                     event_metadata.deploy.hash(),
-                    prestate_hash
+                    block_header.state_root_hash()
                 )
             }
             Event::GetContractPackageResult {
                 event_metadata,
-                prestate_hash,
+                block_header,
                 ..
             } => {
                 write!(
                     formatter,
-                    "verifying contract package to validate deploy with hash {} with state hash: {}.",
+                    "verifying contract package to validate deploy with hash {} with state hash {}",
                     event_metadata.deploy.hash(),
-                    prestate_hash
+                    block_header.state_root_hash()
                 )
             }
         }
