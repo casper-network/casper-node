@@ -3379,7 +3379,7 @@
             "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info).",
             "anyOf": [
               {
-                "description": "A Casper Labs value.",
+                "description": "An instance of any valid variant of StoredValue.",
                 "type": "object",
                 "required": [
                   "CLValue"
