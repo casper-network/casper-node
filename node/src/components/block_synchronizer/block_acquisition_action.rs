@@ -11,8 +11,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        chainspec::LegacyRequiredFinality, Block, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHeader, DeployHash, DeployId, EraValidatorWeights, NodeId, SignatureWeight,
+        Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, Deploy, DeployHash,
+        DeployId, EraValidatorWeights, FinalizedBlock, NodeId,
     },
     NodeRng,
 };
@@ -152,53 +152,6 @@ impl BlockAcquisitionAction {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn strict_finality_signatures(
-        peer_list: &PeerList,
-        rng: &mut NodeRng,
-        block_header: &BlockHeader,
-        validator_weights: &EraValidatorWeights,
-        signature_acquisition: &mut SignatureAcquisition,
-        is_historical: bool,
-        legacy_required_finality: LegacyRequiredFinality,
-        max_simultaneous_peers: usize,
-    ) -> Self {
-        let block_hash = block_header.block_hash();
-        let validator_keys = signature_acquisition.have_signatures();
-        let signature_weight = validator_weights.signature_weight(validator_keys);
-
-        if enough_signatures(
-            signature_weight,
-            legacy_required_finality,
-            signature_acquisition.is_checkable(),
-            is_historical,
-        ) {
-            if is_historical {
-                // we have enough signatures; need to make sure we've stored the necessary bits
-                BlockAcquisitionAction {
-                    peers_to_ask: vec![],
-                    need_next: NeedNext::BlockMarkedComplete(block_hash, block_header.height()),
-                }
-            } else {
-                BlockAcquisitionAction {
-                    peers_to_ask: vec![],
-                    need_next: NeedNext::EnqueueForExecution(block_hash, block_header.height()),
-                }
-            }
-        } else {
-            // Collect signatures with Vacant state or which are currently missing from the
-            // SignatureAcquisition.
-            signatures_from_missing_validators(
-                validator_weights,
-                signature_acquisition,
-                max_simultaneous_peers,
-                peer_list,
-                rng,
-                block_header,
-            )
-        }
-    }
-
     pub(super) fn block_body(
         peer_list: &PeerList,
         rng: &mut NodeRng,
@@ -208,6 +161,47 @@ impl BlockAcquisitionAction {
         BlockAcquisitionAction {
             peers_to_ask,
             need_next: NeedNext::BlockBody(block_hash),
+        }
+    }
+
+    pub(super) fn switch_to_have_strict_finality(block_header: &BlockHeader) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: vec![],
+            need_next: NeedNext::SwitchToHaveStrictFinality(
+                block_header.block_hash(),
+                block_header.height(),
+            ),
+        }
+    }
+
+    pub(super) fn block_marked_complete(block_header: &BlockHeader) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: vec![],
+            need_next: NeedNext::BlockMarkedComplete(
+                block_header.block_hash(),
+                block_header.height(),
+            ),
+        }
+    }
+
+    pub(super) fn make_executable_block(block_header: &BlockHeader) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: vec![],
+            need_next: NeedNext::MakeExecutableBlock(
+                block_header.block_hash(),
+                block_header.height(),
+            ),
+        }
+    }
+
+    pub(super) fn enqueue_block_for_execution(
+        block_hash: &BlockHash,
+        block: Box<FinalizedBlock>,
+        deploys: Vec<Deploy>,
+    ) -> Self {
+        BlockAcquisitionAction {
+            peers_to_ask: vec![],
+            need_next: NeedNext::EnqueueForExecution(*block_hash, block.height(), block, deploys),
         }
     }
 
@@ -279,7 +273,6 @@ impl BlockAcquisitionAction {
         signatures: &mut SignatureAcquisition,
         needs_deploy: Option<DeployIdentifier>,
         is_historical: bool,
-        legacy_required_finality: LegacyRequiredFinality,
         max_simultaneous_peers: usize,
     ) -> Self {
         match needs_deploy {
@@ -301,475 +294,20 @@ impl BlockAcquisitionAction {
                     rng,
                 )
             }
-            None => BlockAcquisitionAction::strict_finality_signatures(
-                peer_list,
-                rng,
-                block_header,
-                validator_weights,
-                signatures,
-                is_historical,
-                legacy_required_finality,
-                max_simultaneous_peers,
-            ),
+            None => {
+                if signatures.has_sufficient_finality(is_historical, true) {
+                    BlockAcquisitionAction::switch_to_have_strict_finality(block_header)
+                } else {
+                    signatures_from_missing_validators(
+                        validator_weights,
+                        signatures,
+                        max_simultaneous_peers,
+                        peer_list,
+                        rng,
+                        block_header,
+                    )
+                }
+            }
         }
-    }
-}
-
-fn enough_signatures(
-    signature_weight: SignatureWeight,
-    legacy_required_finality: LegacyRequiredFinality,
-    is_checkable: bool,
-    is_historical: bool,
-) -> bool {
-    if is_checkable {
-        // Normal blocks:
-        signature_weight.is_sufficient(false == is_historical)
-    } else {
-        // Legacy blocks:
-        matches!((legacy_required_finality, signature_weight), |(
-            LegacyRequiredFinality::Any,
-            SignatureWeight::Insufficient | SignatureWeight::Weak | SignatureWeight::Strict,
-        )| (
-            LegacyRequiredFinality::Weak,
-            SignatureWeight::Weak | SignatureWeight::Strict
-        )
-            | (LegacyRequiredFinality::Strict, SignatureWeight::Strict))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn enough_signatures_params_insufficient_any_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Any,
-            false,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_any_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Any,
-            false,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_any_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Any,
-            false,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_weak_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Weak,
-            false,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_weak_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Weak,
-            false,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_weak_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Weak,
-            false,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_strict_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Strict,
-            false,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_strict_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Strict,
-            false,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_strict_false_false() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Strict,
-            false,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_any_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Any,
-            true,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_any_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Any,
-            true,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_any_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Any,
-            true,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_weak_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Weak,
-            true,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_weak_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Weak,
-            true,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_weak_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Weak,
-            true,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_strict_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Strict,
-            true,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_strict_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Strict,
-            true,
-            false,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_strict_true_false() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Strict,
-            true,
-            false,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_any_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Any,
-            false,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_any_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Any,
-            false,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_any_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Any,
-            false,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_weak_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Weak,
-            false,
-            true,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_weak_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Weak,
-            false,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_weak_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Weak,
-            false,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_strict_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Strict,
-            false,
-            true,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_strict_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Strict,
-            false,
-            true,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_strict_false_true() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Strict,
-            false,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_any_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Any,
-            true,
-            true,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_any_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Any,
-            true,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_any_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Any,
-            true,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_weak_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Weak,
-            true,
-            true,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_weak_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Weak,
-            true,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_weak_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Weak,
-            true,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_insufficient_strict_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Insufficient,
-            LegacyRequiredFinality::Strict,
-            true,
-            true,
-        );
-
-        assert!(result == false);
-    }
-
-    #[test]
-    fn enough_signatures_params_weak_strict_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Weak,
-            LegacyRequiredFinality::Strict,
-            true,
-            true,
-        );
-
-        assert!(result == true);
-    }
-
-    #[test]
-    fn enough_signatures_params_strict_strict_true_true() {
-        let result = enough_signatures(
-            SignatureWeight::Strict,
-            LegacyRequiredFinality::Strict,
-            true,
-            true,
-        );
-
-        assert!(result == true);
     }
 }

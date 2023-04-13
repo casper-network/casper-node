@@ -4,7 +4,9 @@ use derive_more::Display;
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey};
 
-use crate::types::{Block, BlockExecutionResultsOrChunkId, BlockHash, DeployHash, DeployId};
+use crate::types::{
+    Block, BlockExecutionResultsOrChunkId, BlockHash, Deploy, DeployHash, DeployId, FinalizedBlock,
+};
 
 use super::execution_results_acquisition::ExecutionResultsChecksum;
 
@@ -35,12 +37,14 @@ pub(crate) enum NeedNext {
     DeployByHash(BlockHash, DeployHash),
     #[display(fmt = "need next for {}: deploy {}", _0, _1)]
     DeployById(BlockHash, DeployId),
+    #[display(fmt = "need next for {}: make block executable (height {})", _0, _1)]
+    MakeExecutableBlock(BlockHash, u64),
     #[display(
         fmt = "need next for {}: enqueue this block (height {}) for execution",
         _0,
         _1
     )]
-    EnqueueForExecution(BlockHash, u64),
+    EnqueueForExecution(BlockHash, u64, Box<FinalizedBlock>, Vec<Deploy>),
     /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
     #[display(
@@ -57,4 +61,10 @@ pub(crate) enum NeedNext {
     ),
     #[display(fmt = "need next for {}: mark complete (height {})", _0, _1)]
     BlockMarkedComplete(BlockHash, u64),
+    #[display(
+        fmt = "need next for {}: transition acquisition state to HaveStrictFinality (height {})",
+        _0,
+        _1
+    )]
+    SwitchToHaveStrictFinality(BlockHash, u64),
 }

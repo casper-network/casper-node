@@ -15,7 +15,7 @@ use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS,
-    TimeDiff,
+    ProtocolVersion, TimeDiff,
 };
 use tracing::{error, warn};
 
@@ -40,7 +40,13 @@ pub struct CoreConfig {
     #[data_size(skip)]
     pub finality_threshold_fraction: Ratio<u64>,
 
+    /// Protocol version from which nodes are required to hold strict finality signatures.
+    pub start_protocol_version_with_strict_finality_signatures_required: ProtocolVersion,
+
     /// Which finality is required for legacy blocks.
+    /// Used to determine finality sufficiency for new joiners syncing blocks created
+    /// in a protocol version before
+    /// `start_protocol_version_with_strict_finality_signatures_required`.
     pub legacy_required_finality: LegacyRequiredFinality,
 
     /// Number of eras before an auction actually defines the set of validators.
@@ -140,6 +146,8 @@ impl CoreConfig {
         let minimum_block_time = TimeDiff::from_seconds(rng.gen_range(1..60));
         let validator_slots = rng.gen_range(1..10_000);
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
+        let start_protocol_version_with_strict_finality_signatures_required =
+            ProtocolVersion::from_parts(1, rng.gen_range(5..10), rng.gen_range(0..100));
         let legacy_required_finality = rng.gen();
         let auction_delay = rng.gen_range(1..5);
         let locked_funds_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
@@ -162,6 +170,7 @@ impl CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            start_protocol_version_with_strict_finality_signatures_required,
             legacy_required_finality,
             auction_delay,
             locked_funds_period,
@@ -186,6 +195,10 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.minimum_block_time.to_bytes()?);
         buffer.extend(self.validator_slots.to_bytes()?);
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
+        buffer.extend(
+            self.start_protocol_version_with_strict_finality_signatures_required
+                .to_bytes()?,
+        );
         buffer.extend(self.legacy_required_finality.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
@@ -207,6 +220,9 @@ impl ToBytes for CoreConfig {
             + self.minimum_block_time.serialized_length()
             + self.validator_slots.serialized_length()
             + self.finality_threshold_fraction.serialized_length()
+            + self
+                .start_protocol_version_with_strict_finality_signatures_required
+                .serialized_length()
             + self.legacy_required_finality.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
@@ -229,6 +245,8 @@ impl FromBytes for CoreConfig {
         let (minimum_block_time, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_slots, remainder) = u32::from_bytes(remainder)?;
         let (finality_threshold_fraction, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (start_protocol_version_with_strict_finality_signatures_required, remainder) =
+            ProtocolVersion::from_bytes(remainder)?;
         let (legacy_required_finality, remainder) = LegacyRequiredFinality::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
@@ -247,6 +265,7 @@ impl FromBytes for CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            start_protocol_version_with_strict_finality_signatures_required,
             legacy_required_finality,
             auction_delay,
             locked_funds_period,
