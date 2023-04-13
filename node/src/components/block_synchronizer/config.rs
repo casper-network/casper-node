@@ -9,6 +9,7 @@ const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 5000;
 const DEFAULT_PEER_REFRESH_INTERVAL: &str = "90sec";
 const DEFAULT_NEED_NEXT_INTERVAL: &str = "1sec";
 const DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL: &str = "10sec";
+const DEFAULT_PROGRESS_STALL_THRESHOLD_INTERVAL: &str = "120sec";
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -21,6 +22,9 @@ pub struct Config {
     pub need_next_interval: TimeDiff,
     /// Time interval for recurring disconnection of dishonest peers.
     pub disconnect_dishonest_peers_interval: TimeDiff,
+    /// Time interval after which synchronization is considered stalled if no successful sync
+    /// activity happened.
+    pub progress_stall_threshold_interval: TimeDiff,
 }
 
 impl Default for Config {
@@ -31,6 +35,10 @@ impl Default for Config {
             need_next_interval: TimeDiff::from_str(DEFAULT_NEED_NEXT_INTERVAL).unwrap(),
             disconnect_dishonest_peers_interval: TimeDiff::from_str(
                 DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL,
+            )
+            .unwrap(),
+            progress_stall_threshold_interval: TimeDiff::from_str(
+                DEFAULT_PROGRESS_STALL_THRESHOLD_INTERVAL,
             )
             .unwrap(),
         }
