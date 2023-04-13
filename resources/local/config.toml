@@ -463,6 +463,10 @@ need_next_interval = '1sec'
 # Time interval for recurring disconnection of dishonest peers.
 disconnect_dishonest_peers_interval = '10sec'
 
+# Time interval after which synchronization is considered stalled if no successful sync
+# activity happened.
+progress_stall_threshold_interval = '120sec'
+
 
 # ==================================
 # Configuration options for fetchers
