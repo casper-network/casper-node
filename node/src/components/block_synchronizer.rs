@@ -1268,11 +1268,7 @@ impl BlockSynchronizer {
             BlockSynchronizerProgress::Syncing(
                 builder.block_hash(),
                 builder.block_height(),
-                builder.last_progress_time().max(
-                    self.global_sync
-                        .last_progress()
-                        .unwrap_or_else(Timestamp::zero),
-                ),
+                last_progress_time,
             )
         }
     }
