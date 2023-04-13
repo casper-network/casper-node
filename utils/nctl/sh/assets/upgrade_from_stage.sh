@@ -100,7 +100,7 @@ function _main()
                          "$PROTOCOL_VERSION"
         setup_asset_binaries "$PROTOCOL_VERSION" \
                              "$COUNT_NODES" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-client" \
+                             "$NCTL_CASPER_CLIENT_HOME/target/$NCTL_COMPILE_TARGET/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
@@ -150,13 +150,15 @@ do
 done
 
 export NET_ID=${NET_ID:-1}
-ACTIVATION_POINT="${ACTIVATION_POINT:-$(get_chain_era)}"
+CHAIN_ERA=$(get_chain_era)
+DEFAULT_ACTIVATION_POINT=$((CHAIN_ERA + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))
+ACTIVATION_POINT="${ACTIVATION_POINT:-$DEFAULT_ACTIVATION_POINT}"
 if [ $ACTIVATION_POINT == "N/A" ]; then
     ACTIVATION_POINT=0
 fi
 
 _main "${STAGE_ID:-1}" \
-      $((ACTIVATION_POINT + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET)) \
+      "${ACTIVATION_POINT}" \
       "${VERBOSE:-true}" \
       "${CHAINSPEC_PATH}" \
       "${CONFIG_PATH}"

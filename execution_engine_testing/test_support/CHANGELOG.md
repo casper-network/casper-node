@@ -28,12 +28,27 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 3.0.0
+
+### Changed
+* Version bump only to match major version bump of `casper-execution-engine` dependency.
+
+
+
+## 2.3.0 [YANKED]
+
+### Added
+* Add `ChainspecConfig` to support parsing a chainspec.
+
+
+
 ## 2.2.0
 
 ### Added
 * Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
 
-
+### Deprecated
+* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
 ## 2.1.0
 

@@ -35,7 +35,7 @@ function _main()
 
     # Set initial protocol version for use later.
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
-    local ACTIVATION_POINT="$(get_chain_era)"
+    local ACTIVATION_POINT="$(($(get_chain_era) + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "6"

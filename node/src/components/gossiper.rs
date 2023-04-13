@@ -597,7 +597,7 @@ where
             Event::CheckGetFromPeerTimeout { item_id, peer } => {
                 self.check_get_from_peer_timeout(effect_builder, item_id, peer)
             }
-            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
+            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match *message {
                 Message::Gossip(item_id) => {
                     Self::is_stored(effect_builder, item_id.clone()).event(move |result| {
                         Event::IsStoredResult {
@@ -700,7 +700,7 @@ where
                 error!(%item_id, %peer, "should not timeout getting small item from peer");
                 Effects::new()
             }
-            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
+            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match *message {
                 Message::Gossip(item_id) => {
                     let target = <T as SmallGossipItem>::id_as_item(&item_id).gossip_target();
                     let action = self.table.new_complete_data(&item_id, Some(sender), target);

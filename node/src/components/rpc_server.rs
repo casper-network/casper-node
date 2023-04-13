@@ -10,9 +10,6 @@
 //! a component implementation that interfaces with other components via being plugged into a
 //! reactor, and an external facing http server that exposes various uri routes and converts
 //! JSON-RPC requests into the appropriate component events.
-//!
-//! For the list of supported RPC methods, see:
-//! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
 mod event;
@@ -285,7 +282,7 @@ where
                     .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
                     .event(move |result| Event::GetBlockResult {
                         maybe_id: Some(BlockIdentifier::Hash(hash)),
-                        result: Box::new(result),
+                        result: result.map(Box::new),
                         main_responder: responder,
                     }),
                 Event::RpcRequest(RpcRequest::GetBlock {
@@ -299,7 +296,7 @@ where
                     )
                     .event(move |result| Event::GetBlockResult {
                         maybe_id: Some(BlockIdentifier::Height(height)),
-                        result: Box::new(result),
+                        result: result.map(Box::new),
                         main_responder: responder,
                     }),
                 Event::RpcRequest(RpcRequest::GetBlock {
@@ -310,7 +307,7 @@ where
                     .get_highest_block_with_metadata_from_storage()
                     .event(move |result| Event::GetBlockResult {
                         maybe_id: None,
-                        result: Box::new(result),
+                        result: result.map(Box::new),
                         main_responder: responder,
                     }),
                 Event::RpcRequest(RpcRequest::GetBlockTransfers {
@@ -320,7 +317,7 @@ where
                     .get_block_transfers_from_storage(block_hash)
                     .event(move |result| Event::GetBlockTransfersResult {
                         block_hash,
-                        result: Box::new(result),
+                        result,
                         main_responder: responder,
                     }),
                 Event::RpcRequest(RpcRequest::QueryGlobalState {
@@ -366,19 +363,16 @@ where
                     .get_deploy_and_metadata_from_storage(hash)
                     .event(move |result| Event::GetDeployResult {
                         hash,
-                        result: Box::new(result.map(
-                            |(deploy_with_finalized_approvals, metadata_ext)| {
-                                if finalized_approvals {
-                                    (deploy_with_finalized_approvals.into_naive(), metadata_ext)
-                                } else {
-                                    (
-                                        deploy_with_finalized_approvals
-                                            .discard_finalized_approvals(),
-                                        metadata_ext,
-                                    )
-                                }
-                            },
-                        )),
+                        result: result.map(|(deploy_with_finalized_approvals, metadata_ext)| {
+                            Box::new(if finalized_approvals {
+                                (deploy_with_finalized_approvals.into_naive(), metadata_ext)
+                            } else {
+                                (
+                                    deploy_with_finalized_approvals.discard_finalized_approvals(),
+                                    metadata_ext,
+                                )
+                            })
+                        }),
                         main_responder: responder,
                     }),
                 Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder
@@ -461,12 +455,12 @@ where
                     maybe_id: _,
                     result,
                     main_responder,
-                } => main_responder.respond(*result).ignore(),
+                } => main_responder.respond(result).ignore(),
                 Event::GetBlockTransfersResult {
                     block_hash: _,
                     result,
                     main_responder,
-                } => main_responder.respond(*result).ignore(),
+                } => main_responder.respond(result).ignore(),
                 Event::QueryGlobalStateResult {
                     result,
                     main_responder,
@@ -483,7 +477,7 @@ where
                     hash: _,
                     result,
                     main_responder,
-                } => main_responder.respond(*result).ignore(),
+                } => main_responder.respond(result).ignore(),
                 Event::GetPeersResult {
                     peers,
                     main_responder,

@@ -690,7 +690,7 @@ fn inject_balance_check_for_peer(
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
-        let event_metadata = EventMetadata::new(deploy, source, Some(responder));
+        let event_metadata = Box::new(EventMetadata::new(deploy, source, Some(responder)));
         effect_builder
             .into_inner()
             .schedule(

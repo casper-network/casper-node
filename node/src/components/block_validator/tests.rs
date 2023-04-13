@@ -68,7 +68,10 @@ impl MockReactor {
             match deploy.into() {
                 None => {
                     responder
-                        .respond(Err(fetcher::Error::Absent { id, peer }))
+                        .respond(Err(fetcher::Error::Absent {
+                            id: Box::new(id),
+                            peer,
+                        }))
                         .await
                 }
                 Some(deploy) => {

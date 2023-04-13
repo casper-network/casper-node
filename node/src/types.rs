@@ -15,6 +15,7 @@ mod node_id;
 pub mod peers_map;
 mod status_feed;
 mod sync_leap;
+pub(crate) mod sync_leap_validation_metadata;
 mod validator_matrix;
 mod value_or_chunk;
 
@@ -52,7 +53,8 @@ pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
-pub(crate) use sync_leap::{SyncLeap, SyncLeapIdentifier};
+pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
+
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,

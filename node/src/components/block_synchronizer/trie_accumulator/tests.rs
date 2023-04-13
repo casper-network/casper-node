@@ -154,7 +154,7 @@ async fn failed_fetch_retriggers_download_with_different_peer() {
 
     // Simulate a fetch error
     let fetch_result: FetchResult<TrieOrChunk> = Err(FetcherError::TimedOut {
-        id: chunk_ids[0],
+        id: Box::new(chunk_ids[0]),
         peer: peers[1],
     });
     let event = Event::TrieOrChunkFetched {
