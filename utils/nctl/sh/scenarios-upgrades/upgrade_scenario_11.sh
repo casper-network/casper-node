@@ -191,8 +191,8 @@ unset INITIAL_PROTOCOL_VERSION
 
 for ARGUMENT in "$@"
 do
-    KEY=$(log "$ARGUMENT" | cut -f1 -d=)
-    VALUE=$(log "$ARGUMENT" | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         stage) _STAGE_ID=${VALUE} ;;
         *)

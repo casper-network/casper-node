@@ -261,6 +261,36 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         }
     }
 
+    fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<Bytes>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        let mut store = self.cache.lock().map_err(|_| error::Error::Poison)?;
+
+        let maybe_trie = store.get(key);
+
+        match maybe_trie {
+            Some((_, trie_bytes)) => Ok(Some(trie_bytes.clone())),
+            None => {
+                let handle = self.handle();
+                match txn.read(handle, key.as_ref())? {
+                    Some(trie_bytes) => {
+                        match store.entry(*key) {
+                            Entry::Occupied(_) => {}
+                            Entry::Vacant(v) => {
+                                v.insert((false, trie_bytes.clone()));
+                            }
+                        }
+                        Ok(Some(trie_bytes))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
+    }
+
     fn put<T>(
         &self,
         txn: &mut T,
@@ -292,35 +322,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         Ok(())
     }
 
-    fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<Bytes>, Self::Error>
-    where
-        T: Readable<Handle = Self::Handle>,
-        Digest: AsRef<[u8]>,
-        Self::Error: From<T::Error>,
-    {
-        let mut store = self.cache.lock().map_err(|_| error::Error::Poison)?;
 
-        let maybe_trie = store.get(key);
-
-        match maybe_trie {
-            Some((_, trie_bytes)) => Ok(Some(trie_bytes.clone())),
-            None => {
-                let handle = self.handle();
-                match txn.read(handle, key.as_ref())? {
-                    Some(trie_bytes) => {
-                        match store.entry(*key) {
-                            Entry::Occupied(_) => {}
-                            Entry::Vacant(v) => {
-                                v.insert((false, trie_bytes.clone()));
-                            }
-                        }
-                        Ok(Some(trie_bytes))
-                    }
-                    None => Ok(None),
-                }
-            }
-        }
-    }
 }
 
 impl TrieStore<Key, StoredValue> for ScratchTrieStore {}

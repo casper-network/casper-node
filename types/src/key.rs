@@ -58,8 +58,7 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
-const SYSTEM_CONTRACT_REGISTRY_PADDING_KEY: [u8; 32] = [0u8; 32];
-const ERA_SUMMARY_PADDING_KEY: [u8; 32] = [0u8; 32];
+const PADDING_BYTES: [u8; 32] = [0u8; 32];
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -73,9 +72,9 @@ const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LEN
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_PADDING_KEY.len();
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + ERA_SUMMARY_PADDING_KEY.len();
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -288,14 +287,14 @@ impl Key {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_PADDING_KEY)
+                    base16::encode_lower(&PADDING_BYTES)
                 )
             }
             Key::EraSummary => {
                 format!(
                     "{}{}",
                     ERA_SUMMARY_PREFIX,
-                    base16::encode_lower(&ERA_SUMMARY_PADDING_KEY)
+                    base16::encode_lower(&PADDING_BYTES)
                 )
             }
         }
@@ -506,12 +505,12 @@ impl Display for Key {
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_PADDING_KEY)
+                base16::encode_lower(&PADDING_BYTES)
             ),
             Key::EraSummary => write!(
                 f,
                 "Key::EraSummary({})",
-                base16::encode_lower(&ERA_SUMMARY_PADDING_KEY),
+                base16::encode_lower(&PADDING_BYTES),
             ),
         }
     }
@@ -621,10 +620,10 @@ impl ToBytes for Key {
                 result.append(&mut addr.to_bytes()?);
             }
             Key::SystemContractRegistry => {
-                result.append(&mut SYSTEM_CONTRACT_REGISTRY_PADDING_KEY.to_bytes()?)
+                result.append(&mut PADDING_BYTES.to_bytes()?)
             }
             Key::EraSummary => {
-                result.append(&mut ERA_SUMMARY_PADDING_KEY.to_bytes()?);
+                result.append(&mut PADDING_BYTES.to_bytes()?);
             }
         }
         Ok(result)
@@ -1014,14 +1013,14 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_PADDING_KEY)
+                base16::encode_lower(&PADDING_BYTES)
             )
         );
         assert_eq!(
             format!("{}", ERA_SUMMARY_KEY),
             format!(
                 "Key::EraSummary({})",
-                base16::encode_lower(&ERA_SUMMARY_PADDING_KEY)
+                base16::encode_lower(&PADDING_BYTES)
             )
         )
     }
@@ -1185,14 +1184,14 @@ mod tests {
                 "SystemContractRegistry":
                     format!(
                         "system-contract-registry-{}",
-                        base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_PADDING_KEY)
+                        base16::encode_lower(&PADDING_BYTES)
                     )
             }),
             json!({
                 "EraSummary":
                     format!(
                         "era-summary-{}",
-                        base16::encode_lower(&ERA_SUMMARY_PADDING_KEY)
+                        base16::encode_lower(&PADDING_BYTES)
                     )
             }),
         ];
