@@ -85,8 +85,8 @@ pub(crate) use self::{
     identity::Identity,
     insights::NetworkInsights,
     message::{
-        generate_largest_message, EstimatorWeights, FromIncoming, Message, MessageKind,
-        NetworkMessageEstimator, Payload,
+        generate_largest_serialized_message, EstimatorWeights, FromIncoming, Message, MessageKind,
+        Payload,
     },
 };
 use self::{
