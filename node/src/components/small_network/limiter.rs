@@ -339,7 +339,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
-    use crate::{crypto::AsymmetricKeyExt, testing::init_logging};
+    use crate::testing::init_logging;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);

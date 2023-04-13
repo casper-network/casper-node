@@ -1,5 +1,4 @@
-#![cfg(test)]
-
+//! An RNG for testing purposes.
 use std::{
     cell::RefCell,
     cmp, env,
@@ -152,6 +151,7 @@ impl RngCore for TestRng {
 
 impl CryptoRng for TestRng {}
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

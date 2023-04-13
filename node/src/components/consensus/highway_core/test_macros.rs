@@ -27,8 +27,9 @@ macro_rules! add_unit {
                 highway::{SignedWireUnit, WireUnit},
                 highway_testing::TEST_INSTANCE_ID,
             },
-            types::{TimeDiff, Timestamp},
         };
+        #[allow(unused_imports)] // These might be already imported at the call site.
+        use casper_types::{TimeDiff, Timestamp};
 
         let creator = $creator;
         let panorama = panorama!($($obs),*);
@@ -48,15 +49,15 @@ macro_rules! add_unit {
         // And our timestamp must not be less than any justification's.
         let mut timestamp = panorama
             .iter_correct(&$state)
-            .map(|unit| unit.timestamp + TimeDiff::from(1))
+            .map(|unit| unit.timestamp + TimeDiff::from_millis(1))
             .chain(two_units_limit)
             .max()
             .unwrap_or($state.params().start_timestamp());
         // If this is a block: Find the next time we're a leader.
         if value.is_some() {
             #[allow(clippy::integer_arithmetic)]
-            let r_len = TimeDiff::from(1 << round_exp);
-            timestamp = state::round_id(timestamp + r_len - TimeDiff::from(1), round_exp);
+            let r_len = TimeDiff::from_millis(1 << round_exp);
+            timestamp = state::round_id(timestamp + r_len - TimeDiff::from_millis(1), round_exp);
             while $state.leader(timestamp) != creator {
                 timestamp += r_len;
             }

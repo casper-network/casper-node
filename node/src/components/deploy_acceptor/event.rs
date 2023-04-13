@@ -2,11 +2,13 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::Serialize;
 
+use casper_types::Timestamp;
+
 use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Block, Deploy, NodeId, Timestamp},
+    types::{Block, Deploy, NodeId},
 };
 
 use casper_hashing::Digest;

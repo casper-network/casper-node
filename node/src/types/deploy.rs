@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
+use super::{BlockHash, Item, Tag};
 #[cfg(test)]
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::core::engine_state::{
@@ -28,19 +29,19 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::bytesrepr::Bytes;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    runtime_args,
+    crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff, Timestamp,
+    U512,
 };
 
-use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
-    rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::DisplayIter,
+    components::block_proposer::DeployInfo, rpcs::docs::DocExample, types::chainspec::DeployConfig,
+    utils::DisplayIter,
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -63,7 +64,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let header = DeployHeader {
         account: PublicKey::from(secret_key),
         timestamp: *Timestamp::doc_example(),
-        ttl: TimeDiff::from(3_600_000),
+        ttl: TimeDiff::from_seconds(3_600),
         gas_price: 1,
         body_hash,
         dependencies: vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))],
@@ -997,7 +998,7 @@ impl Deploy {
     /// Generates a completely random instance.
     pub fn random(rng: &mut TestRng) -> Self {
         let timestamp = Timestamp::random(rng);
-        let ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        let ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
         Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl)
     }
 
@@ -1516,7 +1517,6 @@ mod tests {
     use casper_types::{bytesrepr::Bytes, CLValue};
 
     use super::*;
-    use crate::crypto::AsymmetricKeyExt;
 
     const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 

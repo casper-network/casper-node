@@ -30,6 +30,8 @@ use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::{error, info, trace, warn};
 
+use casper_types::{TimeDiff, Timestamp};
+
 use crate::{
     components::consensus::{
         highway_core::{
@@ -41,7 +43,6 @@ use crate::{
         },
         traits::Context,
     },
-    types::{TimeDiff, Timestamp},
     utils::ds,
 };
 use block::Block;
@@ -1179,7 +1180,7 @@ impl<C: Context> State<C> {
 
 /// Returns the round length, given the round exponent.
 pub(crate) fn round_len(round_exp: u8) -> TimeDiff {
-    TimeDiff::from(1_u64.checked_shl(round_exp.into()).unwrap_or(u64::MAX))
+    TimeDiff::from_millis(1_u64.checked_shl(round_exp.into()).unwrap_or(u64::MAX))
 }
 
 /// Returns the time at which the round with the given timestamp and round exponent began.

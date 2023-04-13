@@ -9,13 +9,12 @@ use itertools::Itertools;
 use rand::{thread_rng, RngCore};
 use tracing::{debug, info, trace};
 
-use crate::{
-    components::consensus::{
-        consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
-        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
-        traits::{Context, NodeIdT},
-    },
-    types::Timestamp,
+use casper_types::Timestamp;
+
+use crate::components::consensus::{
+    consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
+    protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
+    traits::{Context, NodeIdT},
 };
 
 use super::{

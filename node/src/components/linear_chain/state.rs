@@ -378,8 +378,8 @@ impl LinearChain {
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_ed25519_keypair, logging, testing::TestRng};
-    use casper_types::EraId;
+    use crate::logging;
+    use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng, EraId};
 
     use super::*;
 

@@ -8,7 +8,6 @@ pub(crate) mod filter_reactor;
 mod multi_stage_test_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
-mod test_rng;
 
 use std::{
     any::type_name,
@@ -28,16 +27,17 @@ use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
+use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+
 use crate::{
     components::Component,
     effect::{announcements::ControlAnnouncement, EffectBuilder, Effects, Responder},
     logging,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::{Deploy, TimeDiff, Timestamp},
+    types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
-pub(crate) use test_rng::TestRng;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.

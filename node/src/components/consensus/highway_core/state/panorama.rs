@@ -4,16 +4,15 @@ use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    components::consensus::{
-        highway_core::{
-            highway::Dependency,
-            state::{State, Unit, UnitError},
-            validators::{ValidatorIndex, ValidatorMap},
-        },
-        traits::Context,
+use casper_types::Timestamp;
+
+use crate::components::consensus::{
+    highway_core::{
+        highway::Dependency,
+        state::{State, Unit, UnitError},
+        validators::{ValidatorIndex, ValidatorMap},
     },
-    types::Timestamp,
+    traits::Context,
 };
 
 /// The observed behavior of a validator at some point in time.

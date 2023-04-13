@@ -4,11 +4,11 @@ use datasize::DataSize;
 use serde::Deserialize;
 
 use casper_hashing::Digest;
-use casper_types::{PublicKey, SecretKey};
+use casper_types::{PublicKey, SecretKey, TimeDiff, Timestamp};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
-    types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
+    types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec},
     utils::{External, LoadError, Loadable},
 };
 

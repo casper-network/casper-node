@@ -70,7 +70,7 @@ pub enum ChainspecAccountsLoadError {
 
     /// Error while decoding a chainspec account's key hash from base-64 format.
     #[error("crypto module error: {0}")]
-    Crypto(#[from] crate::crypto::Error),
+    Crypto(#[from] casper_types::crypto::Error),
 }
 
 /// Error loading global state update file.

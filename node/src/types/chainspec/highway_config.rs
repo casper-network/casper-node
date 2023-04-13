@@ -5,11 +5,13 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    TimeDiff,
+};
 
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::types::TimeDiff;
+use casper_types::testing::TestRng;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -60,7 +62,7 @@ impl HighwayConfig {
 
     /// Returns the length of the shortest allowed round.
     pub fn min_round_length(&self) -> TimeDiff {
-        TimeDiff::from(1 << self.minimum_round_exponent)
+        TimeDiff::from_millis(1 << self.minimum_round_exponent)
     }
 }
 

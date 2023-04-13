@@ -19,7 +19,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{system::auction::BLOCK_REWARD, U512};
+use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -41,7 +41,6 @@ use crate::{
         traits::{ConsensusValueT, Context, NodeIdT},
         ActionId, TimerId,
     },
-    types::{TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -169,7 +168,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let min_round_len = state::round_len(protocol_config.highway.minimum_round_exponent);
         let min_rounds_per_era = protocol_config
             .minimum_era_height
-            .max((TimeDiff::from(1) + protocol_config.era_duration) / min_round_len);
+            .max((TimeDiff::from_millis(1) + protocol_config.era_duration) / min_round_len);
         let endorsement_evidence_limit = min_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
