@@ -253,7 +253,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Set up the synchronizer for the test block such that the next step is getting global state
-    block_synchronizer.register_block_by_hash(*block.hash(), true, true);
+    block_synchronizer.register_block_by_hash(*block.hash(), true);
     assert!(
         block_synchronizer.historical.is_some(),
         "we only get global state on historical sync"
@@ -390,7 +390,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
         BlockSynchronizer::new_initialized(&mut rng, validator_matrix.clone());
 
     // Set up the synchronizer for the test block such that the next step is getting era validators.
-    block_synchronizer.register_block_by_hash(*block.hash(), true, true);
+    block_synchronizer.register_block_by_hash(*block.hash(), true);
     block_synchronizer.register_peers(*block.hash(), peers.clone());
     block_synchronizer
         .historical
@@ -462,15 +462,15 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for forward sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some()); // we only get global state on historical sync
 
     // Registering the block again should not be allowed until the sync finishes
-    assert!(!block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(!block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Trying to register a different block should replace the old one
     let new_block = Block::random(&mut rng);
-    assert!(block_synchronizer.register_block_by_hash(*new_block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*new_block.hash(), false));
     assert_eq!(
         block_synchronizer.forward.unwrap().block_hash(),
         *new_block.hash()
@@ -487,7 +487,7 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
     assert!(block_synchronizer.historical.is_some());
 
     let effects = block_synchronizer.handle_event(
@@ -529,7 +529,7 @@ async fn fwd_sync_gets_peers_only_from_accumulator() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for forward sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
 
     let effects = block_synchronizer.handle_event(
@@ -563,7 +563,7 @@ async fn sync_starts_with_header_fetch() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -602,7 +602,7 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -660,7 +660,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -734,7 +734,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -861,7 +861,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
     let fwd_builder = block_synchronizer
@@ -945,7 +945,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1010,7 +1010,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1089,7 +1089,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1151,7 +1151,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1221,7 +1221,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1305,7 +1305,7 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1365,7 +1365,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1435,7 +1435,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1524,7 +1524,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1595,7 +1595,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -1659,10 +1659,10 @@ fn builders_are_purged_when_requested() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for forward sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Registering block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true, true));
+    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
 
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
@@ -1671,7 +1671,7 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_none());
 
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true, true));
+    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
 
@@ -1679,7 +1679,7 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.forward.is_none());
     assert!(block_synchronizer.historical.is_some());
 
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
 
@@ -1700,7 +1700,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
     let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false, true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
     assert!(block_synchronizer.forward.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 

@@ -281,7 +281,6 @@ impl BlockSynchronizer {
         &mut self,
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
-        requires_strict_finality: bool,
     ) -> bool {
         if let (true, Some(builder), _) | (false, _, Some(builder)) = (
             should_fetch_execution_state,
@@ -295,9 +294,9 @@ impl BlockSynchronizer {
         let builder = BlockBuilder::new(
             block_hash,
             should_fetch_execution_state,
-            requires_strict_finality,
             self.max_simultaneous_peers,
             self.config.peer_refresh_interval,
+            self.config.latch_reset_interval,
             self.chainspec.core_config.legacy_required_finality,
             self.chainspec
                 .core_config
@@ -351,6 +350,7 @@ impl BlockSynchronizer {
                         should_fetch_execution_state,
                         self.max_simultaneous_peers,
                         self.config.peer_refresh_interval,
+                        self.config.latch_reset_interval,
                         self.chainspec.core_config.legacy_required_finality,
                         self.chainspec
                             .core_config
@@ -781,10 +781,10 @@ impl BlockSynchronizer {
 
     fn register_disconnected_peer(&mut self, node_id: NodeId) {
         if let Some(builder) = &mut self.forward {
-            builder.disqualify_peer(Some(node_id));
+            builder.disqualify_peer(node_id);
         }
         if let Some(builder) = &mut self.historical {
-            builder.disqualify_peer(Some(node_id));
+            builder.disqualify_peer(node_id);
         }
     }
 
@@ -813,7 +813,9 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block_header {
                     None => {
-                        builder.demote_peer(maybe_peer_id);
+                        if let Some(peer_id) = maybe_peer_id {
+                            builder.demote_peer(peer_id);
+                        }
                     }
                     Some(block_header) => {
                         if let Err(error) =
@@ -861,7 +863,9 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_block {
                     None => {
-                        builder.demote_peer(maybe_peer_id);
+                        if let Some(peer_id) = maybe_peer_id {
+                            builder.demote_peer(peer_id);
+                        }
                     }
                     Some(block) => {
                         if let Err(error) = builder.register_block(&block, maybe_peer_id) {
@@ -908,7 +912,9 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_approvals_hashes {
                     None => {
-                        builder.demote_peer(maybe_peer_id);
+                        if let Some(peer_id) = maybe_peer_id {
+                            builder.demote_peer(peer_id);
+                        }
                     }
                     Some(approvals_hashes) => {
                         if let Err(error) =
@@ -929,7 +935,7 @@ impl BlockSynchronizer {
         &mut self,
         result: Result<FetchedData<FinalitySignature>, FetcherError<FinalitySignature>>,
     ) {
-        let (id, maybe_finality_signature, maybe_peer) = match result {
+        let (id, maybe_finality_signature, maybe_peer_id) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => {
                 debug!(
                     "BlockSynchronizer: fetched finality signature {} from peer {}",
@@ -954,11 +960,13 @@ impl BlockSynchronizer {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 match maybe_finality_signature {
                     None => {
-                        builder.demote_peer(maybe_peer);
+                        if let Some(peer_id) = maybe_peer_id {
+                            builder.demote_peer(peer_id);
+                        }
                     }
                     Some(finality_signature) => {
                         if let Err(error) =
-                            builder.register_finality_signature(*finality_signature, maybe_peer)
+                            builder.register_finality_signature(*finality_signature, maybe_peer_id)
                         {
                             warn!(%error, "BlockSynchronizer: failed to apply finality signature");
                         }
@@ -1010,9 +1018,13 @@ impl BlockSynchronizer {
         match (&mut self.forward, &mut self.historical) {
             (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
                 if demote_peer {
-                    builder.demote_peer(maybe_peer_id);
+                    if let Some(peer_id) = maybe_peer_id {
+                        builder.demote_peer(peer_id);
+                    }
                 } else {
-                    builder.promote_peer(maybe_peer_id);
+                    if let Some(peer_id) = maybe_peer_id {
+                        builder.promote_peer(peer_id);
+                    }
                     builder.register_era_validator_weights(&self.validator_matrix);
                 }
             }
@@ -1068,7 +1080,7 @@ impl BlockSynchronizer {
                 }
                 // Demote all the peers where we didn't find the required global state tries
                 for peer in unreliable_peers.iter() {
-                    builder.demote_peer(Some(*peer));
+                    builder.demote_peer(*peer);
                 }
             }
         }
@@ -1156,7 +1168,9 @@ impl BlockSynchronizer {
             match maybe_value_or_chunk {
                 None => {
                     debug!(%block_hash, "execution_results_fetched: No maybe_value_or_chunk");
-                    builder.demote_peer(maybe_peer_id);
+                    if let Some(peer_id) = maybe_peer_id {
+                        builder.demote_peer(peer_id);
+                    }
                 }
                 Some(value_or_chunk) => {
                     // due to reasons, the stitched back together execution effects need to be saved

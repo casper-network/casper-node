@@ -221,7 +221,7 @@ impl BlockAcquisitionState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Display)]
+#[derive(Clone, Copy, Debug, Display, PartialEq)]
 #[must_use]
 pub(super) enum Acceptance {
     #[display(fmt = "had it")]
