@@ -140,6 +140,80 @@ fn register_era_validator_weights() {
 }
 
 #[test]
+fn register_finalized_block() {
+    let mut rng = TestRng::new();
+    // Create a random block.
+    let block = Block::random(&mut rng);
+    // Create a builder for the block.
+    let mut builder = BlockBuilder::new(
+        block.header().block_hash(),
+        false,
+        1,
+        TimeDiff::from_seconds(1),
+        TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
+    );
+    let mut latest_timestamp = builder.last_progress;
+    // Create mock era weights for the block's era.
+    let weights = EraValidatorWeights::new(
+        block.header().era_id(),
+        BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
+        Ratio::new(1, 3),
+    );
+    // Create a signature acquisition to fill.
+    let mut signature_acquisition = SignatureAcquisition::new(
+        vec![ALICE_PUBLIC_KEY.clone()],
+        LegacyRequiredFinality::Strict,
+    );
+    let sig = FinalitySignature::create(
+        *block.hash(),
+        block.header().era_id(),
+        &ALICE_SECRET_KEY,
+        ALICE_PUBLIC_KEY.clone(),
+    );
+    assert_eq!(
+        signature_acquisition.apply_signature(sig, &weights),
+        Acceptance::NeededIt
+    );
+    // Set the builder's state to `HaveStrictFinalitySignatures`.
+    let finalized_block = FinalizedBlock::from(block.clone());
+    builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
+        Box::new(block.clone()),
+        signature_acquisition.clone(),
+    );
+    let expected_deploys = vec![Deploy::random(&mut rng)];
+
+    // Register the finalized block.
+    thread::sleep(Duration::from_millis(5));
+    builder.register_made_finalized_block(finalized_block.clone(), expected_deploys.clone());
+    match &builder.acquisition_state {
+        BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, actual_deploys, enqueued) => {
+            assert_eq!(*block_hash, *block.hash());
+            assert_eq!(expected_deploys, *actual_deploys);
+            assert!(!enqueued);
+        }
+        _ => panic!("Unexpected outcome in registering finalized block"),
+    }
+    assert!(!builder.is_failed());
+    assert_ne!(latest_timestamp, builder.last_progress);
+    latest_timestamp = builder.last_progress;
+
+    // Make the builder historical.
+    builder.should_fetch_execution_state = true;
+    // Reset the state to `HaveStrictFinalitySignatures`.
+    builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
+        Box::new(block),
+        signature_acquisition.clone(),
+    );
+    // Register the finalized block. This should fail on historical builders.
+    thread::sleep(Duration::from_millis(5));
+    builder.register_made_finalized_block(finalized_block, expected_deploys);
+    assert!(builder.is_failed());
+    assert_ne!(latest_timestamp, builder.last_progress);
+}
+
+#[test]
 fn register_block_execution() {
     let mut rng = TestRng::new();
     // Create a random block.
