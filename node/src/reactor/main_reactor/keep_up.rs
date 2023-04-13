@@ -168,6 +168,16 @@ impl MainReactor {
                 // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
+            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
+                // working on syncing a block
+                warn!(
+                    %block_hash,
+                    %last_progress_time,
+                    "KeepUp: block synchronizer stalled while syncing block; purging forward builder"
+                );
+                self.block_synchronizer.purge_forward();
+                self.keep_up_idle()
+            }
         }
     }
 
@@ -576,12 +586,27 @@ impl MainReactor {
         &mut self,
         block_synchronizer_progress: &BlockSynchronizerProgress,
     ) -> Result<Option<SyncBackInstruction>, String> {
-        if matches!(
-            block_synchronizer_progress,
-            BlockSynchronizerProgress::Syncing(_, _, _)
-        ) {
-            debug!("KeepUp: still syncing historical block");
-            return Ok(Some(SyncBackInstruction::Syncing));
+        match block_synchronizer_progress {
+            BlockSynchronizerProgress::Syncing(_, _, _) => {
+                debug!("KeepUp: still syncing historical block");
+                return Ok(Some(SyncBackInstruction::Syncing));
+            }
+            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
+                warn!(
+                    %block_hash,
+                    %last_progress_time,
+                    "KeepUp: block synchronizer stalled while syncing historical block; purging historical builder"
+                );
+                self.block_synchronizer.purge_historical();
+            }
+            BlockSynchronizerProgress::Executing(block_hash, height, _) => {
+                warn!(
+                    %block_hash,
+                    %height,
+                    "Historical block synchronizer should not be waiting for the block to be executed"
+                );
+            }
+            BlockSynchronizerProgress::Idle | BlockSynchronizerProgress::Synced(_, _, _) => {}
         }
         // in this flow there is no significant difference between Idle & Synced, as unlike in
         // catchup and keepup flows there is no special activity necessary upon getting to Synced

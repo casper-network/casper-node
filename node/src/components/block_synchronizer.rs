@@ -54,8 +54,8 @@ use crate::{
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
         BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
-        FinalitySignature, FinalitySignatureId, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
-        SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
+        FinalitySignature, FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock,
+        MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -272,6 +272,11 @@ impl BlockSynchronizer {
     }
 
     /// Registers a block for synchronization.
+    ///
+    /// Returns `true` if a block was registered for synchronization successfully.
+    /// Will return `false` if there was an attempt to register the same block hash
+    /// again while the synchronizer was working on the same block. The synchronizer
+    /// will continue work on the block in that case.
     pub(crate) fn register_block_by_hash(
         &mut self,
         block_hash: BlockHash,
@@ -292,6 +297,10 @@ impl BlockSynchronizer {
             self.max_simultaneous_peers,
             self.config.peer_refresh_interval,
             self.config.latch_reset_interval,
+            self.chainspec.core_config.legacy_required_finality,
+            self.chainspec
+                .core_config
+                .start_protocol_version_with_strict_finality_signatures_required,
         );
         if should_fetch_execution_state {
             self.historical.replace(builder);
@@ -342,6 +351,10 @@ impl BlockSynchronizer {
                         self.max_simultaneous_peers,
                         self.config.peer_refresh_interval,
                         self.config.latch_reset_interval,
+                        self.chainspec.core_config.legacy_required_finality,
+                        self.chainspec
+                            .core_config
+                            .start_protocol_version_with_strict_finality_signatures_required,
                     );
                     apply_sigs(&mut builder, maybe_sigs);
                     if should_fetch_execution_state {
@@ -373,16 +386,25 @@ impl BlockSynchronizer {
 
     /* EVENT LOGIC */
 
-    fn register_block_execution_not_enqueued(&mut self, block_hash: &BlockHash) {
+    fn register_made_finalized_block(
+        &mut self,
+        block_hash: &BlockHash,
+        result: Option<(FinalizedBlock, Vec<Deploy>)>,
+    ) {
         if let Some(builder) = &self.historical {
             if builder.block_hash() == *block_hash {
-                error!(%block_hash, "historical block should not be enqueued for execution");
+                error!(%block_hash, "historical block should not have been converted for execution");
             }
         }
 
         match &mut self.forward {
             Some(builder) if builder.block_hash() == *block_hash => {
-                builder.register_block_execution_not_enqueued();
+                if let Some((finalized_block, deploys)) = result {
+                    builder.register_made_finalized_block(finalized_block, deploys);
+                } else {
+                    // Could not create finalized block, abort
+                    builder.abort();
+                }
             }
             _ => {
                 trace!(%block_hash, "BlockSynchronizer: not currently synchronizing forward block");
@@ -529,14 +551,10 @@ impl BlockSynchronizer {
         let mut results = Effects::new();
         let max_simultaneous_peers = self.max_simultaneous_peers as usize;
         let mut builder_needs_next = |builder: &mut BlockBuilder, chainspec: Arc<Chainspec>| {
-            if builder.in_flight_latch().is_some() || builder.is_finished() {
+            if builder.in_flight_latch().is_some() || builder.is_finished() || builder.is_failed() {
                 return;
             }
-            let action = builder.block_acquisition_action(
-                rng,
-                max_simultaneous_peers,
-                chainspec.core_config.legacy_required_finality,
-            );
+            let action = builder.block_acquisition_action(rng, max_simultaneous_peers);
             let peers = action.peers_to_ask();
             let need_next = action.need_next();
             info!(
@@ -663,7 +681,7 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::EnqueueForExecution(block_hash, _) => {
+                NeedNext::MakeExecutableBlock(block_hash, _) => {
                     if false == builder.should_fetch_execution_state() {
                         builder.set_in_flight_latch();
                         if builder.execution_unattempted() {
@@ -672,6 +690,18 @@ impl BlockSynchronizer {
                             ))
                         }
                     }
+                }
+                NeedNext::EnqueueForExecution(block_hash, _, finalized_block, deploys) => {
+                    builder.set_in_flight_latch();
+                    results.extend(
+                        effect_builder
+                            .enqueue_block_for_execution(
+                                *finalized_block,
+                                deploys,
+                                MetaBlockState::new_already_stored(),
+                            )
+                            .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
+                    )
                 }
                 NeedNext::BlockMarkedComplete(block_hash, block_height) => {
                     // Only mark the block complete if we're syncing historical
@@ -722,6 +752,20 @@ impl BlockSynchronizer {
                             )
                             .event(Event::SyncLeapFetched)
                     }))
+                }
+                NeedNext::SwitchToHaveStrictFinality(block_hash, _) => {
+                    // Don't set the latch since this is an internal state transition
+                    if builder.block_hash() != block_hash {
+                        debug!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
+                    } else if let Err(error) = builder.switch_to_have_strict_finality(block_hash) {
+                        error!(%error, "BlockSynchronizer: failed to advance acquisition state");
+                    } else {
+                        results.extend(
+                            effect_builder
+                                .set_timeout(need_next_interval)
+                                .event(|_| Event::Request(BlockSynchronizerRequest::NeedNext)),
+                        );
+                    }
                 }
             }
         };
@@ -1193,6 +1237,21 @@ impl BlockSynchronizer {
                     error!("BlockSynchronizer: finished builder should have block height and era")
                 }
                 Some((block_height, era_id)) => {
+                    return BlockSynchronizerProgress::Synced(
+                        builder.block_hash(),
+                        block_height,
+                        era_id,
+                    );
+                }
+            }
+        }
+
+        if builder.is_executing() {
+            match builder.block_height_and_era() {
+                None => {
+                    error!("BlockSynchronizer: finished builder should have block height and era")
+                }
+                Some((block_height, era_id)) => {
                     // If the block is currently being executed, we will not
                     // purge the builder and instead wait for it to be
                     // executed and marked complete.
@@ -1203,24 +1262,29 @@ impl BlockSynchronizer {
                             era_id,
                         );
                     }
-
-                    return BlockSynchronizerProgress::Synced(
-                        builder.block_hash(),
-                        block_height,
-                        era_id,
-                    );
                 }
             }
         }
-        BlockSynchronizerProgress::Syncing(
-            builder.block_hash(),
-            builder.block_height(),
-            builder.last_progress_time().max(
-                self.global_sync
-                    .last_progress()
-                    .unwrap_or_else(Timestamp::zero),
-            ),
-        )
+
+        let last_progress_time = builder.last_progress_time().max(
+            self.global_sync
+                .last_progress()
+                .unwrap_or_else(Timestamp::zero),
+        );
+
+        if last_progress_time.elapsed() > self.config.progress_stall_threshold_interval {
+            BlockSynchronizerProgress::Stalled(
+                builder.block_hash(),
+                builder.block_height(),
+                last_progress_time,
+            )
+        } else {
+            BlockSynchronizerProgress::Syncing(
+                builder.block_hash(),
+                builder.block_height(),
+                last_progress_time,
+            )
+        }
     }
 
     fn status(&self) -> BlockSynchronizerStatus {
@@ -1425,30 +1489,6 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.register_disconnected_peer(node_id);
                     Effects::new()
                 }
-                Event::MadeFinalizedBlock { block_hash, result } => {
-                    // when syncing a forward block the node does not acquire
-                    // global state and execution results from peers; instead
-                    // the node attempts to execute the block to produce the
-                    // global state and execution results and check the results
-                    // first, the block it must be turned into a finalized block
-                    // and then enqueued for execution.
-                    let mut effects = Effects::new();
-                    match result {
-                        Some((finalized_block, deploys)) => {
-                            effects.extend(
-                                effect_builder
-                                    .enqueue_block_for_execution(
-                                        finalized_block,
-                                        deploys,
-                                        MetaBlockState::new_already_stored(),
-                                    )
-                                    .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
-                            );
-                        }
-                        None => self.register_block_execution_not_enqueued(&block_hash),
-                    }
-                    effects
-                }
                 Event::MarkBlockExecutionEnqueued(block_hash) => {
                     // when syncing a forward block the synchronizer considers it
                     // finished after it has been successfully enqueued for execution
@@ -1557,6 +1597,16 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                 // no more peers available, what do we need next?
                 Event::AccumulatedPeers(block_hash, None) => {
                     debug!(%block_hash, "BlockSynchronizer: got 0 peers from accumulator");
+                    self.need_next(effect_builder, rng)
+                }
+                Event::MadeFinalizedBlock { block_hash, result } => {
+                    // when syncing a forward block the node does not acquire
+                    // global state and execution results from peers; instead
+                    // the node attempts to execute the block to produce the
+                    // global state and execution results and check the results
+                    // first, the block it must be turned into a finalized block
+                    // and then enqueued for execution.
+                    self.register_made_finalized_block(&block_hash, result);
                     self.need_next(effect_builder, rng)
                 }
             },

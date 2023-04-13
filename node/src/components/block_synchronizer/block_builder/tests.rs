@@ -3,13 +3,7 @@ use std::{collections::BTreeMap, thread, time::Duration};
 use casper_types::testing::TestRng;
 use num_rational::Ratio;
 
-use crate::components::{
-    block_synchronizer::{
-        deploy_acquisition::DeployAcquisition,
-        execution_results_acquisition::ExecutionResultsAcquisition,
-    },
-    consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
-};
+use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
 
 use super::*;
 
@@ -23,6 +17,8 @@ fn handle_acceptance() {
         1,
         TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
     );
 
     let honest_peer = NodeId::random(&mut rng);
@@ -105,6 +101,8 @@ fn register_era_validator_weights() {
         1,
         TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
     );
     let latest_timestamp = builder.last_progress;
 
@@ -153,6 +151,8 @@ fn register_block_execution() {
         1,
         TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
     );
     let mut latest_timestamp = builder.last_progress;
     // Create mock era weights for the block's era.
@@ -162,7 +162,10 @@ fn register_block_execution() {
         Ratio::new(1, 3),
     );
     // Create a signature acquisition to fill.
-    let mut signature_acquisition = SignatureAcquisition::new(vec![ALICE_PUBLIC_KEY.clone()]);
+    let mut signature_acquisition = SignatureAcquisition::new(
+        vec![ALICE_PUBLIC_KEY.clone()],
+        LegacyRequiredFinality::Strict,
+    );
     let sig = FinalitySignature::create(
         *block.hash(),
         block.header().era_id(),
@@ -175,61 +178,45 @@ fn register_block_execution() {
     );
     // Set the builder's state to `HaveAllDeploys` to we can simulate
     // execution.
-    builder.acquisition_state = BlockAcquisitionState::HaveAllDeploys(
-        Box::new(block.clone()),
-        signature_acquisition.clone(),
+    let finalized_block = Box::new(FinalizedBlock::from(block.clone()));
+    builder.acquisition_state = BlockAcquisitionState::HaveFinalizedBlock(
+        *block.hash(),
+        finalized_block,
+        vec![Deploy::random(&mut rng)],
+        false,
     );
 
     assert_eq!(builder.execution_progress, ExecutionProgress::Idle);
-    // Register the block execution enquement as unsuccessful. This should not
-    // alter the state of the builder but `touch` should be called so the
-    // enquement can be retried.
-    thread::sleep(Duration::from_millis(5));
-    builder.register_block_execution_not_enqueued();
-    assert_eq!(builder.execution_progress, ExecutionProgress::Idle);
-    assert!(!builder.is_failed());
-    assert_ne!(latest_timestamp, builder.last_progress);
-    latest_timestamp = builder.last_progress;
     // Register the block execution enquement as successful. This should
     // advance the execution progress.
     thread::sleep(Duration::from_millis(5));
     builder.register_block_execution_enqueued();
     assert_eq!(builder.execution_progress, ExecutionProgress::Started);
+    assert!(matches!(
+        builder.acquisition_state,
+        BlockAcquisitionState::HaveFinalizedBlock(_, _, _, true)
+    ));
     assert!(!builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
     latest_timestamp = builder.last_progress;
+
+    // Attempt to register the block for execution again. The state shouldn't
+    // change and the builder shouldn't fail.
+    thread::sleep(Duration::from_millis(5));
+    builder.register_block_execution_enqueued();
+    assert_eq!(builder.execution_progress, ExecutionProgress::Started);
+    assert!(matches!(
+        builder.acquisition_state,
+        BlockAcquisitionState::HaveFinalizedBlock(_, _, _, true)
+    ));
+    assert!(!builder.is_failed());
+    assert_ne!(latest_timestamp, builder.last_progress);
+    latest_timestamp = builder.last_progress;
+
     // Make the builder historical.
     builder.should_fetch_execution_state = true;
     // Register the block execution enquement as successful. This should put
     // the builder in a failed state as we shouldn't execute historical blocks.
-    thread::sleep(Duration::from_millis(5));
-    builder.register_block_execution_enqueued();
-    assert!(builder.is_failed());
-    assert_ne!(latest_timestamp, builder.last_progress);
-
-    // Create a fresh builder.
-    let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
-        false,
-        1,
-        TimeDiff::from_seconds(1),
-        TimeDiff::from_seconds(1),
-    );
-    latest_timestamp = builder.last_progress;
-    // Create a deploy acquisition with a missing deploy.
-    let deploy_acquisition =
-        DeployAcquisition::new_by_hash(vec![DeployHash::random(&mut rng)], false);
-    assert!(deploy_acquisition.needs_deploy().is_some());
-    // Set the builder state to `HaveBlock` and give it the deploy acquisition
-    // with a missing deploy.
-    builder.acquisition_state = BlockAcquisitionState::HaveBlock(
-        Box::new(block),
-        signature_acquisition,
-        deploy_acquisition,
-    );
-    // Register the block execution enquement as successful. This should put
-    // the builder in a failed state as we should execute blocks only when we
-    // have no missing deploys, either in `HaveBlock` or `HaveAllDeploys`.
     thread::sleep(Duration::from_millis(5));
     builder.register_block_execution_enqueued();
     assert!(builder.is_failed());
@@ -248,6 +235,8 @@ fn register_block_executed() {
         1,
         TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
     );
     let mut latest_timestamp = builder.last_progress;
     // Create mock era weights for the block's era.
@@ -257,7 +246,10 @@ fn register_block_executed() {
         Ratio::new(1, 3),
     );
     // Create a signature acquisition to fill.
-    let mut signature_acquisition = SignatureAcquisition::new(vec![ALICE_PUBLIC_KEY.clone()]);
+    let mut signature_acquisition = SignatureAcquisition::new(
+        vec![ALICE_PUBLIC_KEY.clone()],
+        LegacyRequiredFinality::Strict,
+    );
     let sig = FinalitySignature::create(
         *block.hash(),
         block.header().era_id(),
@@ -301,7 +293,7 @@ fn register_block_executed() {
 }
 
 #[test]
-fn register_block_marked_complete_forward() {
+fn register_block_marked_complete() {
     let mut rng = TestRng::new();
     // Create a random block.
     let block = Block::random(&mut rng);
@@ -312,92 +304,8 @@ fn register_block_marked_complete_forward() {
         1,
         TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
-    );
-    let mut latest_timestamp = builder.last_progress;
-    // Create mock era weights for the block's era.
-    let weights = EraValidatorWeights::new(
-        block.header().era_id(),
-        BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
-        Ratio::new(1, 3),
-    );
-    // Create a signature acquisition to fill.
-    let mut signature_acquisition = SignatureAcquisition::new(vec![ALICE_PUBLIC_KEY.clone()]);
-    let sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
-    assert_eq!(
-        signature_acquisition.apply_signature(sig, &weights),
-        Acceptance::NeededIt
-    );
-    // Set the builder state to `HaveAllDeploys`.
-    builder.acquisition_state = BlockAcquisitionState::HaveAllDeploys(
-        Box::new(block.clone()),
-        signature_acquisition.clone(),
-    );
-    // Register the block as marked complete. This should transition the
-    // builder state to `HaveStrictFinalitySignatures`.
-    thread::sleep(Duration::from_millis(5));
-    builder.register_marked_complete();
-    assert!(matches!(
-        builder.acquisition_state,
-        BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-    ));
-    assert!(!builder.is_failed());
-    assert_ne!(latest_timestamp, builder.last_progress);
-    latest_timestamp = builder.last_progress;
-
-    // Set the builder state to `HaveBlock` with an empty deploy acquisition.
-    // The deploy acquisition is missing no deploys.
-    builder.acquisition_state = BlockAcquisitionState::HaveBlock(
-        Box::new(block.clone()),
-        signature_acquisition.clone(),
-        DeployAcquisition::new_by_hash(vec![], false),
-    );
-    // Register the block as marked complete. As there are no missing deploys,
-    // the builder state should transition to `HaveStrictFinalitySignatures`.
-    thread::sleep(Duration::from_millis(5));
-    builder.register_marked_complete();
-    assert!(matches!(
-        builder.acquisition_state,
-        BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-    ));
-    assert!(!builder.is_failed());
-    assert_ne!(latest_timestamp, builder.last_progress);
-    latest_timestamp = builder.last_progress;
-
-    // Set the builder state to `HaveBlock` with a deploy acquisition which
-    // is missing one deploy.
-    let deploy_acquisition =
-        DeployAcquisition::new_by_hash(vec![DeployHash::random(&mut rng)], false);
-    assert!(deploy_acquisition.needs_deploy().is_some());
-    builder.acquisition_state = BlockAcquisitionState::HaveBlock(
-        Box::new(block),
-        signature_acquisition,
-        deploy_acquisition,
-    );
-    // Register the block as marked complete. As there is a missing deploy,
-    // this operation is invalid and the builder should be in a failed state.
-    thread::sleep(Duration::from_millis(5));
-    builder.register_marked_complete();
-    assert!(builder.is_failed());
-    assert_ne!(latest_timestamp, builder.last_progress);
-}
-
-#[test]
-fn register_block_marked_complete_historical() {
-    let mut rng = TestRng::new();
-    // Create a random block.
-    let block = Block::random(&mut rng);
-    // Create a builder for the block.
-    let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
-        false,
-        1,
-        TimeDiff::from_seconds(1),
-        TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
     );
     // Make the builder historical.
     builder.should_fetch_execution_state = true;
@@ -409,7 +317,10 @@ fn register_block_marked_complete_historical() {
         Ratio::new(1, 3),
     );
     // Create a signature acquisition to fill.
-    let mut signature_acquisition = SignatureAcquisition::new(vec![ALICE_PUBLIC_KEY.clone()]);
+    let mut signature_acquisition = SignatureAcquisition::new(
+        vec![ALICE_PUBLIC_KEY.clone()],
+        LegacyRequiredFinality::Strict,
+    );
     let sig = FinalitySignature::create(
         *block.hash(),
         block.header().era_id(),
@@ -421,20 +332,10 @@ fn register_block_marked_complete_historical() {
         Acceptance::NeededIt
     );
 
-    // Create an empty deploy acquisition with no missing deploys.
-    let empty_deploy_acquisition = DeployAcquisition::new_by_hash(vec![], true);
-    // Create a mock execution results acquisition.
-    let empty_ee_acquisition = ExecutionResultsAcquisition::Needed {
-        block_hash: *block.hash(),
-    };
-
-    // Set the builder state to `HaveGlobalState` with the empty deploy
-    // acquisition.
-    builder.acquisition_state = BlockAcquisitionState::HaveGlobalState(
+    // Set the builder state to `HaveStrictFinalitySignatures`.
+    builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
         Box::new(block.clone()),
         signature_acquisition.clone(),
-        empty_deploy_acquisition.clone(),
-        empty_ee_acquisition.clone(),
     );
     // Register the block as marked complete. Since there are no missing
     // deploys, this should transition the builder state to
@@ -443,57 +344,23 @@ fn register_block_marked_complete_historical() {
     builder.register_marked_complete();
     assert!(matches!(
         builder.acquisition_state,
-        BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+        BlockAcquisitionState::Complete(..)
     ));
     assert!(!builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
     latest_timestamp = builder.last_progress;
 
-    // Create a deploy acquisition with a missing deploy.
-    let deploy_acquisition =
-        DeployAcquisition::new_by_hash(vec![DeployHash::random(&mut rng)], false);
-    assert!(deploy_acquisition.needs_deploy().is_some());
-    // Set the builder state to `HaveGlobalState` with the previously created
-    // deploy acquisition.
-    builder.acquisition_state = BlockAcquisitionState::HaveGlobalState(
-        Box::new(block.clone()),
-        signature_acquisition.clone(),
-        deploy_acquisition,
-        empty_ee_acquisition.clone(),
-    );
-    // Register the block as marked complete. Currently we are not checking
-    // for missing deploys at this step since this is already checked at the
-    // time of the enqueue operation, so the state transitions to
-    // `HaveStrictFinalitySignatures`.
-    thread::sleep(Duration::from_millis(5));
-    builder.register_marked_complete();
-    assert!(matches!(
-        builder.acquisition_state,
-        BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-    ));
-    assert!(!builder.is_failed());
-    assert_ne!(latest_timestamp, builder.last_progress);
-    latest_timestamp = builder.last_progress;
-
-    // Set the builder state to `HaveGlobalState` with a deploy acquisition
-    // with no missing deploys.
-    builder.acquisition_state = BlockAcquisitionState::HaveGlobalState(
-        Box::new(block),
-        signature_acquisition,
-        empty_deploy_acquisition,
-        empty_ee_acquisition,
-    );
     // Make this a forward builder.
     builder.should_fetch_execution_state = false;
+    // Set the builder state to `HaveStrictFinalitySignatures`.
+    builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
+        Box::new(block),
+        signature_acquisition.clone(),
+    );
     // Register the block as marked complete. In the forward flow we should
-    // not be in this state and marking the block complete, so the state
-    // doesn't transition.
+    // abort the builder as an attempt to mark the block complete is invalid.
     thread::sleep(Duration::from_millis(5));
     builder.register_marked_complete();
-    assert!(matches!(
-        builder.acquisition_state,
-        BlockAcquisitionState::HaveGlobalState(..)
-    ));
-    assert!(!builder.is_failed());
+    assert!(builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
 }

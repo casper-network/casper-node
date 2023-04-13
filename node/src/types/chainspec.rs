@@ -34,7 +34,7 @@ use casper_types::{
 };
 
 pub use self::{
-    accounts_config::{AccountConfig, AccountsConfig, ValidatorConfig},
+    accounts_config::{AccountConfig, AccountsConfig, DelegatorConfig, ValidatorConfig},
     activation_point::ActivationPoint,
     chainspec_raw_bytes::ChainspecRawBytes,
     core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality},
