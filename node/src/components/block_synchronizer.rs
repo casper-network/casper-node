@@ -1258,7 +1258,7 @@ impl BlockSynchronizer {
                 .unwrap_or_else(Timestamp::zero),
         );
 
-        if last_progress_time.elapsed() > self.config.progress_stall_threshold_interval {
+        if last_progress_time.elapsed() > self.config.stall_limit {
             BlockSynchronizerProgress::Stalled(
                 builder.block_hash(),
                 builder.block_height(),

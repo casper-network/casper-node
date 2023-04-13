@@ -465,7 +465,7 @@ disconnect_dishonest_peers_interval = '10sec'
 
 # Time interval after which synchronization is considered stalled if no successful sync
 # activity happened.
-progress_stall_threshold_interval = '120sec'
+stall_limit = '120sec'
 
 
 # ==================================
