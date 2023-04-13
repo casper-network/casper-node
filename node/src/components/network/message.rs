@@ -941,4 +941,21 @@ mod tests {
     fn bincode_roundtrip_certificate() {
         roundtrip_certificate(false)
     }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let estimator = NetworkMessageEstimator::new(&chainspec);
+        let mut cache = Cache::default();
+        let specimen = Message::largest_specimen(&estimator, &mut cache);
+
+        assert_matches::assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::GetResponse { .. })
+        );
+
+        let serialized = serialize_net_message(&specimen);
+
+        assert_eq!(serialized.len(), 8_388_736);
+    }
 }
