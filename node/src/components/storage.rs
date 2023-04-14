@@ -49,7 +49,6 @@ use std::{
     io::ErrorKind,
     mem,
     path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
 };
 
@@ -164,7 +163,7 @@ pub struct Storage {
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
-    env: Rc<Environment>,
+    env: Arc<Environment>,
     /// The block header database.
     #[data_size(skip)]
     block_header_db: Database,
@@ -470,7 +469,7 @@ impl Storage {
 
         let mut component = Self {
             root,
-            env: Rc::new(env),
+            env: Arc::new(env),
             block_header_db,
             block_body_db,
             block_metadata_db,
@@ -769,7 +768,7 @@ impl Storage {
                 approvals_hashes,
                 responder,
             } => {
-                let env = Rc::clone(&self.env);
+                let env = Arc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
                 let result = self.write_approvals_hashes(&mut txn, &approvals_hashes)?;
                 txn.commit()?;
@@ -897,7 +896,7 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
-                let env = Rc::clone(&self.env);
+                let env = Arc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
                 self.write_execution_results(&mut txn, &block_hash, execution_results)?;
                 txn.commit()?;
@@ -1220,7 +1219,7 @@ impl Storage {
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if !wrote {
@@ -1383,7 +1382,7 @@ impl Storage {
     pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
@@ -1401,7 +1400,7 @@ impl Storage {
     pub fn write_complete_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
