@@ -568,12 +568,15 @@ where
 }
 
 /// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message<E: SizeEstimator>(
-    estimator: &E,
-    cache: &mut Cache,
-) -> Vec<u8> {
-    let specimen = Message::<protocol::Message>::largest_specimen(estimator, cache);
-    serialize_net_message(&specimen)
+pub(crate) fn generate_largest_message(chainspec: &Chainspec) -> Message<protocol::Message> {
+    let estimator = &NetworkMessageEstimator::new(chainspec);
+    let cache = &mut Cache::default();
+
+    Message::largest_specimen(estimator, cache)
+}
+
+pub(crate) fn generate_largest_serialized_message(chainspec: &Chainspec) -> Vec<u8> {
+    serialize_net_message(&generate_largest_message(chainspec))
 }
 
 impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
@@ -601,6 +604,7 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
 mod tests {
     use std::{net::SocketAddr, pin::Pin};
 
+    use assert_matches::assert_matches;
     use bytes::BytesMut;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -940,5 +944,25 @@ mod tests {
     #[test]
     fn bincode_roundtrip_certificate() {
         roundtrip_certificate(false)
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec);
+
+        assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::GetResponse { .. }),
+            "the type of the largest possible network message based on the production chainspec has changed"
+        );
+
+        let serialized = serialize_net_message(&specimen);
+
+        assert_eq!(
+            serialized.len(),
+            8_388_736,
+            "the size of the largest possible network message based on the production chainspec has changed"
+        );
     }
 }
