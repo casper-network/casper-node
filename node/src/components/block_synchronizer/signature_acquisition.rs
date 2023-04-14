@@ -437,4 +437,325 @@ mod tests {
         );
         assert!(signature_acquisition.have_no_vacant() == false);
     }
+
+    #[test]
+    fn missing_legacy_flag_means_not_legacy() {
+        let signature_weight = SignatureWeight::Insufficient;
+        let legacy_required_finality = LegacyRequiredFinality::Any;
+
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: None,
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        assert!(!sa.is_legacy())
+    }
+
+    #[test]
+    fn not_historical_and_not_legacy_and_is_insufficient() {
+        let signature_weight = SignatureWeight::Insufficient;
+
+        // This parameter should not affect calculation for not historical and not legacy blocks.
+        let legacy_required_finality = [
+            LegacyRequiredFinality::Any,
+            LegacyRequiredFinality::Weak,
+            LegacyRequiredFinality::Strict,
+        ];
+
+        legacy_required_finality
+            .iter()
+            .for_each(|legacy_required_finality| {
+                let is_legacy = false;
+                let sa = SignatureAcquisition {
+                    inner: Default::default(),
+                    maybe_is_legacy: Some(is_legacy),
+                    signature_weight,
+                    legacy_required_finality: *legacy_required_finality,
+                };
+
+                let is_historical = false;
+                let requires_strict_finality = false;
+                let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+                assert!(!result);
+
+                let requires_strict_finality = true;
+                let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+                assert!(!result);
+            })
+    }
+
+    #[test]
+    fn not_historical_and_not_legacy_and_is_weak() {
+        let signature_weight = SignatureWeight::Weak;
+
+        // This parameter should not affect calculation for not historical and not legacy blocks.
+        let legacy_required_finality = [
+            LegacyRequiredFinality::Any,
+            LegacyRequiredFinality::Weak,
+            LegacyRequiredFinality::Strict,
+        ];
+
+        legacy_required_finality
+            .iter()
+            .for_each(|legacy_required_finality| {
+                let is_legacy = false;
+                let sa = SignatureAcquisition {
+                    inner: Default::default(),
+                    maybe_is_legacy: Some(is_legacy),
+                    signature_weight,
+                    legacy_required_finality: *legacy_required_finality,
+                };
+
+                let is_historical = false;
+                let requires_strict_finality = false;
+                let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+                assert!(result);
+
+                let requires_strict_finality = true;
+                let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+                assert!(!result);
+            })
+    }
+
+    #[test]
+    fn not_historical_and_not_legacy_and_is_strict() {
+        let signature_weight = SignatureWeight::Strict;
+
+        // This parameter should not affect calculation for not historical and not legacy blocks.
+        let legacy_required_finality = [
+            LegacyRequiredFinality::Any,
+            LegacyRequiredFinality::Weak,
+            LegacyRequiredFinality::Strict,
+        ];
+
+        legacy_required_finality
+            .iter()
+            .for_each(|legacy_required_finality| {
+                let is_legacy = false;
+                let sa = SignatureAcquisition {
+                    inner: Default::default(),
+                    maybe_is_legacy: Some(is_legacy),
+                    signature_weight,
+                    legacy_required_finality: *legacy_required_finality,
+                };
+
+                let is_historical = false;
+                let requires_strict_finality = false;
+                let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+                assert!(result);
+
+                let requires_strict_finality = true;
+                let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+                assert!(result);
+            })
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_any_and_is_insufficient() {
+        let signature_weight = SignatureWeight::Insufficient;
+        let legacy_required_finality = LegacyRequiredFinality::Any;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_any_and_is_weak() {
+        let signature_weight = SignatureWeight::Weak;
+        let legacy_required_finality = LegacyRequiredFinality::Any;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_any_and_is_strict() {
+        let signature_weight = SignatureWeight::Strict;
+        let legacy_required_finality = LegacyRequiredFinality::Any;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_weak_and_is_insufficient() {
+        let signature_weight = SignatureWeight::Insufficient;
+        let legacy_required_finality = LegacyRequiredFinality::Weak;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(!result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(!result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_weak_and_is_weak() {
+        let signature_weight = SignatureWeight::Weak;
+        let legacy_required_finality = LegacyRequiredFinality::Weak;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_weak_and_is_strict() {
+        let signature_weight = SignatureWeight::Strict;
+        let legacy_required_finality = LegacyRequiredFinality::Weak;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_strict_and_is_insufficient() {
+        let signature_weight = SignatureWeight::Insufficient;
+        let legacy_required_finality = LegacyRequiredFinality::Strict;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(!result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(!result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_strict_and_is_weak() {
+        let signature_weight = SignatureWeight::Weak;
+        let legacy_required_finality = LegacyRequiredFinality::Strict;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(!result);
+    }
+
+    #[test]
+    fn historical_and_legacy_requires_strict_and_is_strict() {
+        let signature_weight = SignatureWeight::Strict;
+        let legacy_required_finality = LegacyRequiredFinality::Strict;
+
+        let is_legacy = true;
+        let sa = SignatureAcquisition {
+            inner: Default::default(),
+            maybe_is_legacy: Some(is_legacy),
+            signature_weight,
+            legacy_required_finality,
+        };
+
+        let is_historical = true;
+        let requires_strict_finality = false;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+
+        let requires_strict_finality = true;
+        let result = sa.has_sufficient_finality(is_historical, requires_strict_finality);
+        assert!(result);
+    }
 }

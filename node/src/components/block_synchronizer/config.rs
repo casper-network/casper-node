@@ -10,7 +10,7 @@ const DEFAULT_PEER_REFRESH_INTERVAL: &str = "90sec";
 const DEFAULT_NEED_NEXT_INTERVAL: &str = "1sec";
 const DEFAULT_DISCONNECT_DISHONEST_PEERS_INTERVAL: &str = "10sec";
 const DEFAULT_LATCH_RESET_INTERVAL: &str = "5sec";
-const DEFAULT_PROGRESS_STALL_THRESHOLD_INTERVAL: &str = "120sec";
+const DEFAULT_STALL_LIMIT: &str = "120sec";
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -27,7 +27,7 @@ pub struct Config {
     pub latch_reset_interval: TimeDiff,
     /// Time interval after which synchronization is considered stalled if no successful sync
     /// activity happened.
-    pub progress_stall_threshold_interval: TimeDiff,
+    pub stall_limit: TimeDiff,
 }
 
 impl Default for Config {
@@ -41,10 +41,7 @@ impl Default for Config {
             )
             .unwrap(),
             latch_reset_interval: TimeDiff::from_str(DEFAULT_LATCH_RESET_INTERVAL).unwrap(),
-            progress_stall_threshold_interval: TimeDiff::from_str(
-                DEFAULT_PROGRESS_STALL_THRESHOLD_INTERVAL,
-            )
-            .unwrap(),
+            stall_limit: TimeDiff::from_str(DEFAULT_STALL_LIMIT).unwrap(),
         }
     }
 }
