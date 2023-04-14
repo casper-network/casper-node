@@ -576,6 +576,11 @@ async fn dont_upgrade_without_switch_block() {
 
     let mut rng = crate::new_rng();
 
+    eprintln!(
+        "Running 'dont_upgrade_without_switch_block' test with CL_TEST_SEED={}",
+        base16::encode_lower(&rng.seed())
+    );
+
     const NETWORK_SIZE: usize = 2;
     const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
 
