@@ -422,7 +422,7 @@ where
     /// Returns a future that will, once polled, stop all cranking and return the network and the
     /// the random number generator. Note that the stop command will be sent as soon as the returned
     /// future is polled (awaited), but no sooner.
-    pub(crate) async fn crank_until_stopped(
+    pub(crate) fn crank_until_stopped(
         mut self,
         mut rng: TestRng,
     ) -> impl futures::Future<Output = (Self, TestRng)>
