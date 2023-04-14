@@ -121,7 +121,7 @@ where
 
 /// Extension trait for [`Registry`] instances.
 pub(crate) trait RegistryExt {
-    /// Creates a new [`IntCounter`] registered to this registry.
+    /// Creates a new [`Counter`] registered to this registry.
     fn new_counter<S1: Into<String>, S2: Into<String>>(
         &self,
         name: S1,
