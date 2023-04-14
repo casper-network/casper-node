@@ -81,6 +81,7 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=8 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=10 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=11 skip_setup=true
 }
 
 function run_soundness_test() {
