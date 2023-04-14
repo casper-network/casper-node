@@ -1,13 +1,13 @@
 use std::{error, io, net::SocketAddr, result, sync::Arc};
 
-use casper_types::SecretKey;
 use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 
+use casper_types::{crypto, SecretKey};
+
 use crate::{
-    crypto,
     tls::ValidationError,
     utils::{LoadError, Loadable, ResolveAddressError},
 };

@@ -11,12 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EraId,
+    EraId, Timestamp,
 };
 
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::types::Timestamp;
+use casper_types::testing::TestRng;
 
 const ERA_ID_TAG: u8 = 0;
 const GENESIS_TAG: u8 = 1;

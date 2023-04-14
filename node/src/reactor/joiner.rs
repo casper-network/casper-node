@@ -18,6 +18,8 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
+use casper_types::Timestamp;
+
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -60,7 +62,6 @@ use crate::{
     },
     types::{
         Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId, Tag,
-        Timestamp,
     },
     utils::{Source, WithDir},
     NodeRng,

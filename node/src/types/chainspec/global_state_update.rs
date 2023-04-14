@@ -5,6 +5,8 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     Key,
@@ -12,8 +14,6 @@ use casper_types::{
 
 use super::error::GlobalStateUpdateLoadError;
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::utils::{self, Loadable};
 
 const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";

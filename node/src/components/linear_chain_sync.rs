@@ -39,7 +39,7 @@ use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use self::event::BlockByHashResult;
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::{EraId, ProtocolVersion, TimeDiff};
 
 use super::{
     storage::{self, Storage},
@@ -49,7 +49,7 @@ use crate::{
     components::contract_runtime::ExecutionPreState,
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
-    types::{ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, TimeDiff},
+    types::{ActivationPoint, Block, BlockHash, BlockHeader, Chainspec},
     NodeRng,
 };
 pub(crate) use config::Config;

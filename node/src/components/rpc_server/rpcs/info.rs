@@ -23,7 +23,6 @@ use super::{
 };
 use crate::{
     components::consensus::ValidatorChange,
-    crypto::AsymmetricKeyExt,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},

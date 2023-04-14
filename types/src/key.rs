@@ -73,8 +73,7 @@ const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HAS
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
-const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -619,9 +618,7 @@ impl ToBytes for Key {
             Key::Dictionary(addr) => {
                 result.append(&mut addr.to_bytes()?);
             }
-            Key::SystemContractRegistry => {
-                result.append(&mut PADDING_BYTES.to_bytes()?)
-            }
+            Key::SystemContractRegistry => result.append(&mut PADDING_BYTES.to_bytes()?),
             Key::EraSummary => {
                 result.append(&mut PADDING_BYTES.to_bytes()?);
             }
@@ -1018,10 +1015,7 @@ mod tests {
         );
         assert_eq!(
             format!("{}", ERA_SUMMARY_KEY),
-            format!(
-                "Key::EraSummary({})",
-                base16::encode_lower(&PADDING_BYTES)
-            )
+            format!("Key::EraSummary({})", base16::encode_lower(&PADDING_BYTES))
         )
     }
 
@@ -1188,11 +1182,7 @@ mod tests {
                     )
             }),
             json!({
-                "EraSummary":
-                    format!(
-                        "era-summary-{}",
-                        base16::encode_lower(&PADDING_BYTES)
-                    )
+                "EraSummary": format!("era-summary-{}", base16::encode_lower(&PADDING_BYTES))
             }),
         ];
 

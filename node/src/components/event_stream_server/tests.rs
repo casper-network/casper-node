@@ -24,8 +24,10 @@ use tokio::{
 };
 use tracing::debug;
 
+use casper_types::testing::TestRng;
+
 use super::*;
-use crate::{logging, testing::TestRng};
+use crate::logging;
 use sse_server::{
     DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
     SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,

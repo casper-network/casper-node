@@ -1,7 +1,13 @@
 //! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
 
 #![cfg_attr(
-    not(any(feature = "json-schema", feature = "datasize", feature = "gens", test)),
+    not(any(
+        feature = "json-schema",
+        feature = "datasize",
+        feature = "std",
+        feature = "testing",
+        test,
+    )),
     no_std
 )]
 #![doc(html_root_url = "https://docs.rs/casper-types/1.5.0")]
@@ -29,8 +35,10 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
+#[cfg(any(feature = "std", test))]
+pub mod file_utils;
 mod gas;
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
 mod json_pretty_printer;
 mod key;
@@ -43,6 +51,9 @@ mod semver;
 mod stored_value;
 pub mod system;
 mod tagged;
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
+mod timestamp;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -84,6 +95,9 @@ pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
+#[cfg(any(feature = "std", test))]
+pub use timestamp::serde_option_time_diff;
+pub use timestamp::{TimeDiff, Timestamp};
 pub use transfer::{
     DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
     TRANSFER_ADDR_LENGTH,

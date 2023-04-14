@@ -12,10 +12,11 @@ mod keyed_counter;
 mod tests;
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::Infallible,
     fmt::Debug,
     hash::Hash,
+    marker::PhantomData,
     sync::Arc,
 };
 
@@ -25,10 +26,13 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::info;
 
+use casper_types::Timestamp;
+
 use crate::{
     components::{
         block_proposer::DeployInfo,
         consensus::{ClContext, ProposedBlock},
+        fetcher::FetchResult,
         Component,
     },
     effect::{
@@ -37,13 +41,11 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, DeployWithApprovals, Timestamp,
+        DeployOrTransferHash, DeployWithApprovals,
     },
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
-
-use super::fetcher::FetchResult;
 
 #[derive(DataSize, Debug, Display, Clone, Hash, Eq, PartialEq)]
 pub(crate) enum ValidatingBlock {
@@ -149,7 +151,7 @@ pub(crate) enum Event<I> {
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidationState<I> {
+pub(crate) struct BlockValidationState {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
@@ -158,30 +160,9 @@ pub(crate) struct BlockValidationState<I> {
     missing_deploys: HashMap<DeployOrTransferHash, Option<BTreeSet<Approval>>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
-    /// Peers that should have the data.
-    sources: VecDeque<I>,
 }
 
-impl<I> BlockValidationState<I>
-where
-    I: PartialEq + Eq + 'static,
-{
-    /// Adds alternative source of data.
-    /// Returns true if we already know about the peer.
-    fn add_source(&mut self, peer: I) -> bool {
-        if self.sources.contains(&peer) {
-            true
-        } else {
-            self.sources.push_back(peer);
-            false
-        }
-    }
-
-    /// Returns a peer, if there is any, that we haven't yet tried.
-    fn source(&mut self) -> Option<I> {
-        self.sources.pop_front()
-    }
-
+impl BlockValidationState {
     fn respond<REv>(&mut self, value: bool) -> Effects<REv> {
         self.responders
             .drain(..)
@@ -196,9 +177,10 @@ pub(crate) struct BlockValidator<I> {
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     /// State of validation of a specific block.
-    validation_states: HashMap<ValidatingBlock, BlockValidationState<I>>,
+    validation_states: HashMap<ValidatingBlock, BlockValidationState>,
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
+    _phantom_data: PhantomData<I>,
 }
 
 impl<I> BlockValidator<I>
@@ -211,6 +193,7 @@ where
             chainspec,
             validation_states: HashMap::new(),
             in_flight: KeyedCounter::default(),
+            _phantom_data: PhantomData,
         }
     }
 
@@ -270,43 +253,33 @@ where
                     return responder.respond(false).ignore();
                 }
 
-                match self.validation_states.entry(block) {
-                    Entry::Occupied(mut entry) => {
-                        // The entry already exists.
-                        if entry.get().missing_deploys.is_empty() {
-                            // Block has already been validated successfully, early return to
-                            // caller.
-                            effects.extend(responder.respond(true).ignore());
-                        } else {
-                            // We register ourselves as someone interested in the ultimate
-                            // validation result.
-                            entry.get_mut().responders.push(responder);
-                            // And add an alternative source of data.
-                            entry.get_mut().add_source(sender);
-                        }
-                    }
-                    Entry::Vacant(entry) => {
-                        // Our entry is vacant - create an entry to track the state.
-                        let in_flight = &mut self.in_flight;
-                        effects.extend(entry.key().deploys_and_transfers_iter().flat_map(
-                            |(dt_hash, _)| {
-                                // For every request, increase the number of in-flight...
-                                in_flight.inc(&dt_hash.into());
-                                // ...then request it.
-                                fetch_deploy(effect_builder, dt_hash, sender.clone())
-                            },
-                        ));
-                        let block_timestamp = entry.key().timestamp();
-                        let deploy_config = self.chainspec.deploy_config;
-                        entry.insert(BlockValidationState {
-                            appendable_block: AppendableBlock::new(deploy_config, block_timestamp),
-                            missing_deploys: block_deploys,
-                            responders: smallvec![responder],
-                            sources: VecDeque::new(), /* This is empty b/c we create the first
-                                                       * request using `sender`. */
-                        });
-                    }
+                let block_timestamp = block.timestamp();
+                let state = self
+                    .validation_states
+                    .entry(block)
+                    .or_insert(BlockValidationState {
+                        appendable_block: AppendableBlock::new(
+                            self.chainspec.deploy_config,
+                            block_timestamp,
+                        ),
+                        missing_deploys: block_deploys.clone(),
+                        responders: smallvec![],
+                    });
+
+                if state.missing_deploys.is_empty() {
+                    // Block has already been validated successfully, early return to caller.
+                    return responder.respond(true).ignore();
                 }
+
+                // We register ourselves as someone interested in the ultimate validation result.
+                state.responders.push(responder);
+
+                effects.extend(block_deploys.into_iter().flat_map(|(dt_hash, _)| {
+                    // For every request, increase the number of in-flight...
+                    self.in_flight.inc(&dt_hash.into());
+                    // ...then request it.
+                    fetch_deploy(effect_builder, dt_hash, sender.clone())
+                }));
             }
             Event::DeployFound {
                 dt_hash,
@@ -371,43 +344,18 @@ where
                     return Effects::new();
                 }
 
-                // Flag indicating whether we've retried fetching the deploy.
-                let mut retried = false;
-
                 self.validation_states.retain(|key, state| {
                     if !state.missing_deploys.contains_key(&dt_hash) {
                         return true;
                     }
-                    if retried {
-                        // We don't want to retry downloading the same element more than once.
-                        return true;
-                    }
-                    match state.source() {
-                        Some(peer) => {
-                            info!(%dt_hash, ?peer, "trying the next peer");
-                            // There's still hope to download the deploy.
-                            effects.extend(fetch_deploy(effect_builder, dt_hash, peer));
-                            retried = true;
-                            true
-                        }
-                        None => {
-                            // Notify everyone still waiting on it that all is lost.
-                            info!(
-                                block = ?key, %dt_hash,
-                                "could not validate the deploy. block is invalid"
-                            );
-                            // This validation state contains a failed deploy hash, it can never
-                            // succeed.
-                            effects.extend(state.respond(false));
-                            false
-                        }
-                    }
-                });
 
-                if retried {
-                    // If we retried, we need to increase this counter.
-                    self.in_flight.inc(&dt_hash.into());
-                }
+                    // Notify everyone still waiting on it that all is lost.
+                    info!(block = ?key, %dt_hash, "could not validate the deploy. block is invalid");
+                    // This validation state contains a deploy hash we failed to fetch from all
+                    // sources, it can never succeed.
+                    effects.extend(state.respond(false));
+                    false
+                });
             }
             Event::CannotConvertDeploy(dt_hash) => {
                 // Deploy is invalid. There's no point waiting for other in-flight requests to

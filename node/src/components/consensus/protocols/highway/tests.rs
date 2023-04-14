@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use datasize::DataSize;
 use derive_more::Display;
 
-use casper_types::{PublicKey, U512};
+use casper_types::{testing::TestRng, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -25,8 +25,7 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    testing::TestRng,
-    types::{BlockPayload, TimeDiff, Timestamp},
+    types::BlockPayload,
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]

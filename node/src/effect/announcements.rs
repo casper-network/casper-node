@@ -11,16 +11,14 @@ use std::{
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionResult, PublicKey, Timestamp};
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
     },
     effect::Responder,
-    types::{
-        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
-    },
+    types::{Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item},
     utils::Source,
 };
 

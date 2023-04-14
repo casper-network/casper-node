@@ -10,6 +10,15 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+## 1.4.14
+
+### Changed
+* Update `openssl` and `openssl-sys` to latest versions.
+
+### Fixed
+* Fix issue in BlockValidator inhibiting the use of fallback peers to fetch missing deploys.
+
+
 
 ## 1.4.13
  

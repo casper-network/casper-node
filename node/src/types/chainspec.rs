@@ -25,6 +25,8 @@ use casper_execution_engine::{
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::Digest;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -38,8 +40,7 @@ pub(crate) use self::{
     deploy_config::DeployConfig, global_state_update::GlobalStateUpdate,
     highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
-#[cfg(test)]
-use crate::testing::TestRng;
+
 use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
@@ -212,13 +213,10 @@ mod tests {
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, U512};
+    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, TimeDiff, Timestamp, U512};
 
     use super::*;
-    use crate::{
-        types::{TimeDiff, Timestamp},
-        utils::RESOURCES_PATH,
-    };
+    use crate::utils::RESOURCES_PATH;
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {
@@ -363,7 +361,7 @@ mod tests {
 
         assert_eq!(spec.network_config.name, "test-chain");
 
-        assert_eq!(spec.core_config.era_duration, TimeDiff::from(180000));
+        assert_eq!(spec.core_config.era_duration, TimeDiff::from_seconds(180));
         assert_eq!(spec.core_config.minimum_era_height, 9);
         assert_eq!(
             spec.highway_config.finality_threshold_fraction,
@@ -380,7 +378,10 @@ mod tests {
             spec.deploy_config.max_payment_cost,
             Motes::new(U512::from(9))
         );
-        assert_eq!(spec.deploy_config.max_ttl, TimeDiff::from(26300160000));
+        assert_eq!(
+            spec.deploy_config.max_ttl,
+            TimeDiff::from_seconds(26_300_160)
+        );
         assert_eq!(spec.deploy_config.max_dependencies, 11);
         assert_eq!(spec.deploy_config.max_block_size, 12);
         assert_eq!(spec.deploy_config.block_max_deploy_count, 125);

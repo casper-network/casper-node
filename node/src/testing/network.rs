@@ -14,11 +14,12 @@ use tokio::time;
 use tracing::{debug, error_span};
 use tracing_futures::Instrument;
 
+use casper_types::testing::TestRng;
+
 use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
-    testing::TestRng,
     NodeRng,
 };
 

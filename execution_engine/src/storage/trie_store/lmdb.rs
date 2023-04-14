@@ -321,8 +321,6 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
             .insert(*key, (true, Bytes::from(value_bytes.into_owned())));
         Ok(())
     }
-
-
 }
 
 impl TrieStore<Key, StoredValue> for ScratchTrieStore {}

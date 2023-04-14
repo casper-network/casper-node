@@ -2,17 +2,13 @@ use std::time::Duration;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, Gas, RuntimeArgs,
-    SecretKey,
+    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Gas,
+    RuntimeArgs, SecretKey, TimeDiff,
 };
 use itertools::Itertools;
 
 use super::*;
-use crate::{
-    crypto::AsymmetricKeyExt,
-    testing::TestRng,
-    types::{Deploy, DeployHash, TimeDiff},
-};
+use crate::types::{Deploy, DeployHash};
 
 const DEFAULT_TEST_GAS_PRICE: u64 = 1;
 
@@ -114,7 +110,7 @@ fn should_add_and_take_deploys() {
     let block_time2 = Timestamp::from(120);
     let block_time3 = Timestamp::from(220);
 
-    let mut proposer = create_test_proposer(0.into());
+    let mut proposer = create_test_proposer(TimeDiff::from_millis(0));
     let mut rng = crate::new_rng();
     let deploy1 = generate_deploy(
         &mut rng,
@@ -298,7 +294,7 @@ fn should_successfully_prune() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = create_test_proposer(0.into());
+    let mut proposer = create_test_proposer(TimeDiff::from_millis(0));
 
     // pending
     proposer.add_deploy(
@@ -382,7 +378,7 @@ fn should_keep_track_of_unhandled_deploys() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = create_test_proposer(0.into());
+    let mut proposer = create_test_proposer(TimeDiff::from_millis(0));
 
     // We do NOT add deploy2...
     proposer.add_deploy(
@@ -603,7 +599,7 @@ fn test_proposer_with(
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let mut proposer = create_test_proposer(0.into());
+    let mut proposer = create_test_proposer(TimeDiff::from_millis(0));
     let mut config = proposer.deploy_config;
     // defaults are 10, 1000 respectively
     config.block_max_deploy_count = max_deploy_count;
@@ -685,7 +681,7 @@ fn should_return_deploy_dependencies() {
         DEFAULT_TEST_GAS_PRICE,
     );
 
-    let mut proposer = create_test_proposer(0.into());
+    let mut proposer = create_test_proposer(TimeDiff::from_millis(0));
 
     // add deploy2
     proposer.add_deploy(
@@ -742,7 +738,7 @@ fn should_return_deploy_dependencies() {
 fn should_respect_deploy_delay() {
     let mut rng = crate::new_rng();
     let creation_time = Timestamp::from(0);
-    let ttl = TimeDiff::from(10000);
+    let ttl = TimeDiff::from_millis(10000);
     let deploy_config = DeployConfig::default();
     let deploy = generate_deploy(
         &mut rng,
@@ -752,7 +748,7 @@ fn should_respect_deploy_delay() {
         default_gas_payment(),
         DEFAULT_TEST_GAS_PRICE,
     );
-    let mut proposer = create_test_proposer(10.into()); // Deploy delay: 10 milliseconds
+    let mut proposer = create_test_proposer(TimeDiff::from_millis(10)); // Deploy delay: 10 milliseconds
 
     // Add the deploy at time 100. So at 109 it cannot be proposed yet, but at time 110 it can.
     proposer.add_deploy(

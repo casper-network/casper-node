@@ -12,12 +12,11 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Motes, U512,
+    Motes, TimeDiff, U512,
 };
 
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::types::TimeDiff;
+use casper_types::testing::TestRng;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -42,7 +41,7 @@ impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let max_payment_cost = Motes::new(U512::from(rng.gen_range(1_000_000..1_000_000_000)));
-        let max_ttl = TimeDiff::from(rng.gen_range(60_000..3_600_000));
+        let max_ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let max_deploy_size = rng.gen_range(100_000..1_000_000);

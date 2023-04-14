@@ -94,7 +94,8 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff, Timestamp, Transfer,
+    URef, U512,
 };
 
 use crate::{
@@ -112,7 +113,6 @@ use crate::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
         DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedBlock, Item,
-        TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };

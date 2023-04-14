@@ -10,11 +10,10 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
+use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
-    types::{TimeDiff, Timestamp},
     NodeRng,
 };
 

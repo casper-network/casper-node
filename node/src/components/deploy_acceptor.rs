@@ -22,7 +22,7 @@ use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, Key, ProtocolVersion, U512,
+    ContractVersionKey, Key, ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{
@@ -34,7 +34,6 @@ use crate::{
     },
     types::{
         chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, NodeId,
-        Timestamp,
     },
     utils::Source,
     NodeRng,

@@ -3,12 +3,14 @@ use std::sync::Arc;
 use num::Zero;
 use once_cell::sync::Lazy;
 
-use casper_types::{system::auction::DelegationRate, Motes, PublicKey, SecretKey, U512};
+use casper_types::{
+    system::auction::DelegationRate, Motes, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
+};
 
 use crate::{
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, Chainspec, Timestamp,
+        ActivationPoint, Chainspec,
     },
     utils::Loadable,
 };
@@ -43,6 +45,6 @@ where
 
     // Every era has exactly two blocks.
     chainspec.core_config.minimum_era_height = 2;
-    chainspec.core_config.era_duration = 0.into();
+    chainspec.core_config.era_duration = TimeDiff::from_millis(0);
     chainspec
 }
