@@ -45,21 +45,21 @@ fn number_of_qualified_peers_is_correct() {
 
     // Promote some peers to make them `Reliable`; check the count again
     for peer in &test_peers[..3] {
-        peer_list.promote_peer(Some(*peer));
+        peer_list.promote_peer(*peer);
     }
     let qualified_peers = peer_list.qualified_peers(&mut rng);
     assert_eq!(qualified_peers.len(), 5);
 
     // Demote some peers to make them `Unreliable`; check the count again
     for peer in &test_peers[5..] {
-        peer_list.demote_peer(Some(*peer));
+        peer_list.demote_peer(*peer);
     }
     let qualified_peers = peer_list.qualified_peers(&mut rng);
     assert_eq!(qualified_peers.len(), 5);
 
     // Disqualify 7 peers; only 3 peers should remain valid for proposal
     for peer in &test_peers[..7] {
-        peer_list.disqualify_peer(Some(*peer));
+        peer_list.disqualify_peer(*peer);
     }
     let qualified_peers = peer_list.qualified_peers(&mut rng);
     assert_eq!(qualified_peers.len(), 3);
@@ -73,7 +73,7 @@ fn unknown_peer_becomes_reliable_when_promoted() {
 
     peer_list.register_peer(test_peer);
     assert!(peer_list.is_peer_unknown(&test_peer));
-    peer_list.promote_peer(Some(test_peer));
+    peer_list.promote_peer(test_peer);
     assert!(peer_list.is_peer_reliable(&test_peer));
 }
 
@@ -85,7 +85,7 @@ fn unknown_peer_becomes_unreliable_when_demoted() {
 
     peer_list.register_peer(test_peer);
     assert!(peer_list.is_peer_unknown(&test_peer));
-    peer_list.demote_peer(Some(test_peer));
+    peer_list.demote_peer(test_peer);
     assert!(peer_list.is_peer_unreliable(&test_peer));
 }
 
@@ -97,9 +97,9 @@ fn reliable_peer_becomes_unreliable_when_demoted() {
 
     peer_list.register_peer(test_peer);
     assert!(peer_list.is_peer_unknown(&test_peer));
-    peer_list.promote_peer(Some(test_peer));
+    peer_list.promote_peer(test_peer);
     assert!(peer_list.is_peer_reliable(&test_peer));
-    peer_list.demote_peer(Some(test_peer));
+    peer_list.demote_peer(test_peer);
     assert!(peer_list.is_peer_unreliable(&test_peer));
 }
 
@@ -111,9 +111,9 @@ fn unreliable_peer_becomes_reliable_when_promoted() {
 
     peer_list.register_peer(test_peer);
     assert!(peer_list.is_peer_unknown(&test_peer));
-    peer_list.demote_peer(Some(test_peer));
+    peer_list.demote_peer(test_peer);
     assert!(peer_list.is_peer_unreliable(&test_peer));
-    peer_list.promote_peer(Some(test_peer));
+    peer_list.promote_peer(test_peer);
     assert!(peer_list.is_peer_reliable(&test_peer));
 }
 
@@ -125,8 +125,8 @@ fn unreliable_peer_remains_unreliable_if_demoted() {
 
     peer_list.register_peer(test_peer);
     assert!(peer_list.is_peer_unknown(&test_peer));
-    peer_list.demote_peer(Some(test_peer));
+    peer_list.demote_peer(test_peer);
     assert!(peer_list.is_peer_unreliable(&test_peer));
-    peer_list.demote_peer(Some(test_peer));
+    peer_list.demote_peer(test_peer);
     assert!(peer_list.is_peer_unreliable(&test_peer));
 }

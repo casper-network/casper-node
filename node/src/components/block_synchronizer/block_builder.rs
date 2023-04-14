@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -72,7 +75,6 @@ pub(super) struct BlockBuilder {
     // imputed
     block_hash: BlockHash,
     should_fetch_execution_state: bool,
-    requires_strict_finality: bool,
     strict_finality_protocol_version: ProtocolVersion,
     peer_list: PeerList,
 
@@ -81,6 +83,7 @@ pub(super) struct BlockBuilder {
     execution_progress: ExecutionProgress,
     last_progress: Timestamp,
     in_flight_latch: Option<Timestamp>,
+    latch_reset_interval: TimeDiff,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -104,9 +107,9 @@ impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
-        requires_strict_finality: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
+        latch_reset_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
         strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
@@ -120,12 +123,12 @@ impl BlockBuilder {
             ),
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
-            requires_strict_finality,
             strict_finality_protocol_version,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
             in_flight_latch: None,
+            latch_reset_interval,
         }
     }
 
@@ -138,6 +141,7 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
+        latch_reset_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
         strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
@@ -160,10 +164,6 @@ impl BlockBuilder {
         let mut peer_list = PeerList::new(max_simultaneous_peers, peer_refresh_interval);
         peers.iter().for_each(|p| peer_list.register_peer(*p));
 
-        // we always require strict finality when synchronizing a block
-        // via a sync leap response
-        let requires_strict_finality = true;
-
         BlockBuilder {
             block_hash,
             era_id,
@@ -171,12 +171,12 @@ impl BlockBuilder {
             acquisition_state,
             peer_list,
             should_fetch_execution_state,
-            requires_strict_finality,
             strict_finality_protocol_version,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
             in_flight_latch: None,
+            latch_reset_interval,
         }
     }
 
@@ -232,9 +232,7 @@ impl BlockBuilder {
             //
             // if latch_reset_interval has passed, we reset the latch and ask again.
 
-            // !todo move reset interval to config
-            let latch_reset_interval = TimeDiff::from_seconds(5);
-            if Timestamp::now().saturating_diff(timestamp) > latch_reset_interval {
+            if Timestamp::now().saturating_diff(timestamp) > self.latch_reset_interval {
                 self.in_flight_latch = None;
             }
         }
@@ -364,16 +362,16 @@ impl BlockBuilder {
         self.peer_list.dishonest_peers()
     }
 
-    pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn disqualify_peer(&mut self, peer: NodeId) {
         debug!(?peer, "disqualify_peer");
         self.peer_list.disqualify_peer(peer);
     }
 
-    pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn promote_peer(&mut self, peer: NodeId) {
         self.peer_list.promote_peer(peer);
     }
 
-    pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn demote_peer(&mut self, peer: NodeId) {
         self.peer_list.demote_peer(peer);
     }
 
@@ -571,7 +569,9 @@ impl BlockBuilder {
             Ok(maybe) => {
                 debug!("register_fetched_execution_results: Ok(maybe)");
                 self.touch();
-                self.promote_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.promote_peer(peer);
+                }
                 Ok(maybe)
             }
             Err(BlockAcquisitionError::ExecutionResults(error)) => {
@@ -600,7 +600,9 @@ impl BlockBuilder {
                         };
                         debug!(is_checkable, "register_fetched_execution_results: ChunkCountMismatch");
                         if is_checkable {
-                            self.disqualify_peer(maybe_peer);
+                            if let Some(peer) = maybe_peer {
+                                self.disqualify_peer(peer);
+                            }
                         }
                     }
                     // malicious peer
@@ -609,7 +611,9 @@ impl BlockBuilder {
                     | execution_results_acquisition::Error::FailedToDeserialize { .. }
                     | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
                         debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToDeployHashLengthDiscrepancy");
-                        self.disqualify_peer(maybe_peer);
+                        if let Some(peer) = maybe_peer {
+                            self.disqualify_peer(peer);
+                        }
                     }
                     // checksum unavailable, so unknown if this peer is malicious
                     execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {
@@ -654,11 +658,11 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
-        peers.into_iter().for_each(|peer| {
-            if !(self.is_finished() || self.is_failed()) {
-                self.peer_list.register_peer(peer)
-            }
-        });
+        if !(self.is_finished() || self.is_failed()) {
+            peers
+                .into_iter()
+                .for_each(|peer| self.peer_list.register_peer(peer));
+        }
         self.touch();
     }
 
@@ -670,11 +674,15 @@ impl BlockBuilder {
         match acceptance {
             Ok(Some(Acceptance::NeededIt)) => {
                 self.touch();
-                self.promote_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.promote_peer(peer);
+                }
             }
             Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
             Err(error) => {
-                self.disqualify_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.disqualify_peer(peer);
+                }
                 return Err(Error::BlockAcquisition(error));
             }
         }

@@ -463,6 +463,9 @@ need_next_interval = '1sec'
 # Time interval for recurring disconnection of dishonest peers.
 disconnect_dishonest_peers_interval = '10sec'
 
+# Time interval for resetting the latch in block builders.
+latch_reset_interval = '5sec'
+
 # Time interval after which synchronization is considered stalled if no successful sync
 # activity happened.
 stall_limit = '120sec'
