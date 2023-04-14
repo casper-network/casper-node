@@ -618,9 +618,8 @@ impl ToBytes for Key {
             Key::Dictionary(addr) => {
                 result.append(&mut addr.to_bytes()?);
             }
-            Key::SystemContractRegistry => result.append(&mut PADDING_BYTES.to_bytes()?),
-            Key::EraSummary => {
-                result.append(&mut PADDING_BYTES.to_bytes()?);
+            Key::SystemContractRegistry | Key::EraSummary => {
+                result.append(&mut PADDING_BYTES.to_bytes()?)
             }
         }
         Ok(result)

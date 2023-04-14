@@ -1791,7 +1791,7 @@ where
             return Ok(());
         }
 
-        self.context.write_era_summary(Key::EraSummary, era_info);
+        self.context.write_era_info(Key::EraSummary, era_info);
 
         Ok(())
     }

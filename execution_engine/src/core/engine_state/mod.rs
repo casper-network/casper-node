@@ -475,7 +475,6 @@ where
                     // Can't find key
                     // Most likely this chain did not yet ran an auction, or recently completed a
                     // prune
-                    warn!(?highest_era_info_key, "Unable to find era info entry");
                 }
             };
         }
@@ -498,6 +497,41 @@ where
             post_state_hash,
             execution_effect,
         })
+    }
+
+    /// Commit a prune of leaf nodes from the tip of the merkle trie.
+    pub fn commit_prune(
+        &self,
+        correlation_id: CorrelationId,
+        prune_config: PruneConfig,
+    ) -> Result<PruneResult, Error> {
+        let state_root_hash = prune_config.pre_state_hash();
+
+        // Validate the state root hash just to make sure we can safely short circuit in case the
+        // list of keys is empty.
+        match self.tracking_copy(state_root_hash)? {
+            None => return Ok(PruneResult::RootNotFound),
+            Some(_tracking_copy) => {}
+        };
+
+        let keys_to_delete = prune_config.keys_to_prune();
+        if keys_to_delete.is_empty() {
+            return Ok(PruneResult::Success {
+                post_state_hash: state_root_hash,
+            });
+        }
+
+        match self
+            .state
+            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
+        {
+            Ok(DeleteResult::Deleted(post_state_hash)) => {
+                Ok(PruneResult::Success { post_state_hash })
+            }
+            Ok(DeleteResult::DoesNotExist) => Ok(PruneResult::DoesNotExist),
+            Ok(DeleteResult::RootNotFound) => Ok(PruneResult::RootNotFound),
+            Err(error) => Err(Error::Exec(error.into())),
+        }
     }
 
     /// Creates a new tracking copy instance.
@@ -2122,40 +2156,5 @@ where
     fn get_new_system_call_stack(&self) -> RuntimeStack {
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
-    }
-
-    /// Commit a prune of leaf nodes from the tip of the merkle trie.
-    pub fn commit_prune(
-        &self,
-        correlation_id: CorrelationId,
-        prune_config: PruneConfig,
-    ) -> Result<PruneResult, Error> {
-        let state_root_hash = prune_config.pre_state_hash();
-
-        // Validate the state root hash just to make sure we can safely short circuit in case the
-        // list of keys is empty.
-        match self.tracking_copy(state_root_hash)? {
-            None => return Ok(PruneResult::RootNotFound),
-            Some(_tracking_copy) => {}
-        };
-
-        let keys_to_delete = prune_config.keys_to_prune();
-        if keys_to_delete.is_empty() {
-            return Ok(PruneResult::Success {
-                post_state_hash: state_root_hash,
-            });
-        }
-
-        match self
-            .state
-            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
-        {
-            Ok(DeleteResult::Deleted(post_state_hash)) => {
-                Ok(PruneResult::Success { post_state_hash })
-            }
-            Ok(DeleteResult::DoesNotExist) => Ok(PruneResult::DoesNotExist),
-            Ok(DeleteResult::RootNotFound) => Ok(PruneResult::RootNotFound),
-            Err(error) => Err(Error::Exec(error.into())),
-        }
     }
 }

@@ -235,6 +235,10 @@ pub fn execute_finalized_block(
                             previous_block_height,
                             %state_root_hash,
                             "commit_prune: root not found");
+                        panic!(
+                            "Root {} not found while performing a prune.",
+                            state_root_hash
+                        );
                     }
                     Ok(PruneResult::DoesNotExist) => {
                         warn!(
