@@ -4,7 +4,10 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     mem,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -412,6 +415,38 @@ where
         time::timeout(within, self.settle_on_exit_indefinitely(rng, expected))
             .await
             .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+    }
+
+    /// Starts a background process that will crank all nodes until stopped.
+    ///
+    /// Returns a future that will, once polled, stop all cranking and return the network and the
+    /// the random number generator. Note that the stop command will be sent as soon as the returned
+    /// future is polled (awaited), but no sooner.
+    pub(crate) async fn crank_until_stopped(
+        mut self,
+        mut rng: TestRng,
+    ) -> impl futures::Future<Output = (Self, TestRng)>
+    where
+        R: Send + 'static,
+    {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = tokio::spawn({
+            let stop = stop.clone();
+            async move {
+                while !stop.load(Ordering::Relaxed) {
+                    if self.crank_all(&mut rng).await == 0 {
+                        time::sleep(POLL_INTERVAL).await;
+                    };
+                }
+                (self, rng)
+            }
+        });
+
+        async move {
+            // Trigger the background process stop.
+            stop.store(true, Ordering::Relaxed);
+            handle.await.expect("failed to join background crank")
+        }
     }
 
     async fn settle_on_exit_indefinitely(&mut self, rng: &mut TestRng, expected: ExitCode) {
