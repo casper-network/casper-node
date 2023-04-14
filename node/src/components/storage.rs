@@ -55,7 +55,6 @@ use std::{
     fs::{self, OpenOptions},
     io::ErrorKind,
     path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
 };
 
@@ -187,7 +186,7 @@ pub struct Storage {
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
-    env: Rc<Environment>,
+    env: Arc<Environment>,
     /// The block header databases.
     block_header_dbs: VersionedDatabases<BlockHash, BlockHeader>,
     /// The block body databases.
@@ -508,7 +507,7 @@ impl Storage {
 
         let mut component = Self {
             root,
-            env: Rc::new(env),
+            env: Arc::new(env),
             block_header_dbs,
             block_body_dbs,
             block_metadata_db,
@@ -808,7 +807,7 @@ impl Storage {
                 approvals_hashes,
                 responder,
             } => {
-                let env = Rc::clone(&self.env);
+                let env = Arc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
                 let result = self.write_approvals_hashes(&mut txn, &approvals_hashes)?;
                 txn.commit()?;
@@ -932,7 +931,7 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
-                let env = Rc::clone(&self.env);
+                let env = Arc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
                 self.write_execution_results(
                     &mut txn,
@@ -1159,7 +1158,7 @@ impl Storage {
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     fn put_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_block(&mut txn, block)?;
         if wrote {
@@ -1223,7 +1222,7 @@ impl Storage {
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_block(&mut txn, block)?;
         if !wrote {
