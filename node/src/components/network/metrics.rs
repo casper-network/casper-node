@@ -4,399 +4,342 @@ use prometheus::{Counter, IntCounter, IntGauge, Registry};
 use tracing::debug;
 
 use super::{outgoing::OutgoingMetrics, MessageKind};
-use crate::unregister_metric;
+use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
 
 /// Network-type agnostic networking metrics.
 #[derive(Debug)]
 pub(super) struct Metrics {
     /// How often a request was made by a component to broadcast.
-    pub(super) broadcast_requests: IntCounter,
+    pub(super) broadcast_requests: RegisteredMetric<IntCounter>,
     /// How often a request to send a message directly to a peer was made.
-    pub(super) direct_message_requests: IntCounter,
+    pub(super) direct_message_requests: RegisteredMetric<IntCounter>,
     /// Number of messages still waiting to be sent out (broadcast and direct).
-    pub(super) queued_messages: IntGauge,
+    pub(super) queued_messages: RegisteredMetric<IntGauge>,
     /// Number of connected peers.
-    pub(super) peers: IntGauge,
+    pub(super) peers: RegisteredMetric<IntGauge>,
 
     /// Count of outgoing messages that are protocol overhead.
-    pub(super) out_count_protocol: IntCounter,
+    pub(super) out_count_protocol: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with consensus payload.
-    pub(super) out_count_consensus: IntCounter,
+    pub(super) out_count_consensus: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with deploy gossiper payload.
-    pub(super) out_count_deploy_gossip: IntCounter,
-    pub(super) out_count_block_gossip: IntCounter,
-    pub(super) out_count_finality_signature_gossip: IntCounter,
+    pub(super) out_count_deploy_gossip: RegisteredMetric<IntCounter>,
+    pub(super) out_count_block_gossip: RegisteredMetric<IntCounter>,
+    pub(super) out_count_finality_signature_gossip: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with address gossiper payload.
-    pub(super) out_count_address_gossip: IntCounter,
+    pub(super) out_count_address_gossip: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with deploy request/response payload.
-    pub(super) out_count_deploy_transfer: IntCounter,
+    pub(super) out_count_deploy_transfer: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with block request/response payload.
-    pub(super) out_count_block_transfer: IntCounter,
+    pub(super) out_count_block_transfer: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with trie request/response payload.
-    pub(super) out_count_trie_transfer: IntCounter,
+    pub(super) out_count_trie_transfer: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with other payload.
-    pub(super) out_count_other: IntCounter,
+    pub(super) out_count_other: RegisteredMetric<IntCounter>,
 
     /// Volume in bytes of outgoing messages that are protocol overhead.
-    pub(super) out_bytes_protocol: IntCounter,
+    pub(super) out_bytes_protocol: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with consensus payload.
-    pub(super) out_bytes_consensus: IntCounter,
+    pub(super) out_bytes_consensus: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with deploy gossiper payload.
-    pub(super) out_bytes_deploy_gossip: IntCounter,
-    pub(super) out_bytes_block_gossip: IntCounter,
-    pub(super) out_bytes_finality_signature_gossip: IntCounter,
+    pub(super) out_bytes_deploy_gossip: RegisteredMetric<IntCounter>,
+    /// Volume in bytes of outgoing messages with block gossiper payload.
+    pub(super) out_bytes_block_gossip: RegisteredMetric<IntCounter>,
+    /// Volume in bytes of outgoing messages with finality signature payload.
+    pub(super) out_bytes_finality_signature_gossip: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with address gossiper payload.
-    pub(super) out_bytes_address_gossip: IntCounter,
+    pub(super) out_bytes_address_gossip: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with deploy request/response payload.
-    pub(super) out_bytes_deploy_transfer: IntCounter,
+    pub(super) out_bytes_deploy_transfer: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with block request/response payload.
-    pub(super) out_bytes_block_transfer: IntCounter,
+    pub(super) out_bytes_block_transfer: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with block request/response payload.
-    pub(super) out_bytes_trie_transfer: IntCounter,
+    pub(super) out_bytes_trie_transfer: RegisteredMetric<IntCounter>,
     /// Volume in bytes of outgoing messages with other payload.
-    pub(super) out_bytes_other: IntCounter,
+    pub(super) out_bytes_other: RegisteredMetric<IntCounter>,
 
     /// Number of outgoing connections in connecting state.
-    pub(super) out_state_connecting: IntGauge,
+    pub(super) out_state_connecting: RegisteredMetric<IntGauge>,
     /// Number of outgoing connections in waiting state.
-    pub(super) out_state_waiting: IntGauge,
+    pub(super) out_state_waiting: RegisteredMetric<IntGauge>,
     /// Number of outgoing connections in connected state.
-    pub(super) out_state_connected: IntGauge,
+    pub(super) out_state_connected: RegisteredMetric<IntGauge>,
     /// Number of outgoing connections in blocked state.
-    pub(super) out_state_blocked: IntGauge,
+    pub(super) out_state_blocked: RegisteredMetric<IntGauge>,
     /// Number of outgoing connections in loopback state.
-    pub(super) out_state_loopback: IntGauge,
+    pub(super) out_state_loopback: RegisteredMetric<IntGauge>,
 
     /// Volume in bytes of incoming messages that are protocol overhead.
-    pub(super) in_bytes_protocol: IntCounter,
+    pub(super) in_bytes_protocol: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with consensus payload.
-    pub(super) in_bytes_consensus: IntCounter,
+    pub(super) in_bytes_consensus: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with deploy gossiper payload.
-    pub(super) in_bytes_deploy_gossip: IntCounter,
-    pub(super) in_bytes_block_gossip: IntCounter,
-    pub(super) in_bytes_finality_signature_gossip: IntCounter,
+    pub(super) in_bytes_deploy_gossip: RegisteredMetric<IntCounter>,
+    /// Volume in bytes of incoming messages with block gossiper payload.
+    pub(super) in_bytes_block_gossip: RegisteredMetric<IntCounter>,
+    /// Volume in bytes of incoming messages with finality signature gossiper payload.
+    pub(super) in_bytes_finality_signature_gossip: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with address gossiper payload.
-    pub(super) in_bytes_address_gossip: IntCounter,
+    pub(super) in_bytes_address_gossip: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with deploy request/response payload.
-    pub(super) in_bytes_deploy_transfer: IntCounter,
+    pub(super) in_bytes_deploy_transfer: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with block request/response payload.
-    pub(super) in_bytes_block_transfer: IntCounter,
+    pub(super) in_bytes_block_transfer: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with block request/response payload.
-    pub(super) in_bytes_trie_transfer: IntCounter,
+    pub(super) in_bytes_trie_transfer: RegisteredMetric<IntCounter>,
     /// Volume in bytes of incoming messages with other payload.
-    pub(super) in_bytes_other: IntCounter,
+    pub(super) in_bytes_other: RegisteredMetric<IntCounter>,
 
     /// Count of incoming messages that are protocol overhead.
-    pub(super) in_count_protocol: IntCounter,
+    pub(super) in_count_protocol: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with consensus payload.
-    pub(super) in_count_consensus: IntCounter,
+    pub(super) in_count_consensus: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with deploy gossiper payload.
-    pub(super) in_count_deploy_gossip: IntCounter,
-    pub(super) in_count_block_gossip: IntCounter,
-    pub(super) in_count_finality_signature_gossip: IntCounter,
+    pub(super) in_count_deploy_gossip: RegisteredMetric<IntCounter>,
+    /// Count of incoming messages with block gossiper payload.
+    pub(super) in_count_block_gossip: RegisteredMetric<IntCounter>,
+    /// Count of incoming messages with finality signature gossiper payload.
+    pub(super) in_count_finality_signature_gossip: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with address gossiper payload.
-    pub(super) in_count_address_gossip: IntCounter,
+    pub(super) in_count_address_gossip: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with deploy request/response payload.
-    pub(super) in_count_deploy_transfer: IntCounter,
+    pub(super) in_count_deploy_transfer: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with block request/response payload.
-    pub(super) in_count_block_transfer: IntCounter,
+    pub(super) in_count_block_transfer: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with trie request/response payload.
-    pub(super) in_count_trie_transfer: IntCounter,
+    pub(super) in_count_trie_transfer: RegisteredMetric<IntCounter>,
     /// Count of incoming messages with other payload.
-    pub(super) in_count_other: IntCounter,
+    pub(super) in_count_other: RegisteredMetric<IntCounter>,
 
     /// Number of trie requests accepted for processing.
-    pub(super) requests_for_trie_accepted: IntCounter,
+    pub(super) requests_for_trie_accepted: RegisteredMetric<IntCounter>,
     /// Number of trie requests finished (successful or unsuccessful).
-    pub(super) requests_for_trie_finished: IntCounter,
+    pub(super) requests_for_trie_finished: RegisteredMetric<IntCounter>,
 
     /// Total time spent delaying outgoing traffic to non-validators due to limiter, in seconds.
-    pub(super) accumulated_outgoing_limiter_delay: Counter,
+    pub(super) accumulated_outgoing_limiter_delay: RegisteredMetric<Counter>,
     /// Total time spent delaying incoming traffic from non-validators due to limiter, in seconds.
-    pub(super) accumulated_incoming_limiter_delay: Counter,
-
-    /// Registry instance.
-    registry: Registry,
+    pub(super) accumulated_incoming_limiter_delay: RegisteredMetric<Counter>,
 }
 
 impl Metrics {
     /// Creates a new instance of networking metrics.
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let broadcast_requests =
-            IntCounter::new("net_broadcast_requests", "number of broadcasting requests")?;
-        let direct_message_requests = IntCounter::new(
+        let broadcast_requests = registry
+            .new_int_counter("net_broadcast_requests", "number of broadcasting requests")?;
+        let direct_message_requests = registry.new_int_counter(
             "net_direct_message_requests",
             "number of requests to send a message directly to a peer",
         )?;
-        let queued_messages = IntGauge::new(
+
+        let queued_messages = registry.new_int_gauge(
             "net_queued_direct_messages",
             "number of messages waiting to be sent out",
         )?;
-        let peers = IntGauge::new("peers", "number of connected peers")?;
+        let peers = registry.new_int_gauge("peers", "number of connected peers")?;
 
-        let out_count_protocol = IntCounter::new(
+        let out_count_protocol = registry.new_int_counter(
             "net_out_count_protocol",
             "count of outgoing messages that are protocol overhead",
         )?;
-        let out_count_consensus = IntCounter::new(
+        let out_count_consensus = registry.new_int_counter(
             "net_out_count_consensus",
             "count of outgoing messages with consensus payload",
         )?;
-        let out_count_deploy_gossip = IntCounter::new(
+        let out_count_deploy_gossip = registry.new_int_counter(
             "net_out_count_deploy_gossip",
             "count of outgoing messages with deploy gossiper payload",
         )?;
-        let out_count_block_gossip = IntCounter::new(
+        let out_count_block_gossip = registry.new_int_counter(
             "net_out_count_block_gossip",
             "count of outgoing messages with block gossiper payload",
         )?;
-        let out_count_finality_signature_gossip = IntCounter::new(
+        let out_count_finality_signature_gossip = registry.new_int_counter(
             "net_out_count_finality_signature_gossip",
             "count of outgoing messages with finality signature gossiper payload",
         )?;
-        let out_count_address_gossip = IntCounter::new(
+        let out_count_address_gossip = registry.new_int_counter(
             "net_out_count_address_gossip",
             "count of outgoing messages with address gossiper payload",
         )?;
-        let out_count_deploy_transfer = IntCounter::new(
+        let out_count_deploy_transfer = registry.new_int_counter(
             "net_out_count_deploy_transfer",
             "count of outgoing messages with deploy request/response payload",
         )?;
-        let out_count_block_transfer = IntCounter::new(
+        let out_count_block_transfer = registry.new_int_counter(
             "net_out_count_block_transfer",
             "count of outgoing messages with block request/response payload",
         )?;
-        let out_count_trie_transfer = IntCounter::new(
+        let out_count_trie_transfer = registry.new_int_counter(
             "net_out_count_trie_transfer",
             "count of outgoing messages with trie payloads",
         )?;
-        let out_count_other = IntCounter::new(
+        let out_count_other = registry.new_int_counter(
             "net_out_count_other",
             "count of outgoing messages with other payload",
         )?;
 
-        let out_bytes_protocol = IntCounter::new(
+        let out_bytes_protocol = registry.new_int_counter(
             "net_out_bytes_protocol",
             "volume in bytes of outgoing messages that are protocol overhead",
         )?;
-        let out_bytes_consensus = IntCounter::new(
+        let out_bytes_consensus = registry.new_int_counter(
             "net_out_bytes_consensus",
             "volume in bytes of outgoing messages with consensus payload",
         )?;
-        let out_bytes_deploy_gossip = IntCounter::new(
+        let out_bytes_deploy_gossip = registry.new_int_counter(
             "net_out_bytes_deploy_gossip",
             "volume in bytes of outgoing messages with deploy gossiper payload",
         )?;
-        let out_bytes_block_gossip = IntCounter::new(
+        let out_bytes_block_gossip = registry.new_int_counter(
             "net_out_bytes_block_gossip",
             "volume in bytes of outgoing messages with block gossiper payload",
         )?;
-        let out_bytes_finality_signature_gossip = IntCounter::new(
+        let out_bytes_finality_signature_gossip = registry.new_int_counter(
             "net_out_bytes_finality_signature_gossip",
             "volume in bytes of outgoing messages with finality signature gossiper payload",
         )?;
-        let out_bytes_address_gossip = IntCounter::new(
+        let out_bytes_address_gossip = registry.new_int_counter(
             "net_out_bytes_address_gossip",
             "volume in bytes of outgoing messages with address gossiper payload",
         )?;
-        let out_bytes_deploy_transfer = IntCounter::new(
+        let out_bytes_deploy_transfer = registry.new_int_counter(
             "net_out_bytes_deploy_transfer",
             "volume in bytes of outgoing messages with deploy request/response payload",
         )?;
-        let out_bytes_block_transfer = IntCounter::new(
+        let out_bytes_block_transfer = registry.new_int_counter(
             "net_out_bytes_block_transfer",
             "volume in bytes of outgoing messages with block request/response payload",
         )?;
-        let out_bytes_trie_transfer = IntCounter::new(
+        let out_bytes_trie_transfer = registry.new_int_counter(
             "net_out_bytes_trie_transfer",
             "volume in bytes of outgoing messages with trie payloads",
         )?;
-        let out_bytes_other = IntCounter::new(
+        let out_bytes_other = registry.new_int_counter(
             "net_out_bytes_other",
             "volume in bytes of outgoing messages with other payload",
         )?;
 
-        let out_state_connecting = IntGauge::new(
+        let out_state_connecting = registry.new_int_gauge(
             "out_state_connecting",
             "number of connections in the connecting state",
         )?;
-        let out_state_waiting = IntGauge::new(
+        let out_state_waiting = registry.new_int_gauge(
             "out_state_waiting",
             "number of connections in the waiting state",
         )?;
-        let out_state_connected = IntGauge::new(
+        let out_state_connected = registry.new_int_gauge(
             "out_state_connected",
             "number of connections in the connected state",
         )?;
-        let out_state_blocked = IntGauge::new(
+        let out_state_blocked = registry.new_int_gauge(
             "out_state_blocked",
             "number of connections in the blocked state",
         )?;
-        let out_state_loopback = IntGauge::new(
+        let out_state_loopback = registry.new_int_gauge(
             "out_state_loopback",
             "number of connections in the loopback state",
         )?;
 
-        let in_count_protocol = IntCounter::new(
+        let in_count_protocol = registry.new_int_counter(
             "net_in_count_protocol",
             "count of incoming messages that are protocol overhead",
         )?;
-        let in_count_consensus = IntCounter::new(
+        let in_count_consensus = registry.new_int_counter(
             "net_in_count_consensus",
             "count of incoming messages with consensus payload",
         )?;
-        let in_count_deploy_gossip = IntCounter::new(
+        let in_count_deploy_gossip = registry.new_int_counter(
             "net_in_count_deploy_gossip",
             "count of incoming messages with deploy gossiper payload",
         )?;
-        let in_count_block_gossip = IntCounter::new(
+        let in_count_block_gossip = registry.new_int_counter(
             "net_in_count_block_gossip",
             "count of incoming messages with block gossiper payload",
         )?;
-        let in_count_finality_signature_gossip = IntCounter::new(
+        let in_count_finality_signature_gossip = registry.new_int_counter(
             "net_in_count_finality_signature_gossip",
             "count of incoming messages with finality signature gossiper payload",
         )?;
-        let in_count_address_gossip = IntCounter::new(
+        let in_count_address_gossip = registry.new_int_counter(
             "net_in_count_address_gossip",
             "count of incoming messages with address gossiper payload",
         )?;
-        let in_count_deploy_transfer = IntCounter::new(
+        let in_count_deploy_transfer = registry.new_int_counter(
             "net_in_count_deploy_transfer",
             "count of incoming messages with deploy request/response payload",
         )?;
-        let in_count_block_transfer = IntCounter::new(
+        let in_count_block_transfer = registry.new_int_counter(
             "net_in_count_block_transfer",
             "count of incoming messages with block request/response payload",
         )?;
-        let in_count_trie_transfer = IntCounter::new(
+        let in_count_trie_transfer = registry.new_int_counter(
             "net_in_count_trie_transfer",
             "count of incoming messages with trie payloads",
         )?;
-        let in_count_other = IntCounter::new(
+        let in_count_other = registry.new_int_counter(
             "net_in_count_other",
             "count of incoming messages with other payload",
         )?;
 
-        let in_bytes_protocol = IntCounter::new(
+        let in_bytes_protocol = registry.new_int_counter(
             "net_in_bytes_protocol",
             "volume in bytes of incoming messages that are protocol overhead",
         )?;
-        let in_bytes_consensus = IntCounter::new(
+        let in_bytes_consensus = registry.new_int_counter(
             "net_in_bytes_consensus",
             "volume in bytes of incoming messages with consensus payload",
         )?;
-        let in_bytes_deploy_gossip = IntCounter::new(
+        let in_bytes_deploy_gossip = registry.new_int_counter(
             "net_in_bytes_deploy_gossip",
             "volume in bytes of incoming messages with deploy gossiper payload",
         )?;
-        let in_bytes_block_gossip = IntCounter::new(
+        let in_bytes_block_gossip = registry.new_int_counter(
             "net_in_bytes_block_gossip",
             "volume in bytes of incoming messages with block gossiper payload",
         )?;
-        let in_bytes_finality_signature_gossip = IntCounter::new(
+        let in_bytes_finality_signature_gossip = registry.new_int_counter(
             "net_in_bytes_finality_signature_gossip",
             "volume in bytes of incoming messages with finality signature gossiper payload",
         )?;
-        let in_bytes_address_gossip = IntCounter::new(
+        let in_bytes_address_gossip = registry.new_int_counter(
             "net_in_bytes_address_gossip",
             "volume in bytes of incoming messages with address gossiper payload",
         )?;
-        let in_bytes_deploy_transfer = IntCounter::new(
+        let in_bytes_deploy_transfer = registry.new_int_counter(
             "net_in_bytes_deploy_transfer",
             "volume in bytes of incoming messages with deploy request/response payload",
         )?;
-        let in_bytes_block_transfer = IntCounter::new(
+        let in_bytes_block_transfer = registry.new_int_counter(
             "net_in_bytes_block_transfer",
             "volume in bytes of incoming messages with block request/response payload",
         )?;
-        let in_bytes_trie_transfer = IntCounter::new(
+        let in_bytes_trie_transfer = registry.new_int_counter(
             "net_in_bytes_trie_transfer",
             "volume in bytes of incoming messages with trie payloads",
         )?;
-        let in_bytes_other = IntCounter::new(
+        let in_bytes_other = registry.new_int_counter(
             "net_in_bytes_other",
             "volume in bytes of incoming messages with other payload",
         )?;
 
-        let requests_for_trie_accepted = IntCounter::new(
+        let requests_for_trie_accepted = registry.new_int_counter(
             "requests_for_trie_accepted",
             "number of trie requests accepted for processing",
         )?;
-        let requests_for_trie_finished = IntCounter::new(
+        let requests_for_trie_finished = registry.new_int_counter(
             "requests_for_trie_finished",
             "number of trie requests finished, successful or not",
         )?;
 
-        let accumulated_outgoing_limiter_delay = Counter::new(
+        let accumulated_outgoing_limiter_delay = registry.new_counter(
             "accumulated_outgoing_limiter_delay",
             "seconds spent delaying outgoing traffic to non-validators due to limiter, in seconds",
         )?;
-        let accumulated_incoming_limiter_delay = Counter::new(
+        let accumulated_incoming_limiter_delay = registry.new_counter(
             "accumulated_incoming_limiter_delay",
             "seconds spent delaying incoming traffic from non-validators due to limiter, in seconds."
         )?;
-
-        registry.register(Box::new(broadcast_requests.clone()))?;
-        registry.register(Box::new(direct_message_requests.clone()))?;
-        registry.register(Box::new(queued_messages.clone()))?;
-        registry.register(Box::new(peers.clone()))?;
-
-        registry.register(Box::new(out_count_protocol.clone()))?;
-        registry.register(Box::new(out_count_consensus.clone()))?;
-        registry.register(Box::new(out_count_deploy_gossip.clone()))?;
-        registry.register(Box::new(out_count_block_gossip.clone()))?;
-        registry.register(Box::new(out_count_finality_signature_gossip.clone()))?;
-        registry.register(Box::new(out_count_address_gossip.clone()))?;
-        registry.register(Box::new(out_count_deploy_transfer.clone()))?;
-        registry.register(Box::new(out_count_block_transfer.clone()))?;
-        registry.register(Box::new(out_count_trie_transfer.clone()))?;
-        registry.register(Box::new(out_count_other.clone()))?;
-
-        registry.register(Box::new(out_bytes_protocol.clone()))?;
-        registry.register(Box::new(out_bytes_consensus.clone()))?;
-        registry.register(Box::new(out_bytes_deploy_gossip.clone()))?;
-        registry.register(Box::new(out_bytes_block_gossip.clone()))?;
-        registry.register(Box::new(out_bytes_finality_signature_gossip.clone()))?;
-        registry.register(Box::new(out_bytes_address_gossip.clone()))?;
-        registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
-        registry.register(Box::new(out_bytes_block_transfer.clone()))?;
-        registry.register(Box::new(out_bytes_trie_transfer.clone()))?;
-        registry.register(Box::new(out_bytes_other.clone()))?;
-
-        registry.register(Box::new(out_state_connecting.clone()))?;
-        registry.register(Box::new(out_state_waiting.clone()))?;
-        registry.register(Box::new(out_state_connected.clone()))?;
-        registry.register(Box::new(out_state_blocked.clone()))?;
-        registry.register(Box::new(out_state_loopback.clone()))?;
-
-        registry.register(Box::new(in_count_protocol.clone()))?;
-        registry.register(Box::new(in_count_consensus.clone()))?;
-        registry.register(Box::new(in_count_deploy_gossip.clone()))?;
-        registry.register(Box::new(in_count_block_gossip.clone()))?;
-        registry.register(Box::new(in_count_finality_signature_gossip.clone()))?;
-        registry.register(Box::new(in_count_address_gossip.clone()))?;
-        registry.register(Box::new(in_count_deploy_transfer.clone()))?;
-        registry.register(Box::new(in_count_block_transfer.clone()))?;
-        registry.register(Box::new(in_count_trie_transfer.clone()))?;
-        registry.register(Box::new(in_count_other.clone()))?;
-
-        registry.register(Box::new(in_bytes_protocol.clone()))?;
-        registry.register(Box::new(in_bytes_consensus.clone()))?;
-        registry.register(Box::new(in_bytes_deploy_gossip.clone()))?;
-        registry.register(Box::new(in_bytes_block_gossip.clone()))?;
-        registry.register(Box::new(in_bytes_finality_signature_gossip.clone()))?;
-        registry.register(Box::new(in_bytes_address_gossip.clone()))?;
-        registry.register(Box::new(in_bytes_deploy_transfer.clone()))?;
-        registry.register(Box::new(in_bytes_block_transfer.clone()))?;
-        registry.register(Box::new(in_bytes_trie_transfer.clone()))?;
-        registry.register(Box::new(in_bytes_other.clone()))?;
-
-        registry.register(Box::new(requests_for_trie_accepted.clone()))?;
-        registry.register(Box::new(requests_for_trie_finished.clone()))?;
-
-        registry.register(Box::new(accumulated_outgoing_limiter_delay.clone()))?;
-        registry.register(Box::new(accumulated_incoming_limiter_delay.clone()))?;
 
         Ok(Metrics {
             broadcast_requests,
@@ -452,7 +395,6 @@ impl Metrics {
             requests_for_trie_finished,
             accumulated_outgoing_limiter_delay,
             accumulated_incoming_limiter_delay,
-            registry: registry.clone(),
         })
     }
 
@@ -562,11 +504,11 @@ impl Metrics {
     /// Creates a set of outgoing metrics that is connected to this set of metrics.
     pub(super) fn create_outgoing_metrics(&self) -> OutgoingMetrics {
         OutgoingMetrics {
-            out_state_connecting: self.out_state_connecting.clone(),
-            out_state_waiting: self.out_state_waiting.clone(),
-            out_state_connected: self.out_state_connected.clone(),
-            out_state_blocked: self.out_state_blocked.clone(),
-            out_state_loopback: self.out_state_loopback.clone(),
+            out_state_connecting: self.out_state_connecting.inner().clone(),
+            out_state_waiting: self.out_state_waiting.inner().clone(),
+            out_state_connected: self.out_state_connected.inner().clone(),
+            out_state_blocked: self.out_state_blocked.inner().clone(),
+            out_state_loopback: self.out_state_loopback.inner().clone(),
         }
     }
 
@@ -589,70 +531,5 @@ impl Metrics {
         } else {
             debug!("not recording metrics, component already shut down");
         }
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.broadcast_requests);
-        unregister_metric!(self.registry, self.direct_message_requests);
-        unregister_metric!(self.registry, self.queued_messages);
-        unregister_metric!(self.registry, self.peers);
-
-        unregister_metric!(self.registry, self.out_count_protocol);
-        unregister_metric!(self.registry, self.out_count_consensus);
-        unregister_metric!(self.registry, self.out_count_deploy_gossip);
-        unregister_metric!(self.registry, self.out_count_block_gossip);
-        unregister_metric!(self.registry, self.out_count_finality_signature_gossip);
-        unregister_metric!(self.registry, self.out_count_address_gossip);
-        unregister_metric!(self.registry, self.out_count_deploy_transfer);
-        unregister_metric!(self.registry, self.out_count_block_transfer);
-        unregister_metric!(self.registry, self.out_count_trie_transfer);
-        unregister_metric!(self.registry, self.out_count_other);
-
-        unregister_metric!(self.registry, self.out_bytes_protocol);
-        unregister_metric!(self.registry, self.out_bytes_consensus);
-        unregister_metric!(self.registry, self.out_bytes_deploy_gossip);
-        unregister_metric!(self.registry, self.out_bytes_block_gossip);
-        unregister_metric!(self.registry, self.out_bytes_finality_signature_gossip);
-        unregister_metric!(self.registry, self.out_bytes_address_gossip);
-        unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
-        unregister_metric!(self.registry, self.out_bytes_block_transfer);
-        unregister_metric!(self.registry, self.out_bytes_trie_transfer);
-        unregister_metric!(self.registry, self.out_bytes_other);
-
-        unregister_metric!(self.registry, self.out_state_connecting);
-        unregister_metric!(self.registry, self.out_state_waiting);
-        unregister_metric!(self.registry, self.out_state_connected);
-        unregister_metric!(self.registry, self.out_state_blocked);
-        unregister_metric!(self.registry, self.out_state_loopback);
-
-        unregister_metric!(self.registry, self.in_count_protocol);
-        unregister_metric!(self.registry, self.in_count_consensus);
-        unregister_metric!(self.registry, self.in_count_deploy_gossip);
-        unregister_metric!(self.registry, self.in_count_block_gossip);
-        unregister_metric!(self.registry, self.in_count_finality_signature_gossip);
-        unregister_metric!(self.registry, self.in_count_address_gossip);
-        unregister_metric!(self.registry, self.in_count_deploy_transfer);
-        unregister_metric!(self.registry, self.in_count_block_transfer);
-        unregister_metric!(self.registry, self.in_count_trie_transfer);
-        unregister_metric!(self.registry, self.in_count_other);
-
-        unregister_metric!(self.registry, self.in_bytes_protocol);
-        unregister_metric!(self.registry, self.in_bytes_consensus);
-        unregister_metric!(self.registry, self.in_bytes_deploy_gossip);
-        unregister_metric!(self.registry, self.in_bytes_block_gossip);
-        unregister_metric!(self.registry, self.in_bytes_finality_signature_gossip);
-        unregister_metric!(self.registry, self.in_bytes_address_gossip);
-        unregister_metric!(self.registry, self.in_bytes_deploy_transfer);
-        unregister_metric!(self.registry, self.in_bytes_block_transfer);
-        unregister_metric!(self.registry, self.in_bytes_trie_transfer);
-        unregister_metric!(self.registry, self.in_bytes_other);
-
-        unregister_metric!(self.registry, self.requests_for_trie_accepted);
-        unregister_metric!(self.registry, self.requests_for_trie_finished);
-
-        unregister_metric!(self.registry, self.accumulated_outgoing_limiter_delay);
-        unregister_metric!(self.registry, self.accumulated_incoming_limiter_delay);
     }
 }

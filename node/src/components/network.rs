@@ -255,13 +255,19 @@ where
 
         let outgoing_limiter = Limiter::new(
             cfg.max_outgoing_byte_rate_non_validators,
-            net_metrics.accumulated_outgoing_limiter_delay.clone(),
+            net_metrics
+                .accumulated_outgoing_limiter_delay
+                .inner()
+                .clone(),
             validator_matrix.clone(),
         );
 
         let incoming_limiter = Limiter::new(
             cfg.max_incoming_message_rate_non_validators,
-            net_metrics.accumulated_incoming_limiter_delay.clone(),
+            net_metrics
+                .accumulated_incoming_limiter_delay
+                .inner()
+                .clone(),
             validator_matrix,
         );
 
@@ -506,7 +512,7 @@ where
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            let send_token = TokenizedCount::new(self.net_metrics.queued_messages.clone());
+            let send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
 
             if let Err(refused_message) =
                 sender.send(EncodedMessage::new(payload, opt_responder, send_token))
