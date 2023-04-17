@@ -615,7 +615,8 @@ impl MainReactor {
         // on an old block. in either case we will attempt to get the next needed block (if any).
         // note: for a synced historical block we have header, body, global state, any execution
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
-        match self.storage.get_highest_orphaned_block_header() {
+        let highest_orphaned_block_header = self.storage.get_highest_orphaned_block_header();
+        match highest_orphaned_block_header {
             HighestOrphanedBlockResult::Orphan(block_header) => {
                 // set a latch on the validator matrix to prevent it from purging validator weights
                 // of interstitial eras which we have not yet historically sync'd
@@ -628,7 +629,7 @@ impl MainReactor {
                 // we require sync back to see a contiguous / unbroken range of at least 12 hours
                 // worth of blocks. note however that we measure from the start of the active era
                 // (for consensus reasons), so this can be up to TTL + era length in practice
-                if !self.sync_to_genesis && self.synced_to_ttl(None)? {
+                if !self.sync_to_genesis && self.synced_to_ttl(None, Some(&block_header))? {
                     return Ok(Some(SyncBackInstruction::TtlSynced));
                 }
                 let parent_hash = block_header.parent_hash();
@@ -687,6 +688,7 @@ impl MainReactor {
     pub(crate) fn synced_to_ttl(
         &self,
         maybe_latest_switch_block_header: Option<&BlockHeader>,
+        maybe_highest_orphaned_block_header: Option<&BlockHeader>,
     ) -> Result<bool, String> {
         let switch_block_header = match maybe_latest_switch_block_header {
             Some(switch_block_header) => switch_block_header.clone(),
@@ -700,33 +702,41 @@ impl MainReactor {
                 {
                     latest_switch_block_header.clone()
                 } else {
-                    // No latest switch block header is known, we assume that
+                    // No latest switch block header is known, we assume that we're not synced to
+                    // TTL.
+                    info!(
+                        "KeepUp: unable to get latest switch block header (this problem should be transient), \
+                        assuming not synced to ttl");
                     return Ok(false);
                 }
             }
         };
 
-        // TODO: At least one caller of this function already has the result of
-        // get_highest_orphaned_block_header() available. We might consider adding an optimization
-        // similar to the `maybe_latest_switch_block_header` in order to allow the caller to provide
-        // this value and fall-back to storage if it's not provided.
-        let maybe_highest_orphaned_block_header = self.storage.get_highest_orphaned_block_header();
+        let highest_orphaned_block_header = match maybe_highest_orphaned_block_header {
+            Some(highest_orphaned_block_header) => highest_orphaned_block_header.clone(),
+            None => {
+                // If highest orphaned block header is not provided, we try to get it from storage.
+                if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
+                    self.storage.get_highest_orphaned_block_header()
+                {
+                    highest_orphaned_block_header
+                } else {
+                    // No highest orphaned block header is known, we assume that we're not synced to
+                    // TTL.
+                    info!(
+                        "KeepUp: unable to get highest orphaned block header (this problem should be transient), \
+                        assuming not synced to ttl");
+                    return Ok(false);
+                }
+            }
+        };
 
-        if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
-            maybe_highest_orphaned_block_header
-        {
-            return Ok(highest_orphaned_block_header.height() == 0
-                || is_timestamp_at_ttl(
-                    switch_block_header.timestamp(),
-                    highest_orphaned_block_header.timestamp(),
-                    self.chainspec.deploy_config.max_ttl,
-                ));
-        } else {
-            info!(result = %maybe_highest_orphaned_block_header,
-                    "KeepUp: unable to get highest orphaned block header (this problem should be transient), \
-                    assuming not synced to ttl");
-        }
-        Ok(false)
+        Ok(highest_orphaned_block_header.height() == 0
+            || is_timestamp_at_ttl(
+                switch_block_header.timestamp(),
+                highest_orphaned_block_header.timestamp(),
+                self.chainspec.deploy_config.max_ttl,
+            ))
     }
 }
 

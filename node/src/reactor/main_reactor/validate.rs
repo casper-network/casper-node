@@ -115,7 +115,7 @@ impl MainReactor {
             return Ok(None);
         }
 
-        if self.synced_to_ttl(Some(highest_switch_block_header))? {
+        if self.synced_to_ttl(Some(highest_switch_block_header), None)? {
             if let HighestOrphanedBlockResult::Orphan(header) =
                 self.storage.get_highest_orphaned_block_header()
             {
