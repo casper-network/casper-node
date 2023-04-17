@@ -1,10 +1,10 @@
 //! Preprocessing of Wasm modules.
 use std::fmt::{self, Display, Formatter};
 
+use casper_wasm_utils::{self, stack_height};
 use parity_wasm::elements::{
     self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
 };
-use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
 use crate::core::execution;
@@ -12,7 +12,7 @@ use crate::core::execution;
 use super::wasm_config::WasmConfig;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
-/// Name of the internal gas function injected by [`pwasm_utils::inject_gas_counter`].
+/// Name of the internal gas function injected by [`casper_wasm_utils::inject_gas_counter`].
 const INTERNAL_GAS_FUNCTION_NAME: &str = "gas";
 
 /// We only allow maximum of 4k function pointers in a table section.
@@ -390,8 +390,8 @@ pub fn preprocess(
     ensure_valid_access(&module)?;
 
     if memory_section(&module).is_none() {
-        // `pwasm_utils::externalize_mem` expects a non-empty memory section to exist in the module,
-        // and panics otherwise.
+        // `casper_wasm_utils::externalize_mem` expects a non-empty memory section to exist in the
+        // module, and panics otherwise.
         return Err(PreprocessingError::MissingMemorySection);
     }
 
@@ -401,8 +401,8 @@ pub fn preprocess(
     ensure_parameter_limit(&module, DEFAULT_MAX_PARAMETER_COUNT)?;
     ensure_valid_imports(&module)?;
 
-    let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
-    let module = pwasm_utils::inject_gas_counter(
+    let module = casper_wasm_utils::externalize_mem(module, None, wasm_config.max_memory);
+    let module = casper_wasm_utils::inject_gas_counter(
         module,
         &wasm_config.opcode_costs(),
         DEFAULT_GAS_MODULE_NAME,
@@ -440,7 +440,7 @@ pub fn get_module_from_entry_points(
     match maybe_missing_name {
         Some(missing_name) => Err(execution::Error::FunctionNotFound(missing_name)),
         None => {
-            pwasm_utils::optimize(&mut module, entry_point_names)?;
+            casper_wasm_utils::optimize(&mut module, entry_point_names)?;
             parity_wasm::serialize(module).map_err(execution::Error::ParityWasm)
         }
     }
@@ -453,6 +453,7 @@ mod tests {
         builder,
         elements::{CodeSection, Instructions},
     };
+    use walrus::{FunctionBuilder, ModuleConfig, ValType};
 
     use super::*;
 
@@ -604,6 +605,41 @@ mod tests {
         assert!(
             matches!(&error, PreprocessingError::Deserialize(msg)
             if msg == &format!("missing function index {index}", index=u32::MAX)),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_multi_value_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_locals =
+                FunctionBuilder::new(&mut module.types, &[], &[ValType::I32, ValType::I64]);
+
+            func_with_locals.func_body().i64_const(0).i32_const(1);
+
+            let func_with_locals = func_with_locals.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_locals);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Enable the multi_value feature to deserialize more than one function result"),
             "{:?}",
             error,
         );
