@@ -115,10 +115,7 @@ impl MainReactor {
             return Ok(None);
         }
 
-        if self
-            .deploy_buffer
-            .have_full_ttl_of_deploys(highest_switch_block_header)
-        {
+        if self.synced_to_ttl(Some(highest_switch_block_header))? {
             if let HighestOrphanedBlockResult::Orphan(header) =
                 self.storage.get_highest_orphaned_block_header()
             {
