@@ -4,8 +4,10 @@ use tracing::{debug, info, warn};
 use crate::{
     components::consensus::ChainspecConsensusExt,
     effect::{EffectBuilder, Effects},
-    reactor,
-    reactor::main_reactor::{MainEvent, MainReactor},
+    reactor::{
+        self,
+        main_reactor::{keep_up::synced_to_ttl, MainEvent, MainReactor},
+    },
     storage::HighestOrphanedBlockResult,
     NodeRng,
 };
@@ -115,7 +117,12 @@ impl MainReactor {
             return Ok(None);
         }
 
-        if self.synced_to_ttl(Some(highest_switch_block_header), None)? {
+        if synced_to_ttl(
+            Some(highest_switch_block_header),
+            None,
+            &self.storage,
+            self.chainspec.deploy_config.max_ttl,
+        )? {
             if let HighestOrphanedBlockResult::Orphan(header) =
                 self.storage.get_highest_orphaned_block_header()
             {
