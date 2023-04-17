@@ -29,7 +29,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     rpcs::{
-        chain::GetEraInfoBySwitchBlock,
+        chain::{GetEraInfoBySwitchBlock, GetEraSummary},
         info::GetValidatorChanges,
         state::{GetAccountInfo, GetDictionaryItem, QueryGlobalState},
     },
@@ -100,6 +100,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetAuctionInfo>(
         "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block",
     );
+    schema.push_with_optional_params::<GetEraSummary>("returns the era summary at either a specific block (by height or hash), or the most recently added block");
 
     schema
 });

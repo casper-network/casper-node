@@ -365,6 +365,13 @@ pub(crate) enum StorageRequest {
         /// Responder, responded to once the approvals are written.
         responder: Responder<()>,
     },
+    /// Retrieve switch block height with given era ID.
+    GetSwitchBlockHeightAtEraId {
+        /// Era ID of the switch block.
+        era_id: EraId,
+        /// Responder.
+        responder: Responder<Option<u64>>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -433,6 +440,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
+            }
+            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, .. } => {
+                write!(formatter, "get switch block height at era id {}", era_id)
             }
         }
     }
@@ -716,6 +726,8 @@ pub(crate) enum ContractRuntimeRequest {
         deploys: Vec<Deploy>,
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
+        /// The key block height for the current protocol version's activation point.
+        key_block_height_for_activation_point: u64,
     },
 
     /// Commit genesis chainspec.
@@ -807,6 +819,8 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for the block to execute; must correspond to the transfer and execution
         /// hashes of the `finalized_block` in that order.
         transfers: Vec<Deploy>,
+        /// The key block height for the current protocol version's activation point.
+        key_block_height_for_activation_point: u64,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
@@ -816,9 +830,7 @@ impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ContractRuntimeRequest::EnqueueBlockForExecution {
-                finalized_block,
-                deploys: _,
-                transfers: _,
+                finalized_block, ..
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }

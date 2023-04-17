@@ -16,7 +16,7 @@ use crate::{
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},
         transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::operations::{read, ReadResult},
+        trie_store::operations::{read, DeleteResult, ReadResult},
     },
 };
 
@@ -233,6 +233,15 @@ impl StateProvider for ScratchGlobalState {
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
         self.state.missing_trie_keys(correlation_id, trie_keys)
+    }
+
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<DeleteResult, Self::Error> {
+        self.state.delete_keys(correlation_id, root, keys_to_delete)
     }
 }
 

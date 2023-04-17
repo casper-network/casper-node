@@ -8,6 +8,8 @@ use std::{
     mem,
 };
 
+use either::Either;
+use num_traits::FromPrimitive;
 use tracing::{error, warn};
 
 use casper_hashing::Digest;
@@ -18,8 +20,9 @@ use crate::{
     storage::{
         transaction_source::{Readable, Writable},
         trie::{
+            self,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
+            Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
         },
         trie_store::TrieStore,
     },
@@ -269,10 +272,10 @@ where
         // Optimization: Don't look for descendants of leaves.
         match maybe_retrieved_trie_bytes
             .as_ref()
-            .and_then(|bytes| bytes.first())
+            .and_then(|bytes| trie::lazy_trie_tag(bytes))
         {
             // if this is a leaf don't parse (ie, the first byte is 0), just continue
-            Some(0) => continue,
+            Some(TrieTag::Leaf) => continue,
             // Either no entry under trie key or data is empty.  If data is empty then the trie is
             // corrupted. Either way treat as missing.
             None => {
@@ -340,12 +343,15 @@ where
     for state_root in &trie_keys_to_visit {
         match store.get(txn, state_root)? {
             Some(Trie::Node { .. }) => {}
-            _ => panic!("Should have a pointer block node as state root"),
+            other => panic!(
+                "Should have a pointer block node as state root but received {:?} instead",
+                other
+            ),
         }
     }
     let mut trie_keys_to_visit: Vec<(Vec<u8>, Digest)> = trie_keys_to_visit
-        .into_iter()
-        .map(|blake2b_hash| (Vec::new(), blake2b_hash))
+        .iter()
+        .map(|blake2b_hash| (Vec::new(), *blake2b_hash))
         .collect();
     let mut visited = HashSet::new();
     while let Some((mut path, trie_key)) = trie_keys_to_visit.pop() {
@@ -421,7 +427,6 @@ impl<K, V> TrieScan<K, V> {
 /// "tip", along the with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
 fn scan<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     key_bytes: &[u8],
@@ -435,16 +440,61 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let root_bytes = root.to_bytes()?;
+    let TrieScanRaw { tip, parents } =
+        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
+    let tip = match tip {
+        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
+        Either::Right(tip) => tip,
+    };
+    Ok(TrieScan::new(tip, parents))
+}
+
+struct TrieScanRaw<K, V> {
+    tip: Either<Bytes, Trie<K, V>>,
+    parents: Parents<K, V>,
+}
+
+impl<K, V> TrieScanRaw<K, V> {
+    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>) -> Self {
+        TrieScanRaw { tip, parents }
+    }
+}
+
+/// Just like scan, however we don't parse the tip.
+fn scan_raw<K, V, T, S, E>(
+    txn: &T,
+    store: &S,
+    key_bytes: &[u8],
+    root_bytes: Bytes,
+) -> Result<TrieScanRaw<K, V>, E>
+where
+    K: ToBytes + FromBytes + Clone,
+    V: ToBytes + FromBytes + Clone,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
     let path = key_bytes;
 
-    let mut current = root.to_owned();
+    let mut current_trie;
+    let mut current = root_bytes;
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
     loop {
-        match current {
-            leaf @ Trie::Leaf { .. } => {
-                return Ok(TrieScan::new(leaf, acc));
+        let maybe_trie_leaf = trie::lazy_trie_deserialize(current)?;
+        current_trie = match maybe_trie_leaf {
+            leaf_bytes @ Either::Left(_) => return Ok(TrieScanRaw::new(leaf_bytes, acc)),
+            Either::Right(trie_object) => trie_object,
+        };
+
+        match current_trie {
+            _leaf @ Trie::Leaf { .. } => {
+                // since we are checking if this is a leaf and skipping, we do not expect to ever
+                // hit this.
+                unreachable!()
             }
             Trie::Node { pointer_block } => {
                 let index = {
@@ -459,10 +509,13 @@ where
                 let pointer = match maybe_pointer {
                     Some(pointer) => pointer,
                     None => {
-                        return Ok(TrieScan::new(Trie::Node { pointer_block }, acc));
+                        return Ok(TrieScanRaw::new(
+                            Either::Right(Trie::Node { pointer_block }),
+                            acc,
+                        ));
                     }
                 };
-                match store.get(txn, pointer.hash())? {
+                match store.get_raw(txn, pointer.hash())? {
                     Some(next) => {
                         current = next;
                         depth += 1;
@@ -480,9 +533,12 @@ where
             Trie::Extension { affix, pointer } => {
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
-                    return Ok(TrieScan::new(Trie::Extension { affix, pointer }, acc));
+                    return Ok(TrieScanRaw::new(
+                        Either::Right(Trie::Extension { affix, pointer }),
+                        acc,
+                    ));
                 }
-                match store.get(txn, pointer.hash())? {
+                match store.get_raw(txn, pointer.hash())? {
                     Some(next) => {
                         let index = {
                             assert!(depth < path.len(), "depth must be < {}", path.len());
@@ -512,9 +568,9 @@ pub enum DeleteResult {
     RootNotFound,
 }
 
-#[allow(unused)]
-fn delete<K, V, T, S, E>(
-    correlation_id: CorrelationId,
+/// Delete provided key from a global state so it is not reachable from a resulting state root hash.
+pub(crate) fn delete<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -528,18 +584,32 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let root_trie = match store.get(txn, root)? {
+    let root_trie_bytes = match store.get_raw(txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
-    let TrieScan { tip, mut parents } =
-        scan::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
+    let TrieScanRaw { tip, mut parents } =
+        scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
 
     // Check that tip is a leaf
     match tip {
-        Trie::Leaf { key, .. } if key == *key_to_delete => {}
+        Either::Left(bytes)
+            if {
+                // Partially deserialize a key of a leaf node to ensure that we can only continue if
+                // the key matches what we're looking for.
+                let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&bytes)?;
+                let trie_tag = TrieTag::from_u8(tag_u8);
+                // _rem contains bytes of serialized V, but we don't need to inspect it.
+                assert_eq!(
+                    trie_tag,
+                    Some(TrieTag::Leaf),
+                    "Tip should contain leaf bytes, but has tag {:?}",
+                    trie_tag
+                );
+                key == *key_to_delete
+            } => {}
         _ => return Ok(DeleteResult::DoesNotExist),
     }
 
@@ -720,6 +790,7 @@ where
         .pop()
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
+
     Ok(DeleteResult::Deleted(new_root))
 }
 
@@ -971,7 +1042,7 @@ pub enum WriteResult {
 }
 
 pub fn write<K, V, T, S, E>(
-    correlation_id: CorrelationId,
+    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -995,7 +1066,7 @@ where
             };
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScan { tip, parents } =
-                scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
+                scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.

@@ -5,7 +5,7 @@ use crate::{
     contract_runtime::{BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState},
     effect::{
         announcements::ControlAnnouncement,
-        requests::{ContractRuntimeRequest, StorageRequest},
+        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectOptionExt, Effects,
     },
     fatal,
@@ -86,7 +86,8 @@ pub(super) async fn execute_block<REv>(
     REv: From<StorageRequest>
         + From<ControlAnnouncement>
         + From<ContractRuntimeRequest>
-        + From<ContractRuntimeAnnouncement>,
+        + From<ContractRuntimeAnnouncement>
+        + From<ChainspecLoaderRequest>,
 {
     let protocol_version = block_to_execute.protocol_version();
     let execution_pre_state =
@@ -152,6 +153,10 @@ pub(super) async fn execute_block<REv>(
         }
     }
 
+    let key_block_height_for_activation_point = effect_builder
+        .get_key_block_height_for_activation_point()
+        .await;
+
     let BlockAndExecutionEffects {
         block,
         execution_results,
@@ -163,6 +168,7 @@ pub(super) async fn execute_block<REv>(
             finalized_block,
             deploys,
             transfers,
+            key_block_height_for_activation_point,
         )
         .await
     {

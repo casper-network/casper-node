@@ -24,8 +24,8 @@ use crate::{
     effect::{
         announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
         requests::{
-            ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            RestRequest, StateStoreRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            NetworkRequest, RestRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -59,6 +59,9 @@ pub(crate) enum Event {
     /// Control announcement
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+
+    #[from]
+    ChainspecRequest(ChainspecLoaderRequest),
 }
 
 impl From<ContractRuntimeRequest> for Event {
@@ -83,6 +86,7 @@ impl ReactorEvent for Event {
             Event::ContractRuntime(_) => "ContractRuntime",
             Event::StateStoreRequest(_) => "StateStoreRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
+            Event::ChainspecRequest(_) => "ChainspecRequest",
         }
     }
 }
@@ -145,6 +149,7 @@ impl Display for Event {
                 write!(formatter, "state store request: {}", request)
             }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
+            Event::ChainspecRequest(req) => write!(formatter, "chainspec request: {}", req),
         }
     }
 }
@@ -256,6 +261,11 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .minimum_delegation_amount,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .activation_point,
+            chainspec_loader.chainspec().core_config.prune_batch_size,
             registry,
         )?;
 
@@ -326,6 +336,12 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::Storage(request.into()))
             }
             Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
+
+            Event::ChainspecRequest(request) => reactor::wrap_effects(
+                Event::from,
+                self.chainspec_loader
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
         }
     }
 

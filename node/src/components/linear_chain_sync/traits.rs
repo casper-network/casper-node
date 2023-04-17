@@ -3,8 +3,8 @@ use crate::{
     effect::{
         announcements::ControlAnnouncement,
         requests::{
-            BlockValidationRequest, ContractRuntimeRequest, FetcherRequest, StateStoreRequest,
-            StorageRequest,
+            BlockValidationRequest, ChainspecLoaderRequest, ContractRuntimeRequest, FetcherRequest,
+            StateStoreRequest, StorageRequest,
         },
     },
     types::{Block, BlockByHeight},
@@ -19,6 +19,7 @@ pub(crate) trait ReactorEventT<I>:
     + From<StateStoreRequest>
     + From<ControlAnnouncement>
     + From<ContractRuntimeAnnouncement>
+    + From<ChainspecLoaderRequest>
     + Send
 {
 }
@@ -32,6 +33,7 @@ impl<I, REv> ReactorEventT<I> for REv where
         + From<StateStoreRequest>
         + From<ControlAnnouncement>
         + From<ContractRuntimeAnnouncement>
+        + From<ChainspecLoaderRequest>
         + Send
 {
 }

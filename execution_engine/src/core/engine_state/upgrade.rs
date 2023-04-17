@@ -158,6 +158,9 @@ pub enum ProtocolUpgradeError {
     /// Failed to create system contract registry.
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
+    /// Found unexpected variant of a stored value.
+    #[error("Unexpected stored value variant")]
+    UnexpectedStoredValueVariant,
 }
 
 impl From<bytesrepr::Error> for ProtocolUpgradeError {

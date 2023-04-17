@@ -58,6 +58,8 @@ max_runtime_call_stack_height = 12
 max_stored_value_size = 8_388_608
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
+# Global state prune batch size (0 = this feature is off)
+prune_batch_size = 1
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

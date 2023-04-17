@@ -38,11 +38,12 @@ use casper_types::ProtocolVersion;
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
-        announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
-        EffectExt, Effects,
+        announcements::ControlAnnouncement,
+        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    types::{ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
 pub(crate) use announcements::ContractRuntimeAnnouncement;
@@ -141,6 +142,8 @@ pub(crate) struct ContractRuntime {
     exec_queue: ExecQueue,
     /// Cached instance of a [`SystemContractRegistry`].
     system_contract_registry: Option<SystemContractRegistry>,
+    activation_point: ActivationPoint,
+    prune_batch_size: u64,
 }
 
 impl Debug for ContractRuntime {
@@ -154,6 +157,8 @@ where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
+        + From<ChainspecLoaderRequest>
+        + From<StorageRequest>
         + Send,
 {
     type Event = ContractRuntimeRequest;
@@ -321,6 +326,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
+                key_block_height_for_activation_point,
                 responder,
             } => {
                 trace!(
@@ -332,6 +338,8 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                let activation_point = self.activation_point;
+                let prune_batch_size = self.prune_batch_size;
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -342,6 +350,9 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            activation_point.era_id(),
+                            key_block_height_for_activation_point,
+                            prune_batch_size,
                         )
                     })
                     .await;
@@ -354,6 +365,7 @@ where
                 finalized_block,
                 deploys,
                 transfers,
+                key_block_height_for_activation_point,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
@@ -362,6 +374,8 @@ where
                 let exec_queue = Arc::clone(&self.exec_queue);
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
                 let protocol_version = self.protocol_version;
+                let activation_point = self.activation_point;
+                let prune_batch_size = self.prune_batch_size;
                 if self.execution_pre_state.lock().unwrap().next_block_height
                     == finalized_block.height()
                 {
@@ -376,6 +390,9 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            activation_point,
+                            key_block_height_for_activation_point,
+                            prune_batch_size,
                         )
                         .ignore(),
                     )
@@ -421,6 +438,8 @@ impl ContractRuntime {
         max_stored_value_size: u32,
         max_delegator_size_limit: u32,
         minimum_delegation_amount: u64,
+        activation_point: ActivationPoint,
+        prune_batch_size: u64,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -468,6 +487,8 @@ impl ContractRuntime {
             protocol_version,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
+            activation_point,
+            prune_batch_size,
         })
     }
 
@@ -563,10 +584,15 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        activation_point: ActivationPoint,
+        key_block_height_for_activation_point: u64,
+        prune_batch_size: u64,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
+            + From<ChainspecLoaderRequest>
+            + From<StorageRequest>
             + Send,
     {
         let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
@@ -583,6 +609,9 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
+                activation_point.era_id(),
+                key_block_height_for_activation_point,
+                prune_batch_size,
             )
         })
         .await
@@ -620,9 +649,15 @@ impl ContractRuntime {
             let queue = &mut *exec_queue.lock().expect("mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
+
         if let Some((finalized_block, deploys, transfers)) = next_block {
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys, transfers)
+                .enqueue_block_for_execution(
+                    finalized_block,
+                    deploys,
+                    transfers,
+                    key_block_height_for_activation_point,
+                )
                 .await
         }
     }

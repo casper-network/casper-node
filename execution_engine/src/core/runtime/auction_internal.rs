@@ -111,8 +111,8 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
-        Runtime::record_era_info(self, era_id, era_info)
+    fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error> {
+        Runtime::record_era_summary(self, era_summary)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::RecordEraInfo))
     }
 }

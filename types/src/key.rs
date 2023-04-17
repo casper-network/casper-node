@@ -43,6 +43,7 @@ const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
 const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
+const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -57,7 +58,8 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
 
-const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
+const PADDING_BYTES: [u8; 32] = [0u8; 32];
+
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -70,7 +72,8 @@ const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LEN
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY.len();
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -93,6 +96,7 @@ pub enum KeyTag {
     Withdraw = 8,
     Dictionary = 9,
     SystemContractRegistry = 10,
+    EraSummary = 11,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -124,6 +128,8 @@ pub enum Key {
     Dictionary(DictionaryAddr),
     /// A `Key` variant under which system contract hashes are stored.
     SystemContractRegistry,
+    /// A `Key` under which we store current era info.
+    EraSummary,
 }
 
 /// Errors produced when converting a `String` into a `Key`.
@@ -151,6 +157,8 @@ pub enum FromStrError {
     Dictionary(String),
     /// System contract registry parse error.
     SystemContractRegistry(String),
+    /// Era summary parse error.
+    EraSummary(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -197,6 +205,9 @@ impl Display for FromStrError {
                     error
                 )
             }
+            FromStrError::EraSummary(error) => {
+                write!(f, "era-summary-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -218,6 +229,7 @@ impl Key {
             Key::Withdraw(_) => String::from("Key::Unbond"),
             Key::Dictionary(_) => String::from("Key::Dictionary"),
             Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
+            Key::EraSummary => String::from("Key::EraSummary"),
         }
     }
 
@@ -274,7 +286,14 @@ impl Key {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    base16::encode_lower(&PADDING_BYTES)
+                )
+            }
+            Key::EraSummary => {
+                format!(
+                    "{}{}",
+                    ERA_SUMMARY_PREFIX,
+                    base16::encode_lower(&PADDING_BYTES)
                 )
             }
         }
@@ -314,6 +333,15 @@ impl Key {
             Ok(uref) => return Ok(Key::URef(uref)),
             Err(uref::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(error.into()),
+        }
+
+        if let Some(era_summary_padding) = input.strip_prefix(ERA_SUMMARY_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(era_summary_padding)
+                .map_err(|error| FromStrError::EraSummary(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::EraSummary("Failed to deserialize era summary key".to_string())
+            })?;
+            return Ok(Key::EraSummary);
         }
 
         if let Some(era_id_str) = input.strip_prefix(ERA_INFO_PREFIX) {
@@ -476,7 +504,12 @@ impl Display for Key {
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&PADDING_BYTES)
+            ),
+            Key::EraSummary => write!(
+                f,
+                "Key::EraSummary({})",
+                base16::encode_lower(&PADDING_BYTES),
             ),
         }
     }
@@ -502,6 +535,7 @@ impl Tagged<KeyTag> for Key {
             Key::Withdraw(_) => KeyTag::Withdraw,
             Key::Dictionary(_) => KeyTag::Dictionary,
             Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
+            Key::EraSummary => KeyTag::EraSummary,
         }
     }
 }
@@ -584,8 +618,8 @@ impl ToBytes for Key {
             Key::Dictionary(addr) => {
                 result.append(&mut addr.to_bytes()?);
             }
-            Key::SystemContractRegistry => {
-                result.append(&mut SYSTEM_CONTRACT_REGISTRY_KEY.to_bytes()?)
+            Key::SystemContractRegistry | Key::EraSummary => {
+                result.append(&mut PADDING_BYTES.to_bytes()?)
             }
         }
         Ok(result)
@@ -606,6 +640,7 @@ impl ToBytes for Key {
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
+            Key::EraSummary => KEY_ERA_SUMMARY_SERIALIZED_LENGTH,
         }
     }
 }
@@ -658,6 +693,10 @@ impl FromBytes for Key {
                 let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::SystemContractRegistry, rem))
             }
+            tag if tag == KeyTag::EraSummary as u8 => {
+                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                Ok((Key::EraSummary, rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -665,7 +704,7 @@ impl FromBytes for Key {
 
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=10) {
+        match rng.gen_range(0..=11) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -677,6 +716,7 @@ impl Distribution<Key> for Standard {
             8 => Key::Withdraw(rng.gen()),
             9 => Key::Dictionary(rng.gen()),
             10 => Key::SystemContractRegistry,
+            11 => Key::EraSummary,
             _ => unreachable!(),
         }
     }
@@ -698,6 +738,7 @@ mod serde_helpers {
         Withdraw(String),
         Dictionary(String),
         SystemContractRegistry(String),
+        EraSummary(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -717,6 +758,7 @@ mod serde_helpers {
                 Key::SystemContractRegistry => {
                     HumanReadable::SystemContractRegistry(formatted_string)
                 }
+                Key::EraSummary => HumanReadable::EraSummary(formatted_string),
             }
         }
     }
@@ -725,7 +767,7 @@ mod serde_helpers {
         type Error = FromStrError;
 
         fn try_from(helper: HumanReadable) -> Result<Self, Self::Error> {
-            match helper {
+            let formatted_string = match helper {
                 HumanReadable::Account(formatted_string)
                 | HumanReadable::Hash(formatted_string)
                 | HumanReadable::URef(formatted_string)
@@ -734,16 +776,12 @@ mod serde_helpers {
                 | HumanReadable::EraInfo(formatted_string)
                 | HumanReadable::Balance(formatted_string)
                 | HumanReadable::Bid(formatted_string)
-                | HumanReadable::Withdraw(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-                HumanReadable::Dictionary(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-                HumanReadable::SystemContractRegistry(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-            }
+                | HumanReadable::Withdraw(formatted_string)
+                | HumanReadable::Dictionary(formatted_string)
+                | HumanReadable::SystemContractRegistry(formatted_string)
+                | HumanReadable::EraSummary(formatted_string) => formatted_string,
+            };
+            Key::from_formatted_str(&formatted_string)
         }
     }
 
@@ -760,6 +798,7 @@ mod serde_helpers {
         Withdraw(&'a AccountHash),
         Dictionary(&'a HashAddr),
         SystemContractRegistry,
+        EraSummary,
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -776,6 +815,7 @@ mod serde_helpers {
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::EraSummary => BinarySerHelper::EraSummary,
             }
         }
     }
@@ -793,6 +833,7 @@ mod serde_helpers {
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
         SystemContractRegistry,
+        EraSummary,
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -809,6 +850,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
                 BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
+                BinaryDeserHelper::EraSummary => Key::EraSummary,
             }
         }
     }
@@ -840,6 +882,8 @@ impl<'de> Deserialize<'de> for Key {
 mod tests {
     use std::string::ToString;
 
+    use serde_json::json;
+
     use super::*;
     use crate::{
         account::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
@@ -860,7 +904,8 @@ mod tests {
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
     const REGISTRY_KEY: Key = Key::SystemContractRegistry;
-    const KEYS: [Key; 11] = [
+    const ERA_SUMMARY_KEY: Key = Key::EraSummary;
+    const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
         UREF_KEY,
@@ -872,6 +917,7 @@ mod tests {
         WITHDRAW_KEY,
         DICTIONARY_KEY,
         REGISTRY_KEY,
+        ERA_SUMMARY_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
@@ -963,8 +1009,12 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&PADDING_BYTES)
             )
+        );
+        assert_eq!(
+            format!("{}", ERA_SUMMARY_KEY),
+            format!("Key::EraSummary({})", base16::encode_lower(&PADDING_BYTES))
         )
     }
 
@@ -1010,7 +1060,7 @@ mod tests {
     #[test]
     fn key_max_serialized_length() {
         let mut got_max = false;
-        for key in &KEYS {
+        for key in KEYS {
             assert!(key.serialized_length() <= Key::max_serialized_length());
             if key.serialized_length() == Key::max_serialized_length() {
                 got_max = true;
@@ -1025,10 +1075,10 @@ mod tests {
 
     #[test]
     fn should_parse_key_from_str() {
-        for key in &KEYS {
+        for key in KEYS {
             let string = key.to_formatted_string();
             let parsed_key = Key::from_formatted_str(&string).unwrap();
-            assert_eq!(*key, parsed_key);
+            assert_eq!(parsed_key, *key, "{string} (key = {key:?})");
         }
     }
 
@@ -1082,7 +1132,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("system-contract-registry-key from string error: "));
-
+        assert!(Key::from_formatted_str(ERA_SUMMARY_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("era-summary-key from string error"));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -1109,21 +1162,27 @@ mod tests {
 
     #[test]
     fn key_to_json() {
-        let expected_json = [
-            format!(r#"{{"Account":"account-hash-{}"}}"#, HEX_STRING),
-            format!(r#"{{"Hash":"hash-{}"}}"#, HEX_STRING),
-            format!(r#"{{"URef":"uref-{}-001"}}"#, HEX_STRING),
-            format!(r#"{{"Transfer":"transfer-{}"}}"#, HEX_STRING),
-            format!(r#"{{"DeployInfo":"deploy-{}"}}"#, HEX_STRING),
-            r#"{"EraInfo":"era-42"}"#.to_string(),
-            format!(r#"{{"Balance":"balance-{}"}}"#, HEX_STRING),
-            format!(r#"{{"Bid":"bid-{}"}}"#, HEX_STRING),
-            format!(r#"{{"Withdraw":"withdraw-{}"}}"#, HEX_STRING),
-            format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
-            format!(
-                r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
-            ),
+        let expected_json = &[
+            json!({ "Account": format!("account-hash-{}", HEX_STRING) }),
+            json!({ "Hash": format!("hash-{}", HEX_STRING) }),
+            json!({ "URef": format!("uref-{}-001", HEX_STRING) }),
+            json!({ "Transfer": format!("transfer-{}", HEX_STRING) }),
+            json!({ "DeployInfo": format!("deploy-{}", HEX_STRING) }),
+            json!({"EraInfo": "era-42" }),
+            json!({ "Balance": format!("balance-{}", HEX_STRING) }),
+            json!({ "Bid": format!("bid-{}", HEX_STRING) }),
+            json!({ "Withdraw": format!("withdraw-{}", HEX_STRING) }),
+            json!({ "Dictionary": format!("dictionary-{}", HEX_STRING) }),
+            json!({
+                "SystemContractRegistry":
+                    format!(
+                        "system-contract-registry-{}",
+                        base16::encode_lower(&PADDING_BYTES)
+                    )
+            }),
+            json!({
+                "EraSummary": format!("era-summary-{}", base16::encode_lower(&PADDING_BYTES))
+            }),
         ];
 
         assert_eq!(
@@ -1133,13 +1192,13 @@ mod tests {
         );
 
         for (key, expected_json_key) in KEYS.iter().zip(expected_json.iter()) {
-            assert_eq!(serde_json::to_string(key).unwrap(), *expected_json_key);
+            assert_eq!(serde_json::to_value(key).unwrap(), *expected_json_key);
         }
     }
 
     #[test]
     fn serialization_roundtrip_bincode() {
-        for key in &KEYS {
+        for key in KEYS {
             let encoded = bincode::serialize(key).unwrap();
             let decoded = bincode::deserialize(&encoded).unwrap();
             assert_eq!(key, &decoded);
@@ -1149,12 +1208,12 @@ mod tests {
     #[test]
     fn serialization_roundtrip_json() {
         let round_trip = |key: &Key| {
-            let encoded = serde_json::to_string_pretty(key).unwrap();
-            let decoded = serde_json::from_str(&encoded).unwrap();
+            let encoded = serde_json::to_value(key).unwrap();
+            let decoded = serde_json::from_value(encoded).unwrap();
             assert_eq!(key, &decoded);
         };
 
-        for key in &KEYS {
+        for key in KEYS {
             round_trip(key);
         }
 
@@ -1171,5 +1230,6 @@ mod tests {
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::SystemContractRegistry);
+        round_trip(&Key::EraSummary);
     }
 }

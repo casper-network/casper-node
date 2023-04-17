@@ -319,6 +319,10 @@ where
                 error!("should not remove the system contract registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
+            Key::EraSummary => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
         }
     }
 
@@ -567,7 +571,7 @@ where
 
     /// Write an era info instance to the global state.
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
-        if let Key::EraInfo(_) = key {
+        if let Key::EraSummary = key {
             // Writing an `EraInfo` for 100 validators will not exceed write size limit.
             let _ = self.tracking_copy.borrow_mut().write(
                 key,
@@ -767,6 +771,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::EraSummary => true,
         }
     }
 
@@ -787,6 +792,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::EraSummary => false,
         }
     }
 
@@ -807,6 +813,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::EraSummary => false,
         }
     }
 

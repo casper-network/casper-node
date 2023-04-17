@@ -393,10 +393,8 @@ fn should_distribute_delegation_rate_zero() {
     assert!(delegator_2_balance.is_zero());
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -703,10 +701,8 @@ fn should_withdraw_bids_after_distribute() {
     assert!(!validator_1_balance.is_zero());
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -946,10 +942,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert_eq!(delegator_2_actual_payout_1, delegator_2_expected_payout_1);
 
     let era_info_1 = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -1080,10 +1074,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     assert!(delegator_2_actual_payout_2 > delegator_2_actual_payout_1);
 
     let era_info_2 = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -1365,10 +1357,8 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert_eq!(validator_3_actual_payout_1, validator_3_expected_payout_1);
 
     let era_info_1 = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -1498,10 +1488,8 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     assert!(validator_3_actual_payout_2 > validator_3_actual_payout_1);
 
     let era_info_2 = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -1782,10 +1770,8 @@ fn should_distribute_delegation_rate_half() {
     assert_eq!(delegator_2_actual_payout, delegator_2_expected_payout);
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -1977,10 +1963,8 @@ fn should_distribute_delegation_rate_full() {
     assert_eq!(total_payout, expected_total_reward_integer);
 
     let era_info = {
-        let era = builder.get_era();
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -2212,10 +2196,8 @@ fn should_distribute_uneven_delegation_rate_zero() {
     assert_eq!(delegator_2_updated_stake, delegator_2_expected_payout);
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -2438,10 +2420,8 @@ fn should_distribute_by_factor() {
     assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -2665,10 +2645,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
     assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -2892,10 +2870,8 @@ fn should_distribute_by_factor_uneven() {
     assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -3191,10 +3167,8 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     };
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value
@@ -3637,10 +3611,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     );
 
     let era_info = {
-        let era = builder.get_era() - 1;
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value

@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt::{self, Debug, Display, Formatter},
     iter,
+    str::FromStr,
 };
 
 use derive_more::From;
@@ -24,7 +25,7 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_types::{testing::TestRng, ProtocolVersion};
+use casper_types::{testing::TestRng, ProtocolVersion, Timestamp};
 
 use super::*;
 use crate::{
@@ -39,7 +40,9 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
             NetworkAnnouncement, RpcServerAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
+        requests::{
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+        },
         Responder,
     },
     protocol::Message as NodeMessage,
@@ -49,7 +52,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor,
     },
-    types::{Chainspec, Deploy, NodeId, Tag},
+    types::{ActivationPoint, Chainspec, Deploy, NodeId, Tag},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -83,6 +86,8 @@ enum Event {
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    #[from]
+    Chainspec(#[serde(skip_serializing)] ChainspecLoaderRequest),
 }
 
 impl ReactorEvent for Event {
@@ -153,6 +158,7 @@ impl Display for Event {
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
+            Event::Chainspec(request) => write!(formatter, "chainspec request: {}", request),
         }
     }
 }
@@ -215,6 +221,10 @@ impl reactor::Reactor for Reactor {
             MAX_STORED_VALUE_SIZE,
             DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            ActivationPoint::Genesis(
+                Timestamp::from_str("2021-03-31T15:00:00Z").expect("valid timestamp"),
+            ),
+            0,
             registry,
         )
         .unwrap();
@@ -384,6 +394,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
             ),
+            Event::Chainspec(_request) => unreachable!("This event is currently not used in the test reactor and does not need to be wired up"),
         }
     }
 

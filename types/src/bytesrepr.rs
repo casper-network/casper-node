@@ -136,7 +136,7 @@ impl Display for Error {
 /// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
 /// are consumed in the operation.
 pub fn deserialize<T: FromBytes>(bytes: Vec<u8>) -> Result<T, Error> {
-    let (t, remainder) = T::from_vec(bytes)?;
+    let (t, remainder) = FromBytes::from_bytes(&bytes)?;
     if remainder.is_empty() {
         Ok(t)
     } else {

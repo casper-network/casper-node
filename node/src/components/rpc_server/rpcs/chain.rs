@@ -5,7 +5,7 @@
 
 mod era_summary;
 
-use std::{num::ParseIntError, str};
+use std::{clone::Clone, num::ParseIntError, str};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -64,6 +64,13 @@ static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoPara
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
+});
+static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
+    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+});
+static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    era_summary: ERA_SUMMARY.clone(),
 });
 
 /// Identifier for possible ways to retrieve a block.
@@ -460,6 +467,111 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                     state_root_hash,
                     merkle_proof: base16::encode_lower(&proof_bytes),
                 }),
+            };
+
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Params for "chain_get_era_summary" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraSummaryParams {
+    /// The block identifier.
+    pub block_identifier: BlockIdentifier,
+}
+
+impl DocExample for GetEraSummaryParams {
+    fn doc_example() -> &'static Self {
+        &*GET_ERA_SUMMARY_PARAMS
+    }
+}
+
+/// Result for "chain_get_era_summary" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraSummaryResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The era summary.
+    pub era_summary: EraSummary,
+}
+
+impl DocExample for GetEraSummaryResult {
+    fn doc_example() -> &'static Self {
+        &*GET_ERA_SUMMARY_RESULT
+    }
+}
+
+/// "chain_get_era_summary" RPC
+pub struct GetEraSummary {}
+
+impl RpcWithOptionalParams for GetEraSummary {
+    const METHOD: &'static str = "chain_get_era_summary";
+    type OptionalRequestParams = GetEraSummaryParams;
+    type ResponseResult = GetEraSummaryResult;
+}
+
+impl RpcWithOptionalParamsExt for GetEraSummary {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        maybe_params: Option<Self::OptionalRequestParams>,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+            let block = match get_block(maybe_block_id, effect_builder).await {
+                Ok(Some(block)) => block,
+                Ok(None) => {
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::NoSuchBlock as i64,
+                        "block not known",
+                    ))?)
+                }
+                Err(error) => return Ok(response_builder.error(error)?),
+            };
+
+            let state_root_hash = block.state_root_hash().to_owned();
+            let era_id = block.header().era_id();
+
+            let query_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::QueryGlobalState {
+                        state_root_hash,
+                        base_key: Key::EraSummary,
+                        path: Vec::new(),
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+                }
+            };
+
+            let block_hash = block.hash().to_owned();
+
+            let era_summary = EraSummary {
+                block_hash,
+                era_id,
+                stored_value,
+                state_root_hash,
+                merkle_proof: base16::encode_lower(&proof_bytes),
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                era_summary,
             };
 
             Ok(response_builder.success(result)?)

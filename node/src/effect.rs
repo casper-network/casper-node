@@ -974,6 +974,32 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Returns the key block height for the current protocol version's activation point, i.e. the
+    /// height of the final block of the previous protocol version.
+    pub(crate) async fn get_key_block_height_for_activation_point(self) -> u64
+    where
+        REv: From<ChainspecLoaderRequest> + From<StorageRequest>,
+    {
+        let CurrentRunInfo {
+            activation_point, ..
+        } = self.get_current_run_info().await;
+
+        let era_before = activation_point
+            .era_id()
+            .checked_sub(1)
+            .unwrap_or(EraId::new(0));
+
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeightAtEraId {
+                era_id: era_before,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+        .unwrap_or(0)
+    }
+
     /// Get a trie by its hash key.
     pub(crate) async fn get_trie(
         self,
@@ -1226,6 +1252,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        key_block_height_for_activation_point: u64,
     ) -> Result<BlockAndExecutionEffects, BlockExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1237,6 +1264,7 @@ impl<REv> EffectBuilder<REv> {
                 finalized_block,
                 deploys,
                 transfers,
+                key_block_height_for_activation_point,
                 responder,
             },
             QueueKind::Regular,
@@ -1256,6 +1284,7 @@ impl<REv> EffectBuilder<REv> {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        key_block_height_for_activation_point: u64,
     ) where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1265,6 +1294,7 @@ impl<REv> EffectBuilder<REv> {
                     finalized_block,
                     deploys,
                     transfers,
+                    key_block_height_for_activation_point,
                 },
                 QueueKind::Regular,
             )

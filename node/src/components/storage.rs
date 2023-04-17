@@ -369,6 +369,8 @@ pub struct Storage {
     enable_mem_deduplication: bool,
     /// Pool of loaded items.
     deploy_cache: BlobCache<<Deploy as Item>::Id>,
+    /// A map of era ID to the height of the switch block for that era.
+    switch_block_height_by_era_id_cache: BTreeMap<EraId, u64>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -595,6 +597,7 @@ impl Storage {
             deploy_hash_index,
             enable_mem_deduplication: config.enable_mem_deduplication,
             deploy_cache: BlobCache::new(config.mem_pool_prune_interval),
+            switch_block_height_by_era_id_cache: Default::default(),
         })
     }
 
@@ -921,6 +924,19 @@ impl Storage {
             } => responder
                 .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
+            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                if let Some(block_height) = self.switch_block_height_by_era_id_cache.get(&era_id) {
+                    return Ok(responder.respond(Some(*block_height)).ignore());
+                }
+                let block_header = match self.get_switch_block_header_by_era_id(&mut txn, era_id)? {
+                    Some(block_header) => block_header,
+                    None => return Ok(responder.respond(None).ignore()),
+                };
+                self.switch_block_height_by_era_id_cache
+                    .insert(era_id, block_header.height());
+                responder.respond(Some(block_header.height())).ignore()
+            }
         })
     }
 

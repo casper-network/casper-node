@@ -153,6 +153,7 @@ pub(crate) struct CurrentRunInfo {
     pub(crate) protocol_version: ProtocolVersion,
     pub(crate) initial_state_root_hash: Digest,
     pub(crate) last_emergency_restart: Option<EraId>,
+    pub(crate) activation_point: ActivationPoint,
 }
 
 #[derive(Clone, DataSize, Debug)]
@@ -610,6 +611,7 @@ impl ChainspecLoader {
             protocol_version: self.chainspec.protocol_config.version,
             initial_state_root_hash: self.initial_state_root_hash,
             last_emergency_restart: self.chainspec.protocol_config.last_emergency_restart,
+            activation_point: self.chainspec.protocol_config.activation_point,
         }
     }
 
