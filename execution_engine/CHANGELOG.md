@@ -11,6 +11,16 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 3.1.0
+
+### Added
+* Add `commit_prune` functionality to support pruning of entries in global storage.
+
+### Changed
+* Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
+
+
+
 ## 3.0.0
 
 ### Changed

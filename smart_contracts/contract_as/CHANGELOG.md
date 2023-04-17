@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.4.14
+
+### Changed
+* Version bump to match casper-node version.
+
+
+
 ## 1.4.13
 
 ### Changed

@@ -11,7 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 1.6.0
+
+### Added
+* Add `TimeDiff`, `Timestamp` and asymmetric key functionality (moved from `casper-nodes` crate).
+* Add `testing` feature to provide functionality useful for test scenarios.
+
+### Deprecated
+* Deprecate `gens` feature: its functionality is included in the new `testing` feature.
 
 
 
