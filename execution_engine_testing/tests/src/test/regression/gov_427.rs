@@ -19,27 +19,22 @@ fn make_arbitrary_local_count(
 
     let _memory_id = module.memories.add_local(false, 11, None);
 
-    // fn func_with_locals() {
-
     let mut func_with_locals = FunctionBuilder::new(&mut module.types, &[], &[]);
 
     let mut locals = Vec::new();
     for _ in 0..repeat_count {
         for val_type in repeat_pattern {
-            // let local_x;
             let local = module.locals.add(*val_type);
             locals.push((local, *val_type));
         }
     }
 
     for extra_type in extra_types {
-        // let local_x;
         let local = module.locals.add(*extra_type);
         locals.push((local, *extra_type));
     }
 
     for (i, (local, val_type)) in locals.into_iter().enumerate() {
-        // locals[i] = i;
         let value = match val_type {
             ValType::I32 => Value::I32(i.try_into().unwrap()),
             ValType::I64 => Value::I64(i.try_into().unwrap()),
@@ -53,18 +48,11 @@ fn make_arbitrary_local_count(
 
     let func_with_locals = func_with_locals.finish(vec![], &mut module.funcs);
 
-    // }
-
-    // fn call() {
-
     let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
 
-    // func_with_locals();
     call_func.func_body().call(func_with_locals);
 
     let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-    // }
 
     module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
 
@@ -117,7 +105,10 @@ fn too_many_locals_should_exceed_stack_height() {
     // Here we pass the preprocess stage, but we fail at stack height limiter as we do have very
     // restrictive default stack height.
     assert!(
-        matches!(&error, Error::Exec(execution::Error::Interpreter(s)) if s.contains("Unreachable")),
+        matches!(
+            &error,
+            Error::Exec(execution::Error::Interpreter(s)) if s.contains("Unreachable")
+        ),
         "{:?}",
         error
     );

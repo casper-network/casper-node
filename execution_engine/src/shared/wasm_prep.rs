@@ -617,8 +617,6 @@ mod tests {
 
             let _memory_id = module.memories.add_local(false, 11, None);
 
-            // fn func_with_multi_value() -> (i32, i64) {
-
             let mut func_with_locals =
                 FunctionBuilder::new(&mut module.types, &[], &[ValType::I32, ValType::I64]);
 
@@ -626,18 +624,11 @@ mod tests {
 
             let func_with_locals = func_with_locals.finish(vec![], &mut module.funcs);
 
-            // }
-
-            // fn call() {
-
             let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
 
-            // func_with_locals();
             call_func.func_body().call(func_with_locals);
 
             let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-            // }
 
             module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
 
