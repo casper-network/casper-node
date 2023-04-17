@@ -75,8 +75,8 @@ impl MainReactor {
         let highest_switch_block_header = match recent_switch_block_headers.last() {
             None => {
                 debug!(
-                    state = %self.state,
-                    "create_required_eras: recent_switch_block_headers is empty"
+                    "{}: create_required_eras: recent_switch_block_headers is empty",
+                    self.state
                 );
                 return Ok(None);
             }
@@ -92,7 +92,7 @@ impl MainReactor {
         if let Some(current_era) = self.consensus.current_era() {
             debug!(state = %self.state,
                 era = current_era.value(),
-                "consensus current_era");
+                "{}: consensus current_era", self.state);
             if highest_switch_block_header.next_block_era_id() <= current_era {
                 return Ok(Some(Effects::new()));
             }
