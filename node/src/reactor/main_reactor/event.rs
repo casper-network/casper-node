@@ -311,7 +311,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             MainEvent::StorageRequest(_) => "StorageRequest",
-            MainEvent::BlockCompleteConfirmationRequest(_) => "MarkBlockCompletedRequest",
+            MainEvent::BlockCompleteConfirmationRequest(_) => "BlockCompleteConfirmationRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
