@@ -83,11 +83,6 @@ impl TestRng {
             *flag.borrow_mut() = true;
         });
     }
-
-    /// Returns the current `seed`.
-    pub fn seed(&self) -> Seed {
-        self.seed
-    }
 }
 
 impl Default for TestRng {
