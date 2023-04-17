@@ -236,6 +236,11 @@ impl BlockSynchronizer {
     }
 }
 
+/// Returns the number of validators that need a signature for a weak finality of 1/3.
+fn weak_finality_threshold(n: usize) -> usize {
+    n / 3 + if n % 3 == 0 { 0 } else { 1 }
+}
+
 #[tokio::test]
 async fn global_state_sync_wont_stall_with_bad_peers() {
     let mut rng = TestRng::new();
@@ -274,7 +279,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(
         historical_builder.register_block(block, None).is_ok(),
@@ -286,7 +291,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
         block,
         validators_secret_keys
             .iter()
-            .skip(validators_secret_keys.len() / 3 + 1),
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // At this point, the next step the synchronizer takes should be to get global state
@@ -794,12 +799,11 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     }
 
     // Register finality signatures to reach weak finality
-    let num_sigs_required_for_weak_finality = validators_secret_keys.len() / 3 + 1;
     let mut generated_effects = Effects::new();
     for secret_key in validators_secret_keys
         .iter()
         .skip(1)
-        .take(num_sigs_required_for_weak_finality)
+        .take(weak_finality_threshold(validators_secret_keys.len()))
     {
         // Register a finality signature
         let signature = FinalitySignature::create(
@@ -964,7 +968,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Check the block acquisition state
@@ -1029,7 +1033,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Check the block acquisition state
@@ -1108,7 +1112,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     assert!(fwd_builder.register_block(block, None).is_ok());
@@ -1170,7 +1174,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     assert!(fwd_builder.register_block(block, None).is_ok());
@@ -1240,7 +1244,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     assert!(fwd_builder.register_block(block, None).is_ok());
@@ -1384,7 +1388,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
 
@@ -1400,7 +1404,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
         block,
         validators_secret_keys
             .iter()
-            .skip(validators_secret_keys.len() / 3 + 1),
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Check the block acquisition state
@@ -1454,7 +1458,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
@@ -1463,7 +1467,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         block,
         validators_secret_keys
             .iter()
-            .skip(validators_secret_keys.len() / 3 + 1),
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Check the block acquisition state
@@ -1543,7 +1547,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
@@ -1552,7 +1556,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
         block,
         validators_secret_keys
             .iter()
-            .skip(validators_secret_keys.len() / 3 + 1),
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Check the block acquisition state
@@ -1614,7 +1618,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
@@ -1623,7 +1627,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
         block,
         validators_secret_keys
             .iter()
-            .skip(validators_secret_keys.len() / 3 + 1),
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Register finalized block
@@ -1718,7 +1722,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
         block,
         validators_secret_keys
             .iter()
-            .take(validators_secret_keys.len() / 3 + 1),
+            .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(fwd_builder.register_block(block, None).is_ok());
     // Register the remaining signatures to reach strict finality
@@ -1727,7 +1731,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
         block,
         validators_secret_keys
             .iter()
-            .skip(validators_secret_keys.len() / 3 + 1),
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
     );
 
     // Block should have strict finality and will require to be executed
