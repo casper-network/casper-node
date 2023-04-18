@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.13"
+version = "1.4.14"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -602,7 +602,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "base16",
  "base64",
@@ -656,9 +656,9 @@ dependencies = [
 
 [[package]]
 name = "casper-wasm-utils"
-version = "0.1.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d7d5a513000d2d4772800ca7cfce247712553a8363edfb7462b3e0f5db96d02"
+checksum = "8e9c4208106e8a95a83ab3cb5f4e800114bfc101df9e7cb8c2160c7e298c6397"
 dependencies = [
  "byteorder",
  "log",

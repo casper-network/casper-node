@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 3.1.0
+
+### Added
+* Add support for `commit_prune` of `casper-execution-engine`.
+
+
+
 ## 3.0.0
 
 ### Changed
