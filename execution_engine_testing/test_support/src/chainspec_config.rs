@@ -67,6 +67,7 @@ pub struct CoreConfig {
     pub(crate) minimum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
+    /// The maximum amount of delegators per validator.
     pub(crate) max_delegators_per_validator: Option<u32>,
 }
 
