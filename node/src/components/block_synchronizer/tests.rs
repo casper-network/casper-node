@@ -1654,6 +1654,107 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     );
 }
 
+#[tokio::test]
+async fn historical_sync_announces_meta_block() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let test_env = TestEnv::random(&mut rng);
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.historical.is_some());
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    assert!(historical_builder
+        .register_block_header(block.clone().take_header(), None)
+        .is_ok());
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+
+    // Register finality signatures to reach weak finality
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder.register_block(block, None).is_ok());
+    // Register the remaining signatures to reach strict finality
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
+    );
+
+    // Set the builder state to `HaveStrictFinalitySignatures`
+    match historical_builder.block_acquisition_state() {
+        BlockAcquisitionState::HaveBlock(state_block, state_signatures, _) => historical_builder
+            .set_block_acquisition_state(BlockAcquisitionState::HaveStrictFinalitySignatures(
+                state_block.clone(),
+                state_signatures.clone(),
+            )),
+        other => panic!("Unexpected state: {:?}", other),
+    }
+    // Make sure the historical builder is syncing
+    assert_matches!(
+        block_synchronizer.historical_progress(),
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
+    );
+
+    // Simulate a MarkBlockCompleted event
+    let event = Event::MarkBlockCompleted {
+        block_hash: *block.hash(),
+        is_new: true,
+    };
+    // Put it through to the synchronizer
+    let effects = block_synchronizer.handle_event(mock_reactor.effect_builder(), &mut rng, event);
+    assert_eq!(effects.len(), 1);
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    // We should have a request to get the execution results
+    match events.pop().unwrap() {
+        MockReactorEvent::StorageRequest(StorageRequest::GetExecutionResults {
+            block_hash: actual_block_hash,
+            responder,
+        }) => {
+            assert_eq!(actual_block_hash, *block.hash());
+            // We'll just send empty execution results for this case.
+            responder.respond(Some(vec![])).await;
+        }
+        other => panic!("Unexpected event: {:?}", other),
+    }
+    // Crank one more time because the meta block event is chained onto the
+    // execution results fetching
+    let event = mock_reactor.crank().await;
+    match event {
+        MockReactorEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
+            assert_eq!(*meta_block.block.hash(), *block.hash());
+            // The deploy buffer is supposed to get notified
+            assert!(meta_block
+                .state
+                .register_as_sent_to_deploy_buffer()
+                .was_updated());
+        }
+        other => panic!("Unexpected event: {:?}", other),
+    }
+    // The historical sync for this block should now be complete
+    assert_matches!(
+        block_synchronizer.historical_progress(),
+        BlockSynchronizerProgress::Synced(block_hash, _, _) if block_hash == *block.hash()
+    );
+}
+
 #[test]
 fn builders_are_purged_when_requested() {
     let mut rng = TestRng::new();

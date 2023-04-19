@@ -191,6 +191,11 @@ impl BlockBuilder {
         &self.acquisition_state
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_block_acquisition_state(&mut self, state: BlockAcquisitionState) {
+        self.acquisition_state = state
+    }
+
     pub(super) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
