@@ -85,6 +85,7 @@ pub struct CoreConfig {
     /// Which consensus protocol to use.
     pub consensus_protocol: ConsensusProtocolName,
 
+    /// The maximum amount of delegators per validator.
     pub max_delegators_per_validator: Option<u32>,
 }
 
