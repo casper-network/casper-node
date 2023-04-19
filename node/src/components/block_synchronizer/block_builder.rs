@@ -268,7 +268,7 @@ impl BlockBuilder {
                 //TODO: does failed also mean finished?
                 false
             }
-            BlockAcquisitionState::Complete(_, _) => true,
+            BlockAcquisitionState::Complete(_) => true,
         }
     }
 

@@ -188,8 +188,8 @@ fn register_finalized_block() {
     thread::sleep(Duration::from_millis(5));
     builder.register_made_finalized_block(finalized_block.clone(), expected_deploys.clone());
     match &builder.acquisition_state {
-        BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, actual_deploys, enqueued) => {
-            assert_eq!(*block_hash, *block.hash());
+        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, actual_deploys, enqueued) => {
+            assert_eq!(*actual_block.hash(), *block.hash());
             assert_eq!(expected_deploys, *actual_deploys);
             assert!(!enqueued);
         }
@@ -254,7 +254,7 @@ fn register_block_execution() {
     // execution.
     let finalized_block = Box::new(FinalizedBlock::from(block.clone()));
     builder.acquisition_state = BlockAcquisitionState::HaveFinalizedBlock(
-        *block.hash(),
+        Box::new(block),
         finalized_block,
         vec![Deploy::random(&mut rng)],
         false,

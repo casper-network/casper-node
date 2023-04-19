@@ -1498,7 +1498,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         .expect("Forward builder should have been initialized");
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, _) if block_hash == block.hash()
+        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _, _) if *actual_block.hash() == *block.hash()
     );
 
     assert_matches!(
@@ -1569,7 +1569,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     fwd_builder.register_made_finalized_block(block.clone().into(), Vec::new());
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, _) if block_hash == block.hash()
+        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _, _) if *actual_block.hash() == *block.hash()
     );
 
     // Simulate that enqueuing the block for execution was successful
