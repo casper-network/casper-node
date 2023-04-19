@@ -1024,6 +1024,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.minimum_delegation_amount,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
+            chainspec.core_config.max_delegators_per_validator,
             registry,
         )?;
 

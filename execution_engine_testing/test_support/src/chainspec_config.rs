@@ -67,6 +67,7 @@ pub struct CoreConfig {
     pub(crate) minimum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
+    pub(crate) max_delegators_per_validator: Option<u32>,
 }
 
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the

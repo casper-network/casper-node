@@ -2630,6 +2630,7 @@ fn should_release_vfta_holder_stake() {
         NEW_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         WasmConfig::default(),
         SystemConfig::default(),
     );

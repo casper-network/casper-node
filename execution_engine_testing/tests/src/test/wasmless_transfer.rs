@@ -1003,6 +1003,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         WasmConfig::default(),
         new_system_config,
     );

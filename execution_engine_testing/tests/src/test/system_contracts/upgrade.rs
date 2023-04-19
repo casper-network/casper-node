@@ -167,6 +167,7 @@ fn should_allow_only_wasm_costs_patch_version() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -212,6 +213,7 @@ fn should_allow_only_wasm_costs_minor_version() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -711,6 +713,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         *DEFAULT_WASM_CONFIG,
         new_system_config,
     );
