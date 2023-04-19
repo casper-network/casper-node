@@ -38,7 +38,7 @@ steps:
   environment:
     SCCACHE_S3_PUBLIC: true
   commands:
-  - make test CARGO_FLAGS=--release -- --nocapture
+  - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
   - cachepot --show-stats
   when:
@@ -48,7 +48,7 @@ steps:
 - name: cargo-test-push
   <<: *buildenv
   commands:
-  - make test CARGO_FLAGS=--release --nocapture
+  - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
   - cachepot --show-stats
   when:
