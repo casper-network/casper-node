@@ -38,7 +38,7 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
         requests::{
-            BlockCompleteConfirmationRequest, ContractRuntimeRequest, MakeBlockExecutableRequest,
+            ContractRuntimeRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
             NetworkRequest,
         },
         Responder,
@@ -86,8 +86,8 @@ impl From<MakeBlockExecutableRequest> for Event {
     }
 }
 
-impl From<BlockCompleteConfirmationRequest> for Event {
-    fn from(request: BlockCompleteConfirmationRequest) -> Self {
+impl From<MarkBlockCompletedRequest> for Event {
+    fn from(request: MarkBlockCompletedRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
     }
 }

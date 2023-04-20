@@ -32,7 +32,7 @@ const MAX_SIMULTANEOUS_PEERS: usize = 5;
 /// Event for the mock reactor.
 #[derive(Debug, From)]
 enum MockReactorEvent {
-    BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     BlockFetcherRequest(FetcherRequest<Block>),
     BlockHeaderFetcherRequest(FetcherRequest<BlockHeader>),
     LegacyDeployFetcherRequest(FetcherRequest<LegacyDeploy>),
