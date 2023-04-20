@@ -10,4 +10,6 @@ fi;
 
 BINARY=$1
 
+export PATH="$HOME/.cargo/bin:$PATH"
+
 elfx86exts $BINARY | grep -v 'CPU Generation' | cut -f1 -d ' ' | sort
