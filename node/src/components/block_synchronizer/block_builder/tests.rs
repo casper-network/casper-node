@@ -250,8 +250,7 @@ fn register_block_execution() {
         signature_acquisition.apply_signature(sig, &weights),
         Acceptance::NeededIt
     );
-    // Set the builder's state to `HaveAllDeploys` to we can simulate
-    // execution.
+
     let finalized_block = Box::new(FinalizedBlock::from(block.clone()));
     builder.acquisition_state = BlockAcquisitionState::HaveFinalizedBlock(
         Box::new(block),

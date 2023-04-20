@@ -108,7 +108,21 @@ pub(super) enum BlockAcquisitionState {
     HaveApprovalsHashes(Box<Block>, SignatureAcquisition, DeployAcquisition),
     HaveAllDeploys(Box<Block>, SignatureAcquisition),
     HaveStrictFinalitySignatures(Box<Block>, SignatureAcquisition),
+    // We keep the `Block` as well as the `FinalizedBlock` because the
+    // block is necessary to reach the `Complete` state and the finalized
+    // block is used to enqueue for execution. While the block would surely
+    // be stored by the time we get to this state, it would be inefficient
+    // to fetch it from storage again to transition to the `Complete` state,
+    // so it is retained. The downside is that the block is useful in its
+    // entirety only in the historical sync, and `HaveFinalizedBlock` along
+    // with execution are strictly forward sync states. Until a refactor splits
+    // the `Complete` states for the historical and forward cases, we need to
+    // keep the block around.
     HaveFinalizedBlock(Box<Block>, Box<FinalizedBlock>, Vec<Deploy>, bool),
+    // The `Complete` state needs the block itself in order to produce a meta
+    // block announcement in the historical sync flow. In the forward sync,
+    // only the block hash and height are necessary. Therefore, we retain the
+    // block fully in this state.
     Complete(Box<Block>),
     Failed(BlockHash, Option<u64>),
 }
