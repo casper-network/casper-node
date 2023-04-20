@@ -19,7 +19,8 @@ use crate::{
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
+                delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
+                DeleteResult, ReadResult,
             },
         },
     },
@@ -53,7 +54,7 @@ impl LmdbGlobalState {
         trie_store: Arc<LmdbTrieStore>,
     ) -> Result<Self, error::Error> {
         let root_hash: Digest = {
-            let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
+            let (root_hash, root) = compute_empty_root_hash()?;
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
@@ -126,6 +127,11 @@ impl LmdbGlobalState {
     pub fn empty_state_root_hash(&self) -> Digest {
         self.empty_root_hash
     }
+}
+
+fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), error::Error> {
+    let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
+    Ok((root_hash, root))
 }
 
 impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
@@ -285,6 +291,39 @@ impl StateProvider for LmdbGlobalState {
         >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_hashes)
+    }
+
+    /// Delete keys.
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        mut state_root_hash: Digest,
+        keys: &[Key],
+    ) -> Result<DeleteResult, Self::Error> {
+        let scratch_trie_store = self.get_scratch_store();
+
+        let mut txn = scratch_trie_store.create_read_write_txn()?;
+
+        for key in keys {
+            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
+                correlation_id,
+                &mut txn,
+                &scratch_trie_store,
+                &state_root_hash,
+                key,
+            );
+            match delete_result? {
+                DeleteResult::Deleted(root) => {
+                    state_root_hash = root;
+                }
+                other => return Ok(other),
+            }
+        }
+
+        txn.commit()?;
+
+        scratch_trie_store.write_root_to_db(state_root_hash)?;
+        Ok(DeleteResult::Deleted(state_root_hash))
     }
 }
 

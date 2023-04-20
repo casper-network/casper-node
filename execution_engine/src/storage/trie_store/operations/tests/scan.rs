@@ -10,7 +10,7 @@ use crate::{
 };
 
 fn check_scan<'a, R, S, E>(
-    correlation_id: CorrelationId,
+    _correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
     root_hash: &Digest,
@@ -26,14 +26,8 @@ where
     let root = store
         .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
-    let TrieScan { mut tip, parents } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
-        correlation_id,
-        &txn,
-        store,
-        key,
-        &root,
-    )?
-    .expect("trie scan returned no leaf");
+    let TrieScan { mut tip, parents } =
+        scan::<TestKey, TestValue, R::ReadTransaction, S, E>(&txn, store, key, &root)?;
 
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {

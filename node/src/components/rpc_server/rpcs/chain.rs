@@ -5,7 +5,7 @@
 
 mod era_summary;
 
-use std::{num::ParseIntError, str};
+use std::{clone::Clone, num::ParseIntError, str};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -60,6 +60,13 @@ static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoPara
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
+});
+static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
+    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+});
+static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    era_summary: ERA_SUMMARY.clone(),
 });
 
 /// Identifier for possible ways to retrieve a block.
@@ -382,7 +389,6 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         // This RPC request is restricted by the block availability index.
         let only_from_available_block_range = true;
 
-        // TODO: decide if/how to handle era id
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let block = common::get_block(
             maybe_block_id,
@@ -415,6 +421,76 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
                 state_root_hash,
                 merkle_proof,
             }),
+        };
+        Ok(result)
+    }
+}
+
+/// Params for "chain_get_era_summary" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraSummaryParams {
+    /// The block identifier.
+    pub block_identifier: BlockIdentifier,
+}
+
+impl DocExample for GetEraSummaryParams {
+    fn doc_example() -> &'static Self {
+        &GET_ERA_SUMMARY_PARAMS
+    }
+}
+
+/// Result for "chain_get_era_summary" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraSummaryResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The era summary.
+    pub era_summary: EraSummary,
+}
+
+impl DocExample for GetEraSummaryResult {
+    fn doc_example() -> &'static Self {
+        &GET_ERA_SUMMARY_RESULT
+    }
+}
+
+/// "chain_get_era_summary" RPC
+pub struct GetEraSummary {}
+
+#[async_trait]
+impl RpcWithOptionalParams for GetEraSummary {
+    const METHOD: &'static str = "chain_get_era_summary";
+    type OptionalRequestParams = GetEraSummaryParams;
+    type ResponseResult = GetEraSummaryResult;
+
+    async fn do_handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        api_version: ProtocolVersion,
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> Result<Self::ResponseResult, Error> {
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let block = common::get_block(maybe_block_id, true, effect_builder).await?;
+
+        let state_root_hash = block.state_root_hash().to_owned();
+        let era_id = block.header().era_id();
+        let base_key = Key::EraSummary;
+        let path = Vec::new();
+
+        let (stored_value, merkle_proof) =
+            common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await?;
+
+        let result = Self::ResponseResult {
+            api_version,
+            era_summary: EraSummary {
+                block_hash: *block.hash(),
+                era_id,
+                stored_value,
+                state_root_hash,
+                merkle_proof,
+            },
         };
         Ok(result)
     }

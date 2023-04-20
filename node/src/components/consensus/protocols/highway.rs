@@ -146,7 +146,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
-        // without getting faulty.;
+        // without getting faulty.
         let max_rounds_per_era = max_rounds_per_era(
             chainspec.core_config.minimum_era_height,
             chainspec.core_config.era_duration,

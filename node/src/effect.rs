@@ -161,20 +161,15 @@ use announcements::{
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
     FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UpgradeWatcherAnnouncement,
+    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorStatusRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
-    UpgradeWatcherRequest,
-};
-
-use self::{
-    announcements::UnexecutedBlockAnnouncement,
-    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest},
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1380,6 +1375,30 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Returns the key block height for the current protocol version's activation point, i.e. the
+    /// height of the final block of the previous protocol version.
+    pub(crate) async fn get_key_block_height_for_activation_point(self) -> u64 {
+        // let CurrentRunInfo {
+        //     activation_point, ..
+        // } = self.get_current_run_info().await;
+        //
+        // let era_before = activation_point
+        //     .era_id()
+        //     .checked_sub(1)
+        //     .unwrap_or(EraId::new(0));
+        //
+        // self.make_request(
+        //     |responder| StorageRequest::GetSwitchBlockHeightAtEraId {
+        //         era_id: era_before,
+        //         responder,
+        //     },
+        //     QueueKind::Regular,
+        // )
+        // .await
+        // .unwrap_or(0)
+        todo!();
+    }
+
     /// Get a trie or chunk by its ID.
     pub(crate) async fn get_trie(
         self,
@@ -1725,11 +1744,15 @@ impl<REv> EffectBuilder<REv> {
     ) where
         REv: From<ContractRuntimeRequest>,
     {
+        let key_block_height_for_activation_point =
+            self.get_key_block_height_for_activation_point().await;
+
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    key_block_height_for_activation_point,
                     meta_block_state,
                 },
                 QueueKind::ContractRuntime,

@@ -4,10 +4,6 @@ use std::{
     sync::Arc,
 };
 
-use casper_hashing::Digest;
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
 use futures::future::BoxFuture;
 use serde::{
@@ -16,6 +12,12 @@ use serde::{
 };
 use strum::EnumDiscriminants;
 
+use casper_hashing::Digest;
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+
+use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 use crate::{
     effect::EffectBuilder,
     protocol,
@@ -25,8 +27,6 @@ use crate::{
         specimen::{Cache, LargestSpecimen, SizeEstimator},
     },
 };
-
-use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]

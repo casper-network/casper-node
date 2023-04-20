@@ -33,6 +33,7 @@ function main() {
         # PR CI tests
         start_upgrade_scenario_1
         start_upgrade_scenario_3
+        start_upgrade_scenario_11
     else
         start_upgrade_scenario_"$TEST_ID"
     fi
@@ -169,8 +170,28 @@ function start_upgrade_scenario_10() {
 }
 
 function start_upgrade_scenario_11() {
+    log "... Setting up custom starting version"
+    local PATH_TO_STAGE
+
+    PATH_TO_STAGE="$(get_path_to_stage 1)"
+
+    log "... downloading remote for 1.4.5"
+    nctl-stage-set-remotes "1.4.5"
+
+    log "... tearing down old stages"
+    nctl-stage-teardown
+
+    log "... creating new stage"
+    dev_branch_settings "$PATH_TO_STAGE" "1.4.5"
+    build_from_settings_file
+
     log "... Starting Upgrade Scenario 11"
     nctl-exec-upgrade-scenario-11
+}
+
+function start_upgrade_scenario_12() {
+    log "... Starting Upgrade Scenario 12"
+    nctl-exec-upgrade-scenario-12
 }
 
 # ----------------------------------------------------------------
