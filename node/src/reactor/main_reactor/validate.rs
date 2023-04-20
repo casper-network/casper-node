@@ -4,8 +4,10 @@ use tracing::{debug, info, warn};
 use crate::{
     components::consensus::ChainspecConsensusExt,
     effect::{EffectBuilder, Effects},
-    reactor,
-    reactor::main_reactor::{MainEvent, MainReactor},
+    reactor::{
+        self,
+        main_reactor::{keep_up::synced_to_ttl, MainEvent, MainReactor},
+    },
     storage::HighestOrphanedBlockResult,
     NodeRng,
 };
@@ -75,8 +77,8 @@ impl MainReactor {
         let highest_switch_block_header = match recent_switch_block_headers.last() {
             None => {
                 debug!(
-                    state = %self.state,
-                    "create_required_eras: recent_switch_block_headers is empty"
+                    "{}: create_required_eras: recent_switch_block_headers is empty",
+                    self.state
                 );
                 return Ok(None);
             }
@@ -92,7 +94,7 @@ impl MainReactor {
         if let Some(current_era) = self.consensus.current_era() {
             debug!(state = %self.state,
                 era = current_era.value(),
-                "consensus current_era");
+                "{}: consensus current_era", self.state);
             if highest_switch_block_header.next_block_era_id() <= current_era {
                 return Ok(Some(Effects::new()));
             }
@@ -115,10 +117,12 @@ impl MainReactor {
             return Ok(None);
         }
 
-        if self
-            .deploy_buffer
-            .have_full_ttl_of_deploys(highest_switch_block_header)
-        {
+        if synced_to_ttl(
+            Some(highest_switch_block_header),
+            None,
+            &self.storage,
+            self.chainspec.deploy_config.max_ttl,
+        )? {
             if let HighestOrphanedBlockResult::Orphan(header) =
                 self.storage.get_highest_orphaned_block_header()
             {

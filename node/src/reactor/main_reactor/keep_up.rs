@@ -21,7 +21,10 @@ use crate::{
         requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{ActivationPoint, BlockHash, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
+    storage::Storage,
+    types::{
+        ActivationPoint, BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier,
+    },
     NodeRng,
 };
 
@@ -613,7 +616,8 @@ impl MainReactor {
         // on an old block. in either case we will attempt to get the next needed block (if any).
         // note: for a synced historical block we have header, body, global state, any execution
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
-        match self.storage.get_highest_orphaned_block_header() {
+        let highest_orphaned_block_header = self.storage.get_highest_orphaned_block_header();
+        match highest_orphaned_block_header {
             HighestOrphanedBlockResult::Orphan(block_header) => {
                 // set a latch on the validator matrix to prevent it from purging validator weights
                 // of interstitial eras which we have not yet historically sync'd
@@ -626,7 +630,14 @@ impl MainReactor {
                 // we require sync back to see a contiguous / unbroken range of at least 12 hours
                 // worth of blocks. note however that we measure from the start of the active era
                 // (for consensus reasons), so this can be up to TTL + era length in practice
-                if !self.sync_to_genesis && self.synced_to_ttl()? {
+                if !self.sync_to_genesis
+                    && synced_to_ttl(
+                        None,
+                        Some(&block_header),
+                        &self.storage,
+                        self.chainspec.deploy_config.max_ttl,
+                    )?
+                {
                     return Ok(Some(SyncBackInstruction::TtlSynced));
                 }
                 let parent_hash = block_header.parent_hash();
@@ -681,34 +692,60 @@ impl MainReactor {
             }
         }
     }
+}
 
-    fn synced_to_ttl(&self) -> Result<bool, String> {
-        if let Some(latest_switch_block_header) = self
-            .storage
-            .read_highest_switch_block_headers(1)
-            .map_err(|err| err.to_string())?
-            .last()
-        {
-            let maybe_highest_orphaned_block_header =
-                self.storage.get_highest_orphaned_block_header();
-
-            if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
-                maybe_highest_orphaned_block_header
+pub(crate) fn synced_to_ttl(
+    maybe_latest_switch_block_header: Option<&BlockHeader>,
+    maybe_highest_orphaned_block_header: Option<&BlockHeader>,
+    storage: &Storage,
+    max_ttl: TimeDiff,
+) -> Result<bool, String> {
+    let switch_block_header = match maybe_latest_switch_block_header {
+        Some(switch_block_header) => switch_block_header.clone(),
+        None => {
+            // If latest switch block header is not provided, we try to get it from storage.
+            if let Some(latest_switch_block_header) = storage
+                .read_highest_switch_block_headers(1)
+                .map_err(|err| err.to_string())?
+                .last()
             {
-                return Ok(is_timestamp_at_ttl(
-                    latest_switch_block_header.timestamp(),
-                    highest_orphaned_block_header.timestamp(),
-                    self.chainspec.deploy_config.max_ttl,
-                ));
+                latest_switch_block_header.clone()
             } else {
-                info!(result = %maybe_highest_orphaned_block_header,
-                    "KeepUp: unable to get highest orphaned block header (this problem should be transient), \
+                // No latest switch block header is known, we assume that we're not synced to
+                // TTL.
+                info!(
+                    "KeepUp: unable to get latest switch block header (this problem should be transient), \
                     assuming not synced to ttl");
+                return Ok(false);
             }
         }
+    };
 
-        Ok(false)
-    }
+    let highest_orphaned_block_header = match maybe_highest_orphaned_block_header {
+        Some(highest_orphaned_block_header) => highest_orphaned_block_header.clone(),
+        None => {
+            // If highest orphaned block header is not provided, we try to get it from storage.
+            if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
+                storage.get_highest_orphaned_block_header()
+            {
+                highest_orphaned_block_header
+            } else {
+                // No highest orphaned block header is known, we assume that we're not synced to
+                // TTL.
+                info!(
+                    "KeepUp: unable to get highest orphaned block header (this problem should be transient), \
+                    assuming not synced to ttl");
+                return Ok(false);
+            }
+        }
+    };
+
+    Ok(highest_orphaned_block_header.height() == 0
+        || is_timestamp_at_ttl(
+            switch_block_header.timestamp(),
+            highest_orphaned_block_header.timestamp(),
+            max_ttl,
+        ))
 }
 
 fn is_timestamp_at_ttl(
@@ -723,11 +760,18 @@ fn is_timestamp_at_ttl(
 mod tests {
     use std::str::FromStr;
 
-    use casper_types::{TimeDiff, Timestamp};
+    use casper_types::{ProtocolVersion, TimeDiff, Timestamp};
 
-    use crate::reactor::main_reactor::keep_up::is_timestamp_at_ttl;
+    use crate::{
+        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
+        storage::Storage,
+        testing::{ComponentHarness, UnitTestEvent},
+        types::Block,
+        WithDir,
+    };
 
     const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
+    const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 
     #[test]
     fn should_be_at_ttl() {
@@ -781,5 +825,62 @@ mod tests {
             lowest_block_timestamp,
             max_ttl
         ));
+    }
+
+    pub(crate) fn make_mock_storage(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
+        const RECENT_ERA_COUNT: u64 = 7;
+
+        Storage::new(
+            &WithDir::new(
+                harness.tmp.path(),
+                crate::components::storage::Config {
+                    path: harness.tmp.path().join("storage"),
+                    ..Default::default()
+                },
+            ),
+            None,
+            ProtocolVersion::default(),
+            "test",
+            MAX_TTL,
+            RECENT_ERA_COUNT,
+            None,
+            false,
+        )
+        .expect("could not create storage component fixture")
+    }
+
+    #[test]
+    fn should_detect_ttl_at_genesis() {
+        let mut harness = ComponentHarness::default();
+        let storage = make_mock_storage(&harness);
+
+        let latest_switch_block = Block::random_with_specifics(
+            &mut harness.rng,
+            100.into(),
+            1000,
+            ProtocolVersion::default(),
+            true,
+            None,
+        );
+
+        let latest_orphaned_block = Block::random_with_specifics(
+            &mut harness.rng,
+            0.into(),
+            0,
+            ProtocolVersion::default(),
+            true,
+            None,
+        );
+
+        assert_eq!(latest_orphaned_block.height(), 0);
+        assert_eq!(
+            synced_to_ttl(
+                Some(latest_switch_block.header()),
+                Some(latest_orphaned_block.header()),
+                &storage,
+                MAX_TTL
+            ),
+            Ok(true)
+        );
     }
 }
