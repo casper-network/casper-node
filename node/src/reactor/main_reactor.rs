@@ -1022,8 +1022,6 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.max_associated_keys,
             chainspec.core_config.max_runtime_call_stack_height,
             chainspec.core_config.minimum_delegation_amount,
-            chainspec.protocol_config.activation_point,
-            chainspec.core_config.prune_batch_size,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
             registry,

@@ -93,6 +93,7 @@ All notable changes to this project will be documented in this file.  The format
 * Remove legacy synchronization from genesis in favor of fast-sync.
 * Remove config options no longer required due to fast-sync: `[linear_chain_sync]`, `[block_proposer]` and `[consensus.highway.standstill_timeout]`.
 * Remove chainspec setting `[protocol.last_emergency_restart]` as fast sync will use the global state directly for recognizing such restarts instead.
+* Remove chainspec setting `[core.prune_batch_size]` as `Key::EraInfo` pruning has been completed and is no longer supported in this version.
 * Remove a temporary chainspec setting `[core.max_stored_value_size]` which was used to limit the size of individual values stored in global state.
 * Remove config section `[deploy_acceptor]` which only has one option `verify_accounts`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 * Remove storage integrity check.

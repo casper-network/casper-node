@@ -21,7 +21,6 @@ unbonding_delay = 14
 max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
-prune_batch_size = 1
 strict_argument_checking = false
 simultaneous_peer_requests = 5
 consensus_protocol = 'Highway'

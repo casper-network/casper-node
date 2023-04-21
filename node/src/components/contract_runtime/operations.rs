@@ -50,8 +50,8 @@ fn generate_range_by_index(
 /// Calculates era keys to be pruned.
 ///
 /// Outcomes:
-/// * Ok(Some(range)) -- these keys should be purged
-/// * Ok(None) -- nothing to do, either done, or there is not enough eras to purge
+/// * Ok(Some(range)) -- these keys should be pruned
+/// * Ok(None) -- nothing to do, either done, or there is not enough eras to prune
 fn calculate_prune_eras(
     activation_era_id: EraId,
     activation_height: u64,
@@ -72,7 +72,7 @@ fn calculate_prune_eras(
                 activation_height,
                 current_height,
                 batch_size,
-                "unable to calculate eras to purge (activation height higher than the block height)"
+                "unable to calculate eras to prune (activation height higher than the block height)"
             );
             panic!("activation height higher than the block height");
         }
@@ -96,9 +96,6 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
-    activation_point_era_id: EraId,
-    key_block_height_for_activation_point: u64,
-    prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -247,67 +244,84 @@ pub fn execute_finalized_block(
             );
 
     // Pruning
-    if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
-        match calculate_prune_eras(
-            activation_point_era_id,
-            key_block_height_for_activation_point,
-            previous_block_height,
-            prune_batch_size,
-        ) {
-            Some(keys_to_prune) => {
-                let first_key = keys_to_prune.first().copied();
-                let last_key = keys_to_prune.last().copied();
-                info!(
-                    previous_block_height,
-                    %key_block_height_for_activation_point,
-                    %state_root_hash,
-                    first_key=?first_key,
-                    last_key=?last_key,
-                    "commit_prune: preparing purge config");
-                let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
-                match engine_state.commit_prune(CorrelationId::new(), prune_config) {
-                    Ok(PruneResult::RootNotFound) => {
-                        error!(
-                            previous_block_height,
-                            %state_root_hash,
-                            "commit_prune: root not found");
-                        panic!(
-                            "Root {} not found while performing a prune.",
-                            state_root_hash
-                        );
-                    }
-                    Ok(PruneResult::DoesNotExist) => {
-                        warn!(
-                            previous_block_height,
-                            %state_root_hash,
-                            "commit_prune: key does not exist");
-                    }
-                    Ok(PruneResult::Success { post_state_hash }) => {
-                        info!(
-                            previous_block_height,
-                            %key_block_height_for_activation_point,
-                            %state_root_hash,
-                            %post_state_hash,
-                            first_key=?first_key,
-                            last_key=?last_key,
-                            "commit_prune: success");
-                        state_root_hash = post_state_hash;
-                    }
-                    Err(error) => {
-                        error!(
-                            previous_block_height,
-                            %key_block_height_for_activation_point,
-                            %error,
-                            "commit_prune: commit purge error");
-                        return Err(error.into());
+    //
+    // Currently disabled as `key_block_height_for_activation_point` might not be available on a
+    // freshly-joined node at the time this call to execute block happens.
+    if false {
+        if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
+            // The following three values should be passed into this function if pruning is
+            // re-enabled. For now, they're set so that `calculate_prune_eras` will panic.
+            let activation_point_era_id = EraId::default();
+            let key_block_height_for_activation_point = u64::MAX;
+            let prune_batch_size = 1;
+
+            match calculate_prune_eras(
+                activation_point_era_id,
+                key_block_height_for_activation_point,
+                previous_block_height,
+                prune_batch_size,
+            ) {
+                Some(keys_to_prune) => {
+                    let first_key = keys_to_prune.first().copied();
+                    let last_key = keys_to_prune.last().copied();
+                    info!(
+                        previous_block_height,
+                        %key_block_height_for_activation_point,
+                        %state_root_hash,
+                        first_key=?first_key,
+                        last_key=?last_key,
+                        "commit prune: preparing prune config"
+                    );
+                    let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
+                    match engine_state.commit_prune(CorrelationId::new(), prune_config) {
+                        Ok(PruneResult::RootNotFound) => {
+                            error!(
+                                previous_block_height,
+                                %state_root_hash,
+                                "commit prune: root not found"
+                            );
+                            panic!(
+                                "Root {} not found while performing a prune.",
+                                state_root_hash
+                            );
+                        }
+                        Ok(PruneResult::DoesNotExist) => {
+                            warn!(
+                                previous_block_height,
+                                %state_root_hash,
+                                "commit prune: key does not exist"
+                            );
+                        }
+                        Ok(PruneResult::Success { post_state_hash }) => {
+                            info!(
+                                previous_block_height,
+                                %key_block_height_for_activation_point,
+                                %state_root_hash,
+                                %post_state_hash,
+                                first_key=?first_key,
+                                last_key=?last_key,
+                                "commit prune success"
+                            );
+                            state_root_hash = post_state_hash;
+                        }
+                        Err(error) => {
+                            error!(
+                                previous_block_height,
+                                %key_block_height_for_activation_point,
+                                %error,
+                                "commit prune error"
+                            );
+                            return Err(error.into());
+                        }
                     }
                 }
-            }
-            None => {
-                info!(
-                    previous_block_height,
-                    %key_block_height_for_activation_point,
-                    "commit_prune: nothing to do, no more eras to delete");
+                None => {
+                    info!(
+                        previous_block_height,
+                        %key_block_height_for_activation_point,
+                        "commit prune: nothing to do, no more eras to delete"
+                    );
+                }
             }
         }
     }
@@ -545,6 +559,7 @@ fn compute_execution_results_checksum(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn calculation_is_safe_with_invalid_input() {
         assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0,), None);
@@ -555,6 +570,7 @@ mod tests {
             None
         );
     }
+
     #[test]
     fn calculation_is_lazy() {
         // NOTE: Range of EraInfos is lazy, so it does not consume memory, but getting the last
@@ -567,6 +583,7 @@ mod tests {
             100
         );
     }
+
     #[test]
     fn should_calculate_prune_eras() {
         let activation_height = 50;

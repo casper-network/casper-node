@@ -495,14 +495,6 @@ pub(crate) enum StorageRequest {
         /// written.
         responder: Responder<bool>,
     },
-    /// Retrieve switch block height with given era ID.
-    #[allow(dead_code)]
-    GetSwitchBlockHeightAtEraId {
-        /// Era ID of the switch block.
-        era_id: EraId,
-        /// Responder.
-        responder: Responder<Option<u64>>,
-    },
 }
 
 impl Display for StorageRequest {
@@ -618,9 +610,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutExecutedBlock { block, .. } => {
                 write!(formatter, "put executed block {}", block.hash(),)
-            }
-            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, .. } => {
-                write!(formatter, "get switch block height at era id {}", era_id)
             }
         }
     }
@@ -898,8 +887,6 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
-        /// The key block height for the current protocol version's activation point.
-        key_block_height_for_activation_point: u64,
         meta_block_state: MetaBlockState,
     },
     /// A query request.
