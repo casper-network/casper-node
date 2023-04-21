@@ -2461,6 +2461,9 @@ dependencies = [
 [[package]]
 name = "juliet"
 version = "0.1.0"
+dependencies = [
+ "bytes",
+]
 
 [[package]]
 name = "k256"
