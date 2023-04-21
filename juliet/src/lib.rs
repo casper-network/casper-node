@@ -23,14 +23,14 @@ struct Header {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
 enum HeaderFlags {
-    Request = 0b00000000,
-    Response = 0b00000001,
-    Error = 0b00000010,
-    ErrorWithMessage = 0b00001010,
+    ZeroSizedRequest = 0b00000000,
+    ZeroSizedResponse = 0b00000001,
+    Error = 0b00000011,
     RequestCancellation = 0b00000100,
     ResponseCancellation = 0b00000101,
-    ZeroSizedRequest = 0b00001000,
-    ZeroSizedResponse = 0b00001001,
+    RequestWithPayload = 0b00001000,
+    ResponseWithPayload = 0b00001001,
+    ErrorWithMessage = 0b00001010,
 }
 
 impl TryFrom<u8> for HeaderFlags {
@@ -38,14 +38,14 @@ impl TryFrom<u8> for HeaderFlags {
 
     fn try_from(value: u8) -> Result<Self, u8> {
         match value {
-            0b00000000 => Ok(HeaderFlags::Request),
-            0b00000001 => Ok(HeaderFlags::Response),
-            0b00000010 => Ok(HeaderFlags::Error),
-            0b00001010 => Ok(HeaderFlags::ErrorWithMessage),
+            0b00000000 => Ok(HeaderFlags::ZeroSizedRequest),
+            0b00000001 => Ok(HeaderFlags::ZeroSizedResponse),
+            0b00000011 => Ok(HeaderFlags::Error),
             0b00000100 => Ok(HeaderFlags::RequestCancellation),
             0b00000101 => Ok(HeaderFlags::ResponseCancellation),
-            0b00001000 => Ok(HeaderFlags::ZeroSizedRequest),
-            0b00001001 => Ok(HeaderFlags::ZeroSizedResponse),
+            0b00001000 => Ok(HeaderFlags::RequestWithPayload),
+            0b00001001 => Ok(HeaderFlags::ResponseWithPayload),
+            0b00001010 => Ok(HeaderFlags::ErrorWithMessage),
             _ => Err(value),
         }
     }
@@ -97,8 +97,8 @@ impl Receiver {
         };
 
         match header.flags {
-            HeaderFlags::Request => todo!(),
-            HeaderFlags::Response => todo!(),
+            HeaderFlags::RequestWithPayload => todo!(),
+            HeaderFlags::ResponseWithPayload => todo!(),
             HeaderFlags::Error => todo!(),
             HeaderFlags::ErrorWithMessage => todo!(),
             HeaderFlags::RequestCancellation => todo!(),
@@ -111,18 +111,18 @@ impl Receiver {
 
 #[cfg(test)]
 mod tests {
-    use crate::Header;
+    use crate::{Header, HeaderFlags};
 
     #[test]
     fn known_headers() {
-        let input = [0x12, 0x34, 0x56, 0x78];
+        let input = [0x09, 0x34, 0x56, 0x78];
         let expected = Header {
-            flags: 0x12,   // 18
+            flags: HeaderFlags::ResponseWithPayload,
             channel: 0x34, // 52
             id: 0x7856,    // 30806
         };
 
-        assert_eq!(Header::from(input), expected);
+        assert_eq!(Header::try_from(input).unwrap(), expected);
         assert_eq!(<[u8; 4]>::from(expected), input);
     }
 }
