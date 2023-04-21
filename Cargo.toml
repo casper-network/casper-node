@@ -5,6 +5,7 @@ members = [
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
     "hashing",
+    "juliet",
     "json_rpc",
     "muxink",
     "node",

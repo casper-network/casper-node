@@ -1,0 +1,7 @@
+[package]
+name = "juliet"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Marc Brinkmann <marc@casperlabs.io>" ]
+
+[dependencies]
