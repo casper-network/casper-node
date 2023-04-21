@@ -117,29 +117,24 @@ impl MainReactor {
             return Ok(None);
         }
 
-        if synced_to_ttl(
-            Some(highest_switch_block_header),
-            None,
-            &self.storage,
-            self.chainspec.deploy_config.max_ttl,
-        )? {
-            if let HighestOrphanedBlockResult::Orphan(header) =
-                self.storage.get_highest_orphaned_block_header()
-            {
-                self.validator_matrix
-                    .register_retrograde_latch(Some(header.era_id()));
+        if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
+            self.storage.get_highest_orphaned_block_header()
+        {
+            if synced_to_ttl(
+                highest_switch_block_header,
+                &highest_orphaned_block_header,
+                self.chainspec.deploy_config.max_ttl,
+            )? {
+                debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
-                return Err(
-                    "get_highest_orphaned_block_header failed to produce record".to_string()
+                info!(
+                    "{}: insufficient deploy TTL awareness to safely participate in consensus",
+                    self.state
                 );
+                return Ok(None);
             }
-            debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
         } else {
-            info!(
-                "{}: insufficient deploy TTL awareness to safely participate in consensus",
-                self.state
-            );
-            return Ok(None);
+            return Err("get_highest_orphaned_block_header failed to produce record".to_string());
         }
 
         let era_id = highest_switch_block_header.era_id();
