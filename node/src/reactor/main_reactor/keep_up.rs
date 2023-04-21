@@ -625,25 +625,27 @@ impl MainReactor {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }
 
-                if let Some(highest_switch_block_header) = self
-                    .storage
-                    .read_highest_switch_block_headers(1)
-                    .map_err(|err| err.to_string())?
-                    .last()
-                {
-                    // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12
-                    // hours we require sync back to see a contiguous / unbroken
-                    // range of at least 12 hours worth of blocks. note however
-                    // that we measure from the start of the active era
-                    // (for consensus reasons), so this can be up to TTL + era length in practice
-                    if !self.sync_to_genesis
-                        && synced_to_ttl(
-                            highest_switch_block_header,
-                            &highest_orphaned_block_header,
-                            self.chainspec.deploy_config.max_ttl,
-                        )?
+                // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12
+                // hours we require sync back to see a contiguous / unbroken
+                // range of at least 12 hours worth of blocks. note however
+                // that we measure from the start of the active era
+                // (for consensus reasons), so this can be up to TTL + era length in practice
+                if !self.sync_to_genesis {
+                    if let Some(highest_switch_block_header) = self
+                        .storage
+                        .read_highest_switch_block_headers(1)
+                        .map_err(|err| err.to_string())?
+                        .last()
                     {
-                        return Ok(Some(SyncBackInstruction::TtlSynced));
+                        if !self.sync_to_genesis
+                            && synced_to_ttl(
+                                highest_switch_block_header,
+                                &highest_orphaned_block_header,
+                                self.chainspec.deploy_config.max_ttl,
+                            )?
+                        {
+                            return Ok(Some(SyncBackInstruction::TtlSynced));
+                        }
                     }
                 }
 
