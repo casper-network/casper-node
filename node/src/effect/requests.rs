@@ -636,10 +636,6 @@ impl Display for MakeBlockExecutableRequest {
 /// * the block header and the actual block are persisted in storage,
 /// * all of its deploys are persisted in storage, and
 /// * the global state root the block refers to has no missing dependencies locally.
-
-// Note - this is a request rather than an announcement as the chain synchronizer needs to ensure
-// the request has been completed before it can exit, i.e. it awaits the response. Otherwise, the
-// reactor might exit before handling the announcement and it would go un-actioned.
 #[derive(Debug, Serialize)]
 pub(crate) struct MarkBlockCompletedRequest {
     pub block_height: u64,
