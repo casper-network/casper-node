@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use bitflags::bitflags;
 use bytes::Buf;
 
 const HEADER_SIZE: usize = 4;
@@ -27,20 +26,26 @@ enum HeaderFlags {
     Request = 0b00000000,
     Response = 0b00000001,
     Error = 0b00000010,
+    ErrorWithMessage = 0b00001010,
     RequestCancellation = 0b00000100,
     ResponseCancellation = 0b00000101,
+    ZeroSizedRequest = 0b00001000,
+    ZeroSizedResponse = 0b00001001,
 }
 
 impl TryFrom<u8> for HeaderFlags {
     type Error = u8;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, u8> {
         match value {
             0b00000000 => Ok(HeaderFlags::Request),
             0b00000001 => Ok(HeaderFlags::Response),
             0b00000010 => Ok(HeaderFlags::Error),
+            0b00001010 => Ok(HeaderFlags::ErrorWithMessage),
             0b00000100 => Ok(HeaderFlags::RequestCancellation),
             0b00000101 => Ok(HeaderFlags::ResponseCancellation),
+            0b00001000 => Ok(HeaderFlags::ZeroSizedRequest),
+            0b00001001 => Ok(HeaderFlags::ZeroSizedResponse),
             _ => Err(value),
         }
     }
@@ -95,8 +100,11 @@ impl Receiver {
             HeaderFlags::Request => todo!(),
             HeaderFlags::Response => todo!(),
             HeaderFlags::Error => todo!(),
+            HeaderFlags::ErrorWithMessage => todo!(),
             HeaderFlags::RequestCancellation => todo!(),
             HeaderFlags::ResponseCancellation => todo!(),
+            HeaderFlags::ZeroSizedRequest => todo!(),
+            HeaderFlags::ZeroSizedResponse => todo!(),
         }
     }
 }
