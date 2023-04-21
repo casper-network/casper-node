@@ -108,8 +108,22 @@ pub(super) enum BlockAcquisitionState {
     HaveApprovalsHashes(Box<Block>, SignatureAcquisition, DeployAcquisition),
     HaveAllDeploys(Box<Block>, SignatureAcquisition),
     HaveStrictFinalitySignatures(Box<Block>, SignatureAcquisition),
-    HaveFinalizedBlock(BlockHash, Box<FinalizedBlock>, Vec<Deploy>, bool),
-    Complete(BlockHash, u64),
+    // We keep the `Block` as well as the `FinalizedBlock` because the
+    // block is necessary to reach the `Complete` state and the finalized
+    // block is used to enqueue for execution. While the block would surely
+    // be stored by the time we get to this state, it would be inefficient
+    // to fetch it from storage again to transition to the `Complete` state,
+    // so it is retained. The downside is that the block is useful in its
+    // entirety only in the historical sync, and `HaveFinalizedBlock` along
+    // with execution are strictly forward sync states. Until a refactor splits
+    // the `Complete` states for the historical and forward cases, we need to
+    // keep the block around.
+    HaveFinalizedBlock(Box<Block>, Box<FinalizedBlock>, Vec<Deploy>, bool),
+    // The `Complete` state needs the block itself in order to produce a meta
+    // block announcement in the historical sync flow. In the forward sync,
+    // only the block hash and height are necessary. Therefore, we retain the
+    // block fully in this state.
+    Complete(Box<Block>),
     Failed(BlockHash, Option<u64>),
 }
 
@@ -167,14 +181,19 @@ impl Display for BlockAcquisitionState {
                 block.header().height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveFinalizedBlock(block_hash, block, _, _) => write!(
+            BlockAcquisitionState::HaveFinalizedBlock(block, finalized_block, _, _) => write!(
                 f,
                 "have finalized block({}) for: {}",
-                block.height(),
-                block_hash
+                finalized_block.height(),
+                *block.hash()
             ),
-            BlockAcquisitionState::Complete(block_hash, height) => {
-                write!(f, "have complete block({}) for: {}", height, block_hash)
+            BlockAcquisitionState::Complete(block) => {
+                write!(
+                    f,
+                    "have complete block({}) for: {}",
+                    block.height(),
+                    *block.hash()
+                )
             }
             BlockAcquisitionState::Failed(block_hash, maybe_block_height) => {
                 write!(f, "fatal({:?}) for: {}", maybe_block_height, block_hash)
@@ -187,9 +206,7 @@ impl BlockAcquisitionState {
     pub(crate) fn block_hash(&self) -> BlockHash {
         match self {
             BlockAcquisitionState::Initialized(block_hash, _)
-            | BlockAcquisitionState::Failed(block_hash, _)
-            | BlockAcquisitionState::Complete(block_hash, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(block_hash, ..) => *block_hash,
+            | BlockAcquisitionState::Failed(block_hash, _) => *block_hash,
             BlockAcquisitionState::HaveBlockHeader(block_header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(block_header, _) => {
                 block_header.block_hash()
@@ -199,7 +216,9 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
             | BlockAcquisitionState::HaveAllDeploys(block, _)
-            | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => *block.hash(),
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(block, ..)
+            | BlockAcquisitionState::Complete(block) => *block.hash(),
         }
     }
 
@@ -208,15 +227,15 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
-            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
-            | BlockAcquisitionState::Complete(..) => None,
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..) => None,
             BlockAcquisitionState::HaveAllDeploys(block, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
             | BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
-            | BlockAcquisitionState::HaveApprovalsHashes(block, _, _) => Some(block.clone()),
+            | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _)
+            | BlockAcquisitionState::Complete(block) => Some(block.clone()),
         }
     }
 }
@@ -442,23 +461,28 @@ impl BlockAcquisitionState {
                     ))
                 }
             }
-            BlockAcquisitionState::HaveFinalizedBlock(block_hash, block, deploys, enqueued) => {
+            BlockAcquisitionState::HaveFinalizedBlock(
+                block,
+                finalized_block,
+                deploys,
+                enqueued,
+            ) => {
                 if is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if *enqueued == false {
                     Ok(BlockAcquisitionAction::enqueue_block_for_execution(
-                        block_hash,
-                        block.clone(),
+                        block.hash(),
+                        finalized_block.clone(),
                         deploys.clone(),
                     ))
                 } else {
                     // if the block was already enqueued for execution just wait, there's
                     // nothing else to do
-                    Ok(BlockAcquisitionAction::need_nothing(*block_hash))
+                    Ok(BlockAcquisitionAction::need_nothing(*block.hash()))
                 }
             }
-            BlockAcquisitionState::Complete(block_hash, ..) => {
-                Ok(BlockAcquisitionAction::need_nothing(*block_hash))
+            BlockAcquisitionState::Complete(block) => {
+                Ok(BlockAcquisitionAction::need_nothing(*block.hash()))
             }
             BlockAcquisitionState::Failed(block_hash, ..) => {
                 Ok(BlockAcquisitionAction::need_nothing(*block_hash))
@@ -473,14 +497,16 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..) | BlockAcquisitionState::Failed(..) => None,
             BlockAcquisitionState::HaveBlockHeader(header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Some(header.height()),
-            BlockAcquisitionState::HaveFinalizedBlock(_, block, _, _) => Some(block.height()),
+            BlockAcquisitionState::HaveFinalizedBlock(_, finalized_block, _, _) => {
+                Some(finalized_block.height())
+            }
             BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, ..)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
             | BlockAcquisitionState::HaveAllDeploys(block, ..)
-            | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => Some(block.height()),
-            BlockAcquisitionState::Complete(_, block_height) => Some(*block_height),
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
+            | BlockAcquisitionState::Complete(block) => Some(block.height()),
         }
     }
 
@@ -1142,7 +1168,7 @@ impl BlockAcquisitionState {
         let new_state = match self {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => {
                 BlockAcquisitionState::HaveFinalizedBlock(
-                    *block.hash(),
+                    block.clone(),
                     Box::new(finalized_block),
                     deploys,
                     false,
@@ -1203,12 +1229,12 @@ impl BlockAcquisitionState {
         }
 
         let new_state = match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block_hash, block, _, _) => {
+            BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _) => {
                 info!(
                     "BlockAcquisition: registering block executed for: {}",
-                    block_hash
+                    *block.hash()
                 );
-                BlockAcquisitionState::Complete(*block_hash, block.height())
+                BlockAcquisitionState::Complete(block.clone())
             }
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
@@ -1241,9 +1267,9 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => {
                 info!(
                     "BlockAcquisition: registering marked complete for: {}",
-                    block.hash()
+                    *block.hash()
                 );
-                BlockAcquisitionState::Complete(*block.hash(), block.header().height())
+                BlockAcquisitionState::Complete(block.clone())
             }
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
