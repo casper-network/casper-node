@@ -58,9 +58,33 @@ impl<const N: usize> Receiver<N> {
 
         // Process a new header:
         match header.flags {
-            HeaderFlags::ZeroSizedRequest => todo!(),
-            HeaderFlags::ZeroSizedResponse => todo!(),
-            HeaderFlags::Error => todo!(),
+            HeaderFlags::ZeroSizedRequest => {
+                let channel = self.validate_request(&header)?;
+                let kind = FrameKind::Request {
+                    id: header.id,
+                    payload: None,
+                };
+
+                Ok(ReceiveOutcome::Consumed {
+                    value: Frame { channel, kind },
+                    bytes_consumed: HEADER_SIZE,
+                })
+            }
+            HeaderFlags::ZeroSizedResponse => {
+                let channel = self.validate_response(&header)?;
+                let kind = FrameKind::Response {
+                    id: header.id,
+                    payload: None,
+                };
+
+                Ok(ReceiveOutcome::Consumed {
+                    value: Frame { channel, kind },
+                    bytes_consumed: HEADER_SIZE,
+                })
+            }
+            HeaderFlags::Error => {
+                todo!()
+            }
             HeaderFlags::RequestCancellation => todo!(),
             HeaderFlags::ResponseCancellation => todo!(),
             HeaderFlags::RequestWithPayload => {
