@@ -10,9 +10,18 @@ type RequestId = u16;
 
 const HEADER_SIZE: usize = 4;
 
-enum ReceiveOutcome {
+enum ReceiveOutcome<'a> {
     /// We need at least the given amount of additional bytes before another item is produced.
-    MissingAtLeast(usize),
+    NeedMore(usize),
+    Consumed {
+        channel: u8,
+        raw_message: RawMessage<'a>,
+        bytes_consumed: usize,
+    },
+}
+
+enum RawMessage<'a> {
+    NewRequest { id: u16, payload: Option<&'a [u8]> },
 }
 
 #[derive(Debug)]
@@ -30,7 +39,7 @@ struct Channel {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(C, packed)]
+#[repr(C)] // TODO: See if we need `packed` or not. Maybe add a test?
 struct Header {
     id: u16,
     channel: u8,
@@ -96,54 +105,17 @@ impl From<Header> for [u8; 4] {
 }
 
 impl<const N: usize> Receiver<N> {
-    fn input<B: Buf>(&mut self, buf: &mut B) -> ReceiveOutcome {
-        let header = match self.current_header {
-            None => {
-                // Check if we have enough to read a header.
-                if buf.remaining() < HEADER_SIZE {
-                    return ReceiveOutcome::MissingAtLeast(HEADER_SIZE - buf.remaining());
-                }
-
-                // Grab the header and advance.
-                let header = Header::try_from(buf.get_u32_le().to_le_bytes())
-                    .expect("TODO: add error handling, invalid error");
-
-                // Process a new header:
-                match header.flags {
-                    HeaderFlags::RequestWithPayload => {
-                        let channel_id = if (header.channel as usize) < N {
-                            header.channel as usize
-                        } else {
-                            panic!("TODO: handle error (invalid channel)");
-                        };
-                        let channel = &mut self.channels[channel_id];
-                        let request_id = header.id;
-
-                        if channel.pending_requests.len() >= self.request_limits[channel_id] {
-                            panic!("TODO: handle too many requests");
-                        }
-
-                        if channel.pending_requests.contains(&request_id) {
-                            panic!("TODO: handle duplicate request");
-                        }
-
-                        // Now we know that we have received a valid new request, continue to
-                        // process data as normal.
-                    }
-                    HeaderFlags::ResponseWithPayload => todo!(),
-                    HeaderFlags::Error => todo!(),
-                    HeaderFlags::ErrorWithMessage => todo!(),
-                    HeaderFlags::RequestCancellation => todo!(),
-                    HeaderFlags::ResponseCancellation => todo!(),
-                    HeaderFlags::ZeroSizedRequest => todo!(),
-                    HeaderFlags::ZeroSizedResponse => todo!(),
-                }
-
-                self.current_header.insert(header)
-            }
-            Some(ref header) => header,
+    fn input<'a>(&mut self, buf: &'a [u8]) -> ReceiveOutcome<'a> {
+        let header_raw = match <[u8; HEADER_SIZE]>::try_from(&buf[0..HEADER_SIZE]) {
+            Ok(v) => v,
+            Err(_) => return ReceiveOutcome::NeedMore(HEADER_SIZE - buf.remaining()),
         };
 
+        let header = Header::try_from(header_raw).expect("TODO: add error handling, invalid error");
+
+        let start = buf.as_ptr() as usize;
+
+        // Process a new header:
         match header.flags {
             HeaderFlags::ZeroSizedRequest => todo!(),
             HeaderFlags::ZeroSizedResponse => todo!(),
@@ -151,13 +123,48 @@ impl<const N: usize> Receiver<N> {
             HeaderFlags::RequestCancellation => todo!(),
             HeaderFlags::ResponseCancellation => todo!(),
             HeaderFlags::RequestWithPayload => {
-                if let Some(len, consumed) = read_varint()
+                let channel_id = if (header.channel as usize) < N {
+                    header.channel as usize
+                } else {
+                    panic!("TODO: handle error (invalid channel)");
+                };
+                let channel = &mut self.channels[channel_id];
+
+                if channel.pending_requests.len() >= self.request_limits[channel_id] {
+                    panic!("TODO: handle too many requests");
+                }
+
+                if channel.pending_requests.contains(&header.id) {
+                    panic!("TODO: handle duplicate request");
+                }
+
+                let payload_with_length = &buf[HEADER_SIZE..];
+                let (payload_fragment, total_payload_len) =
+                    if let Some((payload_fragment, consumed)) = read_varint(payload_with_length) {
+                        (&buf[consumed..], payload_fragment as usize)
+                    } else {
+                        return ReceiveOutcome::NeedMore(1);
+                    };
+
+                // TODO: Limit max payload length.
+
+                if payload_fragment.len() >= total_payload_len {
+                    let payload = &payload_fragment[..total_payload_len];
+                    ReceiveOutcome::Consumed {
+                        channel: header.channel,
+                        raw_message: RawMessage::NewRequest {
+                            id: header.id,
+                            payload: Some(payload),
+                        },
+                        bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
+                    }
+                } else {
+                    ReceiveOutcome::NeedMore(total_payload_len - payload_fragment.len())
+                }
             }
             HeaderFlags::ResponseWithPayload => todo!(),
             HeaderFlags::ErrorWithMessage => todo!(),
         }
-
-        todo!();
     }
 }
 
