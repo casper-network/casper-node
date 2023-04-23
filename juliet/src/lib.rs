@@ -5,8 +5,8 @@ pub use error::Error;
 use header::{Header, HeaderFlags, HEADER_SIZE};
 use std::{collections::BTreeSet, fmt::Debug};
 
-type ChannelId = u8;
-type RequestId = u16;
+type ChannelId = u8; // TODO: newtype
+type RequestId = u16; // TODO: newtype
 
 pub enum ReceiveOutcome<T> {
     /// We need at least the given amount of additional bytes before another item is produced.
@@ -17,22 +17,20 @@ pub enum ReceiveOutcome<T> {
     },
 }
 
-pub struct Frame<'a> {
-    pub channel: ChannelId,
-    pub kind: FrameKind<'a>,
-}
-
-pub enum FrameKind<'a> {
+pub enum Frame<'a> {
     Request {
         id: RequestId,
+        channel: ChannelId,
         payload: Option<&'a [u8]>,
     },
     Response {
         id: RequestId,
+        channel: ChannelId,
         payload: Option<&'a [u8]>,
     },
     Error {
         code: RequestId, // TODO: Use error type here?
+        unverified_channel: u8,
         payload: Option<&'a [u8]>,
     },
 }
@@ -64,39 +62,39 @@ impl<const N: usize> Receiver<N> {
         match header.flags {
             HeaderFlags::ZeroSizedRequest => {
                 let channel = self.validate_request(&header)?;
-                let kind = FrameKind::Request {
+                let frame = Frame::Request {
                     id: header.id,
+                    channel,
                     payload: None,
                 };
 
                 Ok(ReceiveOutcome::Consumed {
-                    value: Frame { channel, kind },
+                    value: frame,
                     bytes_consumed: HEADER_SIZE,
                 })
             }
             HeaderFlags::ZeroSizedResponse => {
                 let channel = self.validate_response(&header)?;
-                let kind = FrameKind::Response {
+                let frame = Frame::Response {
                     id: header.id,
+                    channel,
                     payload: None,
                 };
 
                 Ok(ReceiveOutcome::Consumed {
-                    value: Frame { channel, kind },
+                    value: frame,
                     bytes_consumed: HEADER_SIZE,
                 })
             }
             HeaderFlags::Error => {
-                let kind = FrameKind::Error {
+                let frame = Frame::Error {
                     code: header.id,
+                    unverified_channel: header.channel,
                     payload: None,
                 };
 
                 Ok(ReceiveOutcome::Consumed {
-                    value: Frame {
-                        channel: header.channel, // TODO: Ok to be unverified?
-                        kind,
-                    },
+                    value: frame,
                     bytes_consumed: HEADER_SIZE,
                 })
             }
@@ -113,13 +111,14 @@ impl<const N: usize> Receiver<N> {
                         bytes_consumed += HEADER_SIZE;
                         self.channel_mut(channel).pending.insert(header.id);
 
-                        let kind = FrameKind::Request {
+                        let frame = Frame::Request {
                             id: header.id,
+                            channel,
                             payload: Some(value),
                         };
 
                         Ok(ReceiveOutcome::Consumed {
-                            value: Frame { channel, kind },
+                            value: frame,
                             bytes_consumed,
                         })
                     }
@@ -137,13 +136,14 @@ impl<const N: usize> Receiver<N> {
                         bytes_consumed += HEADER_SIZE;
                         self.channel_mut(channel).pending.remove(&header.id);
 
-                        let kind = FrameKind::Request {
+                        let frame = Frame::Request {
                             id: header.id,
+                            channel,
                             payload: Some(value),
                         };
 
                         Ok(ReceiveOutcome::Consumed {
-                            value: Frame { channel, kind },
+                            value: frame,
                             bytes_consumed,
                         })
                     }
