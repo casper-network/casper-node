@@ -31,6 +31,10 @@ pub enum FrameKind<'a> {
         id: RequestId,
         payload: Option<&'a [u8]>,
     },
+    Error {
+        code: RequestId, // TODO: Use error type here?
+        payload: Option<&'a [u8]>,
+    },
 }
 
 #[derive(Debug)]
@@ -83,7 +87,18 @@ impl<const N: usize> Receiver<N> {
                 })
             }
             HeaderFlags::Error => {
-                todo!()
+                let kind = FrameKind::Error {
+                    code: header.id,
+                    payload: None,
+                };
+
+                Ok(ReceiveOutcome::Consumed {
+                    value: Frame {
+                        channel: header.channel, // TODO: Ok to be unverified?
+                        kind,
+                    },
+                    bytes_consumed: HEADER_SIZE,
+                })
             }
             HeaderFlags::RequestCancellation => todo!(),
             HeaderFlags::ResponseCancellation => todo!(),
