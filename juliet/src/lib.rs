@@ -1,15 +1,32 @@
-use std::fmt::Debug;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+};
 
 use bytes::Buf;
+
+type ChannelId = u8;
+type RequestId = u16;
 
 const HEADER_SIZE: usize = 4;
 
 enum ReceiveOutcome {
+    /// We need at least the given amount of additional bytes before another item is produced.
     MissingAtLeast(usize),
 }
 
-struct Receiver {
+#[derive(Debug)]
+struct Receiver<const N: usize> {
     current_header: Option<Header>,
+    payload_length: Option<usize>,
+    channels: [Channel; N],
+    request_limits: [usize; N],
+    segment_limit: u32,
+}
+
+#[derive(Debug)]
+struct Channel {
+    pending_requests: BTreeSet<RequestId>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -78,7 +95,7 @@ impl From<Header> for [u8; 4] {
     }
 }
 
-impl Receiver {
+impl<const N: usize> Receiver<N> {
     fn input<B: Buf>(&mut self, buf: &mut B) -> ReceiveOutcome {
         let header = match self.current_header {
             None => {
@@ -87,26 +104,79 @@ impl Receiver {
                     return ReceiveOutcome::MissingAtLeast(HEADER_SIZE - buf.remaining());
                 }
 
-                // Grab the header and continue.
-                self.current_header.insert(
-                    Header::try_from(buf.get_u32_le().to_le_bytes())
-                        .expect("TODO: add error handling"),
-                )
+                // Grab the header and advance.
+                let header = Header::try_from(buf.get_u32_le().to_le_bytes())
+                    .expect("TODO: add error handling, invalid error");
+
+                // Process a new header:
+                match header.flags {
+                    HeaderFlags::RequestWithPayload => {
+                        let channel_id = if (header.channel as usize) < N {
+                            header.channel as usize
+                        } else {
+                            panic!("TODO: handle error (invalid channel)");
+                        };
+                        let channel = &mut self.channels[channel_id];
+                        let request_id = header.id;
+
+                        if channel.pending_requests.len() >= self.request_limits[channel_id] {
+                            panic!("TODO: handle too many requests");
+                        }
+
+                        if channel.pending_requests.contains(&request_id) {
+                            panic!("TODO: handle duplicate request");
+                        }
+
+                        // Now we know that we have received a valid new request, continue to
+                        // process data as normal.
+                    }
+                    HeaderFlags::ResponseWithPayload => todo!(),
+                    HeaderFlags::Error => todo!(),
+                    HeaderFlags::ErrorWithMessage => todo!(),
+                    HeaderFlags::RequestCancellation => todo!(),
+                    HeaderFlags::ResponseCancellation => todo!(),
+                    HeaderFlags::ZeroSizedRequest => todo!(),
+                    HeaderFlags::ZeroSizedResponse => todo!(),
+                }
+
+                self.current_header.insert(header)
             }
             Some(ref header) => header,
         };
 
         match header.flags {
-            HeaderFlags::RequestWithPayload => todo!(),
-            HeaderFlags::ResponseWithPayload => todo!(),
-            HeaderFlags::Error => todo!(),
-            HeaderFlags::ErrorWithMessage => todo!(),
-            HeaderFlags::RequestCancellation => todo!(),
-            HeaderFlags::ResponseCancellation => todo!(),
             HeaderFlags::ZeroSizedRequest => todo!(),
             HeaderFlags::ZeroSizedResponse => todo!(),
+            HeaderFlags::Error => todo!(),
+            HeaderFlags::RequestCancellation => todo!(),
+            HeaderFlags::ResponseCancellation => todo!(),
+            HeaderFlags::RequestWithPayload => {
+                if let Some(len, consumed) = read_varint()
+            }
+            HeaderFlags::ResponseWithPayload => todo!(),
+            HeaderFlags::ErrorWithMessage => todo!(),
+        }
+
+        todo!();
+    }
+}
+
+fn read_varint(input: &[u8]) -> Option<(u32, usize)> {
+    let mut num = 0u32;
+
+    for (idx, &c) in input.iter().enumerate() {
+        num |= (c & 0b0111_1111) as u32;
+
+        if c & 0b1000_0000 != 0 {
+            // More to follow.
+            num <<= 7;
+        } else {
+            return Some((num, idx + 1));
         }
     }
+
+    // We found no stop condition, so our integer is incomplete.
+    None
 }
 
 #[cfg(test)]
