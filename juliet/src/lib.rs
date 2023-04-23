@@ -8,17 +8,21 @@ use std::{collections::BTreeSet, fmt::Debug};
 type ChannelId = u8;
 type RequestId = u16;
 
-pub enum ReceiveOutcome<'a> {
+pub enum ReceiveOutcome<T> {
     /// We need at least the given amount of additional bytes before another item is produced.
     NeedMore(usize),
     Consumed {
-        channel: u8,
-        raw_message: Frame<'a>,
+        value: T,
         bytes_consumed: usize,
     },
 }
 
-pub enum Frame<'a> {
+pub struct Frame<'a> {
+    pub channel: ChannelId,
+    pub kind: FrameKind<'a>,
+}
+
+pub enum FrameKind<'a> {
     Request {
         id: RequestId,
         payload: Option<&'a [u8]>,
@@ -42,7 +46,7 @@ struct Channel {
 }
 
 impl<const N: usize> Receiver<N> {
-    pub fn input<'a>(&mut self, buf: &'a [u8]) -> Result<ReceiveOutcome<'a>, Error> {
+    pub fn input<'a>(&mut self, buf: &'a [u8]) -> Result<ReceiveOutcome<Frame<'a>>, Error> {
         let header_raw = match <[u8; HEADER_SIZE]>::try_from(&buf[0..HEADER_SIZE]) {
             Ok(v) => v,
             Err(_) => return Ok(ReceiveOutcome::NeedMore(HEADER_SIZE - buf.len())),
@@ -50,7 +54,6 @@ impl<const N: usize> Receiver<N> {
 
         let header = Header::try_from(header_raw).map_err(Error::InvalidFlags)?;
 
-        let start = buf.as_ptr() as usize;
         let no_header_buf = &buf[HEADER_SIZE..];
 
         // Process a new header:
@@ -61,63 +64,55 @@ impl<const N: usize> Receiver<N> {
             HeaderFlags::RequestCancellation => todo!(),
             HeaderFlags::ResponseCancellation => todo!(),
             HeaderFlags::RequestWithPayload => {
-                let channel_id = self.validate_request(&header)?;
+                let channel = self.validate_request(&header)?;
 
-                match self.read_variable_payload(no_header_buf) {
-                    Ok(payload) => {
-                        self.channel_mut(channel_id).pending.insert(header.id);
+                match read_variable_payload(no_header_buf, self.segment_size_limit())? {
+                    ReceiveOutcome::Consumed {
+                        value,
+                        mut bytes_consumed,
+                    } => {
+                        bytes_consumed += HEADER_SIZE;
+                        self.channel_mut(channel).pending.insert(header.id);
+
+                        let kind = FrameKind::Request {
+                            id: header.id,
+                            payload: Some(value),
+                        };
 
                         Ok(ReceiveOutcome::Consumed {
-                            channel: header.channel,
-                            raw_message: Frame::Request {
-                                id: header.id,
-                                payload: Some(payload),
-                            },
-                            bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
+                            value: Frame { channel, kind },
+                            bytes_consumed,
                         })
                     }
-                    Err(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
+                    ReceiveOutcome::NeedMore(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
                 }
             }
             HeaderFlags::ResponseWithPayload => {
-                let channel_id = self.validate_response(&header)?;
+                let channel = self.validate_response(&header)?;
 
-                match self.read_variable_payload(no_header_buf) {
-                    Ok(payload) => {
-                        self.channel_mut(channel_id).pending.remove(&header.id);
+                match read_variable_payload(no_header_buf, self.segment_size_limit())? {
+                    ReceiveOutcome::Consumed {
+                        value,
+                        mut bytes_consumed,
+                    } => {
+                        bytes_consumed += HEADER_SIZE;
+                        self.channel_mut(channel).pending.remove(&header.id);
+
+                        let kind = FrameKind::Request {
+                            id: header.id,
+                            payload: Some(value),
+                        };
 
                         Ok(ReceiveOutcome::Consumed {
-                            channel: header.channel,
-                            raw_message: Frame::Request {
-                                id: header.id,
-                                payload: Some(payload),
-                            },
-                            bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
+                            value: Frame { channel, kind },
+                            bytes_consumed,
                         })
                     }
-                    Err(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
+                    ReceiveOutcome::NeedMore(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
                 }
             }
             HeaderFlags::ErrorWithMessage => todo!(),
         }
-    }
-
-    fn read_variable_payload<'a>(&self, buf: &'a [u8]) -> Result<&'a [u8], usize> {
-        let Some((payload_len, consumed)) = read_varint_u32(buf)
-        else {
-            return Err(1);
-        };
-
-        let payload_len = payload_len as usize;
-
-        // TODO: Limit max payload length.
-
-        let fragment = &buf[consumed..];
-        if fragment.len() < payload_len {
-            return Err(payload_len - fragment.len());
-        }
-        let payload = &fragment[..payload_len];
-        Ok(payload)
     }
 
     fn validate_channel(header: &Header) -> Result<ChannelId, Error> {
@@ -165,6 +160,10 @@ impl<const N: usize> Receiver<N> {
     fn request_limit(&self, channel_id: ChannelId) -> usize {
         self.request_limits[channel_id as usize]
     }
+
+    fn segment_size_limit(&self) -> usize {
+        self.frame_size_limit.saturating_sub(HEADER_SIZE as u32) as usize
+    }
 }
 
 fn read_varint_u32(input: &[u8]) -> Option<(u32, usize)> {
@@ -185,4 +184,31 @@ fn read_varint_u32(input: &[u8]) -> Option<(u32, usize)> {
 
     // We found no stop bit, so our integer is incomplete.
     None
+}
+
+fn read_variable_payload<'a>(
+    buf: &'a [u8],
+    limit: usize,
+) -> Result<ReceiveOutcome<&'a [u8]>, Error> {
+    let Some((value_len, mut bytes_consumed)) = read_varint_u32(buf)
+    else {
+        return Ok(ReceiveOutcome::NeedMore(1));
+    };
+    let value_len = value_len as usize;
+
+    if value_len + bytes_consumed < limit {
+        return Err(Error::SegmentSizedExceeded(value_len + bytes_consumed));
+    }
+
+    let payload = &buf[bytes_consumed..];
+    if payload.len() < value_len {
+        return Ok(ReceiveOutcome::NeedMore(value_len - payload.len()));
+    }
+
+    let value = &payload[..value_len];
+    bytes_consumed += value.len();
+    Ok(ReceiveOutcome::Consumed {
+        value,
+        bytes_consumed,
+    })
 }
