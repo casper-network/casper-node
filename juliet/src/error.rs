@@ -25,4 +25,7 @@ pub enum Error {
     /// Peer wants to send a segment that, along with its header, would violate the frame size.
     #[error("segment of {0} would exceed frame size limit")]
     SegmentSizedExceeded(usize),
+    /// Variable size integer overflowed.
+    #[error("varint overflow")]
+    VarIntOverflow,
 }

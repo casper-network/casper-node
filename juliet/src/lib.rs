@@ -166,34 +166,45 @@ impl<const N: usize> Receiver<N> {
     }
 }
 
-fn read_varint_u32(input: &[u8]) -> Option<(u32, usize)> {
+fn read_varint_u32(input: &[u8]) -> Result<ReceiveOutcome<u32>, Error> {
     // TODO: Handle overflow (should be an error)?
 
-    let mut num = 0u32;
+    let mut value = 0u32;
 
     for (idx, &c) in input.iter().enumerate() {
-        num |= (c & 0b0111_1111) as u32;
+        value |= (c & 0b0111_1111) as u32;
 
         if c & 0b1000_0000 != 0 {
+            if idx > 5 {
+                return Err(Error::VarIntOverflow);
+            }
+
             // More bits will follow.
-            num <<= 7;
+            value <<= 7;
         } else {
-            return Some((num, idx + 1));
+            return Ok(ReceiveOutcome::Consumed {
+                value,
+                bytes_consumed: idx + 1,
+            });
         }
     }
 
     // We found no stop bit, so our integer is incomplete.
-    None
+    Ok(ReceiveOutcome::NeedMore(1))
 }
 
 fn read_variable_payload<'a>(
     buf: &'a [u8],
     limit: usize,
 ) -> Result<ReceiveOutcome<&'a [u8]>, Error> {
-    let Some((value_len, mut bytes_consumed)) = read_varint_u32(buf)
-    else {
-        return Ok(ReceiveOutcome::NeedMore(1));
+    let (value_len, mut bytes_consumed) = match read_varint_u32(buf)? {
+        ReceiveOutcome::NeedMore(needed) => return Ok(ReceiveOutcome::NeedMore(needed)),
+        ReceiveOutcome::Consumed {
+            value,
+            bytes_consumed,
+        } => (value, bytes_consumed),
     };
+
     let value_len = value_len as usize;
 
     if value_len + bytes_consumed < limit {
