@@ -1,16 +1,14 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-};
+mod error;
 
-use bytes::Buf;
+pub use error::Error;
+use std::{collections::BTreeSet, fmt::Debug};
 
 type ChannelId = u8;
 type RequestId = u16;
 
 const HEADER_SIZE: usize = 4;
 
-enum ReceiveOutcome<'a> {
+pub enum ReceiveOutcome<'a> {
     /// We need at least the given amount of additional bytes before another item is produced.
     NeedMore(usize),
     Consumed {
@@ -20,17 +18,15 @@ enum ReceiveOutcome<'a> {
     },
 }
 
-enum RawMessage<'a> {
+pub enum RawMessage<'a> {
     NewRequest { id: u16, payload: Option<&'a [u8]> },
 }
 
 #[derive(Debug)]
-struct Receiver<const N: usize> {
-    current_header: Option<Header>,
-    payload_length: Option<usize>,
+pub struct Receiver<const N: usize> {
     channels: [Channel; N],
     request_limits: [usize; N],
-    segment_limit: u32,
+    frame_size_limit: u32,
 }
 
 #[derive(Debug)]
@@ -84,6 +80,7 @@ impl TryFrom<[u8; 4]> for Header {
         let flags = HeaderFlags::try_from(value[0])?;
         // TODO: Check if this code is equal to `mem::transmute` usage on LE platforms.
         Ok(Header {
+            // Safe unwrap here, as the size of `value[2..4]` is exactly the necessary 2 bytes.
             id: u16::from_le_bytes(value[2..4].try_into().unwrap()),
             channel: value[1],
             flags,
@@ -105,15 +102,16 @@ impl From<Header> for [u8; 4] {
 }
 
 impl<const N: usize> Receiver<N> {
-    fn input<'a>(&mut self, buf: &'a [u8]) -> ReceiveOutcome<'a> {
+    pub fn input<'a>(&mut self, buf: &'a [u8]) -> Result<ReceiveOutcome<'a>, Error> {
         let header_raw = match <[u8; HEADER_SIZE]>::try_from(&buf[0..HEADER_SIZE]) {
             Ok(v) => v,
-            Err(_) => return ReceiveOutcome::NeedMore(HEADER_SIZE - buf.remaining()),
+            Err(_) => return Ok(ReceiveOutcome::NeedMore(HEADER_SIZE - buf.len())),
         };
 
-        let header = Header::try_from(header_raw).expect("TODO: add error handling, invalid error");
+        let header = Header::try_from(header_raw).map_err(Error::InvalidFlags)?;
 
         let start = buf.as_ptr() as usize;
+        let no_header_buf = &buf[HEADER_SIZE..];
 
         // Process a new header:
         match header.flags {
@@ -126,63 +124,71 @@ impl<const N: usize> Receiver<N> {
                 let channel_id = if (header.channel as usize) < N {
                     header.channel as usize
                 } else {
-                    panic!("TODO: handle error (invalid channel)");
+                    return Err(Error::InvalidChannel(header.channel));
                 };
                 let channel = &mut self.channels[channel_id];
 
                 if channel.pending_requests.len() >= self.request_limits[channel_id] {
-                    panic!("TODO: handle too many requests");
+                    return Err(Error::RequestLimitExceeded);
                 }
 
                 if channel.pending_requests.contains(&header.id) {
-                    panic!("TODO: handle duplicate request");
+                    return Err(Error::DuplicateRequest);
                 }
 
-                let payload_with_length = &buf[HEADER_SIZE..];
-                let (payload_fragment, total_payload_len) =
-                    if let Some((payload_fragment, consumed)) = read_varint(payload_with_length) {
-                        (&buf[consumed..], payload_fragment as usize)
-                    } else {
-                        return ReceiveOutcome::NeedMore(1);
-                    };
-
-                // TODO: Limit max payload length.
-
-                if payload_fragment.len() >= total_payload_len {
-                    let payload = &payload_fragment[..total_payload_len];
-                    ReceiveOutcome::Consumed {
+                match self.read_variable_payload(no_header_buf) {
+                    Ok(payload) => Ok(ReceiveOutcome::Consumed {
                         channel: header.channel,
                         raw_message: RawMessage::NewRequest {
                             id: header.id,
                             payload: Some(payload),
                         },
                         bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
-                    }
-                } else {
-                    ReceiveOutcome::NeedMore(total_payload_len - payload_fragment.len())
+                    }),
+                    Err(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
                 }
             }
             HeaderFlags::ResponseWithPayload => todo!(),
             HeaderFlags::ErrorWithMessage => todo!(),
         }
     }
+
+    fn read_variable_payload<'a>(&self, buf: &'a [u8]) -> Result<&'a [u8], usize> {
+        let Some((payload_len, consumed)) = read_varint_u32(buf)
+        else {
+            return Err(1);
+        };
+
+        let payload_len = payload_len as usize;
+
+        // TODO: Limit max payload length.
+
+        let fragment = &buf[consumed..];
+        if fragment.len() < payload_len {
+            return Err(payload_len - fragment.len());
+        }
+        let payload = &fragment[..payload_len];
+        Ok(payload)
+    }
 }
 
-fn read_varint(input: &[u8]) -> Option<(u32, usize)> {
+fn read_varint_u32(input: &[u8]) -> Option<(u32, usize)> {
+    // TODO: Handle overflow (should be an error)?
+
     let mut num = 0u32;
 
     for (idx, &c) in input.iter().enumerate() {
         num |= (c & 0b0111_1111) as u32;
 
         if c & 0b1000_0000 != 0 {
-            // More to follow.
+            // More bits will follow.
             num <<= 7;
         } else {
             return Some((num, idx + 1));
         }
     }
 
-    // We found no stop condition, so our integer is incomplete.
+    // We found no stop bit, so our integer is incomplete.
     None
 }
 
@@ -199,7 +205,10 @@ mod tests {
             id: 0x7856,    // 30806
         };
 
-        assert_eq!(Header::try_from(input).unwrap(), expected);
+        assert_eq!(
+            Header::try_from(input).expect("could not parse header"),
+            expected
+        );
         assert_eq!(<[u8; 4]>::from(expected), input);
     }
 }
