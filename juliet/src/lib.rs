@@ -150,7 +150,28 @@ impl<const N: usize> Receiver<N> {
                     ReceiveOutcome::NeedMore(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
                 }
             }
-            HeaderFlags::ErrorWithMessage => todo!(),
+            HeaderFlags::ErrorWithMessage => {
+                match read_variable_payload(no_header_buf, self.segment_size_limit())? {
+                    ReceiveOutcome::Consumed {
+                        value,
+                        mut bytes_consumed,
+                    } => {
+                        bytes_consumed += HEADER_SIZE;
+
+                        let frame = Frame::Error {
+                            code: header.id,
+                            unverified_channel: header.channel,
+                            payload: Some(value),
+                        };
+
+                        Ok(ReceiveOutcome::Consumed {
+                            value: frame,
+                            bytes_consumed,
+                        })
+                    }
+                    ReceiveOutcome::NeedMore(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
+                }
+            }
         }
     }
 
