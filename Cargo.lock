@@ -2462,7 +2462,7 @@ dependencies = [
 name = "juliet"
 version = "0.1.0"
 dependencies = [
- "bytes",
+ "thiserror",
 ]
 
 [[package]]

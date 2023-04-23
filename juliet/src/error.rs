@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::{ChannelId, RequestId};
+
 /// Protocol violation.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -10,11 +12,14 @@ pub enum Error {
     InvalidFlags(u8),
     /// A channel number that does not exist was encountered.
     #[error("invalid channel: {0}")]
-    InvalidChannel(u8),
+    InvalidChannel(ChannelId),
     /// Peer made too many requests (without awaiting sufficient responses).
     #[error("request limit exceeded")]
     RequestLimitExceeded,
     /// Peer re-used an in-flight request ID.
     #[error("duplicate request id")]
     DuplicateRequest,
+    /// Peer sent a response for a request that does not exist.
+    #[error("fictive request: {0}")]
+    FictiveRequest(RequestId),
 }

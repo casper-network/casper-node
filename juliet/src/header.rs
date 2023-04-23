@@ -1,3 +1,5 @@
+use crate::{ChannelId, RequestId};
+
 /// `juliet` header parsing and serialization.
 
 /// The size of a header in bytes.
@@ -11,9 +13,9 @@ pub(crate) const HEADER_SIZE: usize = 4;
 #[repr(C)]
 pub(crate) struct Header {
     /// Request/response ID.
-    pub(crate) id: u16,
+    pub(crate) id: RequestId,
     /// Channel for the frame this header belongs to.
-    pub(crate) channel: u8,
+    pub(crate) channel: ChannelId,
     /// Flags.
     ///
     /// See protocol documentation for details.

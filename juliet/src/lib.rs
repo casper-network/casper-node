@@ -13,13 +13,20 @@ pub enum ReceiveOutcome<'a> {
     NeedMore(usize),
     Consumed {
         channel: u8,
-        raw_message: RawMessage<'a>,
+        raw_message: Frame<'a>,
         bytes_consumed: usize,
     },
 }
 
-pub enum RawMessage<'a> {
-    NewRequest { id: u16, payload: Option<&'a [u8]> },
+pub enum Frame<'a> {
+    Request {
+        id: RequestId,
+        payload: Option<&'a [u8]>,
+    },
+    Response {
+        id: RequestId,
+        payload: Option<&'a [u8]>,
+    },
 }
 
 #[derive(Debug)]
@@ -31,7 +38,7 @@ pub struct Receiver<const N: usize> {
 
 #[derive(Debug)]
 struct Channel {
-    pending_requests: BTreeSet<RequestId>,
+    pending: BTreeSet<RequestId>,
 }
 
 impl<const N: usize> Receiver<N> {
@@ -54,34 +61,43 @@ impl<const N: usize> Receiver<N> {
             HeaderFlags::RequestCancellation => todo!(),
             HeaderFlags::ResponseCancellation => todo!(),
             HeaderFlags::RequestWithPayload => {
-                let channel_id = if (header.channel as usize) < N {
-                    header.channel as usize
-                } else {
-                    return Err(Error::InvalidChannel(header.channel));
-                };
-                let channel = &mut self.channels[channel_id];
-
-                if channel.pending_requests.len() >= self.request_limits[channel_id] {
-                    return Err(Error::RequestLimitExceeded);
-                }
-
-                if channel.pending_requests.contains(&header.id) {
-                    return Err(Error::DuplicateRequest);
-                }
+                let channel_id = self.validate_request(&header)?;
 
                 match self.read_variable_payload(no_header_buf) {
-                    Ok(payload) => Ok(ReceiveOutcome::Consumed {
-                        channel: header.channel,
-                        raw_message: RawMessage::NewRequest {
-                            id: header.id,
-                            payload: Some(payload),
-                        },
-                        bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
-                    }),
+                    Ok(payload) => {
+                        self.channel_mut(channel_id).pending.insert(header.id);
+
+                        Ok(ReceiveOutcome::Consumed {
+                            channel: header.channel,
+                            raw_message: Frame::Request {
+                                id: header.id,
+                                payload: Some(payload),
+                            },
+                            bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
+                        })
+                    }
                     Err(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
                 }
             }
-            HeaderFlags::ResponseWithPayload => todo!(),
+            HeaderFlags::ResponseWithPayload => {
+                let channel_id = self.validate_response(&header)?;
+
+                match self.read_variable_payload(no_header_buf) {
+                    Ok(payload) => {
+                        self.channel_mut(channel_id).pending.remove(&header.id);
+
+                        Ok(ReceiveOutcome::Consumed {
+                            channel: header.channel,
+                            raw_message: Frame::Request {
+                                id: header.id,
+                                payload: Some(payload),
+                            },
+                            bytes_consumed: payload.as_ptr() as usize - start + payload.len(),
+                        })
+                    }
+                    Err(needed) => Ok(ReceiveOutcome::NeedMore(needed)),
+                }
+            }
             HeaderFlags::ErrorWithMessage => todo!(),
         }
     }
@@ -102,6 +118,52 @@ impl<const N: usize> Receiver<N> {
         }
         let payload = &fragment[..payload_len];
         Ok(payload)
+    }
+
+    fn validate_channel(header: &Header) -> Result<ChannelId, Error> {
+        if (header.channel as usize) < N {
+            Ok(header.channel)
+        } else {
+            Err(Error::InvalidChannel(header.channel))
+        }
+    }
+
+    fn validate_request(&self, header: &Header) -> Result<ChannelId, Error> {
+        let channel_id = Self::validate_channel(&header)?;
+        let channel = self.channel(channel_id);
+
+        if channel.pending.len() >= self.request_limit(channel_id) {
+            return Err(Error::RequestLimitExceeded);
+        }
+
+        if channel.pending.contains(&header.id) {
+            return Err(Error::DuplicateRequest);
+        }
+
+        Ok(channel_id)
+    }
+
+    fn validate_response(&self, header: &Header) -> Result<ChannelId, Error> {
+        let channel_id = Self::validate_channel(&header)?;
+        let channel = self.channel(channel_id);
+
+        if !channel.pending.contains(&header.id) {
+            return Err(Error::FictiveRequest(header.id));
+        }
+
+        Ok(channel_id)
+    }
+
+    fn channel(&self, channel_id: ChannelId) -> &Channel {
+        &self.channels[channel_id as usize]
+    }
+
+    fn channel_mut(&mut self, channel_id: ChannelId) -> &mut Channel {
+        &mut self.channels[channel_id as usize]
+    }
+
+    fn request_limit(&self, channel_id: ChannelId) -> usize {
+        self.request_limits[channel_id as usize]
     }
 }
 
