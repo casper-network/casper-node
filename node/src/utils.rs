@@ -475,7 +475,7 @@ mod tests {
 
     /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
 
-    pub(crate) fn extract_metric_names<'a>(raw: &'a str) -> HashSet<&'a str> {
+    pub(crate) fn extract_metric_names(raw: &str) -> HashSet<&str> {
         raw.lines()
             .filter_map(|line| {
                 let trimmed = line.trim();
