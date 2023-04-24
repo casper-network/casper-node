@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fs, iter,
+    sync::Arc,
+    time::Duration,
+};
 
 use either::Either;
 use num::Zero;
@@ -42,7 +47,7 @@ use crate::{
         ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
         NodeRng,
     },
-    utils::{External, Loadable, Source, RESOURCES_PATH},
+    utils::{extract_metric_names, External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
 
@@ -958,10 +963,7 @@ async fn all_metrics_from_1_5_are_present() {
     let metrics_response = reqwest::Client::builder()
         .build()
         .expect("failed to build client")
-        .get(dbg!(format!(
-            "http://localhost:{}/metrics",
-            rest_addr.port()
-        )))
+        .get(format!("http://localhost:{}/metrics", rest_addr.port()))
         .timeout(Duration::from_secs(2))
         .send()
         .await
@@ -972,9 +974,17 @@ async fn all_metrics_from_1_5_are_present() {
         .await
         .expect("error retrieving text on metrics request");
 
-    dbg!(metrics_response);
-
     let (_net, _rng) = finish_cranking.await;
 
-    // TODO: Compare metrics.
+    let actual = extract_metric_names(&metrics_response);
+    let raw_1_5 = fs::read_to_string(RESOURCES_PATH.join("metrics-1.5.txt"))
+        .expect("could not read 1.5 metrics snapshot");
+    let metrics_1_5 = extract_metric_names(&raw_1_5);
+
+    let missing: HashSet<_> = metrics_1_5.difference(&actual).collect();
+    assert!(
+        missing.is_empty(),
+        "missing 1.5 metrics in current metrics set: {:?}",
+        missing
+    );
 }

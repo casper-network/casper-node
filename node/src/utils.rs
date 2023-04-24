@@ -16,7 +16,6 @@ pub mod work_queue;
 use std::{
     any,
     cell::RefCell,
-    collections::BTreeSet,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
     io::{self, Write},
@@ -46,6 +45,8 @@ pub(crate) use external::RESOURCES_PATH;
 pub use external::{LoadError, Loadable};
 pub(crate) use fuse::{DropSwitch, Fuse, ObservableFuse, SharedFuse};
 pub(crate) use round_robin::WeightedRoundRobin;
+#[cfg(test)]
+pub(crate) use tests::extract_metric_names;
 
 /// DNS resolution error.
 #[derive(Debug, Error)]
@@ -491,29 +492,30 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
     }
 }
 
-/// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
-fn extract_metric_names<'a>(raw: &'a str) -> BTreeSet<&'a str> {
-    raw.lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                None
-            } else {
-                let (full_id, _) = trimmed.split_once(' ')?;
-                let id = full_id.split_once('{').map(|v| v.0).unwrap_or(full_id);
-                Some(id)
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, sync::Arc, time::Duration};
+    use std::{collections::HashSet, sync::Arc, time::Duration};
 
     use prometheus::IntGauge;
 
-    use super::{extract_metric_names, wait_for_arc_drop, xor, TokenizedCount};
+    use super::{wait_for_arc_drop, xor, TokenizedCount};
+
+    /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
+
+    pub(crate) fn extract_metric_names<'a>(raw: &'a str) -> HashSet<&'a str> {
+        raw.lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    None
+                } else {
+                    let (full_id, _) = trimmed.split_once(' ')?;
+                    let id = full_id.split_once('{').map(|v| v.0).unwrap_or(full_id);
+                    Some(id)
+                }
+            })
+            .collect()
+    }
 
     #[test]
     fn xor_works() {
@@ -610,7 +612,7 @@ mod tests {
 
         let extracted = extract_metric_names(sample);
 
-        let mut expected = BTreeSet::new();
+        let mut expected = HashSet::new();
         expected.insert("chain_height");
         expected.insert("consensus_current_era");
         expected.insert("consumed_ram_bytes");
