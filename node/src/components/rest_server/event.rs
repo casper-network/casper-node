@@ -15,6 +15,7 @@ const_assert!(_REST_EVENT_SIZE < 89);
 #[derive(Debug, From)]
 pub(crate) enum Event {
     Initialize,
+    /// The background task running the HTTP server has finished binding its port.
     BindComplete(SocketAddr),
     #[from]
     RestRequest(RestRequest),

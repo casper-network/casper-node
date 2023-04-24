@@ -51,7 +51,6 @@ pub(super) async fn run<REv: ReactorEventT>(
 
     info!(address = %server.local_addr(), "started REST server");
 
-    // TODO: Where is the error case? Did we handle the case where we are unable to bind?
     effect_builder
         .into_inner()
         .schedule(Event::BindComplete(server.local_addr()), QueueKind::Regular)

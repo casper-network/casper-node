@@ -192,6 +192,11 @@ where
                     match self.inner_rest {
                         Some(ref mut inner_rest) => {
                             inner_rest.local_addr = Some(local_addr);
+                            info!(%local_addr, "REST server finishing binding");
+                            <Self as InitializedComponent<MainEvent>>::set_state(
+                                self,
+                                ComponentState::Initialized,
+                            );
                         }
                         None => {
                             error!("should not have received `BindComplete` event when REST server is disabled")
