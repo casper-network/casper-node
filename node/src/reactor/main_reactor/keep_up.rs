@@ -637,13 +637,11 @@ impl MainReactor {
                         .map_err(|err| err.to_string())?
                         .last()
                     {
-                        if !self.sync_to_genesis
-                            && synced_to_ttl(
-                                highest_switch_block_header,
-                                &highest_orphaned_block_header,
-                                self.chainspec.deploy_config.max_ttl,
-                            )?
-                        {
+                        if synced_to_ttl(
+                            highest_switch_block_header,
+                            &highest_orphaned_block_header,
+                            self.chainspec.deploy_config.max_ttl,
+                        )? {
                             return Ok(Some(SyncBackInstruction::TtlSynced));
                         }
                     }
