@@ -1,6 +1,6 @@
 use prometheus::{Histogram, Registry};
 
-use crate::{unregister_metric, utils};
+use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
 
 const HIST_SYNC_DURATION_NAME: &str = "historical_block_sync_duration_seconds";
 const HIST_SYNC_DURATION_HELP: &str = "duration (in sec) to synchronize a historical block";
@@ -17,10 +17,9 @@ const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 #[derive(Debug)]
 pub(super) struct Metrics {
     /// Time duration for the historical synchronizer to get a block.
-    pub(super) historical_block_sync_duration: Histogram,
+    pub(super) historical_block_sync_duration: RegisteredMetric<Histogram>,
     /// Time duration for the forward synchronizer to get a block.
-    pub(super) forward_block_sync_duration: Histogram,
-    registry: Registry,
+    pub(super) forward_block_sync_duration: RegisteredMetric<Histogram>,
 }
 
 impl Metrics {
@@ -33,26 +32,16 @@ impl Metrics {
         )?;
 
         Ok(Metrics {
-            historical_block_sync_duration: utils::register_histogram_metric(
-                registry,
+            historical_block_sync_duration: registry.new_histogram(
                 HIST_SYNC_DURATION_NAME,
                 HIST_SYNC_DURATION_HELP,
                 buckets.clone(),
             )?,
-            forward_block_sync_duration: utils::register_histogram_metric(
-                registry,
+            forward_block_sync_duration: registry.new_histogram(
                 FWD_SYNC_DURATION_NAME,
                 FWD_SYNC_DURATION_HELP,
                 buckets,
             )?,
-            registry: registry.clone(),
         })
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.historical_block_sync_duration);
-        unregister_metric!(self.registry, self.forward_block_sync_duration);
     }
 }

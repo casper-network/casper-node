@@ -1,62 +1,46 @@
 use prometheus::{IntCounter, Registry};
 
-use crate::unregister_metric;
+use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
 
 #[derive(Debug)]
 pub(crate) struct Metrics {
     /// Number of fetch requests that found an item in the storage.
-    pub found_in_storage: IntCounter,
+    pub found_in_storage: RegisteredMetric<IntCounter>,
     /// Number of fetch requests that fetched an item from peer.
-    pub found_on_peer: IntCounter,
+    pub found_on_peer: RegisteredMetric<IntCounter>,
     /// Number of fetch requests that timed out.
-    pub timeouts: IntCounter,
+    pub timeouts: RegisteredMetric<IntCounter>,
     /// Number of total fetch requests made.
-    pub fetch_total: IntCounter,
-    /// Reference to the registry for unregistering.
-    registry: Registry,
+    pub fetch_total: RegisteredMetric<IntCounter>,
 }
 
 impl Metrics {
     pub(super) fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
-        let found_in_storage = IntCounter::new(
+        let found_in_storage = registry.new_int_counter(
             format!("{}_found_in_storage", name),
             format!(
                 "number of fetch requests that found {} in local storage",
                 name
             ),
         )?;
-        let found_on_peer = IntCounter::new(
+        let found_on_peer = registry.new_int_counter(
             format!("{}_found_on_peer", name),
             format!("number of fetch requests that fetched {} from peer", name),
         )?;
-        let timeouts = IntCounter::new(
+        let timeouts = registry.new_int_counter(
             format!("{}_timeouts", name),
             format!("number of {} fetch requests that timed out", name),
         )?;
-        let fetch_total = IntCounter::new(
+        let fetch_total = registry.new_int_counter(
             format!("{}_fetch_total", name),
             format!("number of {} all fetch requests made", name),
         )?;
-        registry.register(Box::new(found_in_storage.clone()))?;
-        registry.register(Box::new(found_on_peer.clone()))?;
-        registry.register(Box::new(timeouts.clone()))?;
-        registry.register(Box::new(fetch_total.clone()))?;
 
         Ok(Metrics {
             found_in_storage,
             found_on_peer,
             timeouts,
             fetch_total,
-            registry: registry.clone(),
         })
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.found_in_storage);
-        unregister_metric!(self.registry, self.found_on_peer);
-        unregister_metric!(self.registry, self.timeouts);
-        unregister_metric!(self.registry, self.fetch_total);
     }
 }
