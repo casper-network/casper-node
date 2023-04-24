@@ -23,10 +23,12 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{fmt::Debug, time::Instant};
+use std::{fmt::Debug, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use once_cell::sync::OnceCell;
+use std::net::SocketAddr;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -93,6 +95,8 @@ pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
     shutdown_fuse: DropSwitch<ObservableFuse>,
+    /// The address the server is listening on.
+    local_addr: Arc<OnceCell<SocketAddr>>,
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -129,6 +133,25 @@ impl RestServer {
             node_startup_instant,
             inner_rest: None,
         }
+    }
+
+    /// Returns the binding address.
+    ///
+    /// Only used in testing. If you need to actually retrieve the bind address, add an appropriate
+    /// request or, as a last resort, make this function return `Option<SocketAddr>`.
+    ///
+    /// # Panics
+    ///
+    /// If the bind address is malformed, panics.
+    #[cfg(test)]
+    pub(crate) fn bind_address(&self) -> SocketAddr {
+        self.inner_rest
+            .as_ref()
+            .expect("no inner rest server")
+            .local_addr
+            .get()
+            .expect("missing bind addr")
+            .to_owned()
     }
 }
 
@@ -288,18 +311,21 @@ where
         let shutdown_fuse = ObservableFuse::new();
 
         let builder = utils::start_listening(&cfg.address)?;
+        let local_addr: Arc<OnceCell<SocketAddr>> = Default::default();
         let server_join_handle = Some(tokio::spawn(http_server::run(
             builder,
             effect_builder,
             self.api_version,
             shutdown_fuse.clone(),
             cfg.qps_limit,
+            local_addr.clone(),
         )));
 
         let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
             shutdown_fuse: DropSwitch::new(shutdown_fuse),
+            local_addr,
             server_join_handle,
             node_startup_instant,
             network_name,

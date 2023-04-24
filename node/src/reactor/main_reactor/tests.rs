@@ -22,6 +22,7 @@ use crate::{
         },
         gossiper, network, storage,
         upgrade_watcher::NextUpgrade,
+        InitializedComponent,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -907,4 +908,73 @@ async fn empty_block_validation_regression() {
         [inactive_validator] if malicious_validator == *inactive_validator => {}
         inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
+}
+
+/// Waits until all node have at least initialized the given component.
+///
+/// Expects the ident of a
+macro_rules! wait_for_component_initialization {
+    ($net:expr, $rng:expr, $component:ident) => {
+        $net.settle_on(
+            $rng,
+            |net| {
+                net.values().all(|runner| {
+                    InitializedComponent::<MainEvent>::is_initialized(
+                        &(runner.main_reactor().$component),
+                    )
+                })
+            },
+            Duration::from_secs(60),
+        )
+        .await;
+    };
+}
+
+#[tokio::test]
+async fn all_metrics_from_1_5_are_present() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let mut chain = TestChain::new(&mut rng, 2, None);
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    wait_for_component_initialization!(net, &mut rng, rest_server);
+
+    // Get the node ID.
+    let node_id = *net.nodes().keys().next().unwrap();
+
+    let rest_addr = net.nodes()[&node_id]
+        .main_reactor()
+        .rest_server
+        .bind_address();
+
+    // We let the entire network run in the background, until our request completes.
+    let finish_cranking = net.crank_until_stopped(rng);
+
+    let metrics_response = reqwest::Client::builder()
+        .build()
+        .expect("failed to build client")
+        .get(dbg!(format!(
+            "http://localhost:{}/metrics",
+            rest_addr.port()
+        )))
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .expect("request failed")
+        .error_for_status()
+        .expect("error response on metrics request")
+        .text()
+        .await
+        .expect("error retrieving text on metrics request");
+
+    dbg!(metrics_response);
+
+    let (_net, _rng) = finish_cranking.await;
+
+    // TODO: Compare metrics.
 }
