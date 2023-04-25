@@ -128,13 +128,6 @@ function do_start_network() {
     sleep 10
 }
 
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "2" ]; do
-        sleep 1.0
-    done
-}
-
 function do_stop_network() {
     log_step "stopping the network for an emergency upgrade"
     ACTIVATE_ERA="$(get_chain_era)"
