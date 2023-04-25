@@ -27,8 +27,6 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
@@ -77,6 +75,11 @@ use crate::{
     },
     utils::{Source, WithDir},
     NodeRng,
+};
+#[cfg(test)]
+use crate::{
+    components::{ComponentState, InitializedComponent},
+    testing::network::NetworkedReactor,
 };
 pub use config::Config;
 pub(crate) use error::Error;
@@ -1178,6 +1181,16 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    #[cfg(test)]
+    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
+        match name {
+            "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
+                &self.rest_server,
+            )),
+            _ => None,
+        }
     }
 }
 

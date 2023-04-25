@@ -80,6 +80,10 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
             Either::Right(event) => self.reactor.dispatch_event(effect_builder, rng, event),
         }
     }
+
+    fn get_component_state(&self, name: &str) -> Option<&crate::components::ComponentState> {
+        self.inner().get_component_state(name)
+    }
 }
 
 impl<R: Reactor + Finalize> Finalize for FilterReactor<R> {

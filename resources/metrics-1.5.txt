@@ -1,0 +1,808 @@
+# HELP accumulated_incoming_limiter_delay seconds spent delaying incoming traffic from non-validators due to limiter, in seconds.
+# TYPE accumulated_incoming_limiter_delay counter
+accumulated_incoming_limiter_delay 0
+# HELP accumulated_outgoing_limiter_delay seconds spent delaying outgoing traffic to non-validators due to limiter, in seconds
+# TYPE accumulated_outgoing_limiter_delay counter
+accumulated_outgoing_limiter_delay 0
+# HELP address_gossiper_items_received number of items received by the address_gossiper
+# TYPE address_gossiper_items_received counter
+address_gossiper_items_received 3
+# HELP address_gossiper_table_items_current number of items in the gossip table of address_gossiper in state current
+# TYPE address_gossiper_table_items_current gauge
+address_gossiper_table_items_current 0
+# HELP address_gossiper_table_items_finished number of items in the gossip table of address_gossiper in state finished
+# TYPE address_gossiper_table_items_finished gauge
+address_gossiper_table_items_finished 1
+# HELP address_gossiper_times_gossiped number of times the address_gossiper sent gossip requests to peers
+# TYPE address_gossiper_times_gossiped counter
+address_gossiper_times_gossiped 0
+# HELP address_gossiper_times_ran_out_of_peers number of times the address_gossiper ran out of peers and had to pause
+# TYPE address_gossiper_times_ran_out_of_peers counter
+address_gossiper_times_ran_out_of_peers 3
+# HELP allocated_ram_bytes total allocated ram in bytes
+# TYPE allocated_ram_bytes gauge
+allocated_ram_bytes 0
+# HELP amount_of_blocks the number of blocks finalized so far
+# TYPE amount_of_blocks gauge
+amount_of_blocks 0
+# HELP approvals_hashes_fetch_total number of approvals_hashes all fetch requests made
+# TYPE approvals_hashes_fetch_total counter
+approvals_hashes_fetch_total 0
+# HELP approvals_hashes_found_in_storage number of fetch requests that found approvals_hashes in local storage
+# TYPE approvals_hashes_found_in_storage counter
+approvals_hashes_found_in_storage 0
+# HELP approvals_hashes_found_on_peer number of fetch requests that fetched approvals_hashes from peer
+# TYPE approvals_hashes_found_on_peer counter
+approvals_hashes_found_on_peer 0
+# HELP approvals_hashes_timeouts number of approvals_hashes fetch requests that timed out
+# TYPE approvals_hashes_timeouts counter
+approvals_hashes_timeouts 0
+# HELP block_accumulator_block_acceptors number of block acceptors in the Block Accumulator
+# TYPE block_accumulator_block_acceptors gauge
+block_accumulator_block_acceptors 0
+# HELP block_accumulator_known_child_blocks number of blocks received by the Block Accumulator for which we know the hash of the child block
+# TYPE block_accumulator_known_child_blocks gauge
+block_accumulator_known_child_blocks 0
+# HELP block_execution_results_or_chunk_fetcher_fetch_total number of block_execution_results_or_chunk_fetcher all fetch requests made
+# TYPE block_execution_results_or_chunk_fetcher_fetch_total counter
+block_execution_results_or_chunk_fetcher_fetch_total 0
+# HELP block_execution_results_or_chunk_fetcher_found_in_storage number of fetch requests that found block_execution_results_or_chunk_fetcher in local storage
+# TYPE block_execution_results_or_chunk_fetcher_found_in_storage counter
+block_execution_results_or_chunk_fetcher_found_in_storage 0
+# HELP block_execution_results_or_chunk_fetcher_found_on_peer number of fetch requests that fetched block_execution_results_or_chunk_fetcher from peer
+# TYPE block_execution_results_or_chunk_fetcher_found_on_peer counter
+block_execution_results_or_chunk_fetcher_found_on_peer 0
+# HELP block_execution_results_or_chunk_fetcher_timeouts number of block_execution_results_or_chunk_fetcher fetch requests that timed out
+# TYPE block_execution_results_or_chunk_fetcher_timeouts counter
+block_execution_results_or_chunk_fetcher_timeouts 0
+# HELP block_fetch_total number of block all fetch requests made
+# TYPE block_fetch_total counter
+block_fetch_total 0
+# HELP block_found_in_storage number of fetch requests that found block in local storage
+# TYPE block_found_in_storage counter
+block_found_in_storage 0
+# HELP block_found_on_peer number of fetch requests that fetched block from peer
+# TYPE block_found_on_peer counter
+block_found_on_peer 0
+# HELP block_gossiper_items_received number of items received by the block_gossiper
+# TYPE block_gossiper_items_received counter
+block_gossiper_items_received 0
+# HELP block_gossiper_table_items_current number of items in the gossip table of block_gossiper in state current
+# TYPE block_gossiper_table_items_current gauge
+block_gossiper_table_items_current 0
+# HELP block_gossiper_table_items_finished number of items in the gossip table of block_gossiper in state finished
+# TYPE block_gossiper_table_items_finished gauge
+block_gossiper_table_items_finished 0
+# HELP block_gossiper_times_gossiped number of times the block_gossiper sent gossip requests to peers
+# TYPE block_gossiper_times_gossiped counter
+block_gossiper_times_gossiped 0
+# HELP block_gossiper_times_ran_out_of_peers number of times the block_gossiper ran out of peers and had to pause
+# TYPE block_gossiper_times_ran_out_of_peers counter
+block_gossiper_times_ran_out_of_peers 0
+# HELP block_header_fetch_total number of block_header all fetch requests made
+# TYPE block_header_fetch_total counter
+block_header_fetch_total 0
+# HELP block_header_found_in_storage number of fetch requests that found block_header in local storage
+# TYPE block_header_found_in_storage counter
+block_header_found_in_storage 0
+# HELP block_header_found_on_peer number of fetch requests that fetched block_header from peer
+# TYPE block_header_found_on_peer counter
+block_header_found_on_peer 0
+# HELP block_header_timeouts number of block_header fetch requests that timed out
+# TYPE block_header_timeouts counter
+block_header_timeouts 0
+# HELP block_timeouts number of block fetch requests that timed out
+# TYPE block_timeouts counter
+block_timeouts 0
+# HELP chain_height highest complete block (DEPRECATED)
+# TYPE chain_height gauge
+chain_height 0
+# HELP consensus_current_era the current era in consensus
+# TYPE consensus_current_era gauge
+consensus_current_era 0
+# HELP consumed_ram_bytes total consumed ram in bytes
+# TYPE consumed_ram_bytes gauge
+consumed_ram_bytes 0
+# HELP contract_runtime_apply_commit time in seconds to commit the execution effects of a contract
+# TYPE contract_runtime_apply_commit histogram
+contract_runtime_apply_commit_bucket{le="0.01"} 0
+contract_runtime_apply_commit_bucket{le="0.02"} 0
+contract_runtime_apply_commit_bucket{le="0.04"} 0
+contract_runtime_apply_commit_bucket{le="0.08"} 0
+contract_runtime_apply_commit_bucket{le="0.16"} 0
+contract_runtime_apply_commit_bucket{le="0.32"} 0
+contract_runtime_apply_commit_bucket{le="0.64"} 0
+contract_runtime_apply_commit_bucket{le="1.28"} 0
+contract_runtime_apply_commit_bucket{le="2.56"} 0
+contract_runtime_apply_commit_bucket{le="5.12"} 0
+contract_runtime_apply_commit_bucket{le="+Inf"} 0
+contract_runtime_apply_commit_sum 0
+contract_runtime_apply_commit_count 0
+# HELP contract_runtime_commit_step time in seconds to commit the step at era end
+# TYPE contract_runtime_commit_step histogram
+contract_runtime_commit_step_bucket{le="0.01"} 0
+contract_runtime_commit_step_bucket{le="0.02"} 0
+contract_runtime_commit_step_bucket{le="0.04"} 0
+contract_runtime_commit_step_bucket{le="0.08"} 0
+contract_runtime_commit_step_bucket{le="0.16"} 0
+contract_runtime_commit_step_bucket{le="0.32"} 0
+contract_runtime_commit_step_bucket{le="0.64"} 0
+contract_runtime_commit_step_bucket{le="1.28"} 0
+contract_runtime_commit_step_bucket{le="2.56"} 0
+contract_runtime_commit_step_bucket{le="5.12"} 0
+contract_runtime_commit_step_bucket{le="+Inf"} 0
+contract_runtime_commit_step_sum 0
+contract_runtime_commit_step_count 0
+# HELP contract_runtime_commit_upgrade time in seconds to commit an upgrade
+# TYPE contract_runtime_commit_upgrade histogram
+contract_runtime_commit_upgrade_bucket{le="0.01"} 0
+contract_runtime_commit_upgrade_bucket{le="0.02"} 0
+contract_runtime_commit_upgrade_bucket{le="0.04"} 0
+contract_runtime_commit_upgrade_bucket{le="0.08"} 0
+contract_runtime_commit_upgrade_bucket{le="0.16"} 0
+contract_runtime_commit_upgrade_bucket{le="0.32"} 0
+contract_runtime_commit_upgrade_bucket{le="0.64"} 0
+contract_runtime_commit_upgrade_bucket{le="1.28"} 0
+contract_runtime_commit_upgrade_bucket{le="2.56"} 0
+contract_runtime_commit_upgrade_bucket{le="5.12"} 0
+contract_runtime_commit_upgrade_bucket{le="+Inf"} 0
+contract_runtime_commit_upgrade_sum 0
+contract_runtime_commit_upgrade_count 0
+# HELP contract_runtime_execute_block time in seconds to execute all deploys in a block
+# TYPE contract_runtime_execute_block histogram
+contract_runtime_execute_block_bucket{le="0.01"} 0
+contract_runtime_execute_block_bucket{le="0.02"} 0
+contract_runtime_execute_block_bucket{le="0.04"} 0
+contract_runtime_execute_block_bucket{le="0.08"} 0
+contract_runtime_execute_block_bucket{le="0.16"} 0
+contract_runtime_execute_block_bucket{le="0.32"} 0
+contract_runtime_execute_block_bucket{le="0.64"} 0
+contract_runtime_execute_block_bucket{le="1.28"} 0
+contract_runtime_execute_block_bucket{le="2.56"} 0
+contract_runtime_execute_block_bucket{le="5.12"} 0
+contract_runtime_execute_block_bucket{le="+Inf"} 0
+contract_runtime_execute_block_sum 0
+contract_runtime_execute_block_count 0
+# HELP contract_runtime_get_balance time in seconds to get the balance of a purse from global state
+# TYPE contract_runtime_get_balance histogram
+contract_runtime_get_balance_bucket{le="0.01"} 0
+contract_runtime_get_balance_bucket{le="0.02"} 0
+contract_runtime_get_balance_bucket{le="0.04"} 0
+contract_runtime_get_balance_bucket{le="0.08"} 0
+contract_runtime_get_balance_bucket{le="0.16"} 0
+contract_runtime_get_balance_bucket{le="0.32"} 0
+contract_runtime_get_balance_bucket{le="0.64"} 0
+contract_runtime_get_balance_bucket{le="1.28"} 0
+contract_runtime_get_balance_bucket{le="2.56"} 0
+contract_runtime_get_balance_bucket{le="5.12"} 0
+contract_runtime_get_balance_bucket{le="+Inf"} 0
+contract_runtime_get_balance_sum 0
+contract_runtime_get_balance_count 0
+# HELP contract_runtime_get_bids time in seconds to get bids from global state
+# TYPE contract_runtime_get_bids histogram
+contract_runtime_get_bids_bucket{le="0.01"} 0
+contract_runtime_get_bids_bucket{le="0.02"} 0
+contract_runtime_get_bids_bucket{le="0.04"} 0
+contract_runtime_get_bids_bucket{le="0.08"} 0
+contract_runtime_get_bids_bucket{le="0.16"} 0
+contract_runtime_get_bids_bucket{le="0.32"} 0
+contract_runtime_get_bids_bucket{le="0.64"} 0
+contract_runtime_get_bids_bucket{le="1.28"} 0
+contract_runtime_get_bids_bucket{le="2.56"} 0
+contract_runtime_get_bids_bucket{le="5.12"} 0
+contract_runtime_get_bids_bucket{le="+Inf"} 0
+contract_runtime_get_bids_sum 0
+contract_runtime_get_bids_count 0
+# HELP contract_runtime_get_era_validators time in seconds to get validators for a given era from global state
+# TYPE contract_runtime_get_era_validators histogram
+contract_runtime_get_era_validators_bucket{le="0.01"} 0
+contract_runtime_get_era_validators_bucket{le="0.02"} 0
+contract_runtime_get_era_validators_bucket{le="0.04"} 0
+contract_runtime_get_era_validators_bucket{le="0.08"} 0
+contract_runtime_get_era_validators_bucket{le="0.16"} 0
+contract_runtime_get_era_validators_bucket{le="0.32"} 0
+contract_runtime_get_era_validators_bucket{le="0.64"} 0
+contract_runtime_get_era_validators_bucket{le="1.28"} 0
+contract_runtime_get_era_validators_bucket{le="2.56"} 0
+contract_runtime_get_era_validators_bucket{le="5.12"} 0
+contract_runtime_get_era_validators_bucket{le="+Inf"} 0
+contract_runtime_get_era_validators_sum 0
+contract_runtime_get_era_validators_count 0
+# HELP contract_runtime_get_trie time in seconds to get a trie
+# TYPE contract_runtime_get_trie histogram
+contract_runtime_get_trie_bucket{le="0.001"} 0
+contract_runtime_get_trie_bucket{le="0.002"} 0
+contract_runtime_get_trie_bucket{le="0.004"} 0
+contract_runtime_get_trie_bucket{le="0.008"} 0
+contract_runtime_get_trie_bucket{le="0.016"} 0
+contract_runtime_get_trie_bucket{le="0.032"} 0
+contract_runtime_get_trie_bucket{le="0.064"} 0
+contract_runtime_get_trie_bucket{le="0.128"} 0
+contract_runtime_get_trie_bucket{le="0.256"} 0
+contract_runtime_get_trie_bucket{le="0.512"} 0
+contract_runtime_get_trie_bucket{le="+Inf"} 0
+contract_runtime_get_trie_sum 0
+contract_runtime_get_trie_count 0
+# HELP contract_runtime_latest_commit_step duration in seconds of latest commit step at era end
+# TYPE contract_runtime_latest_commit_step gauge
+contract_runtime_latest_commit_step 0
+# HELP contract_runtime_put_trie time in seconds to put a trie
+# TYPE contract_runtime_put_trie histogram
+contract_runtime_put_trie_bucket{le="0.001"} 0
+contract_runtime_put_trie_bucket{le="0.002"} 0
+contract_runtime_put_trie_bucket{le="0.004"} 0
+contract_runtime_put_trie_bucket{le="0.008"} 0
+contract_runtime_put_trie_bucket{le="0.016"} 0
+contract_runtime_put_trie_bucket{le="0.032"} 0
+contract_runtime_put_trie_bucket{le="0.064"} 0
+contract_runtime_put_trie_bucket{le="0.128"} 0
+contract_runtime_put_trie_bucket{le="0.256"} 0
+contract_runtime_put_trie_bucket{le="0.512"} 0
+contract_runtime_put_trie_bucket{le="+Inf"} 0
+contract_runtime_put_trie_sum 0
+contract_runtime_put_trie_count 0
+# HELP contract_runtime_run_execute time in seconds to execute but not commit a contract
+# TYPE contract_runtime_run_execute histogram
+contract_runtime_run_execute_bucket{le="0.01"} 0
+contract_runtime_run_execute_bucket{le="0.02"} 0
+contract_runtime_run_execute_bucket{le="0.04"} 0
+contract_runtime_run_execute_bucket{le="0.08"} 0
+contract_runtime_run_execute_bucket{le="0.16"} 0
+contract_runtime_run_execute_bucket{le="0.32"} 0
+contract_runtime_run_execute_bucket{le="0.64"} 0
+contract_runtime_run_execute_bucket{le="1.28"} 0
+contract_runtime_run_execute_bucket{le="2.56"} 0
+contract_runtime_run_execute_bucket{le="5.12"} 0
+contract_runtime_run_execute_bucket{le="+Inf"} 0
+contract_runtime_run_execute_sum 0
+contract_runtime_run_execute_count 0
+# HELP contract_runtime_run_query time in seconds to run a query in global state
+# TYPE contract_runtime_run_query histogram
+contract_runtime_run_query_bucket{le="0.01"} 0
+contract_runtime_run_query_bucket{le="0.02"} 0
+contract_runtime_run_query_bucket{le="0.04"} 0
+contract_runtime_run_query_bucket{le="0.08"} 0
+contract_runtime_run_query_bucket{le="0.16"} 0
+contract_runtime_run_query_bucket{le="0.32"} 0
+contract_runtime_run_query_bucket{le="0.64"} 0
+contract_runtime_run_query_bucket{le="1.28"} 0
+contract_runtime_run_query_bucket{le="2.56"} 0
+contract_runtime_run_query_bucket{le="5.12"} 0
+contract_runtime_run_query_bucket{le="+Inf"} 0
+contract_runtime_run_query_sum 0
+contract_runtime_run_query_count 0
+# HELP deploy_acceptor_accepted_deploy time in seconds to accept a deploy in the deploy acceptor
+# TYPE deploy_acceptor_accepted_deploy histogram
+deploy_acceptor_accepted_deploy_bucket{le="10"} 0
+deploy_acceptor_accepted_deploy_bucket{le="20"} 0
+deploy_acceptor_accepted_deploy_bucket{le="40"} 0
+deploy_acceptor_accepted_deploy_bucket{le="80"} 0
+deploy_acceptor_accepted_deploy_bucket{le="160"} 0
+deploy_acceptor_accepted_deploy_bucket{le="320"} 0
+deploy_acceptor_accepted_deploy_bucket{le="640"} 0
+deploy_acceptor_accepted_deploy_bucket{le="1280"} 0
+deploy_acceptor_accepted_deploy_bucket{le="2560"} 0
+deploy_acceptor_accepted_deploy_bucket{le="5120"} 0
+deploy_acceptor_accepted_deploy_bucket{le="+Inf"} 0
+deploy_acceptor_accepted_deploy_sum 0
+deploy_acceptor_accepted_deploy_count 0
+# HELP deploy_acceptor_rejected_deploy time in seconds to reject a deploy in the deploy acceptor
+# TYPE deploy_acceptor_rejected_deploy histogram
+deploy_acceptor_rejected_deploy_bucket{le="10"} 0
+deploy_acceptor_rejected_deploy_bucket{le="20"} 0
+deploy_acceptor_rejected_deploy_bucket{le="40"} 0
+deploy_acceptor_rejected_deploy_bucket{le="80"} 0
+deploy_acceptor_rejected_deploy_bucket{le="160"} 0
+deploy_acceptor_rejected_deploy_bucket{le="320"} 0
+deploy_acceptor_rejected_deploy_bucket{le="640"} 0
+deploy_acceptor_rejected_deploy_bucket{le="1280"} 0
+deploy_acceptor_rejected_deploy_bucket{le="2560"} 0
+deploy_acceptor_rejected_deploy_bucket{le="5120"} 0
+deploy_acceptor_rejected_deploy_bucket{le="+Inf"} 0
+deploy_acceptor_rejected_deploy_sum 0
+deploy_acceptor_rejected_deploy_count 0
+# HELP deploy_buffer_dead_deploys number of deploys that should not be included in future proposals.
+# TYPE deploy_buffer_dead_deploys gauge
+deploy_buffer_dead_deploys 0
+# HELP deploy_buffer_held_deploys number of deploys included in in-flight proposed blocks.
+# TYPE deploy_buffer_held_deploys gauge
+deploy_buffer_held_deploys 0
+# HELP deploy_buffer_total_deploys total number of deploys contained in the deploy buffer.
+# TYPE deploy_buffer_total_deploys gauge
+deploy_buffer_total_deploys 0
+# HELP deploy_fetch_total number of deploy all fetch requests made
+# TYPE deploy_fetch_total counter
+deploy_fetch_total 0
+# HELP deploy_found_in_storage number of fetch requests that found deploy in local storage
+# TYPE deploy_found_in_storage counter
+deploy_found_in_storage 0
+# HELP deploy_found_on_peer number of fetch requests that fetched deploy from peer
+# TYPE deploy_found_on_peer counter
+deploy_found_on_peer 0
+# HELP deploy_gossiper_items_received number of items received by the deploy_gossiper
+# TYPE deploy_gossiper_items_received counter
+deploy_gossiper_items_received 0
+# HELP deploy_gossiper_table_items_current number of items in the gossip table of deploy_gossiper in state current
+# TYPE deploy_gossiper_table_items_current gauge
+deploy_gossiper_table_items_current 0
+# HELP deploy_gossiper_table_items_finished number of items in the gossip table of deploy_gossiper in state finished
+# TYPE deploy_gossiper_table_items_finished gauge
+deploy_gossiper_table_items_finished 0
+# HELP deploy_gossiper_times_gossiped number of times the deploy_gossiper sent gossip requests to peers
+# TYPE deploy_gossiper_times_gossiped counter
+deploy_gossiper_times_gossiped 0
+# HELP deploy_gossiper_times_ran_out_of_peers number of times the deploy_gossiper ran out of peers and had to pause
+# TYPE deploy_gossiper_times_ran_out_of_peers counter
+deploy_gossiper_times_ran_out_of_peers 0
+# HELP deploy_timeouts number of deploy fetch requests that timed out
+# TYPE deploy_timeouts counter
+deploy_timeouts 0
+# HELP event_dispatch_duration time in nanoseconds to dispatch an event
+# TYPE event_dispatch_duration histogram
+event_dispatch_duration_bucket{le="100"} 0
+event_dispatch_duration_bucket{le="500"} 0
+event_dispatch_duration_bucket{le="1000"} 0
+event_dispatch_duration_bucket{le="5000"} 4
+event_dispatch_duration_bucket{le="10000"} 4
+event_dispatch_duration_bucket{le="20000"} 4
+event_dispatch_duration_bucket{le="50000"} 9
+event_dispatch_duration_bucket{le="100000"} 20
+event_dispatch_duration_bucket{le="200000"} 45
+event_dispatch_duration_bucket{le="300000"} 78
+event_dispatch_duration_bucket{le="400000"} 126
+event_dispatch_duration_bucket{le="500000"} 200
+event_dispatch_duration_bucket{le="600000"} 247
+event_dispatch_duration_bucket{le="700000"} 271
+event_dispatch_duration_bucket{le="800000"} 274
+event_dispatch_duration_bucket{le="900000"} 276
+event_dispatch_duration_bucket{le="1000000"} 281
+event_dispatch_duration_bucket{le="2000000"} 305
+event_dispatch_duration_bucket{le="5000000"} 315
+event_dispatch_duration_bucket{le="+Inf"} 316
+event_dispatch_duration_sum 183686355
+event_dispatch_duration_count 316
+# HELP execution_queue_size number of blocks that are currently enqueued and waiting for execution
+# TYPE execution_queue_size gauge
+execution_queue_size 0
+# HELP finality_signature_fetcher_fetch_total number of finality_signature_fetcher all fetch requests made
+# TYPE finality_signature_fetcher_fetch_total counter
+finality_signature_fetcher_fetch_total 0
+# HELP finality_signature_fetcher_found_in_storage number of fetch requests that found finality_signature_fetcher in local storage
+# TYPE finality_signature_fetcher_found_in_storage counter
+finality_signature_fetcher_found_in_storage 0
+# HELP finality_signature_fetcher_found_on_peer number of fetch requests that fetched finality_signature_fetcher from peer
+# TYPE finality_signature_fetcher_found_on_peer counter
+finality_signature_fetcher_found_on_peer 0
+# HELP finality_signature_fetcher_timeouts number of finality_signature_fetcher fetch requests that timed out
+# TYPE finality_signature_fetcher_timeouts counter
+finality_signature_fetcher_timeouts 0
+# HELP finality_signature_gossiper_items_received number of items received by the finality_signature_gossiper
+# TYPE finality_signature_gossiper_items_received counter
+finality_signature_gossiper_items_received 0
+# HELP finality_signature_gossiper_table_items_current number of items in the gossip table of finality_signature_gossiper in state current
+# TYPE finality_signature_gossiper_table_items_current gauge
+finality_signature_gossiper_table_items_current 0
+# HELP finality_signature_gossiper_table_items_finished number of items in the gossip table of finality_signature_gossiper in state finished
+# TYPE finality_signature_gossiper_table_items_finished gauge
+finality_signature_gossiper_table_items_finished 0
+# HELP finality_signature_gossiper_times_gossiped number of times the finality_signature_gossiper sent gossip requests to peers
+# TYPE finality_signature_gossiper_times_gossiped counter
+finality_signature_gossiper_times_gossiped 0
+# HELP finality_signature_gossiper_times_ran_out_of_peers number of times the finality_signature_gossiper ran out of peers and had to pause
+# TYPE finality_signature_gossiper_times_ran_out_of_peers counter
+finality_signature_gossiper_times_ran_out_of_peers 0
+# HELP finalization_time the amount of time, in milliseconds, between proposal and finalization of the latest finalized block
+# TYPE finalization_time gauge
+finalization_time 0
+# HELP forward_block_sync_duration_seconds duration (in sec) to synchronize a forward block
+# TYPE forward_block_sync_duration_seconds histogram
+forward_block_sync_duration_seconds_bucket{le="0.05"} 0
+forward_block_sync_duration_seconds_bucket{le="0.08750000000000001"} 0
+forward_block_sync_duration_seconds_bucket{le="0.153125"} 0
+forward_block_sync_duration_seconds_bucket{le="0.26796875000000003"} 0
+forward_block_sync_duration_seconds_bucket{le="0.46894531250000004"} 0
+forward_block_sync_duration_seconds_bucket{le="0.8206542968750001"} 0
+forward_block_sync_duration_seconds_bucket{le="1.4361450195312502"} 0
+forward_block_sync_duration_seconds_bucket{le="2.513253784179688"} 0
+forward_block_sync_duration_seconds_bucket{le="4.398194122314454"} 0
+forward_block_sync_duration_seconds_bucket{le="7.696839714050294"} 0
+forward_block_sync_duration_seconds_bucket{le="+Inf"} 0
+forward_block_sync_duration_seconds_sum 0
+forward_block_sync_duration_seconds_count 0
+# HELP highest_available_block_height highest height of the available block range (the highest contiguous chain of complete blocks)
+# TYPE highest_available_block_height gauge
+highest_available_block_height 0
+# HELP historical_block_sync_duration_seconds duration (in sec) to synchronize a historical block
+# TYPE historical_block_sync_duration_seconds histogram
+historical_block_sync_duration_seconds_bucket{le="0.05"} 0
+historical_block_sync_duration_seconds_bucket{le="0.08750000000000001"} 0
+historical_block_sync_duration_seconds_bucket{le="0.153125"} 0
+historical_block_sync_duration_seconds_bucket{le="0.26796875000000003"} 0
+historical_block_sync_duration_seconds_bucket{le="0.46894531250000004"} 0
+historical_block_sync_duration_seconds_bucket{le="0.8206542968750001"} 0
+historical_block_sync_duration_seconds_bucket{le="1.4361450195312502"} 0
+historical_block_sync_duration_seconds_bucket{le="2.513253784179688"} 0
+historical_block_sync_duration_seconds_bucket{le="4.398194122314454"} 0
+historical_block_sync_duration_seconds_bucket{le="7.696839714050294"} 0
+historical_block_sync_duration_seconds_bucket{le="+Inf"} 0
+historical_block_sync_duration_seconds_sum 0
+historical_block_sync_duration_seconds_count 0
+# HELP legacy_deploy_fetch_total number of legacy_deploy all fetch requests made
+# TYPE legacy_deploy_fetch_total counter
+legacy_deploy_fetch_total 0
+# HELP legacy_deploy_found_in_storage number of fetch requests that found legacy_deploy in local storage
+# TYPE legacy_deploy_found_in_storage counter
+legacy_deploy_found_in_storage 0
+# HELP legacy_deploy_found_on_peer number of fetch requests that fetched legacy_deploy from peer
+# TYPE legacy_deploy_found_on_peer counter
+legacy_deploy_found_on_peer 0
+# HELP legacy_deploy_timeouts number of legacy_deploy fetch requests that timed out
+# TYPE legacy_deploy_timeouts counter
+legacy_deploy_timeouts 0
+# HELP lowest_available_block_height lowest height of the available block range (the highest contiguous chain of complete blocks)
+# TYPE lowest_available_block_height gauge
+lowest_available_block_height 0
+# HELP mem_address_gossiper address_gossiper memory usage in bytes
+# TYPE mem_address_gossiper gauge
+mem_address_gossiper 0
+# HELP mem_block_accumulator block accumulator memory usage in bytes
+# TYPE mem_block_accumulator gauge
+mem_block_accumulator 0
+# HELP mem_block_gossiper block gossiper memory usage in bytes
+# TYPE mem_block_gossiper gauge
+mem_block_gossiper 0
+# HELP mem_block_synchronizer block synchronizer memory usage in bytes
+# TYPE mem_block_synchronizer gauge
+mem_block_synchronizer 0
+# HELP mem_block_validator block validator memory usage in bytes
+# TYPE mem_block_validator gauge
+mem_block_validator 0
+# HELP mem_consensus consensus memory usage in bytes
+# TYPE mem_consensus gauge
+mem_consensus 0
+# HELP mem_contract_runtime contract runtime memory usage in bytes
+# TYPE mem_contract_runtime gauge
+mem_contract_runtime 0
+# HELP mem_deploy_acceptor deploy acceptor memory usage in bytes
+# TYPE mem_deploy_acceptor gauge
+mem_deploy_acceptor 0
+# HELP mem_deploy_buffer deploy buffer memory usage in bytes
+# TYPE mem_deploy_buffer gauge
+mem_deploy_buffer 0
+# HELP mem_deploy_gossiper deploy gossiper memory usage in bytes
+# TYPE mem_deploy_gossiper gauge
+mem_deploy_gossiper 0
+# HELP mem_diagnostics_port diagnostics port memory usage in bytes
+# TYPE mem_diagnostics_port gauge
+mem_diagnostics_port 0
+# HELP mem_estimator_runtime_s time in seconds to estimate memory usage
+# TYPE mem_estimator_runtime_s histogram
+mem_estimator_runtime_s_bucket{le="0.000000004"} 0
+mem_estimator_runtime_s_bucket{le="0.000000008"} 0
+mem_estimator_runtime_s_bucket{le="0.000000016"} 0
+mem_estimator_runtime_s_bucket{le="0.000000032"} 0
+mem_estimator_runtime_s_bucket{le="0.000000064"} 0
+mem_estimator_runtime_s_bucket{le="0.000000128"} 0
+mem_estimator_runtime_s_bucket{le="0.000000256"} 0
+mem_estimator_runtime_s_bucket{le="0.000000512"} 0
+mem_estimator_runtime_s_bucket{le="0.000001024"} 0
+mem_estimator_runtime_s_bucket{le="0.000002048"} 0
+mem_estimator_runtime_s_bucket{le="0.000004096"} 0
+mem_estimator_runtime_s_bucket{le="0.000008192"} 0
+mem_estimator_runtime_s_bucket{le="0.000016384"} 0
+mem_estimator_runtime_s_bucket{le="0.000032768"} 0
+mem_estimator_runtime_s_bucket{le="0.000065536"} 0
+mem_estimator_runtime_s_bucket{le="0.000131072"} 0
+mem_estimator_runtime_s_bucket{le="0.000262144"} 0
+mem_estimator_runtime_s_bucket{le="0.000524288"} 0
+mem_estimator_runtime_s_bucket{le="0.001048576"} 0
+mem_estimator_runtime_s_bucket{le="0.002097152"} 0
+mem_estimator_runtime_s_bucket{le="0.004194304"} 0
+mem_estimator_runtime_s_bucket{le="0.008388608"} 0
+mem_estimator_runtime_s_bucket{le="0.016777216"} 0
+mem_estimator_runtime_s_bucket{le="0.033554432"} 0
+mem_estimator_runtime_s_bucket{le="0.067108864"} 0
+mem_estimator_runtime_s_bucket{le="0.134217728"} 0
+mem_estimator_runtime_s_bucket{le="0.268435456"} 0
+mem_estimator_runtime_s_bucket{le="0.536870912"} 0
+mem_estimator_runtime_s_bucket{le="1.073741824"} 0
+mem_estimator_runtime_s_bucket{le="2.147483648"} 0
+mem_estimator_runtime_s_bucket{le="4.294967296"} 0
+mem_estimator_runtime_s_bucket{le="8.589934592"} 0
+mem_estimator_runtime_s_bucket{le="+Inf"} 0
+mem_estimator_runtime_s_sum 0
+mem_estimator_runtime_s_count 0
+# HELP mem_event_stream_server event stream server memory usage in bytes
+# TYPE mem_event_stream_server gauge
+mem_event_stream_server 0
+# HELP mem_fetchers combined fetcher memory usage in bytes
+# TYPE mem_fetchers gauge
+mem_fetchers 0
+# HELP mem_finality_signature_gossiper finality signature gossiper memory usage in bytes
+# TYPE mem_finality_signature_gossiper gauge
+mem_finality_signature_gossiper 0
+# HELP mem_metrics metrics memory usage in bytes
+# TYPE mem_metrics gauge
+mem_metrics 0
+# HELP mem_net network memory usage in bytes
+# TYPE mem_net gauge
+mem_net 0
+# HELP mem_rest_server rest server memory usage in bytes
+# TYPE mem_rest_server gauge
+mem_rest_server 0
+# HELP mem_rpc_server rpc server memory usage in bytes
+# TYPE mem_rpc_server gauge
+mem_rpc_server 0
+# HELP mem_storage storage memory usage in bytes
+# TYPE mem_storage gauge
+mem_storage 0
+# HELP mem_sync_leaper sync leaper memory usage in bytes
+# TYPE mem_sync_leaper gauge
+mem_sync_leaper 0
+# HELP mem_total total memory usage in bytes
+# TYPE mem_total gauge
+mem_total 0
+# HELP mem_upgrade_watcher upgrade watcher memory usage in bytes
+# TYPE mem_upgrade_watcher gauge
+mem_upgrade_watcher 0
+# HELP net_broadcast_requests number of broadcasting requests
+# TYPE net_broadcast_requests counter
+net_broadcast_requests 0
+# HELP net_direct_message_requests number of requests to send a message directly to a peer
+# TYPE net_direct_message_requests counter
+net_direct_message_requests 0
+# HELP net_in_bytes_address_gossip volume in bytes of incoming messages with address gossiper payload
+# TYPE net_in_bytes_address_gossip counter
+net_in_bytes_address_gossip 0
+# HELP net_in_bytes_block_gossip volume in bytes of incoming messages with block gossiper payload
+# TYPE net_in_bytes_block_gossip counter
+net_in_bytes_block_gossip 0
+# HELP net_in_bytes_block_transfer volume in bytes of incoming messages with block request/response payload
+# TYPE net_in_bytes_block_transfer counter
+net_in_bytes_block_transfer 0
+# HELP net_in_bytes_consensus volume in bytes of incoming messages with consensus payload
+# TYPE net_in_bytes_consensus counter
+net_in_bytes_consensus 0
+# HELP net_in_bytes_deploy_gossip volume in bytes of incoming messages with deploy gossiper payload
+# TYPE net_in_bytes_deploy_gossip counter
+net_in_bytes_deploy_gossip 0
+# HELP net_in_bytes_deploy_transfer volume in bytes of incoming messages with deploy request/response payload
+# TYPE net_in_bytes_deploy_transfer counter
+net_in_bytes_deploy_transfer 0
+# HELP net_in_bytes_finality_signature_gossip volume in bytes of incoming messages with finality signature gossiper payload
+# TYPE net_in_bytes_finality_signature_gossip counter
+net_in_bytes_finality_signature_gossip 0
+# HELP net_in_bytes_other volume in bytes of incoming messages with other payload
+# TYPE net_in_bytes_other counter
+net_in_bytes_other 0
+# HELP net_in_bytes_protocol volume in bytes of incoming messages that are protocol overhead
+# TYPE net_in_bytes_protocol counter
+net_in_bytes_protocol 0
+# HELP net_in_bytes_trie_transfer volume in bytes of incoming messages with trie payloads
+# TYPE net_in_bytes_trie_transfer counter
+net_in_bytes_trie_transfer 0
+# HELP net_in_count_address_gossip count of incoming messages with address gossiper payload
+# TYPE net_in_count_address_gossip counter
+net_in_count_address_gossip 0
+# HELP net_in_count_block_gossip count of incoming messages with block gossiper payload
+# TYPE net_in_count_block_gossip counter
+net_in_count_block_gossip 0
+# HELP net_in_count_block_transfer count of incoming messages with block request/response payload
+# TYPE net_in_count_block_transfer counter
+net_in_count_block_transfer 0
+# HELP net_in_count_consensus count of incoming messages with consensus payload
+# TYPE net_in_count_consensus counter
+net_in_count_consensus 0
+# HELP net_in_count_deploy_gossip count of incoming messages with deploy gossiper payload
+# TYPE net_in_count_deploy_gossip counter
+net_in_count_deploy_gossip 0
+# HELP net_in_count_deploy_transfer count of incoming messages with deploy request/response payload
+# TYPE net_in_count_deploy_transfer counter
+net_in_count_deploy_transfer 0
+# HELP net_in_count_finality_signature_gossip count of incoming messages with finality signature gossiper payload
+# TYPE net_in_count_finality_signature_gossip counter
+net_in_count_finality_signature_gossip 0
+# HELP net_in_count_other count of incoming messages with other payload
+# TYPE net_in_count_other counter
+net_in_count_other 0
+# HELP net_in_count_protocol count of incoming messages that are protocol overhead
+# TYPE net_in_count_protocol counter
+net_in_count_protocol 0
+# HELP net_in_count_trie_transfer count of incoming messages with trie payloads
+# TYPE net_in_count_trie_transfer counter
+net_in_count_trie_transfer 0
+# HELP net_out_bytes_address_gossip volume in bytes of outgoing messages with address gossiper payload
+# TYPE net_out_bytes_address_gossip counter
+net_out_bytes_address_gossip 0
+# HELP net_out_bytes_block_gossip volume in bytes of outgoing messages with block gossiper payload
+# TYPE net_out_bytes_block_gossip counter
+net_out_bytes_block_gossip 0
+# HELP net_out_bytes_block_transfer volume in bytes of outgoing messages with block request/response payload
+# TYPE net_out_bytes_block_transfer counter
+net_out_bytes_block_transfer 0
+# HELP net_out_bytes_consensus volume in bytes of outgoing messages with consensus payload
+# TYPE net_out_bytes_consensus counter
+net_out_bytes_consensus 0
+# HELP net_out_bytes_deploy_gossip volume in bytes of outgoing messages with deploy gossiper payload
+# TYPE net_out_bytes_deploy_gossip counter
+net_out_bytes_deploy_gossip 0
+# HELP net_out_bytes_deploy_transfer volume in bytes of outgoing messages with deploy request/response payload
+# TYPE net_out_bytes_deploy_transfer counter
+net_out_bytes_deploy_transfer 0
+# HELP net_out_bytes_finality_signature_gossip volume in bytes of outgoing messages with finality signature gossiper payload
+# TYPE net_out_bytes_finality_signature_gossip counter
+net_out_bytes_finality_signature_gossip 0
+# HELP net_out_bytes_other volume in bytes of outgoing messages with other payload
+# TYPE net_out_bytes_other counter
+net_out_bytes_other 0
+# HELP net_out_bytes_protocol volume in bytes of outgoing messages that are protocol overhead
+# TYPE net_out_bytes_protocol counter
+net_out_bytes_protocol 0
+# HELP net_out_bytes_trie_transfer volume in bytes of outgoing messages with trie payloads
+# TYPE net_out_bytes_trie_transfer counter
+net_out_bytes_trie_transfer 0
+# HELP net_out_count_address_gossip count of outgoing messages with address gossiper payload
+# TYPE net_out_count_address_gossip counter
+net_out_count_address_gossip 0
+# HELP net_out_count_block_gossip count of outgoing messages with block gossiper payload
+# TYPE net_out_count_block_gossip counter
+net_out_count_block_gossip 0
+# HELP net_out_count_block_transfer count of outgoing messages with block request/response payload
+# TYPE net_out_count_block_transfer counter
+net_out_count_block_transfer 0
+# HELP net_out_count_consensus count of outgoing messages with consensus payload
+# TYPE net_out_count_consensus counter
+net_out_count_consensus 0
+# HELP net_out_count_deploy_gossip count of outgoing messages with deploy gossiper payload
+# TYPE net_out_count_deploy_gossip counter
+net_out_count_deploy_gossip 0
+# HELP net_out_count_deploy_transfer count of outgoing messages with deploy request/response payload
+# TYPE net_out_count_deploy_transfer counter
+net_out_count_deploy_transfer 0
+# HELP net_out_count_finality_signature_gossip count of outgoing messages with finality signature gossiper payload
+# TYPE net_out_count_finality_signature_gossip counter
+net_out_count_finality_signature_gossip 0
+# HELP net_out_count_other count of outgoing messages with other payload
+# TYPE net_out_count_other counter
+net_out_count_other 0
+# HELP net_out_count_protocol count of outgoing messages that are protocol overhead
+# TYPE net_out_count_protocol counter
+net_out_count_protocol 0
+# HELP net_out_count_trie_transfer count of outgoing messages with trie payloads
+# TYPE net_out_count_trie_transfer counter
+net_out_count_trie_transfer 0
+# HELP net_queued_direct_messages number of messages waiting to be sent out
+# TYPE net_queued_direct_messages gauge
+net_queued_direct_messages 0
+# HELP out_state_blocked number of connections in the blocked state
+# TYPE out_state_blocked gauge
+out_state_blocked 2
+# HELP out_state_connected number of connections in the connected state
+# TYPE out_state_connected gauge
+out_state_connected 0
+# HELP out_state_connecting number of connections in the connecting state
+# TYPE out_state_connecting gauge
+out_state_connecting 0
+# HELP out_state_loopback number of connections in the loopback state
+# TYPE out_state_loopback gauge
+out_state_loopback 1
+# HELP out_state_waiting number of connections in the waiting state
+# TYPE out_state_waiting gauge
+out_state_waiting 0
+# HELP peers number of connected peers
+# TYPE peers gauge
+peers 0
+# HELP requests_for_trie_accepted number of trie requests accepted for processing
+# TYPE requests_for_trie_accepted counter
+requests_for_trie_accepted 0
+# HELP requests_for_trie_finished number of trie requests finished, successful or not
+# TYPE requests_for_trie_finished counter
+requests_for_trie_finished 0
+# HELP runner_events running total count of events handled by this reactor
+# TYPE runner_events counter
+runner_events 317
+# HELP scheduler_queue_api_count current number of events in the reactor api queue
+# TYPE scheduler_queue_api_count gauge
+scheduler_queue_api_count 0
+# HELP scheduler_queue_consensus_count current number of events in the reactor consensus queue
+# TYPE scheduler_queue_consensus_count gauge
+scheduler_queue_consensus_count 0
+# HELP scheduler_queue_contract_runtime_count current number of events in the reactor contract_runtime queue
+# TYPE scheduler_queue_contract_runtime_count gauge
+scheduler_queue_contract_runtime_count 0
+# HELP scheduler_queue_control_count current number of events in the reactor control queue
+# TYPE scheduler_queue_control_count gauge
+scheduler_queue_control_count 0
+# HELP scheduler_queue_fetch_count current number of events in the reactor fetch queue
+# TYPE scheduler_queue_fetch_count gauge
+scheduler_queue_fetch_count 0
+# HELP scheduler_queue_finality_signature_count current number of events in the reactor finality_signature queue
+# TYPE scheduler_queue_finality_signature_count gauge
+scheduler_queue_finality_signature_count 0
+# HELP scheduler_queue_from_storage_count current number of events in the reactor from_storage queue
+# TYPE scheduler_queue_from_storage_count gauge
+scheduler_queue_from_storage_count 0
+# HELP scheduler_queue_gossip_count current number of events in the reactor gossip queue
+# TYPE scheduler_queue_gossip_count gauge
+scheduler_queue_gossip_count 0
+# HELP scheduler_queue_network_count current number of events in the reactor network queue
+# TYPE scheduler_queue_network_count gauge
+scheduler_queue_network_count 0
+# HELP scheduler_queue_network_demands_count current number of events in the reactor network_demands queue
+# TYPE scheduler_queue_network_demands_count gauge
+scheduler_queue_network_demands_count 0
+# HELP scheduler_queue_network_incoming_count current number of events in the reactor network_incoming queue
+# TYPE scheduler_queue_network_incoming_count gauge
+scheduler_queue_network_incoming_count 0
+# HELP scheduler_queue_network_info_count current number of events in the reactor network_info queue
+# TYPE scheduler_queue_network_info_count gauge
+scheduler_queue_network_info_count 0
+# HELP scheduler_queue_network_low_priority_count current number of events in the reactor network_low_priority queue
+# TYPE scheduler_queue_network_low_priority_count gauge
+scheduler_queue_network_low_priority_count 0
+# HELP scheduler_queue_regular_count current number of events in the reactor regular queue
+# TYPE scheduler_queue_regular_count gauge
+scheduler_queue_regular_count 0
+# HELP scheduler_queue_sync_global_state_count current number of events in the reactor sync_global_state queue
+# TYPE scheduler_queue_sync_global_state_count gauge
+scheduler_queue_sync_global_state_count 0
+# HELP scheduler_queue_to_storage_count current number of events in the reactor to_storage queue
+# TYPE scheduler_queue_to_storage_count gauge
+scheduler_queue_to_storage_count 0
+# HELP scheduler_queue_total_count current total number of events in all reactor queues
+# TYPE scheduler_queue_total_count gauge
+scheduler_queue_total_count 0
+# HELP scheduler_queue_validation_count current number of events in the reactor validation queue
+# TYPE scheduler_queue_validation_count gauge
+scheduler_queue_validation_count 0
+# HELP sync_leap_cant_fetch_total number of sync leap requests that couldn't be fetched from peers
+# TYPE sync_leap_cant_fetch_total counter
+sync_leap_cant_fetch_total 0
+# HELP sync_leap_duration_seconds duration (in sec) to perform a successful sync leap
+# TYPE sync_leap_duration_seconds histogram
+sync_leap_duration_seconds_bucket{le="1"} 0
+sync_leap_duration_seconds_bucket{le="2"} 0
+sync_leap_duration_seconds_bucket{le="3"} 0
+sync_leap_duration_seconds_bucket{le="4"} 0
+sync_leap_duration_seconds_bucket{le="+Inf"} 0
+sync_leap_duration_seconds_sum 0
+sync_leap_duration_seconds_count 0
+# HELP sync_leap_fetched_from_peer_total number of successful sync leap responses that were received from peers
+# TYPE sync_leap_fetched_from_peer_total counter
+sync_leap_fetched_from_peer_total 0
+# HELP sync_leap_fetcher_fetch_total number of sync_leap_fetcher all fetch requests made
+# TYPE sync_leap_fetcher_fetch_total counter
+sync_leap_fetcher_fetch_total 0
+# HELP sync_leap_fetcher_found_in_storage number of fetch requests that found sync_leap_fetcher in local storage
+# TYPE sync_leap_fetcher_found_in_storage counter
+sync_leap_fetcher_found_in_storage 0
+# HELP sync_leap_fetcher_found_on_peer number of fetch requests that fetched sync_leap_fetcher from peer
+# TYPE sync_leap_fetcher_found_on_peer counter
+sync_leap_fetcher_found_on_peer 0
+# HELP sync_leap_fetcher_timeouts number of sync_leap_fetcher fetch requests that timed out
+# TYPE sync_leap_fetcher_timeouts counter
+sync_leap_fetcher_timeouts 0
+# HELP sync_leap_rejected_by_peer_total number of sync leap requests that were rejected by peers
+# TYPE sync_leap_rejected_by_peer_total counter
+sync_leap_rejected_by_peer_total 0
+# HELP time_of_last_block_payload timestamp of the most recently accepted block payload
+# TYPE time_of_last_block_payload gauge
+time_of_last_block_payload 0
+# HELP time_of_last_finalized_block timestamp of the most recently finalized block
+# TYPE time_of_last_finalized_block gauge
+time_of_last_finalized_block 0
+# HELP total_ram_bytes total system ram in bytes
+# TYPE total_ram_bytes gauge
+total_ram_bytes 0
+# HELP trie_or_chunk_fetch_total number of trie_or_chunk all fetch requests made
+# TYPE trie_or_chunk_fetch_total counter
+trie_or_chunk_fetch_total 0
+# HELP trie_or_chunk_found_in_storage number of fetch requests that found trie_or_chunk in local storage
+# TYPE trie_or_chunk_found_in_storage counter
+trie_or_chunk_found_in_storage 0
+# HELP trie_or_chunk_found_on_peer number of fetch requests that fetched trie_or_chunk from peer
+# TYPE trie_or_chunk_found_on_peer counter
+trie_or_chunk_found_on_peer 0
+# HELP trie_or_chunk_timeouts number of trie_or_chunk fetch requests that timed out
+# TYPE trie_or_chunk_timeouts counter
+trie_or_chunk_timeouts 0
