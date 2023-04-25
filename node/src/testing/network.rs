@@ -24,6 +24,7 @@ use casper_types::{Chainspec, ChainspecRawBytes};
 
 use super::ConditionCheckReactor;
 use crate::{
+    components::ComponentState,
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner, TryCrankOutcome},
     tls::KeyFingerprint,
@@ -397,6 +398,32 @@ where
         time::timeout(within, self.settle_on_exit_indefinitely(rng, expected))
             .await
             .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+    }
+
+    /// Keeps cranking the network until every reactor's specified component is in the given state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any reactor returns `None` on its [`Reactor::get_component_state()`] call.
+    pub(crate) async fn settle_on_component_state(
+        &mut self,
+        rng: &mut TestRng,
+        name: &str,
+        state: &ComponentState,
+        timeout: Duration,
+    ) {
+        self.settle_on(
+            rng,
+            |net| {
+                net.values()
+                    .all(|runner| match runner.reactor().get_component_state(name) {
+                        Some(actual_state) => actual_state == state,
+                        None => panic!("unknown or unsupported component: {}", name),
+                    })
+            },
+            timeout,
+        )
+        .await;
     }
 
     /// Starts a background process that will crank all nodes until stopped.

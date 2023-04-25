@@ -31,8 +31,6 @@ use casper_types::{
     TransactionId, Uptime, U512,
 };
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         binary_port::BinaryPort,
@@ -81,6 +79,11 @@ use crate::{
     },
     utils::{Source, WithDir},
     NodeRng,
+};
+#[cfg(test)]
+use crate::{
+    components::{ComponentState, InitializedComponent},
+    testing::network::NetworkedReactor,
 };
 pub use config::Config;
 pub(crate) use error::Error;
@@ -1231,6 +1234,16 @@ impl reactor::Reactor for MainReactor {
                 &mut self.consensus,
                 activation,
             );
+        }
+    }
+
+    #[cfg(test)]
+    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
+        match name {
+            "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
+                &self.rest_server,
+            )),
+            _ => None,
         }
     }
 }
