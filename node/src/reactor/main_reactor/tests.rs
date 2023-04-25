@@ -27,7 +27,7 @@ use crate::{
         },
         gossiper, network, storage,
         upgrade_watcher::NextUpgrade,
-        InitializedComponent,
+        ComponentState,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -915,26 +915,6 @@ async fn empty_block_validation_regression() {
     }
 }
 
-/// Waits until all node have at least initialized the given component.
-///
-/// Expects the ident of a
-macro_rules! wait_for_component_initialization {
-    ($net:expr, $rng:expr, $component:ident) => {
-        $net.settle_on(
-            $rng,
-            |net| {
-                net.values().all(|runner| {
-                    InitializedComponent::<MainEvent>::is_initialized(
-                        &(runner.main_reactor().$component),
-                    )
-                })
-            },
-            Duration::from_secs(60),
-        )
-        .await;
-    };
-}
-
 #[tokio::test]
 async fn all_metrics_from_1_5_are_present() {
     testing::init_logging();
@@ -947,7 +927,13 @@ async fn all_metrics_from_1_5_are_present() {
         .await
         .expect("network initialization failed");
 
-    wait_for_component_initialization!(net, &mut rng, rest_server);
+    net.settle_on_component_state(
+        &mut rng,
+        "rest_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(59),
+    )
+    .await;
 
     // Get the node ID.
     let node_id = *net.nodes().keys().next().unwrap();

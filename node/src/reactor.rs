@@ -58,6 +58,8 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+#[cfg(test)]
+use crate::components::ComponentState;
 use crate::{
     components::{
         block_accumulator, deploy_acceptor,
@@ -281,6 +283,15 @@ pub(crate) trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+
+    /// Returns the state of a named components.
+    ///
+    /// May return `None` if the component cannot be found, or if the reactor does not support
+    /// querying component states.
+    #[cfg(test)]
+    fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
+        None
+    }
 }
 
 /// A reactor event type.
