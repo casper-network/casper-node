@@ -422,8 +422,8 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 }
             };
 
-            let era_id = match block.header().era_end() {
-                Some(_) => block.header().era_id(),
+            let base_key = match block.header().era_end() {
+                Some(_) => get_era_key(&block, api_version),
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {
                         api_version,
@@ -433,7 +433,6 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
             };
 
             let state_root_hash = block.state_root_hash().to_owned();
-            let base_key = Key::EraInfo(era_id);
             let path = Vec::new();
             let query_result = effect_builder
                 .make_request(
@@ -457,6 +456,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
             };
 
             let block_hash = block.hash().to_owned();
+            let era_id = block.header().era_id();
 
             let result = Self::ResponseResult {
                 api_version,
@@ -538,11 +538,13 @@ impl RpcWithOptionalParamsExt for GetEraSummary {
             let state_root_hash = block.state_root_hash().to_owned();
             let era_id = block.header().era_id();
 
+            let base_key = get_era_key(&block, api_version);
+
             let query_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryGlobalState {
                         state_root_hash,
-                        base_key: Key::EraSummary,
+                        base_key,
                         path: Vec::new(),
                         responder,
                     },
@@ -619,4 +621,13 @@ async fn get_block_with_metadata<REv: ReactorEventT>(
     }
 
     Ok(maybe_result)
+}
+
+//TODO: when merging to 1.5 this needs to be made more sophisticated. This works only for 1.4.14
+fn get_era_key(block: &Block, api_version: ProtocolVersion) -> Key {
+    if block.protocol_version() < api_version {
+        Key::EraInfo(block.header().era_id())
+    } else {
+        Key::EraSummary
+    }
 }
