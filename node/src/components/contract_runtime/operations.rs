@@ -229,23 +229,6 @@ pub fn execute_finalized_block(
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
-    let proof_of_checksum_registry =
-        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
-
-    let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
-        maybe_step_effect_and_upcoming_era_validators
-            .as_ref()
-            .and_then(
-                |StepEffectAndUpcomingEraValidators {
-                     upcoming_era_validators,
-                     ..
-                 }| {
-                    upcoming_era_validators
-                        .get(&finalized_block.era_id().successor())
-                        .cloned()
-                },
-            );
-
     // Pruning
     if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
         match calculate_prune_eras(
@@ -318,6 +301,20 @@ pub fn execute_finalized_block(
         }
     }
 
+    let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+        maybe_step_effect_and_upcoming_era_validators
+            .as_ref()
+            .and_then(
+                |StepEffectAndUpcomingEraValidators {
+                     upcoming_era_validators,
+                     ..
+                 }| {
+                    upcoming_era_validators
+                        .get(&finalized_block.era_id().successor())
+                        .cloned()
+                },
+            );
+
     let block = Arc::new(Block::new(
         parent_hash,
         parent_seed,
@@ -331,6 +328,8 @@ pub fn execute_finalized_block(
         .into_iter()
         .map(|id| id.destructure().1)
         .collect();
+    let proof_of_checksum_registry =
+        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
     let approvals_hashes = Box::new(ApprovalsHashes::new(
         block.hash(),
         approvals_hashes,

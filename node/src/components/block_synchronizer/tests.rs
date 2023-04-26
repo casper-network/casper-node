@@ -1569,12 +1569,13 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _, _) if *actual_block.hash() == *block.hash()
     );
 
+    // This is the first of two events created when `EffectBuilder::enqueue_block_for_execution` is
+    // called.
     assert_matches!(
         &events[0],
-        MockReactorEvent::ContractRuntimeRequest(ContractRuntimeRequest::EnqueueBlockForExecution {
-            finalized_block,
-            ..
-        }) if finalized_block.height() == block.height()
+        MockReactorEvent::StorageRequest(
+            StorageRequest::GetKeyBlockHeightForActivationPoint { .. }
+        )
     );
 
     // Progress is syncing until we get a confirmation that the block was enqueued for execution
