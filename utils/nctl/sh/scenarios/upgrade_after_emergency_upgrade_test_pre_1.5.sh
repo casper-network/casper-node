@@ -93,6 +93,10 @@ function do_prepare_stage() {
     local INCREMENT
     local RC_VERSION
 
+    log "... removing stray remotes and stages"
+    rm -rf $(get_path_to_stages)
+    rm -rf $(get_path_to_remotes)
+
     log "... setting remote 1.4.7"
 
     nctl-stage-set-remotes "1.4.7"
