@@ -226,7 +226,14 @@ function do_prepare_upgrade() {
 function do_restart_network() {
     log_step "restarting the network: starting both old and new validators"
     # start the network
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
+    # do not pass the trusted hash to the original validators - they already have all the blocks
+    # and will simply pick up at the upgrade point
+    for NODE_ID in $(seq 1 5); do
+        do_node_start "$NODE_ID"
+    done
+    # the new validators need the trusted hash in order to be able to sync to the network, as they
+    # don't have any blocks at this point
+    for NODE_ID in $(seq 6 "$(get_count_of_nodes)"); do
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
 }
