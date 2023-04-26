@@ -2,8 +2,7 @@ use std::{collections::BTreeMap, iter};
 
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::BLOCK_REWARD, testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey,
-    Timestamp, U512,
+    testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 use rand::Rng;
 
@@ -158,7 +157,7 @@ impl TestBlockBuilder {
                         let pub_key = PublicKey::from(
                             &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
                         );
-                        let reward = rng.gen_range(1..(BLOCK_REWARD + 1));
+                        let reward = rng.gen_range(1..1_000_000_000_000_u64);
                         (pub_key, reward)
                     })
                     .take(rewards_count)

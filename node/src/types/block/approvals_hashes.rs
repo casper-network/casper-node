@@ -179,11 +179,11 @@ mod specimen_support {
     };
 
     use super::ApprovalsHashes;
-    use casper_execution_engine::storage::trie::{
+    use casper_hashing::Digest;
+    use casper_storage::global_state::storage::trie::{
         merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
         Pointer,
     };
-    use casper_hashing::Digest;
     use casper_types::{bytesrepr::Bytes, CLValue, Key, StoredValue};
     use once_cell::sync::OnceCell;
     use std::collections::BTreeMap;

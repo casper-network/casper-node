@@ -1,7 +1,6 @@
 pub(crate) mod test_utils;
 
 use assert_matches::assert_matches;
-use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use num_rational::Ratio;
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -9,13 +8,14 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{
-    AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
-};
 use derive_more::From;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_types::testing::TestRng;
+use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_types::{
+    testing::TestRng, AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, TimeDiff,
+    URef, U512,
+};
 
 use super::*;
 use crate::{
