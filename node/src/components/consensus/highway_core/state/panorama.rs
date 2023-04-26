@@ -1,8 +1,6 @@
 use std::{collections::HashSet, fmt::Debug};
 
-use datasize::DataSize;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
 
@@ -15,23 +13,37 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, ValidatorMap},
 };
 
-/// The observed behavior of a validator at some point in time.
-#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Observation<C>
-where
-    C: Context,
-{
-    /// No unit by that validator was observed yet.
-    None,
-    /// The validator's latest unit.
-    Correct(C::Hash),
-    /// The validator has been seen
-    Faulty,
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::traits::Context;
+
+    /// The observed behavior of a validator at some point in time.
+    #[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants)]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum Observation<C>
+    where
+        C: Context,
+    {
+        /// No unit by that validator was observed yet.
+        None,
+        /// The validator's latest unit.
+        Correct(C::Hash),
+        /// The validator has been seen
+        Faulty,
+    }
 }
+pub(crate) use relaxed::{Observation, ObservationDiscriminants};
 
 impl<C: Context> Debug for Observation<C>
 where
@@ -237,5 +249,31 @@ impl<C: Context> Panorama<C> {
             }
         }
         Ok(())
+    }
+}
+
+mod specimen_support {
+    use crate::{
+        components::consensus::ClContext,
+        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
+    };
+
+    use super::{Observation, ObservationDiscriminants};
+
+    impl LargestSpecimen for Observation<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            if let Some(item) = cache.get::<Self>() {
+                return item.clone();
+            }
+
+            let correct = LargestSpecimen::largest_specimen(estimator, cache);
+            cache
+                .set(largest_variant(estimator, |variant| match variant {
+                    ObservationDiscriminants::None => Observation::None,
+                    ObservationDiscriminants::Correct => Observation::Correct(correct),
+                    ObservationDiscriminants::Faulty => Observation::Faulty,
+                }))
+                .clone()
+        }
     }
 }

@@ -547,3 +547,16 @@ function assert_new_bonded_validator() {
       exit 1
     fi
 }
+
+function delegate_to() {
+    local NODE_ID=${1}
+    local ACCOUNT_ID=${2}
+    local AMOUNT=${3}
+
+    log_step "Delegating $AMOUNT from account-$ACCOUNT_ID to validator-$NODE_ID"
+
+    source "$NCTL/sh/contracts-auction/do_delegate.sh" \
+        amount="$AMOUNT" \
+        delegator="$ACCOUNT_ID" \
+        validator="$NODE_ID"
+}

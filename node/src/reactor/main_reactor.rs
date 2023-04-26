@@ -856,7 +856,7 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockCompleteConfirmationRequest(req) => reactor::wrap_effects(
+            MainEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),

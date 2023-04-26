@@ -9,6 +9,7 @@ pub(crate) mod fmt_limit;
 pub(crate) mod opt_display;
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
+pub(crate) mod specimen;
 pub(crate) mod umask;
 pub mod work_queue;
 
@@ -39,10 +40,9 @@ use tracing::{error, warn};
 use crate::types::NodeId;
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
 pub(crate) use display_error::display_error;
-pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
-pub use external::{LoadError, Loadable};
+pub use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// DNS resolution error.

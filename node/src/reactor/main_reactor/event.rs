@@ -34,12 +34,13 @@ use crate::{
             TrieResponseIncoming,
         },
         requests::{
-            BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
-            BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
-            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
-            MakeBlockExecutableRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            ReactorStatusRequest, RestRequest, RpcRequest, SetNodeStopRequest, StorageRequest,
-            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
+            BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
+            MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+            NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest,
+            SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -165,7 +166,7 @@ pub(crate) enum MainEvent {
     #[from]
     MakeBlockExecutableRequest(MakeBlockExecutableRequest),
     #[from]
-    BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
@@ -311,7 +312,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             MainEvent::StorageRequest(_) => "StorageRequest",
-            MainEvent::BlockCompleteConfirmationRequest(_) => "MarkBlockCompletedRequest",
+            MainEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
@@ -439,7 +440,7 @@ impl Display for MainEvent {
                 write!(f, "upgrade watcher request: {}", req)
             }
             MainEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
-            MainEvent::BlockCompleteConfirmationRequest(req) => {
+            MainEvent::MarkBlockCompletedRequest(req) => {
                 write!(f, "mark block completed request: {}", req)
             }
             MainEvent::BlockHeaderFetcherRequest(request) => {

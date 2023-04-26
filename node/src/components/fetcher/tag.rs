@@ -3,6 +3,7 @@ use std::hash::Hash;
 use datasize::DataSize;
 use derive_more::Display;
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use strum::EnumIter;
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -19,6 +20,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
     Deserialize_repr,
     Debug,
     Display,
+    EnumIter,
 )]
 #[repr(u8)]
 pub enum Tag {

@@ -11,15 +11,21 @@ use casper_types::{
 #[cfg(test)]
 use casper_types::{testing::TestRng, SecretKey, U512};
 
+/// Configuration values related to a delegator.
 #[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct DelegatorConfig {
-    pub(super) validator_public_key: PublicKey,
-    delegator_public_key: PublicKey,
-    balance: Motes,
-    delegated_amount: Motes,
+    /// Validator public key.
+    pub validator_public_key: PublicKey,
+    /// Delegator public key.
+    pub delegator_public_key: PublicKey,
+    /// Balance for this delegator in Motes.
+    pub balance: Motes,
+    /// Delegated amount in Motes.
+    pub delegated_amount: Motes,
 }
 
 impl DelegatorConfig {
+    /// Creates a new DelegatorConfig.
     pub fn new(
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
@@ -32,22 +38,6 @@ impl DelegatorConfig {
             balance,
             delegated_amount,
         }
-    }
-
-    pub fn validator_public_key(&self) -> &PublicKey {
-        &self.validator_public_key
-    }
-
-    pub fn delegator_public_key(&self) -> &PublicKey {
-        &self.delegator_public_key
-    }
-
-    pub fn balance(&self) -> Motes {
-        self.balance
-    }
-
-    pub fn delegated_amount(&self) -> Motes {
-        self.delegated_amount
     }
 
     #[cfg(test)]
