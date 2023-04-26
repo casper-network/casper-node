@@ -50,8 +50,8 @@ fn generate_range_by_index(
 /// Calculates era keys to be pruned.
 ///
 /// Outcomes:
-/// * Ok(Some(range)) -- these keys should be purged
-/// * Ok(None) -- nothing to do, either done, or there is not enough eras to purge
+/// * Ok(Some(range)) -- these keys should be pruned
+/// * Ok(None) -- nothing to do, either done, or there is not enough eras to prune
 fn calculate_prune_eras(
     activation_era_id: EraId,
     activation_height: u64,
@@ -72,7 +72,7 @@ fn calculate_prune_eras(
                 activation_height,
                 current_height,
                 batch_size,
-                "unable to calculate eras to purge (activation height higher than the block height)"
+                "unable to calculate eras to prune (activation height higher than the block height)"
             );
             panic!("activation height higher than the block height");
         }
@@ -263,14 +263,16 @@ pub fn execute_finalized_block(
                     %state_root_hash,
                     first_key=?first_key,
                     last_key=?last_key,
-                    "commit_prune: preparing purge config");
+                    "commit prune: preparing prune config"
+                );
                 let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
                 match engine_state.commit_prune(CorrelationId::new(), prune_config) {
                     Ok(PruneResult::RootNotFound) => {
                         error!(
                             previous_block_height,
                             %state_root_hash,
-                            "commit_prune: root not found");
+                            "commit prune: root not found"
+                        );
                         panic!(
                             "Root {} not found while performing a prune.",
                             state_root_hash
@@ -280,7 +282,8 @@ pub fn execute_finalized_block(
                         warn!(
                             previous_block_height,
                             %state_root_hash,
-                            "commit_prune: key does not exist");
+                            "commit prune: key does not exist"
+                        );
                     }
                     Ok(PruneResult::Success { post_state_hash }) => {
                         info!(
@@ -290,7 +293,8 @@ pub fn execute_finalized_block(
                             %post_state_hash,
                             first_key=?first_key,
                             last_key=?last_key,
-                            "commit_prune: success");
+                            "commit prune: success"
+                        );
                         state_root_hash = post_state_hash;
                     }
                     Err(error) => {
@@ -298,7 +302,8 @@ pub fn execute_finalized_block(
                             previous_block_height,
                             %key_block_height_for_activation_point,
                             %error,
-                            "commit_prune: commit purge error");
+                            "commit prune: commit prune error"
+                        );
                         return Err(error.into());
                     }
                 }
@@ -307,7 +312,8 @@ pub fn execute_finalized_block(
                 info!(
                     previous_block_height,
                     %key_block_height_for_activation_point,
-                    "commit_prune: nothing to do, no more eras to delete");
+                    "commit prune: nothing to do, no more eras to delete"
+                );
             }
         }
     }
@@ -545,6 +551,7 @@ fn compute_execution_results_checksum(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn calculation_is_safe_with_invalid_input() {
         assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0,), None);
@@ -555,6 +562,7 @@ mod tests {
             None
         );
     }
+
     #[test]
     fn calculation_is_lazy() {
         // NOTE: Range of EraInfos is lazy, so it does not consume memory, but getting the last
@@ -567,6 +575,7 @@ mod tests {
             100
         );
     }
+
     #[test]
     fn should_calculate_prune_eras() {
         let activation_height = 50;

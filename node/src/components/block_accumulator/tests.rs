@@ -179,6 +179,7 @@ impl Reactor for MockReactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
             "test",
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),

@@ -196,12 +196,14 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// A map of era ID to the height of the switch block for that era.
-    switch_block_height_index: BTreeMap<EraId, u64>,
     /// A map of deploy hashes to hashes and heights of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
+    /// The activation point era of the current protocol version.
+    activation_era: EraId,
+    /// The height of the final switch block of the previous protocol version.
+    key_block_height_for_activation_point: Option<u64>,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
@@ -357,6 +359,7 @@ impl Storage {
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
+        activation_era: EraId,
         network_name: &str,
         max_ttl: TimeDiff,
         recent_era_count: u64,
@@ -506,9 +509,10 @@ impl Storage {
             finalized_approvals_db,
             block_height_index,
             switch_block_era_id_index,
-            switch_block_height_index: Default::default(),
             deploy_hash_index,
             completed_blocks: Default::default(),
+            activation_era,
+            key_block_height_for_activation_point: None,
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
@@ -1180,18 +1184,21 @@ impl Storage {
             } => responder
                 .respond(self.put_executed_block(&block, &approvals_hashes, execution_results)?)
                 .ignore(),
-            StorageRequest::GetSwitchBlockHeightAtEraId { era_id, responder } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                if let Some(block_height) = self.switch_block_height_index.get(&era_id) {
-                    return Ok(responder.respond(Some(*block_height)).ignore());
+            StorageRequest::GetKeyBlockHeightForActivationPoint { responder } => {
+                // If we haven't already cached the height, try to retrieve the key block header.
+                if self.key_block_height_for_activation_point.is_none() {
+                    let mut txn = self.env.begin_ro_txn()?;
+                    let key_block_era = self.activation_era.predecessor().unwrap_or_default();
+                    let key_block_header =
+                        match self.get_switch_block_header_by_era_id(&mut txn, key_block_era)? {
+                            Some(block_header) => block_header,
+                            None => return Ok(responder.respond(None).ignore()),
+                        };
+                    self.key_block_height_for_activation_point = Some(key_block_header.height());
                 }
-                let block_header = match self.get_switch_block_header_by_era_id(&mut txn, era_id)? {
-                    Some(block_header) => block_header,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-                self.switch_block_height_index
-                    .insert(era_id, block_header.height());
-                responder.respond(Some(block_header.height())).ignore()
+                responder
+                    .respond(self.key_block_height_for_activation_point)
+                    .ignore()
             }
         })
     }

@@ -1375,30 +1375,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns the key block height for the current protocol version's activation point, i.e. the
-    /// height of the final block of the previous protocol version.
-    pub(crate) async fn get_key_block_height_for_activation_point(self) -> u64 {
-        // let CurrentRunInfo {
-        //     activation_point, ..
-        // } = self.get_current_run_info().await;
-        //
-        // let era_before = activation_point
-        //     .era_id()
-        //     .checked_sub(1)
-        //     .unwrap_or(EraId::new(0));
-        //
-        // self.make_request(
-        //     |responder| StorageRequest::GetSwitchBlockHeightAtEraId {
-        //         era_id: era_before,
-        //         responder,
-        //     },
-        //     QueueKind::Regular,
-        // )
-        // .await
-        // .unwrap_or(0)
-        todo!();
-    }
-
     /// Get a trie or chunk by its ID.
     pub(crate) async fn get_trie(
         self,
@@ -1742,10 +1718,20 @@ impl<REv> EffectBuilder<REv> {
         deploys: Vec<Deploy>,
         meta_block_state: MetaBlockState,
     ) where
-        REv: From<ContractRuntimeRequest>,
+        REv: From<StorageRequest> + From<ContractRuntimeRequest>,
     {
-        let key_block_height_for_activation_point =
-            self.get_key_block_height_for_activation_point().await;
+        // Get the key block height for the current protocol version's activation point, i.e. the
+        // height of the final block of the previous protocol version.
+        let key_block_height_for_activation_point = self
+            .make_request(
+                |responder| StorageRequest::GetKeyBlockHeightForActivationPoint { responder },
+                QueueKind::FromStorage,
+            )
+            .await
+            .unwrap_or_else(|| {
+                warn!("key block height for current activation point unknown");
+                0
+            });
 
         self.event_queue
             .schedule(

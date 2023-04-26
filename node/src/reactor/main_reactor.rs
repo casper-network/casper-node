@@ -1006,6 +1006,7 @@ impl reactor::Reactor for MainReactor {
             &storage_config,
             hard_reset_to_start_of_era,
             protocol_version,
+            chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
