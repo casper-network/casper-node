@@ -40,7 +40,7 @@ use crate::{
             BlockAccumulatorAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
             PeerBehaviorAnnouncement,
         },
-        requests::{BlockAccumulatorRequest, BlockCompleteConfirmationRequest, StorageRequest},
+        requests::{BlockAccumulatorRequest, MarkBlockCompletedRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -266,7 +266,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest>
             + From<PeerBehaviorAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -370,7 +370,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest>
             + From<PeerBehaviorAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -482,7 +482,7 @@ impl BlockAccumulator {
     ) -> Effects<Event>
     where
         REv: From<BlockAccumulatorAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + From<MetaBlockAnnouncement>
             + Send,
     {
@@ -672,7 +672,7 @@ impl BlockAccumulator {
     where
         REv: From<PeerBehaviorAnnouncement>
             + From<StorageRequest>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + Send,
         I: IntoIterator<Item = (NodeId, Error)>,
     {
@@ -758,7 +758,7 @@ pub(crate) trait ReactorEvent:
     From<StorageRequest>
     + From<PeerBehaviorAnnouncement>
     + From<BlockAccumulatorAnnouncement>
-    + From<BlockCompleteConfirmationRequest>
+    + From<MarkBlockCompletedRequest>
     + From<MetaBlockAnnouncement>
     + From<FatalAnnouncement>
     + Send
@@ -770,7 +770,7 @@ impl<REv> ReactorEvent for REv where
     REv: From<StorageRequest>
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
-        + From<BlockCompleteConfirmationRequest>
+        + From<MarkBlockCompletedRequest>
         + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send

@@ -9,7 +9,9 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, URef, U512};
+use casper_types::{
+    AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
+};
 use derive_more::From;
 use rand::{seq::IteratorRandom, Rng};
 
@@ -28,11 +30,13 @@ use crate::{
 };
 
 const MAX_SIMULTANEOUS_PEERS: usize = 5;
+const TEST_LATCH_RESET_INTERVAL_MILLIS: u64 = 5;
+const TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS: u64 = 150;
 
 /// Event for the mock reactor.
 #[derive(Debug, From)]
 enum MockReactorEvent {
-    BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     BlockFetcherRequest(FetcherRequest<Block>),
     BlockHeaderFetcherRequest(FetcherRequest<BlockHeader>),
     LegacyDeployFetcherRequest(FetcherRequest<LegacyDeploy>),
@@ -212,10 +216,15 @@ fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
 }
 
 impl BlockSynchronizer {
-    // Create an initialized block synchronizer with default config and MAX_SIMULTANEOUS_PEERS peers
-    fn new_initialized(rng: &mut TestRng, validator_matrix: ValidatorMatrix) -> BlockSynchronizer {
+    // Create an initialized block synchronizer
+    // with a specified config and MAX_SIMULTANEOUS_PEERS peers
+    fn new_initialized(
+        rng: &mut TestRng,
+        validator_matrix: ValidatorMatrix,
+        config: Config,
+    ) -> BlockSynchronizer {
         let mut block_synchronizer = BlockSynchronizer::new(
-            Config::default(),
+            config,
             Arc::new(Chainspec::random(rng)),
             MAX_SIMULTANEOUS_PEERS as u32,
             validator_matrix,
@@ -255,7 +264,12 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let cfg = Config {
+        latch_reset_interval: TimeDiff::from_millis(TEST_LATCH_RESET_INTERVAL_MILLIS),
+        ..Default::default()
+    };
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
 
     // Set up the synchronizer for the test block such that the next step is getting global state
     block_synchronizer.register_block_by_hash(*block.hash(), true);
@@ -311,7 +325,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     check_sync_global_state_event(event, block);
 
     // Wait for the latch to reset
-    std::thread::sleep(Duration::from_secs(6));
+    tokio::time::sleep(Duration::from_millis(TEST_LATCH_RESET_INTERVAL_MILLIS * 2)).await;
 
     // Simulate an error form the global_state_synchronizer;
     // make it seem that the `TrieAccumulator` did not find the required tries on any of the peers
@@ -338,7 +352,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     check_sync_global_state_event(event, block);
 
     // Wait for the latch to reset
-    std::thread::sleep(Duration::from_secs(6));
+    tokio::time::sleep(Duration::from_millis(TEST_LATCH_RESET_INTERVAL_MILLIS * 2)).await;
 
     // Simulate a successful global state sync;
     // Although the request was successful, some peers did not have the data.
@@ -392,7 +406,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
     // Set up an empty validator matrix.
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let mut block_synchronizer =
-        BlockSynchronizer::new_initialized(&mut rng, validator_matrix.clone());
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix.clone(), Config::default());
 
     // Set up the synchronizer for the test block such that the next step is getting era validators.
     block_synchronizer.register_block_by_hash(*block.hash(), true);
@@ -464,7 +478,8 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for forward sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -489,7 +504,8 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
     let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for historical sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
@@ -531,7 +547,8 @@ async fn fwd_sync_gets_peers_only_from_accumulator() {
     let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for forward sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -565,7 +582,8 @@ async fn sync_starts_with_header_fetch() {
     let block = test_env.block();
     let peers = test_env.peers();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -594,8 +612,6 @@ async fn sync_starts_with_header_fetch() {
     }
 }
 
-//TODO: remove this ignore when the synchronizer can recover from the stall
-#[ignore]
 #[tokio::test]
 async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() {
     let mut rng = TestRng::new();
@@ -604,7 +620,12 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
     let block = test_env.block();
     let peers = test_env.peers();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let cfg = Config {
+        stall_limit: TimeDiff::from_millis(TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS),
+        ..Default::default()
+    };
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -650,8 +671,25 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
         generated_effects.extend(effects);
     }
 
-    // If the effects are empty at this point, then the synchronizer gets stuck
-    assert!(!generated_effects.is_empty());
+    assert_matches!(
+        block_synchronizer.forward_progress(),
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
+    );
+
+    // The effects are empty at this point and the synchronizer is stuck
+    assert!(generated_effects.is_empty());
+
+    // Wait for the stall detection time to pass
+    tokio::time::sleep(Duration::from_millis(
+        TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS * 2,
+    ))
+    .await;
+
+    // Check if the forward builder is reported as stalled so that the control logic can recover
+    assert_matches!(
+        block_synchronizer.forward_progress(),
+        BlockSynchronizerProgress::Stalled(block_hash, _, _) if block_hash == *block.hash()
+    );
 }
 
 #[tokio::test]
@@ -662,7 +700,8 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -736,7 +775,8 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -851,8 +891,6 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     }
 }
 
-//TODO: remove this ignore when the synchronizer can recover from the stall
-#[ignore]
 #[tokio::test]
 async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interval() {
     let mut rng = TestRng::new();
@@ -862,7 +900,12 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let num_validators = test_env.validator_keys().len();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let cfg = Config {
+        stall_limit: TimeDiff::from_millis(TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS),
+        ..Default::default()
+    };
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -933,8 +976,25 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
         generated_effects.extend(effects);
     }
 
-    // If the effects are empty at this point, then the synchronizer gets stuck
-    assert!(!generated_effects.is_empty());
+    assert_matches!(
+        block_synchronizer.forward_progress(),
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
+    );
+
+    // The effects are empty at this point and the synchronizer is stuck
+    assert!(generated_effects.is_empty());
+
+    // Wait for the stall detection time to pass
+    tokio::time::sleep(Duration::from_millis(
+        TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS * 2,
+    ))
+    .await;
+
+    // Check if the forward builder is reported as stalled so that the control logic can recover
+    assert_matches!(
+        block_synchronizer.forward_progress(),
+        BlockSynchronizerProgress::Stalled(block_hash, _, _) if block_hash == *block.hash()
+    );
 }
 
 #[tokio::test]
@@ -946,7 +1006,8 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1011,7 +1072,8 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1090,7 +1152,8 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1152,7 +1215,8 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1222,7 +1286,8 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1306,7 +1371,8 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1366,7 +1432,8 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1436,7 +1503,8 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1498,7 +1566,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         .expect("Forward builder should have been initialized");
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, _) if block_hash == block.hash()
+        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _, _) if *actual_block.hash() == *block.hash()
     );
 
     assert_matches!(
@@ -1525,7 +1593,8 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1569,7 +1638,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     fwd_builder.register_made_finalized_block(block.clone().into(), Vec::new());
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, _) if block_hash == block.hash()
+        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _, _) if *actual_block.hash() == *block.hash()
     );
 
     // Simulate that enqueuing the block for execution was successful
@@ -1596,7 +1665,8 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1654,13 +1724,116 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     );
 }
 
+#[tokio::test]
+async fn historical_sync_announces_meta_block() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let test_env = TestEnv::random(&mut rng);
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.historical.is_some());
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    assert!(historical_builder
+        .register_block_header(block.clone().take_header(), None)
+        .is_ok());
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+
+    // Register finality signatures to reach weak finality
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder.register_block(block, None).is_ok());
+    // Register the remaining signatures to reach strict finality
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .skip(weak_finality_threshold(validators_secret_keys.len())),
+    );
+
+    // Set the builder state to `HaveStrictFinalitySignatures`
+    match historical_builder.block_acquisition_state() {
+        BlockAcquisitionState::HaveBlock(state_block, state_signatures, _) => historical_builder
+            .set_block_acquisition_state(BlockAcquisitionState::HaveStrictFinalitySignatures(
+                state_block.clone(),
+                state_signatures.clone(),
+            )),
+        other => panic!("Unexpected state: {:?}", other),
+    }
+    // Make sure the historical builder is syncing
+    assert_matches!(
+        block_synchronizer.historical_progress(),
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
+    );
+
+    // Simulate a MarkBlockCompleted event
+    let event = Event::MarkBlockCompleted {
+        block_hash: *block.hash(),
+        is_new: true,
+    };
+    // Put it through to the synchronizer
+    let effects = block_synchronizer.handle_event(mock_reactor.effect_builder(), &mut rng, event);
+    assert_eq!(effects.len(), 1);
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    // We should have a request to get the execution results
+    match events.pop().unwrap() {
+        MockReactorEvent::StorageRequest(StorageRequest::GetExecutionResults {
+            block_hash: actual_block_hash,
+            responder,
+        }) => {
+            assert_eq!(actual_block_hash, *block.hash());
+            // We'll just send empty execution results for this case.
+            responder.respond(Some(vec![])).await;
+        }
+        other => panic!("Unexpected event: {:?}", other),
+    }
+    // Crank one more time because the meta block event is chained onto the
+    // execution results fetching
+    let event = mock_reactor.crank().await;
+    match event {
+        MockReactorEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
+            assert_eq!(*meta_block.block.hash(), *block.hash());
+            // The deploy buffer is supposed to get notified
+            assert!(meta_block
+                .state
+                .register_as_sent_to_deploy_buffer()
+                .was_updated());
+        }
+        other => panic!("Unexpected event: {:?}", other),
+    }
+    // The historical sync for this block should now be complete
+    assert_matches!(
+        block_synchronizer.historical_progress(),
+        BlockSynchronizerProgress::Synced(block_hash, _, _) if block_hash == *block.hash()
+    );
+}
+
 #[test]
 fn builders_are_purged_when_requested() {
     let mut rng = TestRng::new();
     let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for forward sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
@@ -1701,7 +1874,8 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
     let validators_secret_keys = test_env.validator_keys();
-    let mut block_synchronizer = BlockSynchronizer::new_initialized(&mut rng, validator_matrix);
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for fwd sync
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));

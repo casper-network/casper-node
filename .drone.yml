@@ -130,6 +130,8 @@ steps:
   <<: *buildenv
   commands:
   - make setup
+  # `elfx86exts` is used to determine the CPU features used by the compiled node binary.
+  - cargo install elfx86exts --version 0.5.0
 
 - name: nctl-compile
   <<: *buildenv
@@ -145,6 +147,11 @@ steps:
       from_secret: put-drone-aws-sk
   commands:
   - bash -i ./ci/nctl_upgrade.sh
+
+- name: check CPU features
+  <<: *buildenv
+  commands:
+  - bash -i ./ci/check_cpu_features.sh  
 
 volumes:
 - name: rustup

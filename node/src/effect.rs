@@ -165,11 +165,10 @@ use announcements::{
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
-    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorStatusRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
-    UpgradeWatcherRequest,
+    BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest, BlockValidationRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, FetcherRequest, MakeBlockExecutableRequest,
+    MarkBlockCompletedRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 use self::{
@@ -907,10 +906,10 @@ impl<REv> EffectBuilder<REv> {
     /// global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
-        REv: From<BlockCompleteConfirmationRequest>,
+        REv: From<MarkBlockCompletedRequest>,
     {
         self.make_request(
-            |responder| BlockCompleteConfirmationRequest {
+            |responder| MarkBlockCompletedRequest {
                 block_height,
                 responder,
             },
