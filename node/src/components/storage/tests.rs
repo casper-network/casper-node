@@ -24,7 +24,7 @@ use super::{
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
     effect::{
-        requests::{BlockCompleteConfirmationRequest, StorageRequest},
+        requests::{MarkBlockCompletedRequest, StorageRequest},
         Multiple,
     },
     storage::{
@@ -420,7 +420,7 @@ fn put_complete_block(
     });
     assert!(harness.is_idle());
     harness.send_request(storage, move |responder| {
-        BlockCompleteConfirmationRequest {
+        MarkBlockCompletedRequest {
             block_height,
             responder,
         }

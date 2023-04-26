@@ -32,7 +32,7 @@ use crate::{
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
-        requests::BlockCompleteConfirmationRequest,
+        requests::MarkBlockCompletedRequest,
         Responder,
     },
     fatal,
@@ -120,7 +120,7 @@ enum Event {
     #[from]
     BlocklistAnnouncement(PeerBehaviorAnnouncement),
     #[from]
-    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     #[from]
     TrieDemand(TrieDemand),
     #[from]

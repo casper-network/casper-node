@@ -43,9 +43,9 @@ use crate::{
     effect::{
         announcements::{MetaBlockAnnouncement, PeerBehaviorAnnouncement},
         requests::{
-            BlockAccumulatorRequest, BlockCompleteConfirmationRequest, BlockSynchronizerRequest,
-            ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest,
-            StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            BlockAccumulatorRequest, BlockSynchronizerRequest, ContractRuntimeRequest,
+            FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
+            NetworkInfoRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
         },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
@@ -124,7 +124,7 @@ pub(crate) trait ReactorEvent:
     + From<TrieAccumulatorRequest>
     + From<ContractRuntimeRequest>
     + From<SyncGlobalStateRequest>
-    + From<BlockCompleteConfirmationRequest>
+    + From<MarkBlockCompletedRequest>
     + From<MakeBlockExecutableRequest>
     + From<MetaBlockAnnouncement>
     + Send
@@ -149,7 +149,7 @@ impl<REv> ReactorEvent for REv where
         + From<TrieAccumulatorRequest>
         + From<ContractRuntimeRequest>
         + From<SyncGlobalStateRequest>
-        + From<BlockCompleteConfirmationRequest>
+        + From<MarkBlockCompletedRequest>
         + From<MakeBlockExecutableRequest>
         + From<MetaBlockAnnouncement>
         + Send
@@ -461,7 +461,7 @@ impl BlockSynchronizer {
     where
         REv: From<StorageRequest>
             + From<MetaBlockAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + Send,
     {
         if let Some(builder) = &self.forward {
@@ -545,7 +545,7 @@ impl BlockSynchronizer {
         rng: &mut NodeRng,
     ) -> Effects<Event>
     where
-        REv: ReactorEvent + From<FetcherRequest<Block>> + From<BlockCompleteConfirmationRequest>,
+        REv: ReactorEvent + From<FetcherRequest<Block>> + From<MarkBlockCompletedRequest>,
     {
         let need_next_interval = self.config.need_next_interval.into();
         let mut results = Effects::new();

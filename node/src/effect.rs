@@ -165,11 +165,11 @@ use announcements::{
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
-    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest, BlockValidationRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
+    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest, StorageRequest,
+    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -902,10 +902,10 @@ impl<REv> EffectBuilder<REv> {
     /// global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
-        REv: From<BlockCompleteConfirmationRequest>,
+        REv: From<MarkBlockCompletedRequest>,
     {
         self.make_request(
-            |responder| BlockCompleteConfirmationRequest {
+            |responder| MarkBlockCompletedRequest {
                 block_height,
                 responder,
             },

@@ -83,8 +83,7 @@ use crate::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
         requests::{
-            BlockCompleteConfirmationRequest, MakeBlockExecutableRequest, NetworkRequest,
-            StorageRequest,
+            MakeBlockExecutableRequest, MarkBlockCompletedRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -228,9 +227,9 @@ pub(crate) enum Event {
     StorageRequest(Box<StorageRequest>),
     /// Incoming net request.
     NetRequestIncoming(Box<NetRequestIncoming>),
-    /// Block completion announcement.
+    /// Mark block completed request.
     #[from]
-    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     /// Make block executable request.
     #[from]
     MakeBlockExecutableRequest(Box<MakeBlockExecutableRequest>),
@@ -1206,10 +1205,10 @@ impl Storage {
     /// Handles a [`BlockCompletedAnnouncement`].
     fn handle_mark_block_completed_request(
         &mut self,
-        BlockCompleteConfirmationRequest {
+        MarkBlockCompletedRequest {
             block_height,
             responder,
-        }: BlockCompleteConfirmationRequest,
+        }: MarkBlockCompletedRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         let is_new = self.mark_block_complete(block_height)?;
         Ok(responder.respond(is_new).ignore())
