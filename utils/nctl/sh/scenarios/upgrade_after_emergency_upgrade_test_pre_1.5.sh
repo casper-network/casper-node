@@ -62,10 +62,10 @@ function main() {
     # 15. Run Health Checks
     # ... restarts=26: due to nodes being stopped and started; node 1 3 times, nodes 2-5 2 times,
     # ................ node 6-10 3 times (start at 1.4.8, restart to 1.4.7 for sync, then 2 upgrades)
-    # ... errors=ignore: disabled due to non-deterministic error messages "could not send response
+    # ... errors: ignore pattern due to non-deterministic error messages "could not send response
     # .................. to request down oneshot channel"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors='0;ignore:to request down oneshot channel' \
             equivocators=0 \
             doppels=0 \
             crashes=0 \
@@ -223,7 +223,14 @@ function do_prepare_upgrade() {
 function do_restart_network() {
     log_step "restarting the network: starting both old and new validators"
     # start the network
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
+    # do not pass the trusted hash to the original validators - they already have all the blocks
+    # and will simply pick up at the upgrade point
+    for NODE_ID in $(seq 1 5); do
+        do_node_start "$NODE_ID"
+    done
+    # the new validators need the trusted hash in order to be able to sync to the network, as they
+    # don't have any blocks at this point
+    for NODE_ID in $(seq 6 "$(get_count_of_nodes)"); do
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
 }
