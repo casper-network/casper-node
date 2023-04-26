@@ -93,6 +93,10 @@ function do_prepare_stage() {
     local INCREMENT
     local RC_VERSION
 
+    log "... removing stray remotes and stages"
+    rm -rf $(get_path_to_stages)
+    rm -rf $(get_path_to_remotes)
+
     log "... setting remote 1.4.7"
 
     nctl-stage-set-remotes "1.4.7"
@@ -126,13 +130,6 @@ function do_start_network() {
     nctl-assets-setup-from-stage stage=1
     nctl-start
     sleep 10
-}
-
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "2" ]; do
-        sleep 1.0
-    done
 }
 
 function do_stop_network() {

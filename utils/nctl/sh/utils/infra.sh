@@ -360,3 +360,36 @@ function get_count_of_started_nodes()
 {
     nctl-status | grep -v 'Not started' | wc -l
 }
+
+
+#######################################
+# Returns only if the chain has reached genesis (interpreted as era>=2)
+#######################################
+function do_await_genesis_era_to_complete() {
+    local LOG_STEP=${1:-'true'}
+    local TIMEOUT=${2:-'240'}
+    local CURRENT_ERA
+
+    if [ "$LOG_STEP" = "true" ]; then
+        log_step "awaiting genesis era to complete: timeout=$TIMEOUT"
+    fi
+
+    while :
+    do
+        CURRENT_ERA=$(get_chain_era)
+        if [ "$CURRENT_ERA" -ge "2" ]
+        then
+            log_step "genesis reached, era=$CURRENT_ERA"
+            return
+        fi
+        TIMEOUT=$((TIMEOUT-1))
+        if [ "$TIMEOUT" = '0' ]; then
+            log "ERROR: Timed out before genesis era completed"
+            exit 1
+        else
+            log "... waiting for genesis era to complete: timeout=$TIMEOUT, current era=$CURRENT_ERA"
+        fi
+        sleep 1.0
+    done
+}
+
