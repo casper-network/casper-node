@@ -23,6 +23,11 @@ mod wasm_test_builder;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
+#[doc(inline)]
+pub use casper_execution_engine::core::engine_state::engine_config::{
+    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+};
 use casper_execution_engine::{
     core::engine_state::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
@@ -45,29 +50,24 @@ pub use wasm_test_builder::{InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTe
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 /// Default auction delay.
-pub const DEFAULT_AUCTION_DELAY: u64 = 3;
+pub const DEFAULT_AUCTION_DELAY: u64 = 1;
 /// Default lock-in period of 90 days
 pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
-
-/// Default round seigniorage rate represented as a fractional number.
+pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
+/// Round seigniorage rate represented as a fraction of the total supply.
 ///
-/// Annual issuance: 2%
-/// Minimum round exponent: 14
+/// Annual issuance: 8%
+/// Minimum round exponent: 15
 /// Ticks per year: 31536000000
 ///
-/// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
+/// (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below.
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 87535408);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// Default maximum number of associated keys.
-pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
-/// Default max serialized size of `StoredValue`s.
-pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
@@ -180,3 +180,52 @@ pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
 });
 /// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());
+
+#[cfg(test)]
+mod tests {
+    use casper_types::TimeDiff;
+    use std::{path::PathBuf, str::FromStr};
+
+    use super::*;
+
+    #[test]
+    fn defaults_should_match_production_chainspec_values() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/chainspec.toml");
+        let production = ChainspecConfig::from_chainspec_path(path).unwrap();
+        // No need to test `CoreConfig::validator_slots`.
+        assert_eq!(production.core_config.auction_delay, DEFAULT_AUCTION_DELAY);
+        assert_eq!(
+            TimeDiff::from_str(&production.core_config.locked_funds_period)
+                .unwrap()
+                .millis(),
+            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS
+        );
+        assert_eq!(
+            production.core_config.unbonding_delay,
+            DEFAULT_UNBONDING_DELAY
+        );
+        assert_eq!(
+            production.core_config.round_seigniorage_rate.reduced(),
+            DEFAULT_ROUND_SEIGNIORAGE_RATE.reduced()
+        );
+        assert_eq!(
+            production.core_config.max_associated_keys,
+            DEFAULT_MAX_ASSOCIATED_KEYS
+        );
+        assert_eq!(
+            production.core_config.max_runtime_call_stack_height,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT
+        );
+        assert_eq!(
+            production.core_config.max_stored_value_size,
+            DEFAULT_MAX_STORED_VALUE_SIZE
+        );
+        assert_eq!(
+            production.core_config.minimum_delegation_amount,
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT
+        );
+
+        assert_eq!(production.wasm_config, WasmConfig::default());
+        assert_eq!(production.system_costs_config, SystemConfig::default());
+    }
+}
