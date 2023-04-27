@@ -7,9 +7,11 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     core::{
@@ -21,6 +23,7 @@ use casper_execution_engine::{
                 DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             },
             genesis::{GenesisAccount, GenesisValidator},
+            run_genesis_request::RunGenesisRequest,
             EngineConfig, Error, RewardItem,
         },
         execution,
@@ -43,6 +46,8 @@ use casper_types::{
     },
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
+
+use crate::test::system_contracts::auction::bids::engine_state::ExecConfig;
 
 const ARG_TARGET: &str = "target";
 
@@ -680,7 +685,24 @@ fn should_get_first_seigniorage_recipients() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    // We can't use `utils::create_run_genesis_request` as the snapshot used an auction delay of 3.
+    let auction_delay = 3;
+    let exec_config = ExecConfig::new(
+        accounts,
+        *DEFAULT_WASM_CONFIG,
+        *DEFAULT_SYSTEM_CONFIG,
+        DEFAULT_VALIDATOR_SLOTS,
+        auction_delay,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_UNBONDING_DELAY,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    );
+    let run_genesis_request = RunGenesisRequest::new(
+        *DEFAULT_GENESIS_CONFIG_HASH,
+        *DEFAULT_PROTOCOL_VERSION,
+        exec_config,
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
