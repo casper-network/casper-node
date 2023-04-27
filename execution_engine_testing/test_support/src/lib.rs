@@ -163,10 +163,15 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
 /// Default [`ChainspecRegistry`].
 pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
     Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
-// This static constant has been deprecated in favor of the Production counterpart
-// which uses costs tables and values which reflect values used by the Casper Mainnet.
-#[deprecated]
 /// Default [`RunGenesisRequest`].
+///
+/// This has been deprecated in favor of [`PRODUCTION_RUN_GENESIS_REQUEST`] which uses cost tables
+/// matching those used in Casper Mainnet.
+#[deprecated(
+    since = "2.3.0",
+    note = "prefer `PRODUCTION_RUN_GENESIS_REQUEST` as it uses cost tables matching those used in \
+           Casper Mainnet"
+)]
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
@@ -176,7 +181,7 @@ pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
 });
-/// [`RunGenesisRequest`] instantiated using chainspec values.
+/// A [`RunGenesisRequest`] using cost tables matching those used in Casper Mainnet.
 pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     ChainspecConfig::create_genesis_request_from_production_chainspec(
         DEFAULT_ACCOUNTS.clone(),

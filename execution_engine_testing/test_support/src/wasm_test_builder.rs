@@ -879,19 +879,6 @@ where
             .cloned()
     }
 
-    /// Gets the transform map that's cached between runs
-    #[deprecated(
-        since = "2.1.0",
-        note = "Use `get_execution_journals` that returns transforms in the order they were created."
-    )]
-    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
-        self.transforms
-            .clone()
-            .into_iter()
-            .map(|journal| journal.into_iter().collect())
-            .collect()
-    }
-
     /// Gets `ExecutionJournal`s of all passed runs.
     pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
         self.transforms.clone()
@@ -969,23 +956,11 @@ where
         Some(exec_results.iter().map(Rc::clone).collect())
     }
 
-    /// Returns the results of all execs.
-    #[deprecated(since = "2.3.0", note = "use `get_exec_result` instead")]
-    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
-        &self.exec_results
-    }
-
     /// Returns the owned results of a specific exec.
     pub fn get_exec_result_owned(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.get(index)?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
-    }
-
-    /// Returns the results of a specific exec.
-    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
-    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
-        self.exec_results.get(index)
     }
 
     /// Returns a count of exec results.
@@ -1283,25 +1258,6 @@ where
         ret
     }
 
-    /// Gets [`UnbondingPurses`].
-    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
-    pub fn get_withdraws(&mut self) -> UnbondingPurses {
-        let withdraw_purses = self.get_withdraw_purses();
-        let unbonding_purses: UnbondingPurses = withdraw_purses
-            .iter()
-            .map(|(key, withdraw_purse)| {
-                (
-                    key.to_owned(),
-                    withdraw_purse
-                        .iter()
-                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
-                        .collect::<Vec<UnbondingPurse>>(),
-                )
-            })
-            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
-        unbonding_purses
-    }
-
     /// Gets all `[Key::Balance]`s in global state.
     pub fn get_balance_keys(&mut self) -> Vec<Key> {
         let correlation_id = CorrelationId::new();
@@ -1437,7 +1393,7 @@ where
         self.advance_eras_by(auction_delay + 1, reward_items);
     }
 
-    /// Advancess by a single era.
+    /// Advances by a single era.
     pub fn advance_era(&mut self, reward_items: impl IntoIterator<Item = RewardItem>) {
         self.advance_eras_by(1, reward_items);
     }
@@ -1467,5 +1423,52 @@ where
             .config()
             .system_config()
             .handle_payment_costs()
+    }
+
+    /// Gets the transform map that's cached between runs
+    #[deprecated(
+        since = "2.1.0",
+        note = "Use `get_execution_journals` that returns transforms in the order they were created."
+    )]
+    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
+        self.transforms
+            .clone()
+            .into_iter()
+            .map(|journal| journal.into_iter().collect())
+            .collect()
+    }
+
+    /// Returns the results of all execs.
+    #[deprecated(
+        since = "2.3.0",
+        note = "use `get_last_exec_results` or `get_exec_result_owned` instead"
+    )]
+    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
+        &self.exec_results
+    }
+
+    /// Returns the results of a specific exec.
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
+    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
+        self.exec_results.get(index)
+    }
+
+    /// Gets [`UnbondingPurses`].
+    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+        let withdraw_purses = self.get_withdraw_purses();
+        let unbonding_purses: UnbondingPurses = withdraw_purses
+            .iter()
+            .map(|(key, withdraw_purse)| {
+                (
+                    key.to_owned(),
+                    withdraw_purse
+                        .iter()
+                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
+                        .collect::<Vec<UnbondingPurse>>(),
+                )
+            })
+            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
+        unbonding_purses
     }
 }
