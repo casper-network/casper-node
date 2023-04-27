@@ -11,6 +11,22 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 3.1.1
+
+### Changed
+* Update the following constant values to match settings in production chainspec:
+  * `DEFAULT_RET_VALUE_SIZE_WEIGHT`
+  * `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
+  * `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
+  * `DEFAULT_GAS_PER_BYTE_COST`
+  * `DEFAULT_ADD_BID_COST`
+  * `DEFAULT_WITHDRAW_BID_COST`
+  * `DEFAULT_DELEGATE_COST`
+  * `DEFAULT_UNDELEGATE_COST`
+  * `DEFAULT_MAX_STACK_HEIGHT`
+
+
+
 ## 3.1.0
 
 ### Added
