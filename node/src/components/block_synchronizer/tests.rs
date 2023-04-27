@@ -10,7 +10,7 @@ use std::{
 };
 
 use casper_types::{
-    AccessRights, CLValue, EraId, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
+    AccessRights, CLValue, EraId, Key, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
 };
 use derive_more::From;
 use rand::{seq::IteratorRandom, Rng};
@@ -23,9 +23,13 @@ use crate::{
         block_synchronizer::block_acquisition::BlockAcquisitionState,
         consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
     },
+    effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{DeployId, TestBlockBuilder},
+    types::{
+        chainspec::{CoreConfig, LegacyRequiredFinality},
+        DeployId, TestBlockBuilder,
+    },
     utils,
 };
 
@@ -82,9 +86,12 @@ impl MockReactor {
         reactor_event
     }
 
-    async fn process_effects(&self, mut effects: Effects<Event>) -> Vec<MockReactorEvent> {
+    async fn process_effects(
+        &self,
+        effects: impl IntoIterator<Item = Effect<Event>>,
+    ) -> Vec<MockReactorEvent> {
         let mut events = Vec::new();
-        for effect in effects.drain(0..) {
+        for effect in effects {
             tokio::spawn(async move { effect.await });
             let event = self.crank().await;
             events.push(event);
@@ -150,9 +157,8 @@ impl TestEnv {
 
     fn random(rng: &mut TestRng) -> TestEnv {
         let num_validators: usize = rng.gen_range(3..100);
-        let validator_keys: Vec<Arc<SecretKey>> = iter::repeat(())
+        let validator_keys: Vec<_> = iter::repeat_with(|| Arc::new(SecretKey::random(rng)))
             .take(num_validators)
-            .map(|_| Arc::new(SecretKey::random(rng)))
             .collect();
 
         let num_peers = rng.gen_range(10..20);
@@ -215,6 +221,42 @@ fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
     }
 }
 
+fn dummy_merkle_proof() -> TrieMerkleProof<Key, StoredValue> {
+    TrieMerkleProof::new(
+        URef::new([255; 32], AccessRights::NONE).into(),
+        StoredValue::CLValue(CLValue::from_t(()).unwrap()),
+        VecDeque::new(),
+    )
+}
+
+trait OneExt: IntoIterator {
+    fn try_one(self) -> Option<Self::Item>;
+    fn one(self) -> Self::Item;
+}
+
+impl<I: IntoIterator> OneExt for I {
+    fn try_one(self) -> Option<Self::Item> {
+        let mut it = self.into_iter();
+        let first = it.next()?;
+
+        it.next().is_none().then_some(first)
+    }
+
+    #[track_caller]
+    fn one(self) -> Self::Item {
+        let mut it = self.into_iter();
+        let first = it
+            .next()
+            .expect("no element in the iterator, but 1 was expected");
+
+        if it.next().is_some() {
+            panic!("more that 1 element in the iterator, but 1 was expected")
+        }
+
+        first
+    }
+}
+
 impl BlockSynchronizer {
     // Create an initialized block synchronizer
     // with a specified config and MAX_SIMULTANEOUS_PEERS peers
@@ -225,7 +267,13 @@ impl BlockSynchronizer {
     ) -> BlockSynchronizer {
         let mut block_synchronizer = BlockSynchronizer::new(
             config,
-            Arc::new(Chainspec::random(rng)),
+            Arc::new(Chainspec {
+                core_config: CoreConfig {
+                    legacy_required_finality: LegacyRequiredFinality::Strict,
+                    ..CoreConfig::random(rng)
+                },
+                ..Chainspec::random(rng)
+            }),
             MAX_SIMULTANEOUS_PEERS as u32,
             validator_matrix,
             &prometheus::Registry::new(),
@@ -872,8 +920,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
             generated_effects
                 .into_iter()
                 .rev()
-                .take(MAX_SIMULTANEOUS_PEERS)
-                .collect(),
+                .take(MAX_SIMULTANEOUS_PEERS),
         )
         .await;
     for event in events {
@@ -1326,11 +1373,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             .iter()
             .map(|deploy| deploy.approvals_hash().unwrap())
             .collect(),
-        TrieMerkleProof::new(
-            URef::new([255; 32], AccessRights::NONE).into(),
-            StoredValue::CLValue(CLValue::from_t(()).unwrap()),
-            VecDeque::new(),
-        ),
+        dummy_merkle_proof(),
     );
 
     // Since the block has approvals hashes,
@@ -1950,4 +1993,527 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
         block_synchronizer.forward_progress(),
         BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
     );
+}
+
+fn historical_state(block_synchronizer: &BlockSynchronizer) -> &BlockAcquisitionState {
+    block_synchronizer
+        .historical
+        .as_ref()
+        .unwrap()
+        .block_acquisition_state()
+}
+
+#[tokio::test]
+async fn historical_sync_without_a_deploy_works() {
+    let rng = &mut TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let test_env = TestEnv::random(rng);
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default());
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.forward.is_none());
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    /* Skip steps HaveBlockHeader, HaveWeakFinalitySignature, HaveBlock */
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    historical_builder
+        .register_block_header(block.clone().take_header(), None)
+        .expect("header registration works");
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder.register_block(block, None).is_ok());
+
+    /* Step HaveGlobalState */
+
+    let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
+
+    let request = match events.try_one() {
+        Some(MockReactorEvent::SyncGlobalStateRequest(
+            request @ SyncGlobalStateRequest {
+                block_hash,
+                state_root_hash,
+                ..
+            },
+        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+        _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
+    };
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
+    );
+
+    // Those effects are handled directly and not through the reactor:
+    let events = effects
+        .try_one()
+        .expect("there should be only one effect")
+        .await;
+    assert_matches!(
+        events.try_one(),
+        Some(Event::GlobalStateSynchronizer(
+            GlobalStateSynchronizerEvent::GetPeers(_)
+        ))
+    );
+
+    /* Step HaveAllExecutionResults */
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynced {
+            block_hash: *block.hash(),
+            result: Ok(GlobalStateSynchronizerResponse::new(
+                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                vec![],
+            )),
+        },
+    );
+
+    // ----- HaveGlobalState -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(..));
+    }
+
+    // The next steps are the strict finality ones and are similar to the forward sync
+}
+
+#[tokio::test]
+async fn historical_sync_no_legacy_block() {
+    let rng = &mut TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let deploy = Deploy::random(rng);
+    let test_env = TestEnv::random(rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(std::iter::once(&deploy))
+            .build(rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default());
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.forward.is_none());
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    historical_builder
+        .register_block_header(block.clone().take_header(), None)
+        .expect("header registration works");
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder.register_block(block, None).is_ok());
+
+    let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
+
+    let request = match events.try_one() {
+        Some(MockReactorEvent::SyncGlobalStateRequest(
+            request @ SyncGlobalStateRequest {
+                block_hash,
+                state_root_hash,
+                ..
+            },
+        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+        _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
+    };
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
+    );
+
+    // Those effects are handled directly and not through the reactor:
+    let events = effects.one().await;
+    assert_matches!(
+        events.try_one(),
+        Some(Event::GlobalStateSynchronizer(
+            GlobalStateSynchronizerEvent::GetPeers(_)
+        ))
+    );
+
+    // ----- HaveBlock -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveBlock { .. }
+    );
+
+    // Let's not test the detail of the global syncronization event,
+    // since it is already tested in its unit tests.
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynced {
+            block_hash: *block.hash(),
+            result: Ok(GlobalStateSynchronizerResponse::new(
+                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                vec![],
+            )),
+        },
+    );
+
+    // ----- HaveGlobalState -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    match events.try_one() {
+        Some(MockReactorEvent::ContractRuntimeRequest(
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            },
+        )) => responder.respond(Ok(Some(state_root_hash))).await,
+        other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: Ok(Some(Digest::SENTINEL_NONE)),
+        },
+    );
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(
+                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
+            ))),
+        },
+    );
+
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    assert_matches!(
+        events.remove(0),
+        MockReactorEvent::StorageRequest(StorageRequest::PutExecutionResults { .. })
+    );
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsStored(*block.hash()),
+    );
+    // ----- HaveAllExecutionResults -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllExecutionResults(_, _, _, checksum) if checksum.is_checkable()
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
+            ApprovalsHashes::new(
+                block.hash(),
+                vec![deploy.approvals_hash().unwrap()],
+                dummy_merkle_proof(),
+            ),
+        )))),
+    );
+    // ----- HaveApprovalsHashes -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::DeployFetched {
+            block_hash: *block.hash(),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploy)))),
+        },
+    );
+    // ----- HaveAllDeploys -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllDeploys(_, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(_));
+    }
+
+    // Then we get back to the strict finality signature part, which is already tested.
+}
+
+#[tokio::test]
+async fn historical_sync_legacy_block() {
+    let rng = &mut TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let deploy = Deploy::random(rng);
+    let test_env = TestEnv::random(rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(std::iter::once(&deploy))
+            .build(rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default());
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.forward.is_none());
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    historical_builder
+        .register_block_header(block.clone().take_header(), None)
+        .expect("header registration works");
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder.register_block(block, None).is_ok());
+
+    let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
+
+    let request = match events.try_one() {
+        Some(MockReactorEvent::SyncGlobalStateRequest(
+            request @ SyncGlobalStateRequest {
+                block_hash,
+                state_root_hash,
+                ..
+            },
+        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+        _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
+    };
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
+    );
+
+    // Those effects are handled directly and not through the reactor:
+    let events = effects.one().await;
+    assert_matches!(
+        events.try_one(),
+        Some(Event::GlobalStateSynchronizer(
+            GlobalStateSynchronizerEvent::GetPeers(_)
+        ))
+    );
+
+    // ----- HaveBlock -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveBlock { .. }
+    );
+
+    // Let's not test the detail of the global syncronization event,
+    // since it is already tested in its unit tests.
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynced {
+            block_hash: *block.hash(),
+            result: Ok(GlobalStateSynchronizerResponse::new(
+                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                vec![],
+            )),
+        },
+    );
+
+    // ----- HaveGlobalState -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    match events.try_one() {
+        Some(MockReactorEvent::ContractRuntimeRequest(
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            },
+        )) => responder.respond(Ok(Some(state_root_hash))).await,
+        other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: Ok(None), // No checksum because we want to test a legacy block
+        },
+    );
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(
+                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
+            ))),
+        },
+    );
+
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    assert_matches!(
+        events.remove(0),
+        MockReactorEvent::StorageRequest(StorageRequest::PutExecutionResults { .. })
+    );
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsStored(*block.hash()),
+    );
+    // ----- HaveAllExecutionResults -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllExecutionResults(_, _, _, checksum)
+            if checksum.is_checkable() == false
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::LegacyDeployFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::DeployFetched {
+            block_hash: *block.hash(),
+            result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
+        },
+    );
+    // ----- HaveAllDeploys -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllDeploys(_, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(_));
+    }
+
+    // Then we get back to the strict finality signature part, which is already tested.
 }

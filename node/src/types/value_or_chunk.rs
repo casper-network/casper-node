@@ -77,6 +77,11 @@ impl<V> ValueOrChunk<V> {
             Ok(ValueOrChunk::ChunkWithProof(chunk_with_proof))
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn new_value(value: V) -> Self {
+        Self::Value(value)
+    }
 }
 
 impl Display for ValueOrChunk<HashingTrieRaw> {

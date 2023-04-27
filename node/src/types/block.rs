@@ -1874,6 +1874,19 @@ impl BlockExecutionResultsOrChunk {
     pub fn block_hash(&self) -> &BlockHash {
         &self.block_hash
     }
+
+    #[cfg(test)]
+    pub fn new_mock_value(block_hash: BlockHash) -> Self {
+        Self {
+            block_hash,
+            value: ValueOrChunk::new_value(vec![casper_types::ExecutionResult::Success {
+                effect: Default::default(),
+                transfers: vec![],
+                cost: U512::from(123),
+            }]),
+            is_valid: OnceCell::with_value(Ok(true)),
+        }
+    }
 }
 
 impl PartialEq for BlockExecutionResultsOrChunk {
