@@ -443,7 +443,7 @@ mod tests {
         builder,
         elements::{CodeSection, Instructions},
     };
-    use walrus::{FunctionBuilder, ModuleConfig, ValType};
+    use walrus::{FunctionBuilder, ModuleConfig, ValType, ir::{Instr, Unop, UnaryOp}};
 
     use super::*;
 
@@ -647,6 +647,321 @@ mod tests {
             matches!(&error, PreprocessingError::Deserialize(msg)
             // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
             if msg == "Enable the multi_value feature to deserialize more than one function result"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_atomics_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_atomics =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_atomics.func_body().atomic_fence();
+
+            let func_with_atomics = func_with_atomics.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_atomics);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Atomic operations not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_bulk_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_bulk =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_bulk.func_body().memory_copy(memory_id, memory_id);
+
+            let func_with_bulk = func_with_bulk.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_bulk);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Bulk memory operations are not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_simd_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_simd =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_simd.func_body().v128_bitselect();
+
+            let func_with_simd = func_with_simd.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_simd);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "SIMD operations are not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_sign_ext_i32_e8s_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_sign_ext =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_sign_ext.func_body().i32_const(0);
+
+            {
+                let mut body = func_with_sign_ext.func_body();
+                let instructions = body.instrs_mut();
+                let (instr, _) = instructions.get_mut(0).unwrap();
+                *instr = Instr::Unop(Unop { op: UnaryOp::I32Extend8S });
+            }
+
+            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_sign_ext);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Sign extension operations are not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_sign_ext_i32_e16s_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_sign_ext =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_sign_ext.func_body().i32_const(0);
+
+            {
+                let mut body = func_with_sign_ext.func_body();
+                let instructions = body.instrs_mut();
+                let (instr, _) = instructions.get_mut(0).unwrap();
+                *instr = Instr::Unop(Unop { op: UnaryOp::I32Extend16S });
+            }
+
+            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_sign_ext);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Sign extension operations are not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_sign_ext_i64_e8s_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_sign_ext =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_sign_ext.func_body().i32_const(0);
+
+            {
+                let mut body = func_with_sign_ext.func_body();
+                let instructions = body.instrs_mut();
+                let (instr, _) = instructions.get_mut(0).unwrap();
+                *instr = Instr::Unop(Unop { op: UnaryOp::I64Extend8S });
+            }
+
+            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_sign_ext);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Sign extension operations are not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_sign_ext_i64_e16s_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_sign_ext =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_sign_ext.func_body().i32_const(0);
+
+            {
+                let mut body = func_with_sign_ext.func_body();
+                let instructions = body.instrs_mut();
+                let (instr, _) = instructions.get_mut(0).unwrap();
+                *instr = Instr::Unop(Unop { op: UnaryOp::I64Extend16S });
+            }
+
+            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_sign_ext);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Sign extension operations are not supported"),
+            "{:?}",
+            error,
+        );
+    }
+
+    #[test]
+    fn should_not_accept_sign_ext_i64_e32s_proposal_wasm() {
+        let module_bytes = {
+            let mut module = walrus::Module::with_config(ModuleConfig::new());
+
+            let _memory_id = module.memories.add_local(false, 11, None);
+
+            let mut func_with_sign_ext =
+                FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            func_with_sign_ext.func_body().i32_const(0);
+
+            {
+                let mut body = func_with_sign_ext.func_body();
+                let instructions = body.instrs_mut();
+                let (instr, _) = instructions.get_mut(0).unwrap();
+                *instr = Instr::Unop(Unop { op: UnaryOp::I64Extend32S });
+            }
+
+            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
+
+            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
+
+            call_func.func_body().call(func_with_sign_ext);
+
+            let call = call_func.finish(Vec::new(), &mut module.funcs);
+
+            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
+
+            module.emit_wasm()
+        };
+        let error = preprocess(WasmConfig::default(), &module_bytes)
+            .expect_err("should fail with an error");
+        assert!(
+            matches!(&error, PreprocessingError::Deserialize(msg)
+            // TODO: GH-3762 will improve the error message for unsupported wasm proposals.
+            if msg == "Sign extension operations are not supported"),
             "{:?}",
             error,
         );
