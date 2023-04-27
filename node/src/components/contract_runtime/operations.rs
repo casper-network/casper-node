@@ -292,7 +292,7 @@ pub fn execute_finalized_block(
                 }
             }
             None => {
-                info!(
+                debug!(
                     previous_block_height,
                     %key_block_height_for_activation_point,
                     "commit prune: nothing to do, no more eras to delete"
