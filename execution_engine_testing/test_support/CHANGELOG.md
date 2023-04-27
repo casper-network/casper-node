@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 3.1.1
+
+### Changed
+* Updated chainspec values used in `PRODUCTION_RUN_GENESIS_REQUEST` to match those of Mainnet protocol version 1.4.15.
+
+
+
 ## 3.1.0
 
 ### Added
