@@ -19,8 +19,8 @@ const NOT_USED: Cost = 0;
 /// An arbitrary default fixed cost for host functions that were not researched yet.
 const DEFAULT_FIXED_COST: Cost = 200;
 
-const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000;
 const DEFAULT_ADD_COST: u32 = 5_800;
+const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000;
 
 const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500;
 const DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT: u32 = 420;
@@ -60,7 +60,7 @@ const DEFAULT_REMOVE_KEY_COST: u32 = 61_000;
 const DEFAULT_REMOVE_KEY_NAME_SIZE_WEIGHT: u32 = 3_200;
 
 const DEFAULT_RET_COST: u32 = 23_000;
-const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420;
+const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420_000;
 
 const DEFAULT_REVERT_COST: u32 = 500;
 const DEFAULT_SET_ACTION_THRESHOLD_COST: u32 = 74_000;
@@ -86,6 +86,7 @@ pub(crate) const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
 /// of the data.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct HostFunction<T> {
     /// How much the user is charged for calling the host function.
     cost: Cost,
@@ -197,6 +198,7 @@ where
 
 /// Definition of a host function cost table.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct HostFunctionCosts {
     /// Cost of calling the `read_value` host function.
     pub read_value: HostFunction<[Cost; 3]>,

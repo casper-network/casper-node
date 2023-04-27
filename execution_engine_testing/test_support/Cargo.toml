@@ -27,6 +27,7 @@ toml = "0.5.6"
 tempfile = "3"
 
 [dev-dependencies]
+casper-types = { version = "1.6.0", path = "../../types", features = ["std"] }
 version-sync = "0.9.3"
 
 [features]

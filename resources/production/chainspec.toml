@@ -145,8 +145,6 @@ nop = 200
 current_memory = 290
 # Grow memory cost, per page (64kb).
 grow_memory = 240_000
-# Regular opcode cost.
-regular = 210
 
 # Control flow operations multiplier.
 [wasm.opcode_costs.control_flow]
