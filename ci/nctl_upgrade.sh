@@ -150,21 +150,6 @@ function start_upgrade_scenario_9() {
 }
 
 function start_upgrade_scenario_10() {
-    log "... Setting up custom starting version"
-    local PATH_TO_STAGE
-
-    PATH_TO_STAGE="$(get_path_to_stage 1)"
-
-    log "... downloading remote for 1.3.0"
-    nctl-stage-set-remotes "1.3.0"
-
-    log "... tearing down old stages"
-    nctl-stage-teardown
-
-    log "... creating new stage"
-    dev_branch_settings "$PATH_TO_STAGE" "1.3.0"
-    build_from_settings_file
-
     log "... Starting Upgrade Scenario 10"
     nctl-exec-upgrade-scenario-10
 }
@@ -189,9 +174,24 @@ function start_upgrade_scenario_11() {
     nctl-exec-upgrade-scenario-11
 }
 
-function start_upgrade_scenario_12() {
-    log "... Starting Upgrade Scenario 12"
-    nctl-exec-upgrade-scenario-12
+function start_upgrade_scenario_last() {
+    log "... Setting up custom starting version"
+    local PATH_TO_STAGE
+
+    PATH_TO_STAGE="$(get_path_to_stage 1)"
+
+    log "... downloading remote for 1.3.0"
+    nctl-stage-set-remotes "1.3.0"
+
+    log "... tearing down old stages"
+    nctl-stage-teardown
+
+    log "... creating new stage"
+    dev_branch_settings "$PATH_TO_STAGE" "1.3.0"
+    build_from_settings_file
+
+    log "... Starting Upgrade Scenario Last"
+    nctl-exec-upgrade-scenario-last
 }
 
 # ----------------------------------------------------------------
