@@ -17,12 +17,14 @@ function main() {
     log "Starting Scenario: itst01"
     log "------------------------------------------------------------"
 
-    local NODE_SHUTDOWN_ID=${1}
-
-    log "Node to be stopped: $NODE_SHUTDOWN_ID"
+    local NODE_SHUTDOWN_ID
 
     # 0. Wait for network start up
     do_await_genesis_era_to_complete
+
+    NODE_SHUTDOWN_ID=$(get_node_for_dispatch)
+    log "Node to be stopped: $NODE_SHUTDOWN_ID"
+
     # 1. Allow chain to progress
     do_await_era_change
     # 2. Stop random node
@@ -67,7 +69,6 @@ function do_get_another_node() {
 
 unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
-unset NODE_ID
 STEP=0
 
 for ARGUMENT in "$@"; do
@@ -79,7 +80,6 @@ for ARGUMENT in "$@"; do
     esac
 done
 
-NODE_ID=$(get_node_for_dispatch)
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 
-main "$NODE_ID"
+main
