@@ -40,6 +40,8 @@ function main() {
     local AFTER_EVICTION_HASH=$(do_read_lfb_hash '1')
     # 10. Wait 3 eras to see if the node ends up proposing
     do_await_era_change "3"
+    # Node 6 must be synced to genesis in case it's selected for walkback
+    await_node_historical_sync_to_genesis '6' '300'
     # 11. Assert node didn't propose since being unbonded
     assert_no_proposal_walkback '6' "$AFTER_EVICTION_HASH"
     # 12. Run Health Checks

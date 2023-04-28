@@ -66,13 +66,6 @@ function log_step() {
     STEP=$((STEP + 1))
 }
 
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "1" ]; do
-        sleep 1.0
-    done
-}
-
 function do_send_wasm_deploys() {
     # NOTE: Maybe make these arguments to the test?
     local BATCH_COUNT=1

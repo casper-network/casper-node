@@ -120,12 +120,6 @@ impl Digest {
         Digest(result)
     }
 
-    /// Provides the same functionality as [`Digest::hash_merkle_tree`].
-    #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
-    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
-        Digest::hash_merkle_tree(vec)
-    }
-
     /// Returns the underlying BLAKE2b hash bytes
     pub fn value(&self) -> [u8; Digest::LENGTH] {
         self.0
@@ -237,6 +231,12 @@ impl Digest {
                     .map(Digest::blake2b_hash),
             )
         }
+    }
+
+    /// Provides the same functionality as [`Digest::hash_merkle_tree`].
+    #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
+    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
+        Digest::hash_merkle_tree(vec)
     }
 }
 

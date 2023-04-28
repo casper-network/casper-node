@@ -81,13 +81,12 @@ function _spinup_step_01()
     source "$NCTL/sh/node/start.sh" node="all"
 }
 
-# Spinup: step 02: Await era-id >= 1.
+# Spinup: step 02: Await for genesis
 function _spinup_step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion" "SPINUP"
 
-    await_until_era_n 1
-    log " ... chain @ era-$(get_chain_era) :: height-$(get_chain_height)"
+    do_await_genesis_era_to_complete 'false'
 }
 
 # Spinup: step 03: Populate global state -> native + wasm transfers.
