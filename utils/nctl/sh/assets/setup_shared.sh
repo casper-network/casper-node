@@ -370,7 +370,7 @@ function setup_asset_keys()
 }
 
 #######################################
-# Sets node confgiuration files.
+# Sets node configuration files.
 # Arguments:
 #   Count of nodes to setup (default=5).
 #   Version of protocol being ran.

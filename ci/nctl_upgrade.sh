@@ -20,7 +20,10 @@ function main() {
         nctl-compile
 
         # Clear Old Stages
+        log "removing old remotes and stages"
         nctl-stage-teardown
+        rm -rf $(get_path_to_stages)
+        rm -rf $(get_path_to_remotes)
 
         # Stage
         get_remotes
@@ -150,11 +153,6 @@ function start_upgrade_scenario_9() {
 }
 
 function start_upgrade_scenario_10() {
-    log "... Starting Upgrade Scenario 10"
-    nctl-exec-upgrade-scenario-10
-}
-
-function start_upgrade_scenario_11() {
     log "... Setting up custom starting version"
     local PATH_TO_STAGE
 
@@ -170,6 +168,11 @@ function start_upgrade_scenario_11() {
     dev_branch_settings "$PATH_TO_STAGE" "1.4.5"
     build_from_settings_file
 
+    log "... Starting Upgrade Scenario 10"
+    nctl-exec-upgrade-scenario-10
+}
+
+function start_upgrade_scenario_11() {
     log "... Starting Upgrade Scenario 11"
     nctl-exec-upgrade-scenario-11
 }

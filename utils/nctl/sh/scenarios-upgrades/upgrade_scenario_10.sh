@@ -106,7 +106,10 @@ function _step_04()
     log_step_upgrades 4 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" \
+        stage="$STAGE_ID" \
+        verbose=false \
+        chainspec_path="$NCTL/overrides/upgrade_scenario_10.post.chainspec.toml.in"
 
     log "... awaiting era"
 
@@ -117,7 +120,7 @@ function _step_04()
 }
 
 function _step_05() {
-    log "... asserting that there are no era infos present in the global state"
+    log_step_upgrades 5 "... asserting that there are no era infos present in the global state"
     local NODE_ID=${1}
     local BLOCK=$(nctl-view-chain-block)
 
