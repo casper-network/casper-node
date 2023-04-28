@@ -82,9 +82,7 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=10
     bash -i ./ci/nctl_upgrade.sh test_id=11
-
-    # This scenario must be run at the end due to the specific setup it creates which may break tests executed afterward.
-    bash -i ./ci/nctl_upgrade.sh test_id=last
+    bash -i ./ci/nctl_upgrade.sh test_id=12
 }
 
 function run_soundness_test() {

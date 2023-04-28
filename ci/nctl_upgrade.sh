@@ -177,7 +177,7 @@ function start_upgrade_scenario_11() {
     nctl-exec-upgrade-scenario-11
 }
 
-function start_upgrade_scenario_last() {
+function start_upgrade_scenario_12() {
     log "... Setting up custom starting version"
     local PATH_TO_STAGE
 
@@ -193,8 +193,8 @@ function start_upgrade_scenario_last() {
     dev_branch_settings "$PATH_TO_STAGE" "1.3.0"
     build_from_settings_file
 
-    log "... Starting Upgrade Scenario Last"
-    nctl-exec-upgrade-scenario-last
+    log "... Starting Upgrade Scenario 12"
+    nctl-exec-upgrade-scenario-12
 }
 
 # ----------------------------------------------------------------
