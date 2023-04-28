@@ -51,6 +51,8 @@ function main() {
     get_switch_block '1' '100'
     # Assert node 5 was evicted
     assert_eviction '5'
+    # Node 5 must be synced to genesis in case it's selected for walkback
+    await_node_historical_sync_to_genesis '5' '300'
     # Assert node didn't propose since being shutdown
     assert_no_proposal_walkback '5' "$RESTART_HASH"
     # Re-bid shutdown node
