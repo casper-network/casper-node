@@ -36,6 +36,7 @@ use crate::{
 const MAX_SIMULTANEOUS_PEERS: usize = 5;
 const TEST_LATCH_RESET_INTERVAL_MILLIS: u64 = 5;
 const TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS: u64 = 150;
+const SHOULD_FETCH_EXECUTION_STATE: bool = true;
 
 /// Event for the mock reactor.
 #[derive(Debug, From)]
@@ -258,8 +259,6 @@ impl<I: IntoIterator> OneExt for I {
 }
 
 impl BlockSynchronizer {
-    // Create an initialized block synchronizer
-    // with a specified config and MAX_SIMULTANEOUS_PEERS peers
     fn new_initialized(
         rng: &mut TestRng,
         validator_matrix: ValidatorMatrix,
@@ -556,7 +555,7 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
         BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.historical.is_some());
 
     let effects = block_synchronizer.handle_event(
@@ -1780,7 +1779,7 @@ async fn historical_sync_announces_meta_block() {
         BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
 
     // Register block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.historical.is_some());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -2003,8 +2002,10 @@ fn historical_state(block_synchronizer: &BlockSynchronizer) -> &BlockAcquisition
         .block_acquisition_state()
 }
 
+/// When there is no deploy, the state goes from `HaveGlobalState` to `HaveStrictFinalitySignature`
+/// directly, skipping `HaveAllExecutionResults`, `HaveApprovalsHashes` and `HaveAllDeploys`.
 #[tokio::test]
-async fn historical_sync_without_a_deploy_works() {
+async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
     let test_env = TestEnv::random(rng);
@@ -2016,11 +2017,11 @@ async fn historical_sync_without_a_deploy_works() {
         BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default());
 
     // Register block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.forward.is_none());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
-    /* Skip steps HaveBlockHeader, HaveWeakFinalitySignature, HaveBlock */
+    // Skip steps HaveBlockHeader, HaveWeakFinalitySignature, HaveBlock
 
     let historical_builder = block_synchronizer
         .historical
@@ -2038,8 +2039,6 @@ async fn historical_sync_without_a_deploy_works() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder.register_block(block, None).is_ok());
-
-    /* Step HaveGlobalState */
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2060,6 +2059,12 @@ async fn historical_sync_without_a_deploy_works() {
         Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
     );
 
+    // ----- HaveBlock -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveBlock { .. }
+    );
+
     // Those effects are handled directly and not through the reactor:
     let events = effects
         .try_one()
@@ -2071,8 +2076,6 @@ async fn historical_sync_without_a_deploy_works() {
             GlobalStateSynchronizerEvent::GetPeers(_)
         ))
     );
-
-    /* Step HaveAllExecutionResults */
 
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
@@ -2096,8 +2099,6 @@ async fn historical_sync_without_a_deploy_works() {
     for event in events {
         assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(..));
     }
-
-    // The next steps are the strict finality ones and are similar to the forward sync
 }
 
 #[tokio::test]
@@ -2119,7 +2120,7 @@ async fn historical_sync_no_legacy_block() {
         BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default());
 
     // Register block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.forward.is_none());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -2174,7 +2175,7 @@ async fn historical_sync_no_legacy_block() {
         BlockAcquisitionState::HaveBlock { .. }
     );
 
-    // Let's not test the detail of the global syncronization event,
+    // Let's not test the detail of the global synchronization event,
     // since it is already tested in its unit tests.
 
     let effects = block_synchronizer.handle_event(
@@ -2340,7 +2341,7 @@ async fn historical_sync_legacy_block() {
         BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default());
 
     // Register block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.forward.is_none());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
 
@@ -2395,7 +2396,7 @@ async fn historical_sync_legacy_block() {
         BlockAcquisitionState::HaveBlock { .. }
     );
 
-    // Let's not test the detail of the global syncronization event,
+    // Let's not test the detail of the global synchronization event,
     // since it is already tested in its unit tests.
 
     let effects = block_synchronizer.handle_event(

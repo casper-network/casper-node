@@ -1876,10 +1876,10 @@ impl BlockExecutionResultsOrChunk {
     }
 
     #[cfg(test)]
-    pub fn new_mock_value(block_hash: BlockHash) -> Self {
+    pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
         Self {
             block_hash,
-            value: ValueOrChunk::new_value(vec![casper_types::ExecutionResult::Success {
+            value: ValueOrChunk::Value(vec![casper_types::ExecutionResult::Success {
                 effect: Default::default(),
                 transfers: vec![],
                 cost: U512::from(123),
