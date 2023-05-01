@@ -28,7 +28,7 @@ BID_DELEGATION_RATE=${BID_DELEGATION_RATE:-2}
 # ----------------------------------------------------------------
 
 # Await genesis era to complete.
-if [ "$(get_chain_era)" -eq 0 ]; then
+if [ "$(get_chain_era)" -lt 1 ]; then
     log "awaiting genesis era to complete"
     while [ "$(get_chain_era)" -lt 1 ];
     do
