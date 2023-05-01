@@ -58,6 +58,9 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+#[cfg(target_os = "linux")]
+use crate::utils::rlimit::{Limit, OpenFiles, ResourceLimit};
+
 use crate::{
     components::{
         block_accumulator, deploy_acceptor,
@@ -75,11 +78,7 @@ use crate::{
         TrieOrChunk,
     },
     unregister_metric,
-    utils::{
-        self,
-        rlimit::{Limit, OpenFiles, ResourceLimit},
-        SharedFlag, WeightedRoundRobin,
-    },
+    utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
 };
 pub(crate) use queue_kind::QueueKind;

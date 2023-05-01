@@ -13,6 +13,7 @@ pub mod execution_result;
 pub mod genesis;
 pub mod get_bids;
 pub mod op;
+mod prune;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -66,6 +67,7 @@ pub use self::{
     execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
+    prune::{PruneConfig, PruneResult},
     query::{QueryRequest, QueryResult},
     run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
@@ -92,6 +94,7 @@ use crate::{
             StateReader,
         },
         trie::{merkle_proof::TrieMerkleProof, TrieRaw},
+        trie_store::operations::DeleteResult,
     },
     system::auction,
 };
@@ -516,6 +519,40 @@ where
             tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
+        // Perform global state migrations that require state.
+
+        if let Some(activation_point) = upgrade_config.activation_point() {
+            // The highest stored era is the immediate predecessor of the activation point.
+            let highest_era_info_id = activation_point.saturating_sub(1);
+            let highest_era_info_key = Key::EraInfo(highest_era_info_id);
+
+            let get_result = tracking_copy
+                .borrow_mut()
+                .get(correlation_id, &highest_era_info_key)
+                .map_err(|error| Error::Exec(error.into()))?;
+
+            match get_result {
+                Some(stored_value @ StoredValue::EraInfo(_)) => {
+                    tracking_copy
+                        .borrow_mut()
+                        .write(Key::EraSummary, stored_value);
+                }
+                Some(other_stored_value) => {
+                    // This should not happen as we only write EraInfo variants.
+                    error!(stored_value_type_name=%other_stored_value.type_name(),
+                        "EraInfo key contains unexpected StoredValue variant");
+                    return Err(Error::ProtocolUpgrade(
+                        ProtocolUpgradeError::UnexpectedStoredValueVariant,
+                    ));
+                }
+                None => {
+                    // Can't find key
+                    // Most likely this chain did not yet ran an auction, or recently completed a
+                    // prune
+                }
+            };
+        }
+
         let execution_effect = tracking_copy.borrow().effect();
 
         // commit
@@ -533,6 +570,41 @@ where
             post_state_hash,
             execution_effect,
         })
+    }
+
+    /// Commit a prune of leaf nodes from the tip of the merkle trie.
+    pub fn commit_prune(
+        &self,
+        correlation_id: CorrelationId,
+        prune_config: PruneConfig,
+    ) -> Result<PruneResult, Error> {
+        let state_root_hash = prune_config.pre_state_hash();
+
+        // Validate the state root hash just to make sure we can safely short circuit in case the
+        // list of keys is empty.
+        match self.tracking_copy(state_root_hash)? {
+            None => return Ok(PruneResult::RootNotFound),
+            Some(_tracking_copy) => {}
+        };
+
+        let keys_to_delete = prune_config.keys_to_prune();
+        if keys_to_delete.is_empty() {
+            return Ok(PruneResult::Success {
+                post_state_hash: state_root_hash,
+            });
+        }
+
+        match self
+            .state
+            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
+        {
+            Ok(DeleteResult::Deleted(post_state_hash)) => {
+                Ok(PruneResult::Success { post_state_hash })
+            }
+            Ok(DeleteResult::DoesNotExist) => Ok(PruneResult::DoesNotExist),
+            Ok(DeleteResult::RootNotFound) => Ok(PruneResult::RootNotFound),
+            Err(error) => Err(Error::Exec(error.into())),
+        }
     }
 
     /// Creates a new tracking copy instance.

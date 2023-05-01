@@ -535,7 +535,6 @@ pub trait Auction:
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
-        let era_id = detail::get_era_id(self)?;
 
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
@@ -617,7 +616,7 @@ pub trait Auction:
             }
         }
 
-        self.record_era_info(era_id, era_info)?;
+        self.record_era_info(EraId::new(u64::MAX), era_info)?;
 
         Ok(())
     }

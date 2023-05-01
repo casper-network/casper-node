@@ -96,8 +96,6 @@ All notable changes to this project will be documented in this file.  The format
 * Remove a temporary chainspec setting `[core.max_stored_value_size]` which was used to limit the size of individual values stored in global state.
 * Remove config section `[deploy_acceptor]` which only has one option `verify_accounts`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 * Remove storage integrity check.
-* Remove asymmetric key functionality (move to `casper-types` crate behind feature "std").
-* Remove time types (move to `casper-types` with some functionality behind feature "std").
 * Remove `SIGUSR1`/`SIGUSR2` queue dumps in favor of the diagnostics port.
 * Remove `casper-mainnet` feature flag.
 
@@ -108,6 +106,26 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * Bump `openssl` crate to version 0.10.48, if compiling with vendored OpenSSL to address latest RUSTSEC advisories.
+
+
+
+## 1.4.14
+
+### Added
+* Node executes new prune process after executing each block, whereby entries under `Key::EraInfo` are removed in batches of size defined by the new chainspec option `[core.prune_batch_size]`.
+* After executing a switch block, information about that era is stored to global state under a new static key `Key::EraSummary`.
+* Add a new JSON-RPC endpoint `chain_get_era_summary` to retrieve the information stored under `Key::EraSummary`.
+
+### Changed
+* Rather than storing an ever-increasing collection of era information after executing a switch block under `Key::EraInfo`, the node now stores only the information relevant to that era under `Key::EraSummary`.
+* Update `openssl` and `openssl-sys` to latest versions.
+
+### Removed
+* Remove asymmetric key functionality (move to `casper-types` crate behind feature `std`).
+* Remove time types (move to `casper-types` with some functionality behind feature `std`).
+
+### Fixed
+* Fix issue in BlockValidator inhibiting the use of fallback peers to fetch missing deploys.
 
 
 

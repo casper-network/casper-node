@@ -495,6 +495,8 @@ pub(crate) enum StorageRequest {
         /// written.
         responder: Responder<bool>,
     },
+    /// Retrieve the height of the final block of the previous protocol version, if known.
+    GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
 }
 
 impl Display for StorageRequest {
@@ -610,6 +612,12 @@ impl Display for StorageRequest {
             }
             StorageRequest::PutExecutedBlock { block, .. } => {
                 write!(formatter, "put executed block {}", block.hash(),)
+            }
+            StorageRequest::GetKeyBlockHeightForActivationPoint { .. } => {
+                write!(
+                    formatter,
+                    "get key block height for current activation point"
+                )
             }
         }
     }
@@ -883,6 +891,8 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
+        /// The key block height for the current protocol version's activation point.
+        key_block_height_for_activation_point: u64,
         meta_block_state: MetaBlockState,
     },
     /// A query request.

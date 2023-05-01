@@ -2,6 +2,8 @@ mod store_ext;
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::borrow::Cow;
+
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 pub use self::store_ext::StoreExt;
@@ -59,19 +61,28 @@ pub trait Store<K, V> {
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
-        self.put_raw(txn, key, &value.to_bytes()?)
+        self.put_raw(txn, key, Cow::from(value.to_bytes()?))
     }
 
     /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
-    fn put_raw<T>(&self, txn: &mut T, key: &K, trie_bytes: &[u8]) -> Result<(), Self::Error>
+    ///
+    /// This accepts a [`Cow`] object as a value to allow different implementations to choose if
+    /// they want to use owned value (i.e. put it in a cache without cloning) or the raw bytes
+    /// (write it into a persistent store).
+    fn put_raw<T>(
+        &self,
+        txn: &mut T,
+        key: &K,
+        value_bytes: Cow<'_, [u8]>,
+    ) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
         K: AsRef<[u8]>,
         Self::Error: From<T::Error>,
     {
         let handle = self.handle();
-        txn.write(handle, key.as_ref(), trie_bytes)
+        txn.write(handle, key.as_ref(), &value_bytes)
             .map_err(Into::into)
     }
 }

@@ -55,8 +55,8 @@ pub trait StorageProvider {
         unbonding_purses: Vec<UnbondingPurse>,
     ) -> Result<(), Error>;
 
-    /// Records era info at the given era id.
-    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
+    /// Records era summary.
+    fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error>;
 }
 
 /// Provides an access to mint.

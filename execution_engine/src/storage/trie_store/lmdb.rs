@@ -104,11 +104,15 @@
 //! tmp_dir.close().unwrap();
 //! ```
 use std::{
-    collections::HashMap,
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
     sync::{Arc, Mutex},
 };
 
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self, Bytes, ToBytes},
+    Key, StoredValue,
+};
 use lmdb::{Database, DatabaseFlags, Transaction};
 
 use casper_hashing::Digest;
@@ -118,7 +122,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::Trie,
+    trie::{self, LazyTrieLeaf, Trie},
     trie_store::{self, TrieStore},
 };
 
@@ -176,7 +180,7 @@ impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
 /// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
 /// it was 2) A deserialized trie
-pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie<Key, StoredValue>)>>>;
+pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Bytes)>>>;
 
 /// Cached version of the trie store.
 #[derive(Clone)]
@@ -196,37 +200,35 @@ impl ScratchTrieStore {
         }
     }
 
-    /// Writes only tries which are both under the given `state_root` and dirty to the underlying db
-    /// while maintaining the invariant that children must be written before parent nodes.
+    /// Writes only tries which are both under the given `state_root` and dirty to the underlying
+    /// db.
     pub fn write_root_to_db(self, state_root: Digest) -> Result<(), error::Error> {
-        let env = self.env;
-        let store = self.store;
-        let cache = &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
-
-        let (is_root_dirty, root_trie) = cache
-            .get(&state_root)
-            .ok_or(CommitError::TrieNotFoundInCache(state_root))?;
-
-        // Early exit if there is no work to do.
-        if !is_root_dirty {
-            return Ok(());
+        let cache = &*self.cache.lock().map_err(|_| error::Error::Poison)?;
+        if !cache.contains_key(&state_root) {
+            return Err(CommitError::TrieNotFoundInCache(state_root).into());
         }
 
-        let mut txn = env.create_read_write_txn()?;
-        let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_descendants())];
+        let mut tries_to_write = vec![state_root];
+        let mut txn = self.env.create_read_write_txn()?;
 
-        while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
-            if let Some(descendant) = descendants_iterator.next() {
-                tries_to_visit.push((digest, current_trie, descendants_iterator));
-                // Only if a node is marked as dirty in the cache do we want to visit its
-                // descendants
-                if let Some((true, child_trie)) = cache.get(&descendant) {
-                    tries_to_visit.push((descendant, child_trie, child_trie.iter_descendants()));
-                }
+        while let Some(trie_hash) = tries_to_write.pop() {
+            let trie_bytes = if let Some((true, trie_bytes)) = cache.get(&trie_hash) {
+                trie_bytes
             } else {
-                // We can write this node since it has no children, or they were already written.
-                store.put(&mut txn, &digest, current_trie)?;
-            }
+                // We don't have this trie in the scratch store or it's not dirty - do nothing.
+                continue;
+            };
+
+            let lazy_trie: LazyTrieLeaf<Key, StoredValue> =
+                trie::lazy_trie_deserialize(trie_bytes.clone())?;
+            tries_to_write.extend(trie::lazy_trie_iter_children(&lazy_trie));
+
+            Store::<Digest, Trie<Key, StoredValue>>::put_raw(
+                &*self.store,
+                &mut txn,
+                &trie_hash,
+                Cow::Borrowed(trie_bytes),
+            )?;
         }
 
         txn.commit()?;
@@ -243,13 +245,71 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         self.clone()
     }
 
-    /// Puts a `value` into the store at `key` within a transaction, potentially returning an
-    /// error of type `Self::Error` if that fails.
+    fn get<T>(&self, txn: &T, key: &Digest) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: ToBytes,
+        Trie<Key, StoredValue>: bytesrepr::FromBytes,
+        Self::Error: From<T::Error>,
+    {
+        match self.get_raw(txn, key)? {
+            None => Ok(None),
+            Some(value_bytes) => {
+                let value = bytesrepr::deserialize(value_bytes.into())?;
+                Ok(Some(value))
+            }
+        }
+    }
+
+    fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<Bytes>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        let mut store = self.cache.lock().map_err(|_| error::Error::Poison)?;
+
+        let maybe_trie = store.get(key);
+
+        match maybe_trie {
+            Some((_, trie_bytes)) => Ok(Some(trie_bytes.clone())),
+            None => {
+                let handle = self.handle();
+                match txn.read(handle, key.as_ref())? {
+                    Some(trie_bytes) => {
+                        match store.entry(*key) {
+                            Entry::Occupied(_) => {}
+                            Entry::Vacant(v) => {
+                                v.insert((false, trie_bytes.clone()));
+                            }
+                        }
+                        Ok(Some(trie_bytes))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
+    }
+
     fn put<T>(
         &self,
+        txn: &mut T,
+        key: &Digest,
+        value: &Trie<Key, StoredValue>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Trie<Key, StoredValue>: ToBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.put_raw(txn, key, Cow::Owned(value.to_bytes()?))
+    }
+
+    fn put_raw<T>(
+        &self,
         _txn: &mut T,
-        digest: &Digest,
-        trie: &Trie<Key, StoredValue>,
+        key: &Digest,
+        value_bytes: Cow<'_, [u8]>,
     ) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
@@ -258,48 +318,8 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         self.cache
             .lock()
             .map_err(|_| error::Error::Poison)?
-            .insert(*digest, (true, trie.clone()));
+            .insert(*key, (true, Bytes::from(value_bytes.into_owned())));
         Ok(())
-    }
-
-    /// Returns an optional value (may exist or not) as read through a transaction, or an error
-    /// of the associated `Self::Error` variety.
-    fn get<T>(
-        &self,
-        txn: &T,
-        digest: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
-    where
-        T: Readable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
-        let maybe_trie = {
-            self.cache
-                .lock()
-                .map_err(|_| error::Error::Poison)?
-                .get(digest)
-                .cloned()
-        };
-        match maybe_trie {
-            Some((_, cached)) => Ok(Some(cached)),
-            None => {
-                let raw = self.get_raw(txn, digest)?;
-                match raw {
-                    Some(bytes) => {
-                        let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
-                        {
-                            let store =
-                                &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
-                            if !store.contains_key(digest) {
-                                store.insert(*digest, (false, value.clone()));
-                            }
-                        }
-                        Ok(Some(value))
-                    }
-                    None => Ok(None),
-                }
-            }
-        }
     }
 }
 

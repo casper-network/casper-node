@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.4.13'
+version = '1.4.14'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -70,6 +70,8 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
+# Global state prune batch size (0 = this feature is off)
+prune_batch_size = 0
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 strict_argument_checking = false
 # Number of simultaneous peer requests.

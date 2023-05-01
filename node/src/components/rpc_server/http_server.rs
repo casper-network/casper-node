@@ -6,7 +6,9 @@ use casper_types::ProtocolVersion;
 use super::{
     rpcs::{
         account::PutDeploy,
-        chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
+        chain::{
+            GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
+        },
         docs::ListRpcs,
         info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
         state::{
@@ -45,6 +47,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     GetPeers::register_as_handler(effect_builder, api_version, &mut handlers);
     GetStatus::register_as_handler(effect_builder, api_version, &mut handlers);
     GetEraInfoBySwitchBlock::register_as_handler(effect_builder, api_version, &mut handlers);
+    GetEraSummary::register_as_handler(effect_builder, api_version, &mut handlers);
     GetAuctionInfo::register_as_handler(effect_builder, api_version, &mut handlers);
     GetTrie::register_as_handler(effect_builder, api_version, &mut handlers);
     GetValidatorChanges::register_as_handler(effect_builder, api_version, &mut handlers);

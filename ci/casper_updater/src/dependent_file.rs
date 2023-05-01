@@ -9,8 +9,6 @@ use regex::Regex;
 pub struct DependentFile {
     /// Full path to the file.
     path: PathBuf,
-    /// Current contents of the file.
-    contents: String,
     /// Regex applicable to the portion to be updated.
     regex: Regex,
     /// Function which generates the replacement string once the updated version is known.
@@ -24,27 +22,26 @@ impl DependentFile {
         replacement: fn(&str) -> String,
     ) -> Self {
         let path = crate::root_dir().join(relative_path);
-        let contents = fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("should read {}: {:?}", path.display(), error));
-        assert!(
-            regex.find(&contents).is_some(),
-            "regex '{}' failed to get a match in {}",
-            regex,
-            path.display()
-        );
-
-        DependentFile {
+        let dependent_file = DependentFile {
             path,
-            contents,
             regex,
             replacement,
-        }
+        };
+        let contents = dependent_file.contents();
+        assert!(
+            dependent_file.regex.find(&contents).is_some(),
+            "regex '{}' failed to get a match in {}",
+            dependent_file.regex,
+            dependent_file.path.display()
+        );
+        dependent_file
     }
 
     pub fn update(&self, updated_version: &str) {
+        let contents = self.contents();
         let updated_contents = self
             .regex
-            .replace(&self.contents, (self.replacement)(updated_version).as_str());
+            .replace(&contents, (self.replacement)(updated_version).as_str());
         fs::write(&self.path, updated_contents.as_ref())
             .unwrap_or_else(|error| panic!("should write {}: {:?}", self.path.display(), error));
     }
@@ -59,7 +56,8 @@ impl DependentFile {
             .expect("should strip prefix")
     }
 
-    pub fn contents(&self) -> &str {
-        &self.contents
+    pub fn contents(&self) -> String {
+        fs::read_to_string(&self.path)
+            .unwrap_or_else(|error| panic!("should read {}: {:?}", self.path.display(), error))
     }
 }
