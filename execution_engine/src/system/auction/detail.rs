@@ -503,15 +503,7 @@ fn is_under_max_delegator_cap(
     max_delegators_per_validator: Option<u32>,
     new_validator_delegator_len: usize,
 ) -> bool {
-    if max_delegators_per_validator.is_none() {
-        return true;
-    }
-
-    if let Some(max_delegators) = max_delegators_per_validator {
-        if new_validator_delegator_len >= max_delegators as usize {
-            return false;
-        }
-    }
-
-    true
+    max_delegators_per_validator
+        .map(|limit| new_validator_delegator_len < limit as usize)
+        .unwrap_or(true)
 }
