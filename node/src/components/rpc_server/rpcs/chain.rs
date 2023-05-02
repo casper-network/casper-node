@@ -406,7 +406,7 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
 
         let state_root_hash = block.state_root_hash().to_owned();
         let era_id = block.header().era_id();
-        let base_key = Key::EraInfo(era_id);
+        let base_key = get_era_key(&block, api_version);
         let path = Vec::new();
 
         let (stored_value, merkle_proof) =
@@ -476,7 +476,7 @@ impl RpcWithOptionalParams for GetEraSummary {
 
         let state_root_hash = block.state_root_hash().to_owned();
         let era_id = block.header().era_id();
-        let base_key = Key::EraSummary;
+        let base_key = get_era_key(&block, api_version);
         let path = Vec::new();
 
         let (stored_value, merkle_proof) =
@@ -548,4 +548,13 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     };
 
     Err(error)
+}
+
+//TODO: when merging to 1.5 this needs to be made more sophisticated. This works only for 1.4.14
+fn get_era_key(block: &Block, api_version: ProtocolVersion) -> Key {
+    if block.protocol_version() < api_version {
+        Key::EraInfo(block.header().era_id())
+    } else {
+        Key::EraSummary
+    }
 }
