@@ -12,6 +12,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::core::engine_state::{self, QueryResult};
 use casper_hashing::Digest;
 use casper_types::{Key, ProtocolVersion, Transfer};
 
@@ -22,7 +23,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
-    rpcs::common,
+    rpcs::{common, state},
     types::{Block, BlockHash, BlockWithMetadata, JsonBlock},
 };
 pub use era_summary::EraSummary;
@@ -404,23 +405,10 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
             });
         }
 
-        let state_root_hash = block.state_root_hash().to_owned();
-        let era_id = block.header().era_id();
-        let base_key = get_era_key(&block, api_version);
-        let path = Vec::new();
-
-        let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await?;
-
+        let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,
-            era_summary: Some(EraSummary {
-                block_hash: *block.hash(),
-                era_id,
-                stored_value,
-                state_root_hash,
-                merkle_proof,
-            }),
+            era_summary: Some(era_summary),
         };
         Ok(result)
     }
@@ -473,24 +461,10 @@ impl RpcWithOptionalParams for GetEraSummary {
     ) -> Result<Self::ResponseResult, Error> {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let block = common::get_block(maybe_block_id, true, effect_builder).await?;
-
-        let state_root_hash = block.state_root_hash().to_owned();
-        let era_id = block.header().era_id();
-        let base_key = get_era_key(&block, api_version);
-        let path = Vec::new();
-
-        let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await?;
-
+        let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,
-            era_summary: EraSummary {
-                block_hash: *block.hash(),
-                era_id,
-                stored_value,
-                state_root_hash,
-                merkle_proof,
-            },
+            era_summary,
         };
         Ok(result)
     }
@@ -550,11 +524,61 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     Err(error)
 }
 
-//TODO: when merging to 1.5 this needs to be made more sophisticated. This works only for 1.4.14
-fn get_era_key(block: &Block, api_version: ProtocolVersion) -> Key {
-    if block.protocol_version() < api_version {
-        Key::EraInfo(block.header().era_id())
-    } else {
-        Key::EraSummary
+/// Returns the `EraSummary` for the era specified in the block.
+///
+/// Prior to Casper Mainnet version 1.4.15, era summaries were stored under `Key::EraInfo(era_id)`.
+/// At this version and later, they are stored under `Key::EraSummary`.
+///
+/// As this change in behaviour is not related to a consistent protocol version across all Casper
+/// networks, we simply try to find the `EraSummary` under the new key variant, and fall back to
+/// to the old variant if the former executes correctly but fails to find the value.
+async fn get_era_summary<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    block: &Block,
+) -> Result<EraSummary, Error> {
+    async fn handle_query_result<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        block: &Block,
+        result: Result<QueryResult, engine_state::Error>,
+    ) -> Result<EraSummary, Error> {
+        let (value, proofs) =
+            state::handle_query_result(effect_builder, *block.state_root_hash(), result).await?;
+        let (stored_value, merkle_proof) = common::encode_query_success(value, proofs)?;
+        Ok(EraSummary {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            stored_value,
+            state_root_hash: *block.state_root_hash(),
+            merkle_proof,
+        })
     }
+
+    let era_summary_query_result = effect_builder
+        .make_request(
+            |responder| RpcRequest::QueryGlobalState {
+                state_root_hash: *block.state_root_hash(),
+                base_key: Key::EraSummary,
+                path: vec![],
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await;
+    if !matches!(era_summary_query_result, Ok(QueryResult::ValueNotFound(_))) {
+        // The query succeeded or failed in a way not requiring trying under `Key::EraInfo`.
+        return handle_query_result(effect_builder, block, era_summary_query_result).await;
+    }
+
+    let era_info_query_result = effect_builder
+        .make_request(
+            |responder| RpcRequest::QueryGlobalState {
+                state_root_hash: *block.state_root_hash(),
+                base_key: Key::EraInfo(block.header().era_id()),
+                path: vec![],
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await;
+    handle_query_result(effect_builder, block, era_info_query_result).await
 }
