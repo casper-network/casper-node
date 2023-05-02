@@ -4274,6 +4274,61 @@ fn should_enforce_max_delegators_per_validator_cap() {
         error,
         Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
         if auction_error == AuctionError::ExceededDelegatorSizeLimit as u8));
+
+    let delegator_2_staked_amount = {
+        let bids = builder.get_bids();
+        *bids
+            .get(&NON_FOUNDER_VALIDATOR_1_PK)
+            .expect("must have bid record")
+            .delegators()
+            .get(&BID_ACCOUNT_2_PK)
+            .expect("must have delegator")
+            .staked_amount()
+    };
+
+    let undelegation_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => delegator_2_staked_amount,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(undelegation_request).expect_success().commit();
+
+    let current_delegator_count = builder
+        .get_bids()
+        .get(&NON_FOUNDER_VALIDATOR_1_PK)
+        .expect("must have bid record")
+        .delegators()
+        .len();
+
+    assert_eq!(current_delegator_count, 1);
+
+    let delegation_request_3 = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_3).expect_success().commit();
+
+    let current_delegator_count = builder
+        .get_bids()
+        .get(&NON_FOUNDER_VALIDATOR_1_PK)
+        .expect("must have bid record")
+        .delegators()
+        .len();
+
+    assert_eq!(current_delegator_count, 2);
 }
 
 #[ignore]

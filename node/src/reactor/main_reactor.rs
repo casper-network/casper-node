@@ -1013,6 +1013,13 @@ impl reactor::Reactor for MainReactor {
             config.node.force_resync,
         )?;
 
+        let max_delegators_per_validator =
+            if chainspec.core_config.max_delegators_per_validator == 0 {
+                None
+            } else {
+                Some(chainspec.core_config.max_delegators_per_validator)
+            };
+
         let contract_runtime = ContractRuntime::new(
             protocol_version,
             storage.root_path(),
@@ -1024,7 +1031,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.minimum_delegation_amount,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
-            chainspec.core_config.max_delegators_per_validator,
+            max_delegators_per_validator,
             registry,
         )?;
 

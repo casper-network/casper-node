@@ -86,7 +86,8 @@ pub struct CoreConfig {
     pub consensus_protocol: ConsensusProtocolName,
 
     /// The maximum amount of delegators per validator.
-    pub max_delegators_per_validator: Option<u32>,
+    /// if the value is 0, there is no maximum capacity.
+    pub max_delegators_per_validator: u32,
 }
 
 impl CoreConfig {
@@ -186,7 +187,7 @@ impl CoreConfig {
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
-            max_delegators_per_validator: None,
+            max_delegators_per_validator: 0,
         }
     }
 }
