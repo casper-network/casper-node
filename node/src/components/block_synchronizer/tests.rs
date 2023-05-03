@@ -248,7 +248,7 @@ impl BlockSynchronizer {
 
 /// Returns the number of validators that need a signature for a weak finality of 1/3.
 fn weak_finality_threshold(n: usize) -> usize {
-    n / 3 + if n % 3 == 0 { 0 } else { 1 }
+    n / 3 + 1
 }
 
 #[tokio::test]
