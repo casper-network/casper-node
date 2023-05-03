@@ -10,7 +10,8 @@ use std::{
 };
 
 use casper_types::{
-    AccessRights, CLValue, EraId, Key, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
+    AccessRights, CLValue, EraId, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue,
+    TimeDiff, URef, U512,
 };
 use derive_more::From;
 use rand::{seq::IteratorRandom, Rng};
@@ -34,6 +35,7 @@ const MAX_SIMULTANEOUS_PEERS: usize = 5;
 const TEST_LATCH_RESET_INTERVAL_MILLIS: u64 = 5;
 const TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS: u64 = 150;
 const SHOULD_FETCH_EXECUTION_STATE: bool = true;
+const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 0);
 
 /// Event for the mock reactor.
 #[derive(Debug, From)]
@@ -279,10 +281,10 @@ impl BlockSynchronizer {
     }
 
     fn with_legacy_finality(mut self, legacy_required_finality: LegacyRequiredFinality) -> Self {
-        Arc::get_mut(&mut self.chainspec)
-            .unwrap()
-            .core_config
-            .legacy_required_finality = legacy_required_finality;
+        let core_config = &mut Arc::get_mut(&mut self.chainspec).unwrap().core_config;
+        core_config.start_protocol_version_with_strict_finality_signatures_required =
+            STRICT_FINALITY_REQUIRED_VERSION;
+        core_config.legacy_required_finality = legacy_required_finality;
 
         self
     }
@@ -2560,6 +2562,215 @@ async fn historical_sync_legacy_block_weak_finality() {
         validators_secret_keys
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder.register_block(block, None).is_ok());
+
+    let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
+
+    let request = match events.try_one() {
+        Some(MockReactorEvent::SyncGlobalStateRequest(
+            request @ SyncGlobalStateRequest {
+                block_hash,
+                state_root_hash,
+                ..
+            },
+        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+        _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
+    };
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
+    );
+
+    // Those effects are handled directly and not through the reactor:
+    let events = effects.one().await;
+    assert_matches!(
+        events.try_one(),
+        Some(Event::GlobalStateSynchronizer(
+            GlobalStateSynchronizerEvent::GetPeers(_)
+        ))
+    );
+
+    // ----- HaveBlock -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveBlock { .. }
+    );
+
+    // Let's not test the detail of the global synchronization event,
+    // since it is already tested in its unit tests.
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynced {
+            block_hash: *block.hash(),
+            result: Ok(GlobalStateSynchronizerResponse::new(
+                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                vec![],
+            )),
+        },
+    );
+
+    // ----- HaveGlobalState -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    match events.try_one() {
+        Some(MockReactorEvent::ContractRuntimeRequest(
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            },
+        )) => responder.respond(Ok(Some(state_root_hash))).await,
+        other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: Ok(None), // No checksum because we want to test a legacy block
+        },
+    );
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(
+                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
+            ))),
+        },
+    );
+
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    assert_matches!(
+        events.remove(0),
+        MockReactorEvent::StorageRequest(StorageRequest::PutExecutionResults { .. })
+    );
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsStored(*block.hash()),
+    );
+    // ----- HaveAllExecutionResults -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllExecutionResults(_, _, _, checksum)
+            if checksum.is_checkable() == false
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::LegacyDeployFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::DeployFetched {
+            block_hash: *block.hash(),
+            result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
+        },
+    );
+
+    // ----- HaveStrictFinalitySignatures -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
+    );
+
+    let events = effects.one().await;
+
+    let event = match events.try_one() {
+        Some(event @ Event::Request(BlockSynchronizerRequest::NeedNext)) => event,
+        _ => panic!("Expected a NeedNext request here"),
+    };
+
+    let effects = block_synchronizer.handle_event(mock_reactor.effect_builder(), rng, event);
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(event, MockReactorEvent::MarkBlockCompletedRequest(_));
+    }
+}
+
+#[tokio::test]
+async fn historical_sync_legacy_block_any_finality() {
+    let rng = &mut TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let deploy = Deploy::random(rng);
+    let test_env = TestEnv::random(rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(std::iter::once(&deploy))
+            .build(rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default())
+            .with_legacy_finality(LegacyRequiredFinality::Any);
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
+    assert!(block_synchronizer.forward.is_none());
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    historical_builder
+        .register_block_header(block.clone().take_header(), None)
+        .expect("header registration works");
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys.iter().take(1),
     );
     assert!(historical_builder.register_block(block, None).is_ok());
 
