@@ -404,8 +404,10 @@ mod tests {
     use num_rational::Ratio;
 
     use crate::{
-        components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
-        types::validator_matrix::MAX_VALIDATOR_MATRIX_ENTRIES,
+        components::consensus::tests::utils::{
+            ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY, CAROL_PUBLIC_KEY,
+        },
+        types::{validator_matrix::MAX_VALIDATOR_MATRIX_ENTRIES, SignatureWeight},
     };
 
     use super::{EraValidatorWeights, ValidatorMatrix};
@@ -416,6 +418,106 @@ mod tests {
             iter::once((ALICE_PUBLIC_KEY.clone(), 100.into())).collect(),
             Ratio::new(1, 3),
         )
+    }
+
+    #[test]
+    fn signature_weight_at_boundary_equal_weights() {
+        let weights = EraValidatorWeights::new(
+            EraId::default(),
+            [
+                (ALICE_PUBLIC_KEY.clone(), 100.into()),
+                (BOB_PUBLIC_KEY.clone(), 100.into()),
+                (CAROL_PUBLIC_KEY.clone(), 100.into()),
+            ]
+            .into(),
+            Ratio::new(1, 3),
+        );
+
+        assert_eq!(
+            weights.signature_weight([ALICE_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Insufficient
+        );
+        assert_eq!(
+            weights.signature_weight([BOB_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Insufficient
+        );
+        assert_eq!(
+            weights.signature_weight([CAROL_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Insufficient
+        );
+        assert_eq!(
+            weights.signature_weight([ALICE_PUBLIC_KEY.clone(), BOB_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Weak
+        );
+        assert_eq!(
+            weights.signature_weight([ALICE_PUBLIC_KEY.clone(), CAROL_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Weak
+        );
+        assert_eq!(
+            weights.signature_weight([BOB_PUBLIC_KEY.clone(), CAROL_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Weak
+        );
+        assert_eq!(
+            weights.signature_weight(
+                [
+                    ALICE_PUBLIC_KEY.clone(),
+                    BOB_PUBLIC_KEY.clone(),
+                    CAROL_PUBLIC_KEY.clone()
+                ]
+                .iter()
+            ),
+            SignatureWeight::Strict
+        );
+    }
+
+    #[test]
+    fn signature_weight_at_boundary_unequal_weights() {
+        let weights = EraValidatorWeights::new(
+            EraId::default(),
+            [
+                (ALICE_PUBLIC_KEY.clone(), 101.into()),
+                (BOB_PUBLIC_KEY.clone(), 100.into()),
+                (CAROL_PUBLIC_KEY.clone(), 100.into()),
+            ]
+            .into(),
+            Ratio::new(1, 3),
+        );
+
+        assert_eq!(
+            weights.signature_weight([ALICE_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Weak
+        );
+        assert_eq!(
+            weights.signature_weight([BOB_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Insufficient
+        );
+        assert_eq!(
+            weights.signature_weight([CAROL_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Insufficient
+        );
+        assert_eq!(
+            weights.signature_weight([ALICE_PUBLIC_KEY.clone(), BOB_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Strict
+        );
+        assert_eq!(
+            weights.signature_weight([ALICE_PUBLIC_KEY.clone(), CAROL_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Strict
+        );
+        assert_eq!(
+            weights.signature_weight([BOB_PUBLIC_KEY.clone(), CAROL_PUBLIC_KEY.clone()].iter()),
+            SignatureWeight::Weak
+        );
+        assert_eq!(
+            weights.signature_weight(
+                [
+                    ALICE_PUBLIC_KEY.clone(),
+                    BOB_PUBLIC_KEY.clone(),
+                    CAROL_PUBLIC_KEY.clone()
+                ]
+                .iter()
+            ),
+            SignatureWeight::Strict
+        );
     }
 
     #[test]
