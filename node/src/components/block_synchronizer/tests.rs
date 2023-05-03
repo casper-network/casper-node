@@ -4,6 +4,7 @@ use assert_matches::assert_matches;
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 use num_rational::Ratio;
 use std::{
+    cmp::min,
     collections::{BTreeMap, VecDeque},
     iter,
     time::Duration,
@@ -753,7 +754,10 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
     // Next the synchronizer should fetch finality signatures to reach weak finality.
     // The number of requests should be limited to the number of peers even if we
     // need to get more signatures to reach weak finality.
-    assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS);
+    assert_eq!(
+        effects.len(),
+        min(test_env.validator_keys().len(), MAX_SIMULTANEOUS_PEERS)
+    );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,
@@ -820,7 +824,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     // The peer limit should still be in place.
     assert_eq!(
         effects.len(),
-        std::cmp::min(validators_secret_keys.len() - 1, MAX_SIMULTANEOUS_PEERS)
+        min(validators_secret_keys.len() - 1, MAX_SIMULTANEOUS_PEERS)
     );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
@@ -931,10 +935,10 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
         &mut rng,
         &mock_reactor,
         &mut block_synchronizer,
-        std::cmp::min(num_validators, MAX_SIMULTANEOUS_PEERS), /* We have num_validators
-                                                                * validators so we
-                                                                * require the num_validators
-                                                                * signatures */
+        min(num_validators, MAX_SIMULTANEOUS_PEERS), /* We have num_validators
+                                                      * validators so we
+                                                      * require the num_validators
+                                                      * signatures */
     )
     .await;
 
