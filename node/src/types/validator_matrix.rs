@@ -383,12 +383,12 @@ impl EraValidatorWeights {
 
         let signature_weight = self.signed_weight(validator_keys);
         if signature_weight * U512::from(*strict.denom())
-            >= total_era_weight * U512::from(*strict.numer())
+            > total_era_weight * U512::from(*strict.numer())
         {
             return SignatureWeight::Strict;
         }
         if signature_weight * U512::from(*finality_threshold_fraction.denom())
-            >= total_era_weight * U512::from(*finality_threshold_fraction.numer())
+            > total_era_weight * U512::from(*finality_threshold_fraction.numer())
         {
             return SignatureWeight::Weak;
         }
