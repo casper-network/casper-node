@@ -83,6 +83,7 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=10
     bash -i ./ci/nctl_upgrade.sh test_id=11
     bash -i ./ci/nctl_upgrade.sh test_id=12
+    bash -i ./ci/nctl_upgrade.sh test_id=13
 }
 
 function run_soundness_test() {
