@@ -73,7 +73,7 @@ function main()
                 --secret-key "$CP1_SECRET_KEY" \
                 --amount "$AMOUNT" \
                 --target-account "$CP2_ACCOUNT_KEY" \
-                --transfer-id $((DISPATCHED + 1))
+                --transfer-id $((DISPATCH_ATTEMPTS + 1))
             )
         if [[ $? -eq 0 ]]; then
             SUCCESSFUL_DISPATCH_COUNT=$((SUCCESSFUL_DISPATCH_COUNT + 1))
