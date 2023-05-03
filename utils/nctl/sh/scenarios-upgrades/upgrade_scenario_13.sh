@@ -186,8 +186,18 @@ function _compare_era_summary()
             }" | jq '.result.era_summary'
     )
 
+    if [ "$ERA_SUMMARY_RPC_RESPONSE" = "null" ]; then
+        log "ERROR :: chain_get_era_summary failed with block hash $BLOCK_HASH"
+        exit 1
+    fi
+
+    if [ "$ERA_INFO_RPC_RESPONSE" = "null" ]; then
+        log "ERROR :: chain_get_era_info_by_switch_block failed with block hash $BLOCK_HASH"
+        exit 1
+    fi
+
     if [ "$ERA_SUMMARY_RPC_RESPONSE" != "$ERA_INFO_RPC_RESPONSE" ]; then
-        log "ERROR :: era summary does not match for block hash $LATEST_SWITCH_BLOCK_HASH"
+        log "ERROR :: era summary does not match for block hash $BLOCK_HASH"
         exit 1
     fi
 }
@@ -201,13 +211,13 @@ function _step_07()
     local LATEST_SWITCH_BLOCK_HASH=$(echo $LATEST_SWITCH_BLOCK | jq '.hash')
     _compare_era_summary $LATEST_SWITCH_BLOCK_HASH
 
-    # check that chain_get_era_info_by_switch_block still works for blocks before the upgrade
+    # check both RPCs still work for switch blocks before the upgrade
     local SWITCH_BLOCK_BEFORE_UPGRADE=$(get_switch_block "1" "150" "" "2")
     local SWITCH_BLOCK_BEFORE_UPGRADE_HASH=$(echo $SWITCH_BLOCK_BEFORE_UPGRADE | jq '.hash')
     _compare_era_summary $SWITCH_BLOCK_BEFORE_UPGRADE_HASH
 }
 
-# Step 09: Terminate.
+# Step 08: Terminate.
 function _step_08()
 {
     log_step_upgrades 8 "upgrade_scenario_13 successful - tidying up"
