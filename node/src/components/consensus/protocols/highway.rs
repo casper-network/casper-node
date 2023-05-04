@@ -39,7 +39,7 @@ use crate::{
         protocols, serialize_payload,
         traits::{ConsensusValueT, Context},
         utils::ValidatorIndex,
-        ActionId, EraMessage, TimerId,
+        ActionId, TimerId,
     },
     types::{Chainspec, NodeId},
     NodeRng,
@@ -916,7 +916,7 @@ where
         sender: NodeId,
         _msg: Vec<u8>,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
         info!(?sender, "invalid incoming request");
         (vec![ProtocolOutcome::Disconnect(sender)], None)
     }

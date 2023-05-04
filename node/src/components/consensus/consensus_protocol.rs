@@ -12,7 +12,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
-    components::consensus::{traits::Context, ActionId, EraMessage, TimerId},
+    components::consensus::{traits::Context, ActionId, TimerId},
     types::NodeId,
     NodeRng,
 };
@@ -254,7 +254,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         sender: NodeId,
         msg: Vec<u8>,
         now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>);
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;

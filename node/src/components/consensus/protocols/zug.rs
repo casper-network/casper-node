@@ -91,7 +91,7 @@ use crate::{
         deserialize_payload, protocols, serialize_payload,
         traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
-        ActionId, EraMessage, LeaderSequence, TimerId,
+        ActionId, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
     utils, NodeRng,
@@ -720,7 +720,7 @@ impl<C: Context + 'static> Zug<C> {
         &self,
         sync_request: SyncRequest<C>,
         sender: NodeId,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
         let SyncRequest {
             round_id,
             mut proposal_hash,
@@ -862,7 +862,10 @@ impl<C: Context + 'static> Zug<C> {
             evidence,
             instance_id,
         };
-        (outcomes, Some(Message::SyncResponse(sync_response).into()))
+        (
+            outcomes,
+            Some(serialize_payload(&Message::SyncResponse(sync_response))),
+        )
     }
 
     /// The response containing the parts from the sender's protocol state that we were missing.
@@ -2004,7 +2007,7 @@ where
         sender: NodeId,
         msg: Vec<u8>,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
         match deserialize_payload::<SyncRequest<C>>(&msg) {
             Err(err) => {
                 warn!(
