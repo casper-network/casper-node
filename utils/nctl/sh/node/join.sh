@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+source "$NCTL"/sh/utils/infra.sh
 source "$NCTL"/sh/utils/main.sh
 source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 
@@ -23,18 +24,13 @@ NODE_ID=${NODE_ID:-6}
 BID_AMOUNT=${BID_AMOUNT:-$(get_node_staking_weight "$NODE_ID")}
 BID_DELEGATION_RATE=${BID_DELEGATION_RATE:-2}
 
+
 # ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
-# Await genesis era to complete.
-if [ "$(get_chain_era)" -lt 1 ]; then
-    log "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -lt 1 ];
-    do
-        sleep 1.0
-    done
-fi
+log "awaiting genesis era to complete"
+do_await_genesis_era_to_complete false
 
 # Submit auction bid.
 log "dispatching auction bid deploy"
