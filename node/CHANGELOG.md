@@ -109,6 +109,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.4.15
+
+### Changed
+* Modified JSON-RPCs `chain_get_era_info_by_switch_block` and `chain_get_era_summary` to use either `Key::EraInfo` or `Key::EraSummary` as appropriate in order to provide useful responses.
+
+
+
 ## 1.4.14
 
 ### Added

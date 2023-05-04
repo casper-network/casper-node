@@ -197,6 +197,26 @@ function start_upgrade_scenario_12() {
     nctl-exec-upgrade-scenario-12
 }
 
+function start_upgrade_scenario_13() {
+    log "... Setting up custom starting version"
+    local PATH_TO_STAGE
+
+    PATH_TO_STAGE="$(get_path_to_stage 1)"
+
+    log "... downloading remote for 1.4.13"
+    nctl-stage-set-remotes "1.4.13"
+
+    log "... tearing down old stages"
+    nctl-stage-teardown
+
+    log "... creating new stage"
+    dev_branch_settings "$PATH_TO_STAGE" "1.4.13"
+    build_from_settings_file
+
+    log "... Starting Upgrade Scenario 13"
+    nctl-exec-upgrade-scenario-13
+}
+
 # ----------------------------------------------------------------
 # ENTRY POINT
 # ----------------------------------------------------------------

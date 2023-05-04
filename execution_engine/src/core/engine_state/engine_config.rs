@@ -8,6 +8,12 @@ pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default value for maximum runtime call stack height configuration option.
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+/// Default max serialized size of `StoredValue`s.
+#[deprecated(
+    since = "3.2.0",
+    note = "not used in `casper-execution-engine` config anymore"
+)]
+pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for strict argument checking.

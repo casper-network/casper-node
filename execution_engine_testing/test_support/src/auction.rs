@@ -77,7 +77,7 @@ pub fn run_blocks_with_transfers_and_step(
         &validator_keys,
         delegator_keys
             .iter()
-            .map(|pk| pk.to_account_hash())
+            .map(|public_key| public_key.to_account_hash())
             .collect::<Vec<_>>(),
         U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
     );
@@ -366,7 +366,7 @@ pub fn create_delegate_request(
     let deploy = DeployItemBuilder::new()
         .with_address(delegator_account_hash)
         .with_stored_session_hash(contract_hash, entry_point, args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(100_000_000), })
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(2_500_000_000_u64) })
         .with_authorization_keys(&[delegator_account_hash])
         .with_deploy_hash(deploy_hash)
         .build();
