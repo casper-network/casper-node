@@ -58,7 +58,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-#[cfg(target_os = "linux")]
 use crate::utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
