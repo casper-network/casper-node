@@ -666,7 +666,9 @@ mod relaxed {
         utils::ValidatorIndex,
     };
 
-    #[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
+    #[derive(
+        DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants, Hash,
+    )]
     #[serde(bound(
         serialize = "C::Hash: Serialize",
         deserialize = "C::Hash: Deserialize<'de>",
