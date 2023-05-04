@@ -861,10 +861,17 @@ where
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
+                let max_delegators_per_validator = self.config.max_delegators_per_validator();
                 let minimum_delegation_amount = self.config.minimum_delegation_amount();
 
                 let result = runtime
-                    .delegate(delegator, validator, amount, minimum_delegation_amount)
+                    .delegate(
+                        delegator,
+                        validator,
+                        amount,
+                        max_delegators_per_validator,
+                        minimum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -916,8 +923,14 @@ where
                 let evicted_validators =
                     Self::get_named_argument(runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
+                let max_delegators_per_validator = self.config.max_delegators_per_validator();
+
                 runtime
-                    .run_auction(era_end_timestamp_millis, evicted_validators)
+                    .run_auction(
+                        era_end_timestamp_millis,
+                        evicted_validators,
+                        max_delegators_per_validator,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)

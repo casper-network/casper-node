@@ -78,6 +78,8 @@ strict_argument_checking = false
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
 consensus_protocol = 'Highway'
+# The maximum amount of delegators per validator. if the value is 0, there is no maximum capacity.
+max_delegators_per_validator = 1200
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

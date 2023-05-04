@@ -222,6 +222,7 @@ impl InMemoryWasmTestBuilder {
                 .core_config
                 .vesting_schedule_period
                 .millis(),
+            chainspec_config.core_config.max_delegators_per_validator,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -339,6 +340,7 @@ impl LmdbWasmTestBuilder {
                 .core_config
                 .vesting_schedule_period
                 .millis(),
+            chainspec_config.core_config.max_delegators_per_validator,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
