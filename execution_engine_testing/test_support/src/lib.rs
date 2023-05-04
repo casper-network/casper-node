@@ -198,14 +198,11 @@ pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_ac
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[test]
     fn defaults_should_match_production_chainspec_values() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/chainspec.toml");
-        let production = ChainspecConfig::from_chainspec_path(path).unwrap();
+        let production = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH).unwrap();
         // No need to test `CoreConfig::validator_slots`.
         assert_eq!(production.core_config.auction_delay, DEFAULT_AUCTION_DELAY);
         assert_eq!(
