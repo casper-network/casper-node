@@ -243,7 +243,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: Vec<u8>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
 
@@ -252,7 +252,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraRequest<C>,
+        msg: Vec<u8>,
         now: Timestamp,
     ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>);
 

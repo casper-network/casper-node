@@ -59,9 +59,7 @@ use traits::Context;
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-#[cfg(test)]
-pub(crate) use era_supervisor::deserialize_payload;
-pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
+pub(crate) use era_supervisor::{debug::EraDump, deserialize_payload, EraSupervisor};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
@@ -80,7 +78,7 @@ mod relaxed {
     use serde::{Deserialize, Serialize};
     use strum::EnumDiscriminants;
 
-    use super::{protocols, traits::Context, ClContext, HighwayMessage};
+    use super::{protocols, traits::Context, HighwayMessage};
 
     /// A message to be handled by the consensus protocol instance in a particular era.
     #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, EnumDiscriminants)]
@@ -111,25 +109,6 @@ pub(crate) use relaxed::{
     ConsensusMessage, ConsensusMessageDiscriminants, EraMessage, EraMessageDiscriminants,
 };
 
-impl<C: Context> EraMessage<C> {
-    /// Returns the message for the Zug protocol, or an error if it is for a different protocol.
-    fn try_into_zug(self) -> Result<protocols::zug::Message<C>, Self> {
-        match self {
-            EraMessage::Zug(msg) => Ok(*msg),
-            other => Err(other),
-        }
-    }
-
-    /// Returns the message for the Highway protocol, or an error if it is for a different
-    /// protocol.
-    pub(crate) fn try_into_highway(self) -> Result<HighwayMessage<C>, Self> {
-        match self {
-            EraMessage::Highway(msg) => Ok(*msg),
-            other => Err(other),
-        }
-    }
-}
-
 impl<C: Context> From<protocols::zug::Message<C>> for EraMessage<C> {
     fn from(msg: protocols::zug::Message<C>) -> EraMessage<C> {
         EraMessage::Zug(Box::new(msg))
@@ -149,15 +128,6 @@ where
     C: Context,
 {
     Zug(protocols::zug::SyncRequest<C>),
-}
-
-impl<C: Context> EraRequest<C> {
-    /// Returns the request for the Zug protocol, or an error if it is for a different protocol.
-    fn try_into_zug(self) -> Result<protocols::zug::SyncRequest<C>, Self> {
-        match self {
-            EraRequest::Zug(msg) => Ok(msg),
-        }
-    }
 }
 
 /// A protocol request message, to be handled by the instance in the specified era.

@@ -25,6 +25,7 @@ use crate::{
         consensus_protocol::{
             BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
         },
+        deserialize_payload,
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
@@ -38,7 +39,7 @@ use crate::{
         protocols,
         traits::{ConsensusValueT, Context},
         utils::ValidatorIndex,
-        ActionId, EraMessage, EraRequest, TimerId,
+        ActionId, EraMessage, TimerId,
     },
     types::{Chainspec, NodeId},
     NodeRng,
@@ -742,12 +743,12 @@ where
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: Vec<u8>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match msg.try_into_highway() {
-            Err(msg) => {
-                warn!(?msg, "received a message for the wrong consensus protocol");
+        match deserialize_payload(&msg) {
+            Err(err) => {
+                warn!(?err, "could not desrialize highway message");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(HighwayMessage::NewVertex(v))
@@ -908,7 +909,7 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        _msg: EraRequest<C>,
+        _msg: Vec<u8>,
         _now: Timestamp,
     ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
         info!(?sender, "invalid incoming request");

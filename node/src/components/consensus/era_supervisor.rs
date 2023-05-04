@@ -63,8 +63,6 @@ use crate::{
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
 
-use super::EraMessage;
-
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
@@ -1191,12 +1189,12 @@ impl EraSupervisor {
 }
 
 /// Serializes a payload with the fixed encoding scheme for consensus messages.
-fn serialize_payload<T>(payload: &T) -> Vec<u8> {
+fn serialize_payload<T>(_payload: &T) -> Vec<u8> {
     todo!()
 }
 
 /// Deserializes a payload with the fixed decoding scheme for consensus messages.
-pub(crate) fn deserialize_payload<T>(payload: &[u8]) -> Result<T, &'static str> {
+pub(crate) fn deserialize_payload<T>(_payload: &[u8]) -> Result<T, &'static str> {
     todo!()
 }
 

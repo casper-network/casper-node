@@ -88,10 +88,10 @@ use crate::{
             BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
             ProtocolOutcomes, TerminalBlockData,
         },
-        protocols,
+        deserialize_payload, protocols,
         traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
-        ActionId, EraMessage, EraRequest, LeaderSequence, TimerId,
+        ActionId, EraMessage, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
     utils, NodeRng,
@@ -1961,12 +1961,12 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: Vec<u8>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match msg.try_into_zug() {
-            Err(_msg) => {
-                warn!(%sender, "received a message for the wrong consensus protocol");
+        match deserialize_payload(&msg) {
+            Err(err) => {
+                warn!(%sender, %err, "failed to deserialize Zug message");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(zug_msg) if zug_msg.instance_id() != self.instance_id() => {
@@ -1994,14 +1994,15 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraRequest<C>,
+        msg: Vec<u8>,
         _now: Timestamp,
     ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
-        match msg.try_into_zug() {
-            Err(_msg) => {
+        match deserialize_payload::<SyncRequest<C>>(&msg) {
+            Err(err) => {
                 warn!(
                     %sender,
-                    "received a request for the wrong consensus protocol"
+                    %err,
+                    "could not deserialize Zug message"
                 );
                 (vec![ProtocolOutcome::Disconnect(sender)], None)
             }
