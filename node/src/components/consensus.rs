@@ -59,9 +59,7 @@ use traits::Context;
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::{
-    debug::EraDump, deserialize_payload, serialize_payload, EraSupervisor,
-};
+pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor, SerializedMessage};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
@@ -80,11 +78,16 @@ mod relaxed {
     use serde::{Deserialize, Serialize};
     use strum::EnumDiscriminants;
 
+    use super::era_supervisor::SerializedMessage;
+
     #[derive(DataSize, Clone, Serialize, Deserialize, EnumDiscriminants)]
     #[strum_discriminants(derive(strum::EnumIter))]
     pub(crate) enum ConsensusMessage {
         /// A protocol message, to be handled by the instance in the specified era.
-        Protocol { era_id: EraId, payload: Vec<u8> },
+        Protocol {
+            era_id: EraId,
+            payload: SerializedMessage,
+        },
         /// A request for evidence against the specified validator, from any era that is still
         /// bonded in `era_id`.
         EvidenceRequest { era_id: EraId, pub_key: PublicKey },
@@ -105,8 +108,7 @@ where
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) struct ConsensusRequestMessage {
     era_id: EraId,
-    // payload: EraRequest<ClContext>,
-    payload: Vec<u8>,
+    payload: SerializedMessage,
 }
 
 /// An ID to distinguish different timers. What they are used for is specific to each consensus

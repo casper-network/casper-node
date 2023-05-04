@@ -88,7 +88,8 @@ use crate::{
             BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
             ProtocolOutcomes, TerminalBlockData,
         },
-        deserialize_payload, protocols, serialize_payload,
+        era_supervisor::SerializedMessage,
+        protocols,
         traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
@@ -408,7 +409,7 @@ impl<C: Context + 'static> Zug<C> {
             .unwrap_or(self.current_round);
         let payload = self.create_sync_request(first_validator_idx, round_id);
         let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(
-            serialize_payload(&payload),
+            SerializedMessage::from_message(&payload),
         )];
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
@@ -625,9 +626,9 @@ impl<C: Context + 'static> Zug<C> {
             && self.add_content(signed_msg.clone())
         {
             let message = Message::Signed(signed_msg);
-            vec![ProtocolOutcome::CreatedGossipMessage(serialize_payload(
-                &message,
-            ))]
+            vec![ProtocolOutcome::CreatedGossipMessage(
+                SerializedMessage::from_message(&message),
+            )]
         } else {
             vec![]
         }
@@ -720,7 +721,7 @@ impl<C: Context + 'static> Zug<C> {
         &self,
         sync_request: SyncRequest<C>,
         sender: NodeId,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>) {
         let SyncRequest {
             round_id,
             mut proposal_hash,
@@ -864,7 +865,9 @@ impl<C: Context + 'static> Zug<C> {
         };
         (
             outcomes,
-            Some(serialize_payload(&Message::SyncResponse(sync_response))),
+            Some(SerializedMessage::from_message(&Message::SyncResponse(
+                sync_response,
+            ))),
         )
     }
 
@@ -989,9 +992,9 @@ impl<C: Context + 'static> Zug<C> {
             let evidence_msg = Message::Evidence(signed_msg.clone(), content2.clone(), signature2);
             let mut outcomes =
                 self.handle_fault(signed_msg, validator_id, content2, signature2, now);
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialize_payload(
-                &evidence_msg,
-            )));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+                SerializedMessage::from_message(&evidence_msg),
+            ));
             return outcomes;
         }
 
@@ -1793,9 +1796,9 @@ impl<C: Context + 'static> Zug<C> {
         if !self.record_entry(&Entry::Proposal(hashed_prop.inner().clone(), round_id)) {
             error!("could not record own proposal in WAL");
         } else if self.round_mut(round_id).insert_proposal(hashed_prop) {
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialize_payload(
-                &prop_msg,
-            )));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+                SerializedMessage::from_message(&prop_msg),
+            ));
         }
         self.mark_dirty(round_id);
         outcomes
@@ -1972,10 +1975,10 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match deserialize_payload(&msg) {
+        match msg.deserialize_incoming() {
             Err(err) => {
                 warn!(%sender, %err, "failed to deserialize Zug message");
                 vec![ProtocolOutcome::Disconnect(sender)]
@@ -2005,10 +2008,10 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: SerializedMessage,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
-        match deserialize_payload::<SyncRequest<C>>(&msg) {
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>) {
+        match msg.deserialize_incoming::<SyncRequest<C>>() {
             Err(err) => {
                 warn!(
                     %sender,
@@ -2211,7 +2214,11 @@ where
             .map(|fault| match fault {
                 Fault::Direct(msg, content, sign) => {
                     vec![ProtocolOutcome::CreatedTargetedMessage(
-                        serialize_payload(&Message::Evidence(msg.clone(), content.clone(), *sign)),
+                        SerializedMessage::from_message(&Message::Evidence(
+                            msg.clone(),
+                            content.clone(),
+                            *sign,
+                        )),
                         peer,
                     )]
                 }

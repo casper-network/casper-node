@@ -25,7 +25,7 @@ use crate::{
         consensus_protocol::{
             BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
         },
-        deserialize_payload,
+        era_supervisor::SerializedMessage,
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
@@ -36,7 +36,7 @@ use crate::{
             state::{IndexObservation, IndexPanorama, Observation},
             synchronizer::Synchronizer,
         },
-        protocols, serialize_payload,
+        protocols,
         traits::{ConsensusValueT, Context},
         utils::ValidatorIndex,
         ActionId, TimerId,
@@ -256,9 +256,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             outcomes.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(vv.into());
-        outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialize_payload(
-            &msg,
-        )));
+        outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+            SerializedMessage::from_message(&msg),
+        ));
         outcomes.extend(self.detect_finality());
         outcomes
     }
@@ -569,7 +569,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             IndexPanorama::from_panorama(self.highway.state().panorama(), self.highway.state()),
         );
         vec![ProtocolOutcome::CreatedMessageToRandomPeer(
-            serialize_payload(&request),
+            SerializedMessage::from_message(&request),
         )]
     }
 
@@ -667,7 +667,7 @@ mod relaxed {
             highway::{Dependency, Vertex},
             state::IndexPanorama,
         },
-        traits::Context,
+        traits::{ConsensusNetworkMessage, Context},
         utils::ValidatorIndex,
     };
 
@@ -691,6 +691,8 @@ mod relaxed {
         },
         LatestStateRequest(IndexPanorama),
     }
+
+    impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
 }
 pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
 
@@ -747,10 +749,10 @@ where
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match deserialize_payload(&msg) {
+        match msg.deserialize_incoming() {
             Err(err) => {
                 warn!(?err, "could not desrialize highway message");
                 vec![ProtocolOutcome::Disconnect(sender)]
@@ -826,7 +828,7 @@ where
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
                     GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
-                        serialize_payload(&HighwayMessage::NewVertex(vv.into())),
+                        SerializedMessage::from_message(&HighwayMessage::NewVertex(vv.into())),
                         sender,
                     )],
                 }
@@ -857,7 +859,7 @@ where
                     }
                     GetDepOutcome::Vertex(vv) => {
                         vec![ProtocolOutcome::CreatedTargetedMessage(
-                            serialize_payload(&HighwayMessage::NewVertex(vv.into())),
+                            SerializedMessage::from_message(&HighwayMessage::NewVertex(vv.into())),
                             sender,
                         )]
                     }
@@ -902,7 +904,10 @@ where
                     .map(create_message)
                     .flat_map(|msgs| {
                         msgs.into_iter().map(|msg| {
-                            ProtocolOutcome::CreatedTargetedMessage(serialize_payload(&msg), sender)
+                            ProtocolOutcome::CreatedTargetedMessage(
+                                SerializedMessage::from_message(&msg),
+                                sender,
+                            )
                         })
                     })
                     .collect()
@@ -914,9 +919,9 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        _msg: Vec<u8>,
+        _msg: SerializedMessage,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>) {
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>) {
         info!(?sender, "invalid incoming request");
         (vec![ProtocolOutcome::Disconnect(sender)], None)
     }
@@ -1080,7 +1085,7 @@ where
                     GetDepOutcome::Vertex(vv) => {
                         let msg = HighwayMessage::NewVertex(vv.into());
                         Some(ProtocolOutcome::CreatedTargetedMessage(
-                            serialize_payload(&msg),
+                            SerializedMessage::from_message(&msg),
                             sender,
                         ))
                     }

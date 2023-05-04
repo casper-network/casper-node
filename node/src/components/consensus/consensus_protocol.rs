@@ -17,6 +17,8 @@ use crate::{
     NodeRng,
 };
 
+use super::era_supervisor::SerializedMessage;
+
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
 pub struct BlockContext<C>
@@ -191,10 +193,10 @@ pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
-    CreatedGossipMessage(Vec<u8>),
-    CreatedTargetedMessage(Vec<u8>, NodeId),
-    CreatedMessageToRandomPeer(Vec<u8>),
-    CreatedRequestToRandomPeer(Vec<u8>),
+    CreatedGossipMessage(SerializedMessage),
+    CreatedTargetedMessage(SerializedMessage, NodeId),
+    CreatedMessageToRandomPeer(SerializedMessage),
+    CreatedRequestToRandomPeer(SerializedMessage),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -243,7 +245,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
 
@@ -252,9 +254,9 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: Vec<u8>,
+        msg: SerializedMessage,
         now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<Vec<u8>>);
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;

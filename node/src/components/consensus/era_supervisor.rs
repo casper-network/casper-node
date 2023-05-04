@@ -27,6 +27,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
@@ -62,6 +63,8 @@ use crate::{
 
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
+
+use super::traits::ConsensusNetworkMessage;
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -648,7 +651,6 @@ impl EraSupervisor {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
                 trace!(era = era_id.value(), "received a consensus message");
-                let payload = deserialize_payload(&payload).expect("TODO");
 
                 self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
                     consensus.handle_message(rng, sender, payload, Timestamp::now())
@@ -684,7 +686,6 @@ impl EraSupervisor {
         auto_closing_responder: AutoClosingResponder<protocol::Message>,
     ) -> Effects<Event> {
         let ConsensusRequestMessage { era_id, payload } = *request;
-        let payload = deserialize_payload(&payload).expect("TODO");
 
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
@@ -1170,14 +1171,38 @@ impl EraSupervisor {
     }
 }
 
-/// Serializes a payload with the fixed encoding scheme for consensus messages.
-pub(crate) fn serialize_payload<T>(_payload: &T) -> Vec<u8> {
-    todo!()
-}
+/// A serialized consensus network message.
+///
+/// An entirely transparent newtype around raw bytes. Exists solely to avoid accidental
+/// double-serialization of network messages, or serialization of unsuitable types.
+///
+/// Note that this type fixates the encoding for all consensus implementations to one scheme.
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+#[repr(transparent)]
+pub(crate) struct SerializedMessage(Vec<u8>);
 
-/// Deserializes a payload with the fixed decoding scheme for consensus messages.
-pub(crate) fn deserialize_payload<T>(_payload: &[u8]) -> Result<T, &'static str> {
-    todo!()
+impl SerializedMessage {
+    /// Serialize the given message from a consensus protocol into bytes.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if serialization fails (which must never happen -- ensure types are
+    /// serializable!).
+    pub(crate) fn from_message<T>(msg: &T) -> Self
+    where
+        T: ConsensusNetworkMessage + Serialize,
+    {
+        todo!()
+    }
+
+    /// Attempt to deserialize a given type from incoming raw bytes.
+    pub(crate) fn deserialize_incoming<T>(&self) -> Result<T, &'static str>
+    where
+        T: ConsensusNetworkMessage + DeserializeOwned,
+    {
+        todo!()
+    }
 }
 
 async fn get_deploys<REv>(

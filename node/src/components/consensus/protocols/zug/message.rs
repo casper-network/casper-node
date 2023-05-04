@@ -8,7 +8,7 @@ use either::Either;
 use crate::{
     components::consensus::{
         protocols::zug::{Proposal, RoundId},
-        traits::{Context, ValidatorSecret},
+        traits::{ConsensusNetworkMessage, Context, ValidatorSecret},
         utils::ValidatorIndex,
     },
     utils::ds,
@@ -25,7 +25,7 @@ mod relaxed {
 
     use crate::components::consensus::{
         protocols::zug::{proposal::Proposal, RoundId},
-        traits::Context,
+        traits::{ConsensusNetworkMessage, Context},
     };
 
     use super::{SignedMessage, SyncResponse};
@@ -86,6 +86,8 @@ mod relaxed {
         /// Two conflicting signatures by the same validator.
         Evidence(SignedMessage<C>, Content<C>, C::Signature),
     }
+
+    impl<C: Context> ConsensusNetworkMessage for Message<C> {}
 }
 pub(crate) use relaxed::{Content, ContentDiscriminants, Message, MessageDiscriminants};
 
@@ -214,6 +216,8 @@ where
     pub(crate) faulty: u128,
     pub(crate) instance_id: C::InstanceId,
 }
+
+impl<C: Context> ConsensusNetworkMessage for SyncRequest<C> {}
 
 impl<C: Context> SyncRequest<C> {
     /// Creates a `SyncRequest` for a round in which we haven't received any messages yet.

@@ -14,8 +14,8 @@ use casper_types::Timestamp;
 use crate::{
     components::consensus::{
         consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
+        era_supervisor::SerializedMessage,
         protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
-        serialize_payload,
         traits::Context,
         utils::ValidatorMap,
     },
@@ -436,7 +436,7 @@ impl<C: Context + 'static> Synchronizer<C> {
                 debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let msg = HighwayMessage::RequestDependency(uuid, transitive_dependency);
                 outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
-                    serialize_payload(&msg),
+                    SerializedMessage::from_message(&msg),
                     sender,
                 ));
                 continue;
