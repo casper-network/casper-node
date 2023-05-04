@@ -355,12 +355,6 @@ fn should_run_ee_1120_slash_delegators() {
     assert!(validator_1_bid.staked_amount().is_zero());
 
     let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses_after
-        .get(&VALIDATOR_1_ADDR)
-        .unwrap()
-        .is_empty());
-    assert!(unbond_purses_after
-        .get(&VALIDATOR_2_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(!unbond_purses_after.contains_key(&VALIDATOR_1_ADDR));
+    assert!(!unbond_purses_after.contains_key(&VALIDATOR_2_ADDR));
 }

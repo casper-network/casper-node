@@ -928,7 +928,6 @@ where
     ///
     /// Use with caution - there is no validation done as the key is assumed to be validated
     /// already.
-    #[allow(dead_code)]
     pub(crate) fn delete_gs_unsafe<K>(&mut self, key: K)
     where
         K: Into<Key>,

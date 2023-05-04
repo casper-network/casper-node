@@ -25,7 +25,7 @@ use casper_execution_engine::{
         },
         execution,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{system_config::SystemConfig, transform::Transform, wasm_config::WasmConfig},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -41,7 +41,7 @@ use casper_types::{
             ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, KeyTag, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 use crate::lmdb_fixture;
@@ -3523,8 +3523,12 @@ fn should_continue_auction_state_from_release_1_4_x() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
 
-    let withdraw_purses: WithdrawPurses = builder.get_withdraw_purses();
+    let withdraw_keys_before = builder
+        .get_keys(KeyTag::Withdraw)
+        .expect("should query withdraw keys");
+    assert_eq!(withdraw_keys_before.len(), 1);
 
+    let withdraw_purses: WithdrawPurses = builder.get_withdraw_purses();
     assert_eq!(withdraw_purses.len(), 1);
 
     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
@@ -3547,6 +3551,35 @@ fn should_continue_auction_state_from_release_1_4_x() {
     builder
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
+
+    let upgrade_result = builder
+        .get_upgrade_result(0)
+        .expect("should have upgrade result")
+        .as_ref()
+        .expect("upgrade should work");
+    let delete_keys_after_upgrade = upgrade_result
+        .execution_effect
+        .transforms
+        .iter()
+        .filter_map(|(key, transform)| {
+            if transform == &Transform::Delete {
+                Some(key)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    assert!(!delete_keys_after_upgrade.is_empty());
+    assert!(delete_keys_after_upgrade
+        .iter()
+        .all(|key| key.as_withdraw().is_some()));
+
+    // Ensure withdraw keys are purged
+    let withdraw_keys_after = builder
+        .get_keys(KeyTag::Withdraw)
+        .expect("should query withdraw keys");
+    assert_eq!(withdraw_keys_after.len(), 0);
 
     let unbonding_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbonding_purses.len(), 1);
@@ -3716,6 +3749,22 @@ fn should_continue_auction_state_from_release_1_4_x() {
     assert_eq!(
         redelegated_amount_1,
         U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
+
+    // No new withdraw keys created after processing the auction
+    let withdraw_keys = builder
+        .get_keys(KeyTag::Withdraw)
+        .expect("should query withdraw keys");
+    assert_eq!(withdraw_keys.len(), 0);
+
+    // Unbond keys are deleted
+    let unbond_keys = builder
+        .get_keys(KeyTag::Unbond)
+        .expect("should query withdraw keys");
+    assert_eq!(
+        unbond_keys.len(),
+        0,
+        "auction state continued and empty unbond queue should be purged"
     );
 }
 
