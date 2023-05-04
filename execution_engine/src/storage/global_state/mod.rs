@@ -32,7 +32,7 @@ use crate::{
     },
 };
 
-use super::trie_store::operations::DeleteResult;
+use super::trie_store::operations::{delete, DeleteResult};
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
@@ -195,6 +195,22 @@ where
     };
 
     for (key, transform) in effects.into_iter() {
+        if transform == Transform::Delete {
+            match delete::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key)? {
+                DeleteResult::Deleted(new_state_root) => {
+                    state_root = new_state_root;
+                }
+                DeleteResult::DoesNotExist => {
+                    return Err(CommitError::KeyNotFound(key).into());
+                }
+                DeleteResult::RootNotFound => {
+                    return Err(CommitError::RootNotFound(state_root).into());
+                }
+            }
+            // Exit early and avoid reading the value under a key if we know we're going to delete
+            // it.
+            continue;
+        }
         let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
 
         let value = match (read_result, transform) {

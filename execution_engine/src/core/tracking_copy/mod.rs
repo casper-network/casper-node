@@ -353,6 +353,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         self.journal.push((normalized_key, Transform::Write(value)));
     }
 
+    /// Deletes a `key`.
+    pub fn delete(&mut self, key: Key) {
+        let normalized_key = key.normalize();
+        self.journal.push((normalized_key, Transform::Delete));
+    }
+
     /// Ok(None) represents missing key to which we want to "add" some value.
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global

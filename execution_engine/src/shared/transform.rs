@@ -86,6 +86,8 @@ pub enum Transform {
     ///
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
+    /// Deletes a key.
+    Delete,
     /// Represents the case where applying a transform would cause an error.
     #[data_size(skip)]
     Failure(Error),
@@ -232,6 +234,7 @@ impl Transform {
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
+            Transform::Delete => unreachable!("Delete operation can't be applied"),
             Transform::Failure(error) => Err(error),
         }
     }
@@ -282,6 +285,7 @@ impl Add for Transform {
                     Ok(new_value) => Transform::Write(new_value),
                 }
             }
+            (Transform::Delete, _b) => Transform::Delete,
             (Transform::AddInt32(i), b) => match b {
                 Transform::AddInt32(j) => Transform::AddInt32(i.wrapping_add(j)),
                 Transform::AddUInt64(j) => Transform::AddUInt64(j.wrapping_add(i as u64)),
@@ -389,6 +393,7 @@ impl From<&Transform> for casper_types::Transform {
                     .collect(),
             ),
             Transform::Failure(error) => casper_types::Transform::Failure(error.to_string()),
+            Transform::Delete => casper_types::Transform::Delete,
         }
     }
 }

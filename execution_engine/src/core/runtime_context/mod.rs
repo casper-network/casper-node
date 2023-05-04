@@ -924,6 +924,18 @@ where
         Ok(())
     }
 
+    /// Deletes a key from the global state.
+    ///
+    /// Use with caution - there is no validation done as the key is assumed to be validated
+    /// already.
+    #[allow(dead_code)]
+    pub(crate) fn delete_gs_unsafe<K>(&mut self, key: K)
+    where
+        K: Into<Key>,
+    {
+        self.tracking_copy.borrow_mut().delete(key.into());
+    }
+
     /// Writes data to a global state and charges for bytes stored.
     ///
     /// This method performs full validation of the key to be written.
