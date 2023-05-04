@@ -63,6 +63,8 @@ use crate::{
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
 
+use super::EraMessage;
+
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
@@ -648,6 +650,8 @@ impl EraSupervisor {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
                 trace!(era = era_id.value(), "received a consensus message");
+                let payload = deserialize_payload(&payload).expect("TODO");
+
                 self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
                     consensus.handle_message(rng, sender, payload, Timestamp::now())
                 })
@@ -682,6 +686,8 @@ impl EraSupervisor {
         auto_closing_responder: AutoClosingResponder<protocol::Message>,
     ) -> Effects<Event> {
         let ConsensusRequestMessage { era_id, payload } = *request;
+        let payload = deserialize_payload(&payload).expect("TODO");
+
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
             None => {
@@ -697,7 +703,13 @@ impl EraSupervisor {
                 if let Some(payload) = response {
                     effects.extend(
                         auto_closing_responder
-                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
+                            .respond(
+                                ConsensusMessage::Protocol {
+                                    era_id,
+                                    payload: serialize_payload(&payload),
+                                }
+                                .into(),
+                            )
                             .ignore(),
                     );
                 } else {
@@ -910,17 +922,26 @@ impl EraSupervisor {
                 }
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
-                let message = ConsensusMessage::Protocol { era_id, payload };
+                let message = ConsensusMessage::Protocol {
+                    era_id,
+                    payload: serialize_payload(&payload),
+                };
                 effect_builder
                     .broadcast_message_to_validators(message.into(), era_id)
                     .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
-                let message = ConsensusMessage::Protocol { era_id, payload };
+                let message = ConsensusMessage::Protocol {
+                    era_id,
+                    payload: serialize_payload(&payload),
+                };
                 effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
-                let message = ConsensusMessage::Protocol { era_id, payload };
+                let message = ConsensusMessage::Protocol {
+                    era_id,
+                    payload: serialize_payload(&payload),
+                };
 
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
@@ -931,7 +952,10 @@ impl EraSupervisor {
                 .ignore()
             }
             ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
-                let message = ConsensusRequestMessage { era_id, payload };
+                let message = ConsensusRequestMessage {
+                    era_id,
+                    payload: serialize_payload(&payload),
+                };
 
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
@@ -1164,6 +1188,16 @@ impl EraSupervisor {
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key
     }
+}
+
+/// Serializes a payload with the fixed encoding scheme for consensus messages.
+fn serialize_payload<T>(payload: &T) -> Vec<u8> {
+    todo!()
+}
+
+/// Deserializes a payload with the fixed decoding scheme for consensus messages.
+pub(crate) fn deserialize_payload<T>(payload: &[u8]) -> Result<T, &'static str> {
+    todo!()
 }
 
 async fn get_deploys<REv>(

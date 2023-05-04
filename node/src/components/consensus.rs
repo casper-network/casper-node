@@ -59,6 +59,8 @@ use traits::Context;
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
+#[cfg(test)]
+pub(crate) use era_supervisor::deserialize_payload;
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
@@ -97,7 +99,8 @@ mod relaxed {
         /// A protocol message, to be handled by the instance in the specified era.
         Protocol {
             era_id: EraId,
-            payload: EraMessage<ClContext>,
+            //payload: EraMessage<ClContext>,
+            payload: Vec<u8>,
         },
         /// A request for evidence against the specified validator, from any era that is still
         /// bonded in `era_id`.
@@ -161,7 +164,8 @@ impl<C: Context> EraRequest<C> {
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) struct ConsensusRequestMessage {
     era_id: EraId,
-    payload: EraRequest<ClContext>,
+    // payload: EraRequest<ClContext>,
+    payload: Vec<u8>,
 }
 
 /// An ID to distinguish different timers. What they are used for is specific to each consensus
@@ -396,7 +400,7 @@ mod specimen_support {
                 match variant {
                     ConsensusMessageDiscriminants::Protocol => ConsensusMessage::Protocol {
                         era_id: LargestSpecimen::largest_specimen(estimator, cache),
-                        payload: LargestSpecimen::largest_specimen(estimator, cache),
+                        payload: todo!(), //LargestSpecimen::largest_specimen(estimator, cache),
                     },
                     ConsensusMessageDiscriminants::EvidenceRequest => {
                         ConsensusMessage::EvidenceRequest {
@@ -413,7 +417,7 @@ mod specimen_support {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             ConsensusRequestMessage {
                 era_id: LargestSpecimen::largest_specimen(estimator, cache),
-                payload: LargestSpecimen::largest_specimen(estimator, cache),
+                payload: todo!(), //LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
