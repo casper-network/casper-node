@@ -701,13 +701,7 @@ impl EraSupervisor {
                 if let Some(payload) = response {
                     effects.extend(
                         auto_closing_responder
-                            .respond(
-                                ConsensusMessage::Protocol {
-                                    era_id,
-                                    payload: serialize_payload(&payload),
-                                }
-                                .into(),
-                            )
+                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
                             .ignore(),
                     );
                 } else {
@@ -920,26 +914,17 @@ impl EraSupervisor {
                 }
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
-                let message = ConsensusMessage::Protocol {
-                    era_id,
-                    payload: serialize_payload(&payload),
-                };
+                let message = ConsensusMessage::Protocol { era_id, payload };
                 effect_builder
                     .broadcast_message_to_validators(message.into(), era_id)
                     .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
-                let message = ConsensusMessage::Protocol {
-                    era_id,
-                    payload: serialize_payload(&payload),
-                };
+                let message = ConsensusMessage::Protocol { era_id, payload };
                 effect_builder.enqueue_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
-                let message = ConsensusMessage::Protocol {
-                    era_id,
-                    payload: serialize_payload(&payload),
-                };
+                let message = ConsensusMessage::Protocol { era_id, payload };
 
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
@@ -950,10 +935,7 @@ impl EraSupervisor {
                 .ignore()
             }
             ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
-                let message = ConsensusRequestMessage {
-                    era_id,
-                    payload: serialize_payload(&payload),
-                };
+                let message = ConsensusRequestMessage { era_id, payload };
 
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
@@ -1189,7 +1171,7 @@ impl EraSupervisor {
 }
 
 /// Serializes a payload with the fixed encoding scheme for consensus messages.
-fn serialize_payload<T>(_payload: &T) -> Vec<u8> {
+pub(crate) fn serialize_payload<T>(_payload: &T) -> Vec<u8> {
     todo!()
 }
 

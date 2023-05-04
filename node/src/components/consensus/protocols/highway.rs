@@ -36,7 +36,7 @@ use crate::{
             state::{IndexObservation, IndexPanorama, Observation},
             synchronizer::Synchronizer,
         },
-        protocols,
+        protocols, serialize_payload,
         traits::{ConsensusValueT, Context},
         utils::ValidatorIndex,
         ActionId, EraMessage, TimerId,
@@ -256,7 +256,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             outcomes.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(vv.into());
-        outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.into()));
+        outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialize_payload(
+            &msg,
+        )));
         outcomes.extend(self.detect_finality());
         outcomes
     }
@@ -566,7 +568,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let request: HighwayMessage<C> = HighwayMessage::LatestStateRequest(
             IndexPanorama::from_panorama(self.highway.state().panorama(), self.highway.state()),
         );
-        vec![ProtocolOutcome::CreatedMessageToRandomPeer(request.into())]
+        vec![ProtocolOutcome::CreatedMessageToRandomPeer(
+            serialize_payload(&request),
+        )]
     }
 
     /// Creates a batch of dependency requests if the peer has more units by the validator `vidx`
@@ -822,7 +826,7 @@ where
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
                     GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
-                        HighwayMessage::NewVertex(vv.into()).into(),
+                        serialize_payload(&HighwayMessage::NewVertex(vv.into())),
                         sender,
                     )],
                 }
@@ -853,7 +857,7 @@ where
                     }
                     GetDepOutcome::Vertex(vv) => {
                         vec![ProtocolOutcome::CreatedTargetedMessage(
-                            HighwayMessage::NewVertex(vv.into()).into(),
+                            serialize_payload(&HighwayMessage::NewVertex(vv.into())),
                             sender,
                         )]
                     }
@@ -897,8 +901,9 @@ where
                     .zip(&their_index_panorama)
                     .map(create_message)
                     .flat_map(|msgs| {
-                        msgs.into_iter()
-                            .map(|msg| ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender))
+                        msgs.into_iter().map(|msg| {
+                            ProtocolOutcome::CreatedTargetedMessage(serialize_payload(&msg), sender)
+                        })
                     })
                     .collect()
             }
@@ -1074,7 +1079,10 @@ where
                     GetDepOutcome::None | GetDepOutcome::Evidence(_) => None,
                     GetDepOutcome::Vertex(vv) => {
                         let msg = HighwayMessage::NewVertex(vv.into());
-                        Some(ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender))
+                        Some(ProtocolOutcome::CreatedTargetedMessage(
+                            serialize_payload(&msg),
+                            sender,
+                        ))
                     }
                 },
             )

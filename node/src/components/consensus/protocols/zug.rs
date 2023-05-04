@@ -88,7 +88,7 @@ use crate::{
             BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
             ProtocolOutcomes, TerminalBlockData,
         },
-        deserialize_payload, protocols,
+        deserialize_payload, protocols, serialize_payload,
         traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, EraMessage, LeaderSequence, TimerId,
@@ -407,7 +407,9 @@ impl<C: Context + 'static> Zug<C> {
             .choose(rng)
             .unwrap_or(self.current_round);
         let payload = self.create_sync_request(first_validator_idx, round_id);
-        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(payload.into())];
+        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(
+            serialize_payload(&payload),
+        )];
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
@@ -623,7 +625,9 @@ impl<C: Context + 'static> Zug<C> {
             && self.add_content(signed_msg.clone())
         {
             let message = Message::Signed(signed_msg);
-            vec![ProtocolOutcome::CreatedGossipMessage(message.into())]
+            vec![ProtocolOutcome::CreatedGossipMessage(serialize_payload(
+                &message,
+            ))]
         } else {
             vec![]
         }
@@ -982,7 +986,9 @@ impl<C: Context + 'static> Zug<C> {
             let evidence_msg = Message::Evidence(signed_msg.clone(), content2.clone(), signature2);
             let mut outcomes =
                 self.handle_fault(signed_msg, validator_id, content2, signature2, now);
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(evidence_msg.into()));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialize_payload(
+                &evidence_msg,
+            )));
             return outcomes;
         }
 
@@ -1784,7 +1790,9 @@ impl<C: Context + 'static> Zug<C> {
         if !self.record_entry(&Entry::Proposal(hashed_prop.inner().clone(), round_id)) {
             error!("could not record own proposal in WAL");
         } else if self.round_mut(round_id).insert_proposal(hashed_prop) {
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.into()));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialize_payload(
+                &prop_msg,
+            )));
         }
         self.mark_dirty(round_id);
         outcomes
@@ -2200,7 +2208,7 @@ where
             .map(|fault| match fault {
                 Fault::Direct(msg, content, sign) => {
                     vec![ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Evidence(msg.clone(), content.clone(), *sign).into(),
+                        serialize_payload(&Message::Evidence(msg.clone(), content.clone(), *sign)),
                         peer,
                     )]
                 }

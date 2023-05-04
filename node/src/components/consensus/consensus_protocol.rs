@@ -12,7 +12,7 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
-    components::consensus::{traits::Context, ActionId, EraMessage, EraRequest, TimerId},
+    components::consensus::{traits::Context, ActionId, EraMessage, TimerId},
     types::NodeId,
     NodeRng,
 };
@@ -191,10 +191,10 @@ pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
-    CreatedGossipMessage(EraMessage<C>),
-    CreatedTargetedMessage(EraMessage<C>, NodeId),
-    CreatedMessageToRandomPeer(EraMessage<C>),
-    CreatedRequestToRandomPeer(EraRequest<C>),
+    CreatedGossipMessage(Vec<u8>),
+    CreatedTargetedMessage(Vec<u8>, NodeId),
+    CreatedMessageToRandomPeer(Vec<u8>),
+    CreatedRequestToRandomPeer(Vec<u8>),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
