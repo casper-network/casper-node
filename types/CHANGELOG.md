@@ -11,11 +11,19 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## 1.6.0
+## 2.0.0
+
+### Fixed
+* Republished v1.6.0 as v2.0.0 due to missed breaking change in API (addition of new variant to `Key`).
+
+
+
+## 1.6.0 [YANKED]
 
 ### Added
 * Add `TimeDiff`, `Timestamp` and asymmetric key functionality (moved from `casper-nodes` crate).
 * Add `testing` feature to provide functionality useful for test scenarios.
+* Add new `Key::EraSummary` key variant under which the era summary info is written on each switch block execution.
 
 ### Deprecated
 * Deprecate `gens` feature: its functionality is included in the new `testing` feature.
