@@ -90,7 +90,27 @@ where
             let next_read = match decoder.decode_frame(buffer) {
                 DecodeResult::Item(frame) => return Poll::Ready(Some(Ok(frame))),
                 DecodeResult::Incomplete => *max_read_buffer_increment,
-                DecodeResult::Remaining(remaining) => remaining.min(*max_read_buffer_increment),
+                DecodeResult::Remaining(remaining) => {
+                    // We need to periodically have a completely empty buffer to avoid leaking
+                    // memory, as only a call causing a reallocation will unlink already extracted
+                    // `Bytes` from the shared `BytesMut` buffer. We always trigger this eventually
+                    // by performing a large resize, preferably on an otherwise empty buffer.
+
+                    // The additional `.is_empty()` branch allows us to avoid having to _always_
+                    // perform two `read` calls. We are guaranteed an empty buffer the second time
+                    // around.
+
+                    // Overall, it is hard to strike a decent trade-off here between minimizing
+                    // `read` calls, avoiding copies and not being vulnerable to attacks causing
+                    // massive memory allocations. It is possible that a `VecDeque` and more eager
+                    // copying could be a better approach in some situations.
+
+                    if buffer.is_empty() {
+                        *max_read_buffer_increment
+                    } else {
+                        remaining.min(*max_read_buffer_increment)
+                    }
+                }
                 DecodeResult::Failed(error) => {
                     return Poll::Ready(Some(Err(io::Error::new(io::ErrorKind::Other, error))))
                 }
