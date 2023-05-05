@@ -147,6 +147,7 @@ function check_network_sync() {
         for i in $(eval echo "{$FIRST_NODE..$LAST_NODE}")
         do
             ALL_LFBS[$index]=$(do_read_lfb_hash $i)
+            log "got LFB of node $i"
             index=$((index + 1))
         done
 
@@ -156,6 +157,7 @@ function check_network_sync() {
         for i in $(eval echo "{0..$((LFB_COUNT - 1))}")
         do
             if [[ "$BASE_LFB" != "${ALL_LFBS[$i]}" ]]; then
+                log "not all LFBs equal, will try again"
                 ALL_EQUAL=0
                 break
             fi
