@@ -14,31 +14,80 @@ use crate::{
     utils::ds,
 };
 
-/// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
-/// which are somewhat decoupled from the rest of the protocol. These messages, along with the
-/// instance and round ID, are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Content<C>
-where
-    C: Context,
-{
-    /// By signing the echo of a proposal hash a validator affirms that this is the first (and
-    /// usually only) proposal by the round leader that they have received. A quorum of echoes is a
-    /// requirement for a proposal to become accepted.
-    Echo(C::Hash),
-    /// By signing a `true` vote a validator confirms that they have accepted a proposal in this
-    /// round before the timeout. If there is a quorum of `true` votes, the proposal becomes
-    /// finalized, together with its ancestors.
-    ///
-    /// A `false` vote means they timed out waiting for a proposal to get accepted. A quorum of
-    /// `false` votes allows the next round's leader to make a proposal without waiting for this
-    /// round's.
-    Vote(bool),
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::{
+        protocols::zug::{proposal::Proposal, RoundId},
+        traits::Context,
+    };
+
+    use super::{SignedMessage, SyncResponse};
+
+    /// The content of a message in the main protocol, as opposed to the proposal, and to sync
+    /// messages, which are somewhat decoupled from the rest of the protocol. These messages,
+    /// along with the instance and round ID, are signed by the active validators.
+    #[derive(
+        Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize, EnumDiscriminants,
+    )]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum Content<C>
+    where
+        C: Context,
+    {
+        /// By signing the echo of a proposal hash a validator affirms that this is the first (and
+        /// usually only) proposal by the round leader that they have received. A quorum of echoes
+        /// is a requirement for a proposal to become accepted.
+        Echo(C::Hash),
+        /// By signing a `true` vote a validator confirms that they have accepted a proposal in
+        /// this round before the timeout. If there is a quorum of `true` votes, the
+        /// proposal becomes finalized, together with its ancestors.
+        ///
+        /// A `false` vote means they timed out waiting for a proposal to get accepted. A quorum of
+        /// `false` votes allows the next round's leader to make a proposal without waiting for
+        /// this round's.
+        Vote(bool),
+    }
+
+    /// All messages of the protocol.
+    #[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants)]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum Message<C>
+    where
+        C: Context,
+    {
+        /// Signatures, proposals and evidence the requester was missing.
+        SyncResponse(SyncResponse<C>),
+        /// A proposal for a new block. This does not contain any signature; instead, the proposer
+        /// is expected to sign an echo with the proposal hash. Validators will drop any
+        /// proposal they receive unless they either have a signed echo by the proposer and
+        /// the proposer has not double-signed, or they have a quorum of echoes.
+        Proposal {
+            round_id: RoundId,
+            instance_id: C::InstanceId,
+            proposal: Proposal<C>,
+        },
+        /// An echo or vote signed by an active validator.
+        Signed(SignedMessage<C>),
+        /// Two conflicting signatures by the same validator.
+        Evidence(SignedMessage<C>, Content<C>, C::Signature),
+    }
 }
+pub(crate) use relaxed::{Content, ContentDiscriminants, Message, MessageDiscriminants};
 
 impl<C: Context> Content<C> {
     /// Returns whether the two contents contradict each other. A correct validator is expected to
@@ -217,33 +266,6 @@ where
     /// Evidence against faulty validators.
     pub(crate) evidence: Vec<(SignedMessage<C>, Content<C>, C::Signature)>,
     pub(crate) instance_id: C::InstanceId,
-}
-
-/// All messages of the protocol.
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Message<C>
-where
-    C: Context,
-{
-    /// Signatures, proposals and evidence the requester was missing.
-    SyncResponse(SyncResponse<C>),
-    /// A proposal for a new block. This does not contain any signature; instead, the proposer is
-    /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
-    /// receive unless they either have a signed echo by the proposer and the proposer has not
-    /// double-signed, or they have a quorum of echoes.
-    Proposal {
-        round_id: RoundId,
-        instance_id: C::InstanceId,
-        proposal: Proposal<C>,
-    },
-    /// An echo or vote signed by an active validator.
-    Signed(SignedMessage<C>),
-    /// Two conflicting signatures by the same validator.
-    Evidence(SignedMessage<C>, Content<C>, C::Signature),
 }
 
 impl<C: Context> Message<C> {

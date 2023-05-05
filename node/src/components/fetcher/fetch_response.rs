@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Message to be returned by a peer. Indicates if the item could be fetched or not.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub enum FetchResponse<T, Id> {
     /// The requested item.
     Fetched(T),
@@ -34,5 +35,32 @@ where
     /// [`Message::GetResponse`]).
     pub(crate) fn to_serialized(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
+    }
+}
+
+mod specimen_support {
+    use crate::utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator};
+    use serde::Serialize;
+
+    use super::{FetchResponse, FetchResponseDiscriminants};
+
+    impl<T: Serialize + LargestSpecimen, Id: Serialize + LargestSpecimen> LargestSpecimen
+        for FetchResponse<T, Id>
+    {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, FetchResponseDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    FetchResponseDiscriminants::Fetched => {
+                        FetchResponse::Fetched(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    FetchResponseDiscriminants::NotFound => {
+                        FetchResponse::NotFound(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    FetchResponseDiscriminants::NotProvided => FetchResponse::NotProvided(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                }
+            })
+        }
     }
 }

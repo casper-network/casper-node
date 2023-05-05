@@ -1,0 +1,5 @@
+[core]
+round_seigniorage_rate = [0, 1]
+locked_funds_period = '0days'
+validator_slots = 5
+vesting_schedule_period = '0days'

@@ -95,6 +95,19 @@ impl MainReactor {
                 // effects, any referenced deploys, & sufficient finality (by weight) of signatures
                 SyncIdentifier::SyncedBlockIdentifier(block_hash, block_height, era_id),
             ),
+            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
+                // working on syncing a block
+                warn!(
+                    %block_hash,
+                    %last_progress_time,
+                    "CatchUp: block synchronizer stalled while syncing block; purging historical builder"
+                );
+                self.block_synchronizer.purge_historical();
+                match self.trusted_hash {
+                    Some(trusted_hash) => self.catch_up_trusted_hash(trusted_hash),
+                    None => self.catch_up_no_trusted_hash(),
+                }
+            }
         }
     }
 
@@ -275,7 +288,7 @@ impl MainReactor {
         // otherwise block_synchronizer detects as Idle which can cause unnecessary churn
         // on subsequent cranks while leaper is awaiting responses.
         self.block_synchronizer
-            .register_block_by_hash(block_hash, true, true);
+            .register_block_by_hash(block_hash, true);
         let leap_status = self.sync_leaper.leap_status();
         info!(%block_hash, %leap_status, "CatchUp: status");
         match leap_status {
@@ -396,7 +409,7 @@ impl MainReactor {
     ) -> CatchUpInstruction {
         if self
             .block_synchronizer
-            .register_block_by_hash(block_hash, true, true)
+            .register_block_by_hash(block_hash, true)
         {
             // NeedNext will self perpetuate until nothing is needed for this block
             let mut effects = Effects::new();

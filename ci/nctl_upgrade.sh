@@ -168,6 +168,11 @@ function start_upgrade_scenario_10() {
     nctl-exec-upgrade-scenario-10
 }
 
+function start_upgrade_scenario_11() {
+    log "... Starting Upgrade Scenario 11"
+    nctl-exec-upgrade-scenario-11
+}
+
 # ----------------------------------------------------------------
 # ENTRY POINT
 # ----------------------------------------------------------------

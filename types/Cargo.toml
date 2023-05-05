@@ -38,6 +38,7 @@ schemars = { version = "=0.8.5", features = ["preserve_order"], optional = true 
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
 serde_json = { version = "1.0.59", default-features = false, features = ["alloc"] }
+strum = { version = "0.24", features = ["derive"], optional = true }
 thiserror = {version = "1", optional = true }
 uint = { version = "0.9.0", default-features = false }
 untrusted = { version = "0.7.1", optional = true }
@@ -59,7 +60,7 @@ rand = "0.8.3"
 rand_pcg = "0.3.0"
 serde_json = "1"
 serde_test = "1"
-strum = { version = "0.21", features = ["derive"] }
+strum = { version = "0.24", features = ["derive"] }
 tempfile = "3.4.0"
 thiserror = "1"
 untrusted = "0.7.1"
@@ -67,7 +68,7 @@ untrusted = "0.7.1"
 [features]
 json-schema = ["once_cell", "schemars"]
 std = ["derp", "getrandom/std", "humantime", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
-testing = ["proptest", "proptest-derive", "rand_pcg"]
+testing = ["proptest", "proptest-derive", "rand_pcg", "strum"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
 

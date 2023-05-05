@@ -34,6 +34,19 @@ pub struct BincodeFormat(
     >,
 );
 
+impl BincodeFormat {
+    /// Serializes an arbitrary serializable value with the networking bincode serializer.
+    #[inline]
+    pub(crate) fn serialize_arbitrary<T>(&self, item: &T) -> io::Result<Vec<u8>>
+    where
+        T: Serialize,
+    {
+        self.0
+            .serialize(item)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    }
+}
+
 impl Debug for BincodeFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("BincodeFormat")
@@ -60,10 +73,7 @@ where
     #[inline]
     fn serialize(self: Pin<&mut Self>, item: &Arc<Message<P>>) -> Result<Bytes, Self::Error> {
         let msg = &**item;
-        self.0
-            .serialize(msg)
-            .map(Into::into)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+        self.serialize_arbitrary(msg).map(Into::into)
     }
 }
 
