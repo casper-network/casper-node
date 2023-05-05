@@ -120,16 +120,19 @@ impl MainReactor {
                 // if too much time has passed, the node will shutdown and require a
                 // trusted block hash to be provided via the config file
                 info!("CatchUp: local tip detected, no trusted hash");
-                if block.header().is_switch_block() {
-                    self.switch_block_header = Some(block.header().clone());
-                }
+
                 Either::Left(SyncIdentifier::LocalTip(
                     *block.hash(),
                     block.height(),
                     block.header().era_id(),
                 ))
             }
-            Ok(None) if self.switch_block_header.is_none() => {
+            Ok(None)
+                if self
+                    .storage
+                    .read_highest_switch_block_headers(1)
+                    .map_or(false, |h| h.is_empty()) =>
+            {
                 // no trusted hash, no local block, might be genesis
                 self.catch_up_check_genesis()
             }
@@ -370,10 +373,6 @@ impl MainReactor {
             %block_hash,
             "CatchUp: leap received"
         );
-
-        if let Err(msg) = self.update_highest_switch_block() {
-            return CatchUpInstruction::Fatal(msg);
-        }
 
         for validator_weights in
             sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())

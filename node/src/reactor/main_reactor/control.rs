@@ -389,11 +389,13 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         info!("{:?}: committing upgrade", self.state);
-        let previous_block_header = match &self.switch_block_header {
-            None => {
-                return Err("switch_block should be Some".to_string());
-            }
-            Some(header) => header.clone(),
+        let previous_block_header = match self
+            .storage
+            .read_highest_switch_block_headers(1)
+            .map(|headers| headers.into_iter().next())
+        {
+            Ok(Some(header)) => header,
+            _ => return Err("The highest complete block should be a switch block".to_string()),
         };
 
         match self.chainspec.ee_upgrade_config(
@@ -462,16 +464,13 @@ impl MainReactor {
     }
 
     pub(super) fn should_commit_upgrade(&self) -> bool {
-        let highest_switch_block_header = match &self.switch_block_header {
-            None => {
-                return false;
-            }
-            Some(header) => header,
-        };
-
-        self.chainspec
-            .protocol_config
-            .is_last_block_before_activation(highest_switch_block_header)
+        match &self.storage.read_highest_switch_block_headers(1).as_deref() {
+            Ok([highest_switch_block_header]) => self
+                .chainspec
+                .protocol_config
+                .is_last_block_before_activation(highest_switch_block_header),
+            _ => false,
+        }
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
@@ -544,15 +543,5 @@ impl MainReactor {
                 self.attempts += 1;
             }
         }
-    }
-
-    pub(crate) fn update_highest_switch_block(&mut self) -> Result<(), String> {
-        let maybe_highest_switch_block_header =
-            match self.storage.read_highest_switch_block_headers(1) {
-                Ok(highest_switch_block_header) => highest_switch_block_header,
-                Err(err) => return Err(err.to_string()),
-            };
-        self.switch_block_header = maybe_highest_switch_block_header.first().cloned();
-        Ok(())
     }
 }
