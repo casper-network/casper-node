@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.4.15-alt
+
+### Changed
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant).  Note that publishing `1.4.15-alt` is only to rectify the issue where `casper-types` was published as v1.6.0 despite having a breaking change.  It is expected to only be consumed as a crate; there will be no upgrade of Casper Mainnet, Testnet, etc to protocol version `1.4.15-alt`.
+
+
+
 ## 1.4.15
 
 ### Changed
