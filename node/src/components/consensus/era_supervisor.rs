@@ -1193,7 +1193,7 @@ impl SerializedMessage {
     where
         T: ConsensusNetworkMessage + Serialize,
     {
-        todo!()
+        SerializedMessage(bincode::serialize(msg).expect("should serialize message"))
     }
 
     /// Attempt to deserialize a given type from incoming raw bytes.
