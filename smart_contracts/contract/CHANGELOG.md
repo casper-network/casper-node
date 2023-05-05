@@ -11,7 +11,10 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 2.0.0
+
+### Changed
+* Update `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here.
 
 ### Added
 * Support fetching the calling account's authorization keys via the new function `runtime::list_authorization_keys` which calls the new `ext_ffi::casper_load_authorization_keys`.

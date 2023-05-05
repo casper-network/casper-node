@@ -27,6 +27,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 4.0.0
+
+### Changed
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
+
+
+
 ## 3.1.1
 
 ### Changed
