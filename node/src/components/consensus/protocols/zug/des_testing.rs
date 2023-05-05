@@ -34,7 +34,7 @@ use crate::{
         },
         traits::{ConsensusValueT, Context, ValidatorSecret},
         utils::{Validators, Weight},
-        ActionId, BlockContext, EraMessage, EraRequest, TimerId,
+        ActionId, BlockContext, EraRequest, TimerId,
     },
     types::NodeId,
     NodeRng,

@@ -9,7 +9,7 @@ use crate::{
             highway_testing::TEST_INSTANCE_ID,
             state::{tests::*, State},
         },
-        BlockContext, EraMessage,
+        BlockContext,
     },
     types::NodeId,
 };
@@ -317,7 +317,7 @@ fn transitive_proposal_dependency() {
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(maybe_pv.is_none());
     match &*outcomes {
-        [ProtocolOutcome::CreatedTargetedMessage(EraMessage::Highway(msg0), p0), ProtocolOutcome::CreatedTargetedMessage(EraMessage::Highway(msg1), p1)] =>
+        [ProtocolOutcome::CreatedTargetedMessage(SerializedMessage::from_message(msg0), p0), ProtocolOutcome::CreatedTargetedMessage(SerializedMessage::from_message(msg1), p1)] =>
         {
             assert_eq!(
                 vec![&peer0, &peer1],
@@ -363,10 +363,13 @@ fn assert_targeted_message(
     expected: Dependency<TestContext>,
 ) {
     match outcome {
-        ProtocolOutcome::CreatedTargetedMessage(EraMessage::Highway(msg), peer0) => {
+        ProtocolOutcome::CreatedTargetedMessage(raw_msg, peer0) => {
             assert_eq!(peer, peer0);
-            match &**msg {
-                HighwayMessage::RequestDependency(_, got) => assert_eq!(*got, expected),
+            let msg = raw_msg
+                .deserialize_incoming()
+                .expect("failed to deserialize message");
+            match msg {
+                HighwayMessage::RequestDependency(_, got) => assert_eq!(got, expected),
                 other => panic!("unexpected variant: {:?}", other),
             }
         }

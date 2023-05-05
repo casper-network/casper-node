@@ -18,7 +18,6 @@ use crate::{
             BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
         },
         traits::Context,
-        EraMessage,
     },
     testing,
     types::BlockPayload,
@@ -87,9 +86,9 @@ fn create_message(
     round_id: RoundId,
     content: Content<ClContext>,
     keypair: &Keypair,
-) -> EraMessage<ClContext> {
+) -> SerializedMessage {
     let signed_msg = create_signed_message(validators, round_id, content, keypair);
-    Message::Signed(signed_msg).into()
+    SerializedMessage::from_message(&Message::Signed(signed_msg))
 }
 
 /// Creates a `Message::Proposal`
@@ -98,17 +97,16 @@ fn create_proposal_message(
     proposal: &Proposal<ClContext>,
     validators: &Validators<PublicKey>,
     keypair: &Keypair,
-) -> EraMessage<ClContext> {
+) -> SerializedMessage {
     let hashed_proposal = HashedProposal::new(proposal.clone());
     let echo_content = Content::Echo(*hashed_proposal.hash());
     let echo = create_signed_message(validators, round_id, echo_content, keypair);
-    Message::Proposal {
+    SerializedMessage::from_message(&Message::Proposal {
         round_id,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         proposal: proposal.clone(),
         echo,
-    }
-    .into()
+    })
 }
 
 /// Removes all `CreatedGossipMessage`s from `outcomes` and returns the messages, after
