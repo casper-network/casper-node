@@ -441,11 +441,14 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         info!(?participation, "validator participation");
     }
 
-    /// Logs the vertex' serialized size.
+    /// Logs the vertex' (network) serialized size.
     fn log_unit_size(&self, vertex: &Vertex<C>, log_msg: &str) {
         if self.config.log_unit_sizes {
             if let Some(hash) = vertex.unit_hash() {
-                let size = HighwayMessage::NewVertex(vertex.clone()).serialize().len();
+                let size =
+                    SerializedMessage::from_message(&HighwayMessage::NewVertex(vertex.clone()))
+                        .into_raw()
+                        .len();
                 info!(size, %hash, "{}", log_msg);
             }
         }
@@ -732,12 +735,6 @@ mod specimen_support {
                 }
             })
         }
-    }
-}
-
-impl<C: Context> HighwayMessage<C> {
-    pub(crate) fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize message")
     }
 }
 
