@@ -229,9 +229,7 @@ fn is_ping(event: &MainEvent) -> bool {
     if let MainEvent::ConsensusMessageIncoming(ConsensusMessageIncoming { message, .. }) = event {
         if let ConsensusMessage::Protocol { ref payload, .. } = **message {
             return matches!(
-                consensus::deserialize_payload::<consensus::EraMessage<ClContext>>(&payload)
-                    .expect("TODO")
-                    .try_into_highway(),
+                payload.deserialize_incoming::<HighwayMessage::<ClContext>>(),
                 Ok(HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(
                     _
                 )))
