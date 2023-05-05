@@ -259,6 +259,11 @@ pub mod chainspec_protocol_version {
                 Regex::new(r#"(?m)(DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =\s*ProtocolVersion::from_parts)\((\d+,\s*\d+,\s*\d+)\)"#).unwrap(),
                 rpcs_docs_rs_replacement,
             ),
+            DependentFile::new(
+                "resources/test/rpc_schema_hashing.json",
+                Regex::new(r#"(?m)("version":\s*|"api_version":\s*)"([^"]+)"#).unwrap(),
+                replacement,
+            ),
         ]
     });
 

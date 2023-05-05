@@ -70,7 +70,7 @@ function do_background_wasmless_transfers() {
 function check_transfer_inclusion() {
     local NODE_ID=${1}
     local WALKBACK=${2}
-    local TRANSFER_HASHES=$(cat "$DEPLOY_LOG" | awk -F'::' '{print $4}' | sed 's/^[ \t]*//' | sed '/^[[:space:]]*$/d')
+    local TRANSFER_HASHES=$(cat "$DEPLOY_LOG" | awk -F'::' '{print $4}' | sed 's/^[ \t]*//' | sed '/^[[:space:]]*$/d' | sed '/FAILED to send/d')
     local TRANSFER_COUNT=$(echo "$TRANSFER_HASHES" | wc -l)
     local HASH
     log_step "Checking transfer inclusion..."

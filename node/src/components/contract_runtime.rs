@@ -595,6 +595,7 @@ impl ContractRuntime {
         prune_batch_size: u64,
         strict_argument_checking: bool,
         vesting_schedule_period_millis: u64,
+        max_delegators_per_validator: Option<u32>,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -626,6 +627,7 @@ impl ContractRuntime {
             minimum_delegation_amount,
             strict_argument_checking,
             vesting_schedule_period_millis,
+            max_delegators_per_validator,
             wasm_config,
             system_config,
         );
@@ -1023,6 +1025,7 @@ mod tests {
             5,
             true,
             1,
+            None,
             &Registry::default(),
         )
         .unwrap();

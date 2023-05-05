@@ -5,8 +5,8 @@ import os
 import random
 import re
 import subprocess
-import sys
 import threading
+import toml
 from time import sleep
 
 # How long to keep the test running (assuming errorless run)
@@ -30,6 +30,7 @@ invoke_lock = threading.Lock()
 current_node_count = 5
 path_to_client = ""
 huge_deploy_path = "./utils/nctl/sh/scenarios/smart_contracts/named_keys_bloat.wasm"
+huge_deploy_payment_amount = 10000000000000000
 
 
 # Kill a random node, wait one minute, restart node
@@ -84,7 +85,16 @@ def compile_node():
 
 def start_network():
     log("*** starting network ***")
-    command = "nctl-assets-teardown && nctl-assets-setup && RUST_LOG=debug nctl-start"
+    command = "nctl-assets-teardown && nctl-assets-setup"
+    invoke(command)
+
+    for node in range(1, 11):
+        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(node)
+        chainspec = toml.load(path_to_chainspec)
+        chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
+        toml.dump(chainspec, open(path_to_chainspec, 'w'))
+
+    command = "RUST_LOG=debug nctl-start"
     invoke(command)
 
 
@@ -186,13 +196,14 @@ def test_timer_thread(secs):
     log("*** " + str(secs) + " secs passed - running health checks ***")
     run_health_checks()
     log("*** test finished successfully ***")
+    invoke("nctl-stop")
     os._exit(0)
 
 
 def run_health_checks():
     global current_node_count
     logs_with_chunk_indicator = 0
-    for node in range(1, current_node_count):
+    for node in range(1, 11):
         chunk_indicator_found = False
         path_to_logs = "./utils/nctl/assets/net-1/nodes/node-{}/logs".format(
             node)
@@ -231,15 +242,14 @@ def make_huge_deploy(node):
     secret_key = "./utils/nctl/assets/net-1/nodes/node-{}/keys/secret_key.pem".format(
         node)
     session_path = "./utils/nctl/sh/scenarios/smart_contracts/named_keys_bloat.wasm"
-    output = "{}.json".format(session_path)
+    output = "./target/named_keys_bloat_deploy.json"
     chain_name = "casper-net-1"
-    payment_amount = 10000000000000000
     ttl = "5minutes"
 
     if os.path.exists(output):
         os.remove(output)
     command = "{} make-deploy --output {} --chain-name {} --payment-amount {} --ttl {} --secret-key {} --session-path {} > /dev/null 2>&1".format(
-        path_to_client, output, chain_name, payment_amount, ttl, secret_key,
+        path_to_client, output, chain_name, huge_deploy_payment_amount, ttl, secret_key,
         session_path)
     invoke(command)
     return output

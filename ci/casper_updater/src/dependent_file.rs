@@ -41,7 +41,7 @@ impl DependentFile {
         let contents = self.contents();
         let updated_contents = self
             .regex
-            .replace(&contents, (self.replacement)(updated_version).as_str());
+            .replace_all(&contents, (self.replacement)(updated_version).as_str());
         fs::write(&self.path, updated_contents.as_ref())
             .unwrap_or_else(|error| panic!("should write {}: {:?}", self.path.display(), error));
     }

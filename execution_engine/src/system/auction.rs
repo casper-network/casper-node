@@ -207,6 +207,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
+        max_delegators_per_validator: Option<u32>,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         let provided_account_hash =
@@ -225,6 +226,12 @@ pub trait Auction:
         let validator_account_hash = AccountHash::from(&validator_public_key);
 
         let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
+
+        if let Some(max_delegators_per_validator) = max_delegators_per_validator {
+            if bid.delegators().len() >= max_delegators_per_validator as usize {
+                return Err(Error::ExceededDelegatorSizeLimit.into());
+            }
+        }
 
         if amount < U512::from(minimum_delegation_amount) {
             return Err(Error::DelegationAmountTooSmall.into());
@@ -408,6 +415,7 @@ pub trait Auction:
         &mut self,
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
+        max_delegators_per_validator: Option<u32>,
     ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller.into());
@@ -421,7 +429,7 @@ pub trait Auction:
         let mut bids = detail::get_bids(self)?;
 
         // Process unbond requests
-        detail::process_unbond_requests(self)?;
+        detail::process_unbond_requests(self, max_delegators_per_validator)?;
 
         // Process bids
         let mut bids_modified = false;

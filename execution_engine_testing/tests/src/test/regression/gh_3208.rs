@@ -198,6 +198,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         vesting_schedule_period_millis,
+        None,
         Default::default(),
         Default::default(),
     );
@@ -346,6 +347,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         vesting_schedule_period_millis,
+        None,
         Default::default(),
         Default::default(),
     );
