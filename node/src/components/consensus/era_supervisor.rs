@@ -1197,11 +1197,11 @@ impl SerializedMessage {
     }
 
     /// Attempt to deserialize a given type from incoming raw bytes.
-    pub(crate) fn deserialize_incoming<T>(&self) -> Result<T, &'static str>
+    pub(crate) fn deserialize_incoming<T>(&self) -> Result<T, bincode::Error>
     where
         T: ConsensusNetworkMessage + DeserializeOwned,
     {
-        todo!()
+        bincode::deserialize(&self.0)
     }
 
     /// Returns the inner raw bytes.
