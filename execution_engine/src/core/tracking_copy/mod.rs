@@ -354,7 +354,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     /// Deletes a `key`.
-    pub fn delete(&mut self, key: Key) {
+    pub(crate) fn delete(&mut self, key: Key) {
         let normalized_key = key.normalize();
         self.journal.push((normalized_key, Transform::Delete));
     }

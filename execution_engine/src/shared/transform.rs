@@ -170,23 +170,42 @@ impl Transform {
     /// Applies the transformation on a specified stored value instance.
     ///
     /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
+    ///
+    /// This method will panic if self is a [`Transform::Delete`] variant.
     pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
+        match self.apply_optional(stored_value) {
+            Ok(Some(new_value)) => Ok(new_value),
+            Ok(None) => {
+                // Delete transform can't be handled here as it implies a stored value is present.
+                // Delete transforms should be handled before applying effects on stored values to
+                // avoid an unnecessary global state read.
+                unreachable!("Delete operation can't be applied");
+            }
+            Err(error) => Err(error),
+        }
+    }
+    /// Applies the transformation on a specified stored value instance.
+    ///
+    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant. If a
+    /// given transform is a [`Transform::Delete`] then `None` is returned as the [`StoredValue`] is
+    /// consumed but no new value is produced.
+    fn apply_optional(self, stored_value: StoredValue) -> Result<Option<StoredValue>, Error> {
         match self {
-            Transform::Identity => Ok(stored_value),
-            Transform::Write(new_value) => Ok(new_value),
-            Transform::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
+            Transform::Identity => Ok(Some(stored_value)),
+            Transform::Write(new_value) => Ok(Some(new_value)),
+            Transform::AddInt32(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt64(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt128(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt256(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt512(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
             Transform::AddKeys(mut keys) => match stored_value {
                 StoredValue::Contract(mut contract) => {
                     contract.named_keys_append(&mut keys);
-                    Ok(StoredValue::Contract(contract))
+                    Ok(Some(StoredValue::Contract(contract)))
                 }
                 StoredValue::Account(mut account) => {
                     account.named_keys_append(&mut keys);
-                    Ok(StoredValue::Account(account))
+                    Ok(Some(StoredValue::Account(account)))
                 }
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
@@ -234,7 +253,7 @@ impl Transform {
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
-            Transform::Delete => unreachable!("Delete operation can't be applied"),
+            Transform::Delete => Ok(None),
             Transform::Failure(error) => Err(error),
         }
     }
@@ -278,6 +297,8 @@ impl Add for Transform {
             (a @ Transform::Failure(_), _) => a,
             (_, b @ Transform::Failure(_)) => b,
             (_, b @ Transform::Write(_)) => b,
+            (_, Transform::Delete) => Transform::Delete,
+            (Transform::Delete, b) => b,
             (Transform::Write(v), b) => {
                 // second transform changes value being written
                 match b.apply(v) {
@@ -285,7 +306,6 @@ impl Add for Transform {
                     Ok(new_value) => Transform::Write(new_value),
                 }
             }
-            (Transform::Delete, _b) => Transform::Delete,
             (Transform::AddInt32(i), b) => match b {
                 Transform::AddInt32(j) => Transform::AddInt32(i.wrapping_add(j)),
                 Transform::AddUInt64(j) => Transform::AddUInt64(j.wrapping_add(i as u64)),
@@ -424,6 +444,7 @@ pub mod gens {
                 buf.copy_from_slice(&u);
                 Transform::AddUInt512(buf.into())
             }),
+            Just(Transform::Delete)
         ]
     }
 }
@@ -439,7 +460,7 @@ mod tests {
     };
 
     use super::*;
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, convert::TryInto};
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
     const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
@@ -483,6 +504,16 @@ mod tests {
     const ZERO_U512: U512 = U512([0; 8]);
     const ONE_U512: U512 = U512([1, 0, 0, 0, 0, 0, 0, 0]);
     const MAX_U512: U512 = U512([MAX_U64; 8]);
+
+    fn add_transforms(value: u32) -> Vec<Transform> {
+        vec![
+            Transform::AddInt32(value.try_into().expect("positive value")),
+            Transform::AddUInt64(value.into()),
+            Transform::AddUInt128(value.into()),
+            Transform::AddUInt256(value.into()),
+            Transform::AddUInt512(value.into()),
+        ]
+    }
 
     #[test]
     fn i32_overflow() {
@@ -872,5 +903,58 @@ mod tests {
         assert_eq!(ONE_U512, add(ZERO_U512, ONE_U512));
         assert_eq!(ZERO_U512, add(MAX_U512, ONE_U512));
         assert_eq!(MAX_U512 - 1, add(MAX_U512, MAX_U512));
+    }
+
+    #[test]
+    fn delete_should_produce_correct_transform() {
+        {
+            // delete + write == write
+            let lhs = Transform::Delete;
+            let rhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
+
+            let new_transform = lhs + rhs.clone();
+            assert_eq!(new_transform, rhs);
+        }
+
+        {
+            // delete + identity == delete (delete modifies the global state, identity does not
+            // modify, so we need to preserve delete)
+            let new_transform = Transform::Delete + Transform::Identity;
+            assert_eq!(new_transform, Transform::Delete);
+        }
+
+        {
+            // delete + failure == failure
+            let failure = Transform::Failure(Error::Serialization(bytesrepr::Error::Formatting));
+            let new_transform = Transform::Delete + failure.clone();
+            assert_eq!(new_transform, failure);
+        }
+
+        {
+            // write + delete == delete
+            let lhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
+            let rhs = Transform::Delete;
+
+            let new_transform = lhs + rhs.clone();
+            assert_eq!(new_transform, rhs);
+        }
+
+        {
+            // add + delete == delete
+            for lhs in add_transforms(123) {
+                let rhs = Transform::Delete;
+                let new_transform = lhs + rhs.clone();
+                assert_eq!(new_transform, rhs);
+            }
+        }
+
+        {
+            // delete + add == add
+            for rhs in add_transforms(123) {
+                let lhs = Transform::Delete;
+                let new_transform = lhs + rhs.clone();
+                assert_eq!(new_transform, rhs);
+            }
+        }
     }
 }
