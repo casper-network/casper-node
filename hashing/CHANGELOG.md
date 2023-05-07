@@ -11,7 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 1.4.4
+
+### Changed
+* Update dependencies.
+
+
+
+## 1.4.0
 
 ### Added
 * Initial release of crate providing `Digest` type and hashing methods, including the structs to handle proofs for chunks of data.
