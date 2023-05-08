@@ -757,7 +757,7 @@ impl FromBytes for Transform {
 impl Distribution<Transform> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
         // TODO - include WriteDeployInfo and WriteTransfer as options
-        match rng.gen_range(0..13) {
+        match rng.gen_range(0..14) {
             0 => Transform::Identity,
             1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
             2 => Transform::WriteAccount(AccountHash::new(rng.gen())),
@@ -780,6 +780,7 @@ impl Distribution<Transform> for Standard {
                 Transform::AddKeys(named_keys)
             }
             12 => Transform::Failure(rng.gen::<u64>().to_string()),
+            13 => Transform::Delete,
             _ => unreachable!(),
         }
     }

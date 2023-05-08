@@ -169,27 +169,10 @@ where
 impl Transform {
     /// Applies the transformation on a specified stored value instance.
     ///
-    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
-    ///
-    /// This method will panic if self is a [`Transform::Delete`] variant.
-    pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
-        match self.apply_optional(stored_value) {
-            Ok(Some(new_value)) => Ok(new_value),
-            Ok(None) => {
-                // Delete transform can't be handled here as it implies a stored value is present.
-                // Delete transforms should be handled before applying effects on stored values to
-                // avoid an unnecessary global state read.
-                unreachable!("Delete operation can't be applied");
-            }
-            Err(error) => Err(error),
-        }
-    }
-    /// Applies the transformation on a specified stored value instance.
-    ///
     /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant. If a
     /// given transform is a [`Transform::Delete`] then `None` is returned as the [`StoredValue`] is
     /// consumed but no new value is produced.
-    fn apply_optional(self, stored_value: StoredValue) -> Result<Option<StoredValue>, Error> {
+    pub fn apply(self, stored_value: StoredValue) -> Result<Option<StoredValue>, Error> {
         match self {
             Transform::Identity => Ok(Some(stored_value)),
             Transform::Write(new_value) => Ok(Some(new_value)),
@@ -253,7 +236,11 @@ impl Transform {
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
-            Transform::Delete => Ok(None),
+            Transform::Delete => {
+                // Delete does not produce new values, it just consumes a stored value that it
+                // receives.
+                Ok(None)
+            }
             Transform::Failure(error) => Err(error),
         }
     }
@@ -302,8 +289,9 @@ impl Add for Transform {
             (Transform::Write(v), b) => {
                 // second transform changes value being written
                 match b.apply(v) {
+                    Ok(Some(new_value)) => Transform::Write(new_value),
+                    Ok(None) => Transform::Delete,
                     Err(error) => Transform::Failure(error),
-                    Ok(new_value) => Transform::Write(new_value),
                 }
             }
             (Transform::AddInt32(i), b) => match b {
@@ -529,8 +517,18 @@ mod tests {
         let transform_overflow = Transform::AddInt32(max) + Transform::AddInt32(1);
         let transform_underflow = Transform::AddInt32(min) + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow.expect("Unexpected overflow"), min_value);
-        assert_eq!(apply_underflow.expect("Unexpected underflow"), max_value);
+        assert_eq!(
+            apply_overflow
+                .expect("Unexpected overflow")
+                .expect("New value"),
+            min_value
+        );
+        assert_eq!(
+            apply_underflow
+                .expect("Unexpected underflow")
+                .expect("New value"),
+            max_value
+        );
 
         assert_eq!(transform_overflow, min.into());
         assert_eq!(transform_underflow, max.into());
@@ -563,9 +561,9 @@ mod tests {
         let transform_overflow_uint = max_transform + one_transform;
         let transform_underflow = min_transform + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow, Ok(zero_value.clone()));
-        assert_eq!(apply_overflow_uint, Ok(zero_value));
-        assert_eq!(apply_underflow, Ok(max_value));
+        assert_eq!(apply_overflow, Ok(Some(zero_value.clone())));
+        assert_eq!(apply_overflow_uint, Ok(Some(zero_value)));
+        assert_eq!(apply_underflow, Ok(Some(max_value)));
 
         assert_eq!(transform_overflow, zero.into());
         assert_eq!(transform_overflow_uint, zero.into());

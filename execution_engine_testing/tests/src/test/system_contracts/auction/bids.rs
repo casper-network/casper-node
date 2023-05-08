@@ -3575,7 +3575,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
         .iter()
         .all(|key| key.as_withdraw().is_some()));
 
-    // Ensure withdraw keys are purged
+    // Ensure withdraw keys are pruned
     let withdraw_keys_after = builder
         .get_keys(KeyTag::Withdraw)
         .expect("should query withdraw keys");
@@ -3764,7 +3764,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
     assert_eq!(
         unbond_keys.len(),
         0,
-        "auction state continued and empty unbond queue should be purged"
+        "auction state continued and empty unbond queue should be pruned"
     );
 }
 

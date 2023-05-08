@@ -423,8 +423,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         };
 
         match transform.clone().apply(current_value) {
-            Ok(new_value) => {
+            Ok(Some(new_value)) => {
                 self.cache.insert_write(normalized_key, new_value);
+                self.journal.push((normalized_key, transform));
+                Ok(AddResult::Success)
+            }
+            Ok(None) => {
                 self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
             }
