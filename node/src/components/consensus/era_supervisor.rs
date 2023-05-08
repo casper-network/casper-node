@@ -1217,34 +1217,6 @@ impl SerializedMessage {
 
 #[cfg(test)]
 impl SerializedMessage {
-    // /// Deserializes a message into a [`zug::Message<C>`].
-    // ///
-    // /// # Panics
-    // ///
-    // /// Will panic if deserialization fails.
-    // #[track_caller]
-    // pub(crate) fn expect_zug_message<C>(&self) -> super::protocols::zug::Message<C>
-    // where
-    //     C: super::traits::Context,
-    // {
-    //     self.deserialize_incoming()
-    //         .expect("could not deserialize valid zug message from serialized message")
-    // }
-
-    // /// Deserializes a message into a [`zug::Message<C>`].
-    // ///
-    // /// # Panics
-    // ///
-    // /// Will panic if deserialization fails.
-    // #[track_caller]
-    // pub(crate) fn expect_zug_sync_request<C>(&self) -> super::protocols::zug::SyncRequest<C>
-    // where
-    //     C: super::traits::Context,
-    // {
-    //     self.deserialize_incoming()
-    //         .expect("could not deserialize valid zug message from serialized message")
-    // }
-
     /// Deserializes a message into a the given value.
     ///
     /// # Panics
