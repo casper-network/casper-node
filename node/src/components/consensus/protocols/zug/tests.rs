@@ -132,7 +132,7 @@ fn remove_gossip(
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(msg.clone());
+        result.push(msg);
         false
     });
     result
@@ -242,7 +242,7 @@ fn remove_targeted_messages(
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(msg.clone());
+        result.push(msg);
         false
     });
     result
