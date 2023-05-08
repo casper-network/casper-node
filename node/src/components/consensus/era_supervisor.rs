@@ -1208,6 +1208,11 @@ impl SerializedMessage {
     pub(crate) fn into_raw(self) -> Vec<u8> {
         self.0
     }
+
+    /// Returns a reference to the inner raw bytes.
+    pub(crate) fn as_raw(&self) -> &[u8] {
+        &self.0
+    }
 }
 
 async fn get_deploys<REv>(
