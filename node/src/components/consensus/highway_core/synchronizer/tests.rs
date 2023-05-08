@@ -317,26 +317,28 @@ fn transitive_proposal_dependency() {
         sync.pop_vertex_to_add(&highway, &Default::default(), max_requests_for_vertex);
     assert!(maybe_pv.is_none());
     match &*outcomes {
-        [ProtocolOutcome::CreatedTargetedMessage(SerializedMessage::from_message(msg0), p0), ProtocolOutcome::CreatedTargetedMessage(SerializedMessage::from_message(msg1), p1)] =>
+        [ProtocolOutcome::CreatedTargetedMessage(msg0_serialized, p0), ProtocolOutcome::CreatedTargetedMessage(msg1_serialized, p1)] =>
         {
+            let msg0: HighwayMessage<TestContext> = msg0_serialized.deserialize_expect();
+            let msg1: HighwayMessage<TestContext> = msg1_serialized.deserialize_expect();
             assert_eq!(
                 vec![&peer0, &peer1],
                 vec![p0, p1].into_iter().sorted().collect_vec(),
                 "expected to request dependency from exactly two different peers",
             );
 
-            match (&**msg0, &**msg1) {
+            match (msg0, msg1) {
                 (
                     HighwayMessage::RequestDependency(_, dep0),
                     HighwayMessage::RequestDependency(_, dep1),
                 ) => {
                     assert_eq!(
-                        *dep0,
+                        dep0,
                         Dependency::Unit(c0),
                         "unexpected dependency requested"
                     );
                     assert_eq!(
-                        *dep0, *dep1,
+                        dep0, dep1,
                         "we should have requested the same dependency from two different peers"
                     );
                 }

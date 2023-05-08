@@ -17,7 +17,9 @@ use casper_types::{
 
 use crate::{
     components::{
-        consensus::{self, ClContext, ConsensusMessage, HighwayVertex, NewBlockPayload},
+        consensus::{
+            self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
+        },
         gossiper, network, storage,
         upgrade_watcher::NextUpgrade,
     },
