@@ -51,11 +51,14 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
+        const INITIALIZATION_DELAY_SPEED_UP_FACTOR: u64 = 4;
+
         match self.state {
             ReactorState::Initialize => {
                 // We can be more greedy when cranking through the initialization process as the
                 // progress is expected to happen quickly.
-                let initialization_logic_default_delay = self.control_logic_default_delay / 4;
+                let initialization_logic_default_delay =
+                    self.control_logic_default_delay / INITIALIZATION_DELAY_SPEED_UP_FACTOR;
 
                 match self.initialize_next_component(effect_builder) {
                     Some(effects) => (initialization_logic_default_delay.into(), effects),
