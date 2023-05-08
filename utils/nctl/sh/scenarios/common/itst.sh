@@ -129,6 +129,35 @@ function get_reactor_state() {
     echo "$REACTOR_STATE"
 }
 
+function parallel_check_nodes_1_to_5_sync() {
+    local ALL_HASHES
+    local UNIQUE_HASH_COUNT
+    local TIMEOUT_SEC=${1-300}
+    local ATTEMPTS=0
+    
+    while [ "$ATTEMPTS" -le "$TIMEOUT_SEC" ]; do
+        ALL_HASHES=$(get_chain_latest_block_hash 1 & \
+                     get_chain_latest_block_hash 2 & \
+                     get_chain_latest_block_hash 3 & \
+                     get_chain_latest_block_hash 4 & \
+                     get_chain_latest_block_hash 5 & \
+                     wait)
+        log "All hashes:\n$ALL_HASHES"
+        UNIQUE_HASH_COUNT=$(echo $ALL_HASHES | sort | uniq | wc -l)
+        log "Unique hashes count: $UNIQUE_HASH_COUNT"
+        if [ "$UNIQUE_HASH_COUNT" -eq 1 ]; then
+            log "nodes 1 to 5 in sync, proceeding..."
+            nctl-view-chain-height
+            break
+        fi
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [ "$ATTEMPTS" -lt "$TIMEOUT_SEC" ]; then
+            sleep 1
+            log "attempt $ATTEMPTS out of $TIMEOUT_SEC..."
+        fi
+    done
+}
+
 function check_network_sync() {
     local WAIT_TIME_SEC=0
     local FIRST_NODE=${1:-1}
