@@ -129,7 +129,7 @@ function get_reactor_state() {
     echo "$REACTOR_STATE"
 }
 
-function check_nodes_1_to_5_sync_fast() {
+function parallel_check_nodes_1_to_5_sync() {
     local ALL_HASHES
     local UNIQUE_HASH_COUNT
     local TIMEOUT_SEC=${1-300}

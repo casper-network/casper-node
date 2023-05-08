@@ -18,7 +18,7 @@ function main() {
     # 1. Allow the chain to progress
     do_await_era_change 1
     # 2. Verify all nodes are in sync
-    check_nodes_1_to_5_sync_fast
+    parallel_check_nodes_1_to_5_sync
     # 3. Submit bid for node 6
     do_submit_auction_bids "6"
     do_read_lfb_hash "5"

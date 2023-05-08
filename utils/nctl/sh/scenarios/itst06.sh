@@ -22,7 +22,7 @@ function main() {
     # 1. Verify network is creating blocks
     do_await_n_blocks '5'
     # 2. Verify network is in sync
-    check_nodes_1_to_5_sync_fast
+    parallel_check_nodes_1_to_5_sync
     # 3. Background transfers so we can stop the node mid-stream
     do_background_wasmless_transfers '5'
     # 4. Stop node being sent transfers
@@ -34,7 +34,7 @@ function main() {
     do_read_lfb_hash '1'
     do_start_node '5' "$LFB_HASH"
     # 7. Verify network is in sync
-    check_nodes_1_to_5_sync_fast
+    parallel_check_nodes_1_to_5_sync
     # 8. Give the transfers a chance to be included
     do_await_n_blocks '30'
     # 9. Walkback and verify transfers were included in blocks
