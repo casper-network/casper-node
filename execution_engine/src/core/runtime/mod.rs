@@ -18,7 +18,7 @@ use std::{
 
 use parity_wasm::elements::Module;
 use tracing::error;
-use wasmi::{MemoryRef, Trap, TrapKind};
+use wasmi::{MemoryRef, Trap, TrapCode};
 
 use casper_types::{
     account::{Account, AccountHash, ActionType, Weight},
@@ -190,37 +190,76 @@ where
         self.context.charge_system_contract_call(amount)
     }
 
+    fn checked_memory_slice<Ret>(
+        &self,
+        offset: usize,
+        size: usize,
+        func: impl FnOnce(&[u8]) -> Ret,
+    ) -> Result<Ret, Error> {
+        // This is mostly copied from a private function `MemoryInstance::checked_memory_region`
+        // that calls a user defined function with a validated slice of memory. This allows
+        // usage patterns that does not involve copying data onto heap first i.e. deserialize
+        // values without copying data first, etc.
+        // NOTE: Depending on the VM backend used in future, this may change, as not all VMs may
+        // support direct memory access.
+        self.try_get_memory()?
+            .with_direct_access(|buffer| {
+                let end = offset.checked_add(size).ok_or_else(|| {
+                    wasmi::Error::Memory(format!(
+                        "trying to access memory block of size {} from offset {}",
+                        size, offset
+                    ))
+                })?;
+
+                if end > buffer.len() {
+                    return Err(wasmi::Error::Memory(format!(
+                        "trying to access region [{}..{}] in memory [0..{}]",
+                        offset,
+                        end,
+                        buffer.len(),
+                    )));
+                }
+
+                Ok(func(&buffer[offset..end]))
+            })
+            .map_err(Into::into)
+    }
+
     /// Returns bytes from the WASM memory instance.
+    #[inline]
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
-        self.try_get_memory()?.get(ptr, size).map_err(Into::into)
+        self.checked_memory_slice(ptr as usize, size, |data| data.to_vec())
     }
 
     /// Returns a deserialized type from the WASM memory instance.
+    #[inline]
     fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, Error> {
-        let bytes = self.bytes_from_mem(ptr, size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(Into::into)
+        let result = self.checked_memory_slice(ptr as usize, size as usize, |data| {
+            bytesrepr::deserialize_from_slice(data)
+        })?;
+        Ok(result?)
     }
 
     /// Reads key (defined as `key_ptr` and `key_size` tuple) from Wasm memory.
+    #[inline]
     fn key_from_mem(&mut self, key_ptr: u32, key_size: u32) -> Result<Key, Error> {
-        let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(Into::into)
+        self.t_from_mem(key_ptr, key_size)
     }
 
     /// Reads `CLValue` (defined as `cl_value_ptr` and `cl_value_size` tuple) from Wasm memory.
+    #[inline]
     fn cl_value_from_mem(
         &mut self,
         cl_value_ptr: u32,
         cl_value_size: u32,
     ) -> Result<CLValue, Error> {
-        let bytes = self.bytes_from_mem(cl_value_ptr, cl_value_size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(Into::into)
+        self.t_from_mem(cl_value_ptr, cl_value_size)
     }
 
     /// Returns a deserialized string from the WASM memory instance.
+    #[inline]
     fn string_from_mem(&self, ptr: u32, size: u32) -> Result<String, Trap> {
-        let bytes = self.bytes_from_mem(ptr, size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(|e| Error::BytesRepr(e).into())
+        self.t_from_mem(ptr, size).map_err(Trap::from)
     }
 
     fn get_module_from_entry_points(
@@ -235,8 +274,7 @@ where
 
     #[allow(clippy::wrong_self_convention)]
     fn is_valid_uref(&self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
-        let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
-        let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
+        let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
         Ok(self.context.validate_uref(&uref).is_ok())
     }
 
@@ -444,18 +482,15 @@ where
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
     fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
         self.host_buffer = None;
-        let memory = match self.try_get_memory() {
-            Ok(memory) => memory,
-            Err(error) => return Trap::from(error),
-        };
-        let mem_get = memory
-            .get(value_ptr, value_size)
-            .map_err(|e| Error::Interpreter(e.into()));
+
+        let mem_get =
+            self.checked_memory_slice(value_ptr as usize, value_size, |data| data.to_vec());
+
         match mem_get {
             Ok(buf) => {
                 // Set the result field in the runtime and return the proper element of the `Error`
                 // enum indicating that the reason for exiting the module was a call to ret.
-                self.host_buffer = bytesrepr::deserialize(buf).ok();
+                self.host_buffer = bytesrepr::deserialize_from_slice(buf).ok();
 
                 let urefs = match &self.host_buffer {
                     Some(buf) => utils::extract_urefs(buf),
@@ -1416,14 +1451,14 @@ where
         &mut self,
         contract_hash: ContractHash,
         entry_point_name: &str,
-        args_bytes: Vec<u8>,
+        args_bytes: &[u8],
         result_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
-        let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
+        let args: RuntimeArgs = bytesrepr::deserialize_from_slice(args_bytes)?;
         let result = self.call_contract(contract_hash, entry_point_name, args)?;
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
@@ -1433,14 +1468,14 @@ where
         contract_package_hash: ContractPackageHash,
         contract_version: Option<ContractVersion>,
         entry_point_name: String,
-        args_bytes: Vec<u8>,
+        args_bytes: &[u8],
         result_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
-        let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
+        let args: RuntimeArgs = bytesrepr::deserialize_from_slice(args_bytes)?;
         let result = self.call_versioned_contract(
             contract_package_hash,
             contract_version,
@@ -1912,7 +1947,7 @@ where
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
             let source: AccountHash =
-                bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
+                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
@@ -1939,7 +1974,7 @@ where
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
             let source: AccountHash =
-                bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
+                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         match self.context.remove_associated_key(account_hash) {
@@ -1960,7 +1995,7 @@ where
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
             let source: AccountHash =
-                bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
+                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
@@ -1991,7 +2026,7 @@ where
                     Err(e) => Err(e.into()),
                 }
             }
-            Err(_) => Err(Trap::new(TrapKind::Unreachable)),
+            Err(_) => Err(Trap::Code(TrapCode::Unreachable)),
         }
     }
 
@@ -2280,22 +2315,22 @@ where
     ) -> Result<Result<(), mint::Error>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+            bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
         };
 
         let target: URef = {
             let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+            bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
         };
 
         let amount: U512 = {
             let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+            bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
         };
 
         let id: Option<u64> = {
             let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+            bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
         };
 
         self.context.validate_uref(&source)?;
@@ -2333,7 +2368,7 @@ where
 
         let purse: URef = {
             let bytes = self.bytes_from_mem(purse_ptr, purse_size)?;
-            match bytesrepr::deserialize(bytes) {
+            match bytesrepr::deserialize_from_slice(bytes) {
                 Ok(purse) => purse,
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -2744,13 +2779,13 @@ where
         }
 
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let dictionary_item_key_bytes = self.bytes_from_mem(
-            dictionary_item_key_bytes_ptr,
+        let dictionary_item_key = self.checked_memory_slice(
+            dictionary_item_key_bytes_ptr as usize,
             dictionary_item_key_bytes_size as usize,
+            |utf8_bytes| std::str::from_utf8(utf8_bytes).map(ToOwned::to_owned),
         )?;
 
-        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
-        {
+        let dictionary_item_key = if let Ok(item_key) = dictionary_item_key {
             item_key
         } else {
             return Ok(Err(ApiError::InvalidDictionaryItemKey));
@@ -2824,12 +2859,16 @@ where
         value_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let dictionary_item_key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-            return Ok(Err(ApiError::DictionaryItemKeyExceedsLength));
-        }
-        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
-        {
+        let dictionary_item_key_bytes = {
+            if (key_size as usize) > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+                return Ok(Err(ApiError::DictionaryItemKeyExceedsLength));
+            }
+            self.checked_memory_slice(key_ptr as usize, key_size as usize, |data| {
+                std::str::from_utf8(data).map(ToOwned::to_owned)
+            })?
+        };
+
+        let dictionary_item_key = if let Ok(item_key) = dictionary_item_key_bytes {
             item_key
         } else {
             return Ok(Err(ApiError::InvalidDictionaryItemKey));
