@@ -77,6 +77,7 @@ use rand::{
     seq::{IteratorRandom, SliceRandom},
     Rng,
 };
+use serde::Serialize;
 use strum::EnumCount;
 use tokio::{
     io::{ReadHalf, WriteHalf},
@@ -110,7 +111,10 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     identity::Identity,
     insights::NetworkInsights,
-    message::{Channel, EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+    message::{
+        generate_largest_serialized_message, Channel, EstimatorWeights, FromIncoming, Message,
+        MessageKind, Payload,
+    },
 };
 use crate::{
     components::{gossiper::GossipItem, Component, ComponentState, InitializedComponent},
@@ -1459,15 +1463,15 @@ fn bincode_config() -> impl Options {
 ///
 /// This function exists as a convenience, because there never should be a failure in serializing
 /// messages we produced ourselves.
-fn serialize_network_message<P>(msg: &Message<P>) -> Option<Bytes>
+fn serialize_network_message<T>(msg: &T) -> Option<Bytes>
 where
-    P: Payload,
+    T: Serialize + ?Sized,
 {
     bincode_config()
-        .serialize(&msg)
+        .serialize(msg)
         .map(Bytes::from)
         .map_err(|err| {
-            error!(?msg, %err, "serialization failure when encoding outgoing message");
+            error!(%err, "serialization failure when encoding outgoing message");
             err
         })
         .ok()

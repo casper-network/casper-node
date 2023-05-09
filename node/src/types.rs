@@ -54,7 +54,6 @@ pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
-
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
@@ -72,3 +71,6 @@ pub type NodeRng = ChaCha20Rng;
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
 pub type NodeRng = casper_types::testing::TestRng;
+
+#[cfg(test)]
+pub(crate) use block::test_block_builder::TestBlockBuilder;

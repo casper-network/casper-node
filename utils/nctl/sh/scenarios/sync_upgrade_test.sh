@@ -73,13 +73,6 @@ function log_step() {
     STEP=$((STEP + 1))
 }
 
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" -le "1" ]; do
-        sleep 1.0
-    done
-}
-
 function do_upgrade_network() {
     log_step "scheduling the network upgrade to version ${PROTOCOL_VERSION} at era ${ACTIVATE_ERA}"
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do

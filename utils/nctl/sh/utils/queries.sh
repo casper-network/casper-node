@@ -1,60 +1,42 @@
 #!/usr/bin/env bash
 
 #######################################
-# Returns a timestamp for use in chainspec.toml.
+# Returns a chain era or -2 if not available.
 # Arguments:
-#   Delay in seconds to apply to genesis timestamp.
-#######################################
-function get_activation_point()
-{
-    local DELAY=${1:-0}
-    local SCRIPT=(
-        "from datetime import datetime, timedelta;"
-        "print((datetime.utcnow() + timedelta(seconds=$DELAY)).isoformat('T') + 'Z');"
-     )
-
-    python3 -c "${SCRIPT[*]}"
-}
-
-#######################################
-# Returns a chain era.
-# Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_chain_era()
 {
-    local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
     local ERA
-    local STATUS
 
-    if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        STATUS=$(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status")
-        ERA=$(echo $STATUS | jq '.last_added_block_info.era_id')
-        if [ "$ERA" == "null" ]; then
-            echo -2
-        else
-            echo $ERA
-        fi
+    ERA=$(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".last_added_block_info.era_id")
+    if [[ -z "$ERA" ]]; then
+        echo -2
     else
-        echo -1
+        echo "$ERA"
     fi
 }
 
 #######################################
-# Returns a chain height.
+# Returns a chain height or "N/A" if not available.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_chain_height()
 {
-    local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
+    local HEIGHT
 
-    if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" | jq '.last_added_block_info.height'
-    else
+    HEIGHT=$(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".last_added_block_info.height")
+    if [[ -z "$HEIGHT" ]]; then
         echo "N/A"
+    else
+        echo "$HEIGHT"
     fi
 }
 
@@ -72,38 +54,18 @@ function get_chain_name()
 
 #######################################
 # Returns hash of latest block finalized at a node.
+# Arguments:
+#   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_chain_latest_block_hash()
 {
-    local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
 
-    curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" \
-    | jq '.last_added_block_info.hash' \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/^"//' -e 's/"$//'
-}
-
-function get_chain_first_block_hash()
-{
-    local NODE_ID=${1:-$(get_node_for_dispatch)}
-
-    $(get_path_to_client) get-block \
-        --node-address "$(get_node_address_rpc "$NODE_ID")" \
-        -b '0' \
-        | jq '.result.block.hash' \
+    echo $(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".last_added_block_info.hash") \
+        | tr '[:upper:]' '[:lower:]' \
         | sed -e 's/^"//' -e 's/"$//'
-}
-
-#######################################
-# Returns latest block finalized at a node.
-#######################################
-function get_chain_latest_block()
-{
-    local NODE_ID=${1:-$(get_node_for_dispatch)}
-
-    $(get_path_to_client) get-block \
-        --node-address "$(get_node_address_rpc $NODE_ID)" \
-        | jq '.result.block'
 }
 
 #######################################
@@ -123,70 +85,48 @@ function get_genesis_timestamp()
 }
 
 #######################################
-# Returns protocol version formatted for inclusion in chainspec.
-# Arguments:
-#   Version of protocol.
-#######################################
-function get_node_status()
-{
-    local NODE_ID=${1}
-    local NODE_ADDRESS_CURL
-    local NODE_API_RESPONSE
-
-    NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
-    NODE_API_RESPONSE=$(
-        curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES --header 'Content-Type: application/json' \
-            --request POST "$NODE_ADDRESS_CURL" \
-            --data-raw '{
-                "id": 1,
-                "jsonrpc": "2.0",
-                "method": "info_get_status"
-            }'
-    )
-
-    echo $NODE_API_RESPONSE | jq '.result'
-}
-
-#######################################
 # Returns protocol version being run by a node.
 # Arguments:
 #   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_node_protocol_version()
 {
     local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
 
-    echo $(get_node_status "$NODE_ID") | \
-         jq '.api_version' | \
-         sed -e 's/^"//' -e 's/"$//'
+    echo $(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".api_version") \
+        | sed -e 's/^"//' -e 's/"$//'
 }
 
 #######################################
 # Returns the lowest complete block the node has.
 # Arguments:
 #   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_node_lowest_available_block()
 {
     local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
 
-    echo $(get_node_status "$NODE_ID") | \
-        jq '.available_block_range.low' | \
-        sed -e 's/^"//' -e 's/"$//'
+    echo $(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".available_block_range.low") \
+        | sed -e 's/^"//' -e 's/"$//'
 }
 
 #######################################
 # Returns the highest complete block the node has.
 # Arguments:
 #   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_node_highest_available_block()
 {
     local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
 
-    echo $(get_node_status "$NODE_ID") | \
-        jq '.available_block_range.high' | \
-        sed -e 's/^"//' -e 's/"$//'
+    echo $(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".available_block_range.high") \
+        | sed -e 's/^"//' -e 's/"$//'
 }
 
 #######################################
@@ -202,10 +142,10 @@ function get_node_protocol_version_from_fs()
     local IFS='_'
 
     pushd "$PATH_TO_NODE_BIN" || exit
-    read -ra SEMVAR_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
+    read -ra SEMVER_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
     popd || exit
 
-    echo "${SEMVAR_CURRENT[0]}$SEPARATOR${SEMVAR_CURRENT[1]}$SEPARATOR${SEMVAR_CURRENT[2]}"
+    echo "${SEMVER_CURRENT[0]}$SEPARATOR${SEMVER_CURRENT[1]}$SEPARATOR${SEMVER_CURRENT[2]}"
 }
 
 #######################################
@@ -254,11 +194,48 @@ function get_state_root_hash()
 
 #######################################
 # Returns the number of connected peers.
+# Arguments:
+#   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
 #######################################
 function get_node_connected_peer_count()
 {
     local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
 
-    echo $(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" | jq '.peers' | jq length)
+    _get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".peers" | jq length
+}
+
+#######################################
+# Returns the given field from the /status response of the given node, or an empty string if unavailable or "null".
+# Arguments:
+#   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
+#   String to be passed to `jq` to fetch the required field.
+#######################################
+function _get_from_status_with_retry()
+{
+    local INITIAL_NODE_ID=${1}
+    local TIMEOUT_SEC=${2}
+    local JQ_STRING=${3}
+    local NODE_ID
+    local ATTEMPTS=0
+    local OUTPUT
+
+    while [ "$ATTEMPTS" -le "$TIMEOUT_SEC" ]; do
+        NODE_ID=${INITIAL_NODE_ID:-$(get_node_for_dispatch)}
+        if [ $(get_node_is_up "$NODE_ID") = true ]; then
+            OUTPUT=$(curl $NCTL_CURL_ARGS_FOR_NODE_RELATED_QUERIES "$(get_node_address_rest $NODE_ID)/status" | jq "$JQ_STRING")
+        fi
+        if [[ -n "$OUTPUT" ]] && [ "$OUTPUT" != "null" ]; then
+            echo "$OUTPUT"
+            return
+        fi
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [ "$ATTEMPTS" -lt "$TIMEOUT_SEC" ]; then
+            sleep 1
+        fi
+    done
+    echo ""
 }
 

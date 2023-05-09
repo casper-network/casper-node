@@ -162,20 +162,15 @@ use announcements::{
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
     FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UpgradeWatcherAnnouncement,
+    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
-    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    FetcherRequest, MakeBlockExecutableRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorStatusRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
-    UpgradeWatcherRequest,
-};
-
-use self::{
-    announcements::UnexecutedBlockAnnouncement,
-    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest},
+    BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest, BlockValidationRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
+    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest, StorageRequest,
+    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -919,10 +914,10 @@ impl<REv> EffectBuilder<REv> {
     /// global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
-        REv: From<BlockCompleteConfirmationRequest>,
+        REv: From<MarkBlockCompletedRequest>,
     {
         self.make_request(
-            |responder| BlockCompleteConfirmationRequest {
+            |responder| MarkBlockCompletedRequest {
                 block_height,
                 responder,
             },
@@ -1735,13 +1730,27 @@ impl<REv> EffectBuilder<REv> {
         deploys: Vec<Deploy>,
         meta_block_state: MetaBlockState,
     ) where
-        REv: From<ContractRuntimeRequest>,
+        REv: From<StorageRequest> + From<ContractRuntimeRequest>,
     {
+        // Get the key block height for the current protocol version's activation point, i.e. the
+        // height of the final block of the previous protocol version.
+        let key_block_height_for_activation_point = self
+            .make_request(
+                |responder| StorageRequest::GetKeyBlockHeightForActivationPoint { responder },
+                QueueKind::FromStorage,
+            )
+            .await
+            .unwrap_or_else(|| {
+                warn!("key block height for current activation point unknown");
+                0
+            });
+
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    key_block_height_for_activation_point,
                     meta_block_state,
                 },
                 QueueKind::ContractRuntime,
@@ -1893,13 +1902,13 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves an `Account` from global state if present.
     pub(crate) async fn get_account_from_global_state(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         account_key: Key,
     ) -> Option<Account>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(prestate_hash, account_key, vec![]);
+        let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
             Ok(_) | Err(_) => None,
@@ -1909,13 +1918,13 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves the balance of a purse, returns `None` if no purse is present.
     pub(crate) async fn check_purse_balance(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         main_purse: URef,
     ) -> Option<U512>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let balance_request = BalanceRequest::new(prestate_hash, main_purse);
+        let balance_request = BalanceRequest::new(state_root_hash, main_purse);
         match self.get_balance(balance_request).await {
             Ok(balance_result) => {
                 if let Some(motes) = balance_result.motes() {
@@ -1930,14 +1939,14 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves an `Contract` from global state if present.
     pub(crate) async fn get_contract_for_validation(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
     ) -> Option<Box<Contract>>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        let query_request = QueryRequest::new(state_root_hash, query_key, path);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
@@ -1950,14 +1959,14 @@ impl<REv> EffectBuilder<REv> {
     /// Retrieves an `ContractPackage` from global state if present.
     pub(crate) async fn get_contract_package_for_validation(
         self,
-        prestate_hash: Digest,
+        state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
     ) -> Option<Box<ContractPackage>>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(prestate_hash, query_key, path);
+        let query_request = QueryRequest::new(state_root_hash, query_key, path);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 value.as_contract_package().map(|pkg| Box::new(pkg.clone()))

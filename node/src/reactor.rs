@@ -60,6 +60,9 @@ use tracing_futures::Instrument;
 
 #[cfg(test)]
 use crate::components::ComponentState;
+#[cfg(target_os = "linux")]
+use crate::utils::rlimit::{Limit, OpenFiles, ResourceLimit};
+
 use crate::{
     components::{
         block_accumulator, deploy_acceptor,
@@ -79,7 +82,6 @@ use crate::{
     utils::{
         self,
         registered_metric::{RegisteredMetric, RegistryExt},
-        rlimit::{Limit, OpenFiles, ResourceLimit},
         Fuse, SharedFuse, WeightedRoundRobin,
     },
     NodeRng, TERMINATION_REQUESTED,

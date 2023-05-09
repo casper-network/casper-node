@@ -231,29 +231,28 @@ fn get_args() -> Args {
 }
 
 fn main() {
-    let types = Package::cargo("types", &regex_data::types::DEPENDENT_FILES);
-    types.update();
+    let rust_packages = [
+        Package::cargo("types", &regex_data::types::DEPENDENT_FILES),
+        Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES),
+        Package::cargo(
+            "execution_engine",
+            &regex_data::execution_engine::DEPENDENT_FILES,
+        ),
+        Package::cargo("json_rpc", &regex_data::json_rpc::DEPENDENT_FILES),
+        Package::cargo("node", &regex_data::node::DEPENDENT_FILES),
+        Package::cargo(
+            "smart_contracts/contract",
+            &regex_data::smart_contracts_contract::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "execution_engine_testing/test_support",
+            &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
+        ),
+    ];
 
-    let hashing = Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES);
-    hashing.update();
-
-    let execution_engine = Package::cargo(
-        "execution_engine",
-        &regex_data::execution_engine::DEPENDENT_FILES,
-    );
-    execution_engine.update();
-
-    let json_rpc = Package::cargo("json_rpc", &regex_data::json_rpc::DEPENDENT_FILES);
-    json_rpc.update();
-
-    let node = Package::cargo("node", &regex_data::node::DEPENDENT_FILES);
-    node.update();
-
-    let smart_contracts_contract = Package::cargo(
-        "smart_contracts/contract",
-        &regex_data::smart_contracts_contract::DEPENDENT_FILES,
-    );
-    smart_contracts_contract.update();
+    for rust_package in &rust_packages {
+        rust_package.update()
+    }
 
     let smart_contracts_contract_as = Package::assembly_script(
         "smart_contracts/contract_as",
@@ -261,23 +260,22 @@ fn main() {
     );
     smart_contracts_contract_as.update();
 
-    let execution_engine_testing_test_support = Package::cargo(
-        "execution_engine_testing/test_support",
-        &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
-    );
-    execution_engine_testing_test_support.update();
-
     let chainspec = Chainspec::new();
     chainspec.update();
 
     // Update Cargo.lock if this isn't a dry run.
     if !is_dry_run() {
-        let status = Command::new(env!("CARGO"))
-            .arg("generate-lockfile")
-            .arg("--offline")
+        let mut command = Command::new(env!("CARGO"));
+        let _ = command
             .current_dir(root_dir())
+            .arg("update")
+            .arg("--offline");
+        for rust_package in &rust_packages {
+            let _ = command.arg("--package").arg(rust_package.name());
+        }
+        let status = command
             .status()
-            .expect("Failed to execute 'cargo generate-lockfile'");
+            .unwrap_or_else(|error| panic!("Failed to execute '{:?}': {}", command, error));
         assert!(status.success(), "Failed to update Cargo.lock");
     }
 }

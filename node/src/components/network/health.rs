@@ -13,6 +13,8 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
+
 /// Connection health information.
 ///
 /// All data related to the ping/pong functionality used to verify a peer's networking liveness.
@@ -253,6 +255,12 @@ pub(crate) enum HealthCheckOutcome {
     SendPing(Nonce),
     /// Give up on (i.e. terminate) the connection, as we exceeded the allowable ping limit.
     GiveUp,
+}
+
+impl LargestSpecimen for Nonce {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        Self(LargestSpecimen::largest_specimen(estimator, cache))
+    }
 }
 
 #[cfg(test)]

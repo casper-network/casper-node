@@ -27,6 +27,39 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 4.0.0
+
+### Changed
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
+
+
+
+## 3.1.1
+
+### Changed
+* Update the following constant values to match settings in production chainspec:
+  * `DEFAULT_RET_VALUE_SIZE_WEIGHT`
+  * `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
+  * `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
+  * `DEFAULT_GAS_PER_BYTE_COST`
+  * `DEFAULT_ADD_BID_COST`
+  * `DEFAULT_WITHDRAW_BID_COST`
+  * `DEFAULT_DELEGATE_COST`
+  * `DEFAULT_UNDELEGATE_COST`
+  * `DEFAULT_MAX_STACK_HEIGHT`
+
+
+
+## 3.1.0
+
+### Added
+* Add `commit_prune` functionality to support pruning of entries in global storage.
+
+### Changed
+* Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
+
+
+
 ## 3.0.0
 
 ### Changed

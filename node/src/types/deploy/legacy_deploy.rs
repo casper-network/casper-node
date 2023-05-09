@@ -11,13 +11,6 @@ use crate::components::fetcher::{EmptyValidationMetadata, FetchItem, Tag};
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Debug)]
 pub(crate) struct LegacyDeploy(Deploy);
 
-impl LegacyDeploy {
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &Deploy {
-        &self.0
-    }
-}
-
 impl FetchItem for LegacyDeploy {
     type Id = DeployHash;
     type ValidationError = DeployConfigurationFailure;
@@ -81,5 +74,17 @@ mod tests {
         let mut rng = crate::new_rng();
         let legacy_deploy = LegacyDeploy::from(Deploy::random(&mut rng));
         bytesrepr::test_serialization_roundtrip(&legacy_deploy);
+    }
+}
+
+mod specimen_support {
+    use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
+
+    use super::LegacyDeploy;
+
+    impl LargestSpecimen for LegacyDeploy {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            LegacyDeploy(LargestSpecimen::largest_specimen(estimator, cache))
+        }
     }
 }

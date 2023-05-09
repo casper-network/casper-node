@@ -54,6 +54,8 @@
 //! with all signed messages that it has and the other is missing.
 
 pub(crate) mod config;
+#[cfg(test)]
+mod des_testing;
 mod fault;
 mod message;
 mod params;
@@ -201,6 +203,73 @@ where
 }
 
 impl<C: Context + 'static> Zug<C> {
+    fn new_with_params(
+        validators: Validators<C::ValidatorId>,
+        params: Params<C>,
+        config: &config::Config,
+        prev_cp: Option<&dyn ConsensusProtocol<C>>,
+        seed: u64,
+    ) -> Zug<C> {
+        let weights = protocols::common::validator_weights::<C>(&validators);
+        let active: ValidatorMap<_> = weights.iter().map(|_| None).collect();
+
+        // Use the estimate from the previous era as the proposal timeout. Start with one minimum
+        // timeout times the grace period factor: This is what we would settle on if proposals
+        // always got accepted exactly after one minimum timeout.
+        let proposal_timeout_millis = prev_cp
+            .and_then(|cp| cp.as_any().downcast_ref::<Zug<C>>())
+            .map(|zug| zug.proposal_timeout_millis)
+            .unwrap_or_else(|| {
+                config.proposal_timeout.millis() as f64
+                    * (config.proposal_grace_period as f64 / 100.0 + 1.0)
+            });
+
+        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
+        for vidx in validators.iter_cannot_propose_idx() {
+            can_propose[vidx] = false;
+        }
+        let faults: HashMap<_, _> = validators
+            .iter_banned_idx()
+            .map(|idx| (idx, Fault::Banned))
+            .collect();
+
+        let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
+
+        let rewards = validators.iter().map(|v| (v.id().clone(), 0)).collect();
+
+        info!(
+            instance_id = %params.instance_id(),
+            era_start_time = %params.start_timestamp(),
+            %proposal_timeout_millis,
+            "initializing Zug instance",
+        );
+
+        Zug {
+            leader_sequence,
+            proposals_waiting_for_parent: HashMap::new(),
+            proposals_waiting_for_validation: HashMap::new(),
+            rounds: BTreeMap::new(),
+            first_non_finalized_round_id: 0,
+            maybe_dirty_round_id: None,
+            current_round: 0,
+            current_round_start: Timestamp::MAX,
+            evidence_only: false,
+            faults,
+            active,
+            config: config.clone(),
+            params,
+            proposal_timeout_millis,
+            validators,
+            active_validator: None,
+            pending_proposal: None,
+            progress_detected: false,
+            paused: false,
+            next_scheduled_update: Timestamp::MAX,
+            write_wal: None,
+            rewards,
+        }
+    }
+
     /// Creates a new [`Zug`] instance.
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -215,35 +284,7 @@ impl<C: Context + 'static> Zug<C> {
         seed: u64,
     ) -> Zug<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
-        let weights = protocols::common::validator_weights::<C>(&validators);
-        let active: ValidatorMap<_> = weights.iter().map(|_| None).collect();
         let core_config = &chainspec.core_config;
-
-        // Use the estimate from the previous era as the proposal timeout. Start with one minimum
-        // timeout times the grace period factor: This is what we would settle on if proposals
-        // always got accepted exactly after one minimum timeout.
-        let proposal_timeout_millis = prev_cp
-            .and_then(|cp| cp.as_any().downcast_ref::<Zug<C>>())
-            .map(|zug| zug.proposal_timeout_millis)
-            .unwrap_or_else(|| {
-                config.zug.proposal_timeout.millis() as f64
-                    * (config.zug.proposal_grace_period as f64 / 100.0 + 1.0)
-            });
-
-        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
-        for vidx in validators.iter_cannot_propose_idx() {
-            can_propose[vidx] = false;
-        }
-        let faults: HashMap<_, _> = validators
-            .iter_banned_idx()
-            .map(|idx| (idx, Fault::Banned))
-            .collect();
-        let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
-
-        info!(
-            %instance_id, %era_start_time, %proposal_timeout_millis,
-            "initializing Zug instance",
-        );
 
         let params = Params::new(
             instance_id,
@@ -254,32 +295,7 @@ impl<C: Context + 'static> Zug<C> {
             protocols::common::ftt::<C>(core_config.finality_threshold_fraction, &validators),
         );
 
-        let rewards = validators.iter().map(|v| (v.id().clone(), 0)).collect();
-
-        Zug {
-            leader_sequence,
-            proposals_waiting_for_parent: HashMap::new(),
-            proposals_waiting_for_validation: HashMap::new(),
-            rounds: BTreeMap::new(),
-            first_non_finalized_round_id: 0,
-            maybe_dirty_round_id: None,
-            current_round: 0,
-            current_round_start: Timestamp::MAX,
-            evidence_only: false,
-            faults,
-            active,
-            config: config.zug.clone(),
-            params,
-            proposal_timeout_millis,
-            validators,
-            active_validator: None,
-            pending_proposal: None,
-            progress_detected: false,
-            paused: false,
-            next_scheduled_update: Timestamp::MAX,
-            write_wal: None,
-            rewards,
-        }
+        Zug::new_with_params(validators, params, &config.zug, prev_cp, seed)
     }
 
     /// Creates a new boxed [`Zug`] instance.
@@ -312,6 +328,11 @@ impl<C: Context + 'static> Zug<C> {
         let outcomes = zug.open_wal(wal_file, now);
 
         (Box::new(zug), outcomes)
+    }
+
+    /// Returns our validator index (if we are an active validator).
+    fn our_idx(&self) -> Option<u32> {
+        self.active_validator.as_ref().map(|av| av.idx.0)
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
@@ -347,7 +368,11 @@ impl<C: Context + 'static> Zug<C> {
             inactive_validators,
             faulty_validators,
         };
-        info!(?participation, "validator participation");
+        info!(
+            our_idx = self.our_idx(),
+            ?participation,
+            "validator participation"
+        );
     }
 
     /// Returns whether the switch block has already been finalized.
@@ -398,6 +423,7 @@ impl<C: Context + 'static> Zug<C> {
             return vec![]; // Era has ended. No further progress is expected.
         }
         debug!(
+            our_idx = self.our_idx(),
             instance_id = ?self.instance_id(),
             "syncing with random peer",
         );
@@ -424,10 +450,17 @@ impl<C: Context + 'static> Zug<C> {
         let creator = if let Some(creator) = self.validators.id(creator_index) {
             creator
         } else {
-            error!(?creator_index, ?round_id, "{}: invalid creator", msg);
+            error!(
+                our_idx = self.our_idx(),
+                ?creator_index,
+                ?round_id,
+                "{}: invalid creator",
+                msg
+            );
             return;
         };
         info!(
+            our_idx = self.our_idx(),
             hash = %proposal.hash(),
             %creator,
             creator_index = creator_index.0,
@@ -590,25 +623,25 @@ impl<C: Context + 'static> Zug<C> {
         self.leader_sequence.leader(u64::from(round_id))
     }
 
-    /// If we are an active validator and it would be safe for us to sign this message and we
-    /// haven't signed it before, we sign it, add it to our state and gossip it to the network.
-    ///
-    /// Does not call `update`!
-    fn create_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
+    fn create_message(
+        &mut self,
+        round_id: RoundId,
+        content: Content<C>,
+    ) -> Option<SignedMessage<C>> {
         let (validator_idx, secret_key) = if let Some(active_validator) = &self.active_validator {
             (active_validator.idx, &active_validator.secret)
         } else {
-            return vec![];
+            return None;
         };
         if self.paused {
-            return vec![];
+            return None;
         }
         let already_signed = match &content {
             Content::Echo(_) => self.has_echoed(round_id, validator_idx),
             Content::Vote(_) => self.has_voted(round_id, validator_idx),
         };
         if already_signed {
-            return vec![]; // Not creating message, so we don't double-sign or duplicate.
+            return None;
         }
         let signed_msg = SignedMessage::sign_new(
             round_id,
@@ -617,16 +650,40 @@ impl<C: Context + 'static> Zug<C> {
             validator_idx,
             secret_key,
         );
-        // We only add and send the new message if we are able to record it. If that fails we
+        // We only return the new message if we are able to record it. If that fails we
         // wouldn't know about our own message after a restart and risk double-signing.
         if self.record_entry(&Entry::SignedMessage(signed_msg.clone()))
             && self.add_content(signed_msg.clone())
         {
-            let message = Message::Signed(signed_msg);
-            vec![ProtocolOutcome::CreatedGossipMessage(message.into())]
+            Some(signed_msg)
         } else {
-            vec![]
+            debug!(
+                our_idx = self.our_idx(),
+                %round_id,
+                ?content,
+                "couldn't record a signed message in the WAL or add it to the protocol state"
+            );
+            None
         }
+    }
+
+    /// If we are an active validator and it would be safe for us to sign this message and we
+    /// haven't signed it before, we sign it, add it to our state and gossip it to the network.
+    ///
+    /// Does not call `update`!
+    fn create_and_gossip_message(
+        &mut self,
+        round_id: RoundId,
+        content: Content<C>,
+    ) -> ProtocolOutcomes<C> {
+        let maybe_signed_msg = self.create_message(round_id, content);
+        maybe_signed_msg
+            .into_iter()
+            .map(|signed_msg| {
+                let message = Message::Signed(signed_msg);
+                ProtocolOutcome::CreatedGossipMessage(message.into())
+            })
+            .collect()
     }
 
     /// When we receive evidence for a fault, we must notify the rest of the network of this
@@ -640,11 +697,7 @@ impl<C: Context + 'static> Zug<C> {
         signature2: C::Signature,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        self.record_entry(&Entry::Evidence(
-            signed_msg.clone(),
-            content2.clone(),
-            signature2,
-        ));
+        self.record_entry(&Entry::Evidence(signed_msg.clone(), content2, signature2));
         self.handle_fault_no_wal(signed_msg, validator_id, content2, signature2, now)
     }
 
@@ -658,7 +711,13 @@ impl<C: Context + 'static> Zug<C> {
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let validator_idx = signed_msg.validator_idx;
-        warn!(?signed_msg, ?content2, id = %validator_id, "validator double-signed");
+        warn!(
+            our_idx = self.our_idx(),
+            ?signed_msg,
+            ?content2,
+            id = %validator_id,
+            "validator double-signed"
+        );
         let fault = Fault::Direct(signed_msg, content2, signature2);
         self.faults.insert(validator_idx, fault);
         if Some(validator_idx) == self.active_validator.as_ref().map(|av| av.idx) {
@@ -731,6 +790,7 @@ impl<C: Context + 'static> Zug<C> {
         } = sync_request;
         if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
+                our_idx = self.our_idx(),
                 first_validator_idx = first_validator_idx.0,
                 %sender,
                 "invalid SyncRequest message"
@@ -820,6 +880,7 @@ impl<C: Context + 'static> Zug<C> {
             match &self.faults[&v_idx] {
                 Fault::Banned => {
                     info!(
+                        our_idx = self.our_idx(),
                         validator_index = v_idx.0,
                         %sender,
                         "peer disagrees about banned validator; disconnecting"
@@ -827,7 +888,7 @@ impl<C: Context + 'static> Zug<C> {
                     return (vec![ProtocolOutcome::Disconnect(sender)], None);
                 }
                 Fault::Direct(signed_msg, content2, signature2) => {
-                    evidence.push((signed_msg.clone(), content2.clone(), *signature2));
+                    evidence.push((signed_msg.clone(), *content2, *signature2));
                 }
                 Fault::Indirect => {
                     let vid = self.validators.id(v_idx).unwrap().clone();
@@ -939,11 +1000,13 @@ impl<C: Context + 'static> Zug<C> {
         sender: NodeId,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
+        let our_idx = self.our_idx();
         let validator_idx = signed_msg.validator_idx;
         let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
             validator_id.clone()
         } else {
             warn!(
+                our_idx,
                 ?signed_msg,
                 %sender,
                 "invalid incoming message: validator index out of range",
@@ -952,34 +1015,38 @@ impl<C: Context + 'static> Zug<C> {
         };
 
         if self.faults.contains_key(&validator_idx) {
-            debug!(?validator_id, "ignoring message from faulty validator");
+            debug!(
+                our_idx,
+                ?validator_id,
+                "ignoring message from faulty validator"
+            );
             return vec![];
         }
 
         if signed_msg.round_id > self.current_round.saturating_add(MAX_FUTURE_ROUNDS) {
-            debug!(?signed_msg, "dropping message from future round");
+            debug!(our_idx, ?signed_msg, "dropping message from future round");
             return vec![];
         }
 
         if self.evidence_only {
-            debug!(?signed_msg, "received an irrelevant message");
+            debug!(our_idx, ?signed_msg, "received an irrelevant message");
             return vec![];
         }
 
         if let Some(round) = self.round(signed_msg.round_id) {
             if round.contains(&signed_msg.content, validator_idx) {
-                debug!(?signed_msg, %sender, "received a duplicated message");
+                debug!(our_idx, ?signed_msg, %sender, "received a duplicated message");
                 return vec![];
             }
         }
 
         if !signed_msg.verify_signature(&validator_id) {
-            warn!(?signed_msg, %sender, "invalid signature",);
+            warn!(our_idx, ?signed_msg, %sender, "invalid signature",);
             return vec![ProtocolOutcome::Disconnect(sender)];
         }
 
         if let Some((content2, signature2)) = self.detect_fault(&signed_msg) {
-            let evidence_msg = Message::Evidence(signed_msg.clone(), content2.clone(), signature2);
+            let evidence_msg = Message::Evidence(signed_msg.clone(), content2, signature2);
             let mut outcomes =
                 self.handle_fault(signed_msg, validator_id, content2, signature2, now);
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(evidence_msg.into()));
@@ -987,7 +1054,11 @@ impl<C: Context + 'static> Zug<C> {
         }
 
         if self.faults.contains_key(&signed_msg.validator_idx) {
-            debug!(?signed_msg, "dropping message from faulty validator");
+            debug!(
+                our_idx,
+                ?signed_msg,
+                "dropping message from faulty validator"
+            );
         } else {
             self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
             if self.add_content(signed_msg) {
@@ -1008,6 +1079,7 @@ impl<C: Context + 'static> Zug<C> {
         sender: NodeId,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
+        let our_idx = self.our_idx();
         let validator_idx = signed_msg.validator_idx;
         if let Some(Fault::Direct(..)) = self.faults.get(&validator_idx) {
             return vec![]; // Validator is already known to be faulty.
@@ -1016,6 +1088,7 @@ impl<C: Context + 'static> Zug<C> {
             validator_id.clone()
         } else {
             warn!(
+                our_idx,
                 ?signed_msg,
                 %sender,
                 "invalid incoming evidence: validator index out of range",
@@ -1024,6 +1097,7 @@ impl<C: Context + 'static> Zug<C> {
         };
         if !signed_msg.content.contradicts(&content2) {
             warn!(
+                our_idx,
                 ?signed_msg,
                 ?content2,
                 %sender,
@@ -1033,10 +1107,11 @@ impl<C: Context + 'static> Zug<C> {
         }
         if !signed_msg.verify_signature(&validator_id)
             || !signed_msg
-                .with(content2.clone(), signature2)
+                .with(content2, signature2)
                 .verify_signature(&validator_id)
         {
             warn!(
+                our_idx,
                 ?signed_msg,
                 ?content2,
                 %sender,
@@ -1057,11 +1132,13 @@ impl<C: Context + 'static> Zug<C> {
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let leader_idx = self.leader(round_id);
+        let our_idx = self.our_idx();
 
         macro_rules! log_proposal {
             ($lvl:expr, $prop:expr, $msg:expr $(,)?) => {
                 event!(
                     $lvl,
+                    our_idx,
                     round_id,
                     parent = $prop.maybe_parent_round_id,
                     timestamp = %$prop.timestamp,
@@ -1192,10 +1269,11 @@ impl<C: Context + 'static> Zug<C> {
             && self.is_quorum(self.rounds[&round_id].votes(vote).keys_some())
         {
             self.round_mut(round_id).set_quorum_votes(vote);
+            let our_idx = self.our_idx();
             if !vote {
-                info!(%round_id, "round is now skippable");
+                info!(our_idx, %round_id, "round is now skippable");
             } else if self.rounds[&round_id].accepted_proposal().is_none() {
-                info!(%round_id, "round committed; no accepted proposal yet");
+                info!(our_idx, %round_id, "round committed; no accepted proposal yet");
             }
             return true;
         }
@@ -1212,6 +1290,7 @@ impl<C: Context + 'static> Zug<C> {
                 self.active_validator = None;
                 self.write_wal = None;
                 error!(
+                    our_idx = self.our_idx(),
                     %err,
                     "could not record a signed message to the WAL; deactivating"
                 );
@@ -1225,11 +1304,12 @@ impl<C: Context + 'static> Zug<C> {
     /// the WAL remains `None`: That way we can still observe the protocol but not participate as
     /// a validator.
     pub(crate) fn open_wal(&mut self, wal_file: PathBuf, now: Timestamp) -> ProtocolOutcomes<C> {
+        let our_idx = self.our_idx();
         // Open the file for reading.
         let mut read_wal = match ReadWal::<C>::new(&wal_file) {
             Ok(read_wal) => read_wal,
             Err(err) => {
-                error!(%err, "could not create a ReadWal using this file");
+                error!(our_idx, %err, "could not create a ReadWal using this file");
                 return vec![];
             }
         };
@@ -1242,7 +1322,7 @@ impl<C: Context + 'static> Zug<C> {
                 Ok(Some(next_entry)) => match next_entry {
                     Entry::SignedMessage(next_message) => {
                         if !self.add_content(next_message) {
-                            error!("Could not add content from WAL.");
+                            error!(our_idx, "Could not add content from WAL.");
                             return outcomes;
                         }
                     }
@@ -1253,7 +1333,7 @@ impl<C: Context + 'static> Zug<C> {
                             .map(HashedProposal::inner)
                             == Some(&next_proposal)
                         {
-                            warn!("Proposal from WAL is duplicated.");
+                            warn!(our_idx, "Proposal from WAL is duplicated.");
                             continue;
                         }
                         let mut ancestor_values = vec![];
@@ -1264,13 +1344,13 @@ impl<C: Context + 'static> Zug<C> {
                                 {
                                     proposal
                                 } else {
-                                    error!("Proposal from WAL is missing ancestors.");
+                                    error!(our_idx, "Proposal from WAL is missing ancestors.");
                                     return outcomes;
                                 };
                                 if self.round(round_id).and_then(Round::quorum_echoes)
                                     != Some(*proposal.hash())
                                 {
-                                    error!("Proposal from WAL has unaccepted ancestor.");
+                                    error!(our_idx, "Proposal from WAL has unaccepted ancestor.");
                                     return outcomes;
                                 }
                                 ancestor_values.extend(proposal.maybe_block().cloned());
@@ -1306,6 +1386,7 @@ impl<C: Context + 'static> Zug<C> {
                                 validator_id.clone()
                             } else {
                                 warn!(
+                                    our_idx,
                                     index = conflicting_message.validator_idx.0,
                                     "No validator present at this index, despite holding \
                                     conflicting messages for it in the WAL"
@@ -1346,6 +1427,7 @@ impl<C: Context + 'static> Zug<C> {
                 }
                 Err(err) => {
                     error!(
+                        our_idx,
                         ?err,
                         "couldn't read a message from the WAL: was this node recently shut down?"
                     );
@@ -1357,7 +1439,12 @@ impl<C: Context + 'static> Zug<C> {
         // Open the file for appending.
         match WriteWal::new(&wal_file) {
             Ok(write_wal) => self.write_wal = Some(write_wal),
-            Err(err) => error!(?err, ?wal_file, "could not create a WAL using this file"),
+            Err(err) => error!(
+                our_idx,
+                ?err,
+                ?wal_file,
+                "could not create a WAL using this file"
+            ),
         }
 
         outcomes
@@ -1380,13 +1467,14 @@ impl<C: Context + 'static> Zug<C> {
             validator_idx,
             signature,
         } = signed_msg;
+        let our_idx = self.our_idx();
         match content {
             Content::Echo(hash) => {
                 if self
                     .round_mut(round_id)
                     .insert_echo(hash, validator_idx, signature)
                 {
-                    debug!(round_id, %hash, validator = validator_idx.0, "inserted echo");
+                    debug!(our_idx, round_id, %hash, validator = validator_idx.0, "inserted echo");
                     self.progress_detected = true;
                     if self.check_new_echo_quorum(round_id, hash) {
                         self.mark_dirty(round_id);
@@ -1399,7 +1487,13 @@ impl<C: Context + 'static> Zug<C> {
                     .round_mut(round_id)
                     .insert_vote(vote, validator_idx, signature)
                 {
-                    debug!(round_id, vote, validator = validator_idx.0, "inserted vote");
+                    debug!(
+                        our_idx,
+                        round_id,
+                        vote,
+                        validator = validator_idx.0,
+                        "inserted vote"
+                    );
                     self.progress_detected = true;
                     if self.check_new_vote_quorum(round_id, vote) {
                         self.mark_dirty(round_id);
@@ -1431,6 +1525,7 @@ impl<C: Context + 'static> Zug<C> {
 
     /// Sets an update timer for the given timestamp, unless an earlier timer is already set.
     fn schedule_update(&mut self, timestamp: Timestamp) -> ProtocolOutcomes<C> {
+        debug!(our_idx = self.our_idx(), %timestamp, "schedule update");
         if self.next_scheduled_update > timestamp {
             self.next_scheduled_update = timestamp;
             vec![ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_UPDATE)]
@@ -1465,7 +1560,7 @@ impl<C: Context + 'static> Zug<C> {
 
         // If we have a proposal, echo it.
         if let Some(&hash) = self.rounds[&round_id].proposal().map(HashedProposal::hash) {
-            outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
+            outcomes.extend(self.create_and_gossip_message(round_id, Content::Echo(hash)));
         }
 
         // Update the round outcome if there is a new accepted proposal.
@@ -1474,7 +1569,7 @@ impl<C: Context + 'static> Zug<C> {
                 self.update_proposal_timeout(now);
             }
             // Vote for finalizing this proposal.
-            outcomes.extend(self.create_message(round_id, Content::Vote(true)));
+            outcomes.extend(self.create_and_gossip_message(round_id, Content::Vote(true)));
             // Proposed descendants of this proposal can now be validated.
             if let Some(proposals) = self.proposals_waiting_for_parent.remove(&round_id) {
                 let ancestor_values = self
@@ -1494,19 +1589,21 @@ impl<C: Context + 'static> Zug<C> {
         }
 
         if round_id == self.current_round {
+            let our_idx = self.our_idx();
             let current_timeout = self
                 .current_round_start
                 .saturating_add(self.proposal_timeout());
             if now >= current_timeout {
-                outcomes.extend(self.create_message(round_id, Content::Vote(false)));
+                outcomes.extend(self.create_and_gossip_message(round_id, Content::Vote(false)));
                 self.update_proposal_timeout(now);
             } else if self.faults.contains_key(&self.leader(round_id)) {
-                outcomes.extend(self.create_message(round_id, Content::Vote(false)));
+                outcomes.extend(self.create_and_gossip_message(round_id, Content::Vote(false)));
             }
             if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
                 self.current_round_start = Timestamp::MAX;
                 self.current_round = self.current_round.saturating_add(1);
                 info!(
+                    our_idx,
                     round_id = self.current_round,
                     leader = self.leader(self.current_round).0,
                     "started a new round"
@@ -1516,6 +1613,7 @@ impl<C: Context + 'static> Zug<C> {
                 if now < timestamp {
                     // The first opportunity to make a proposal is in the future; check again at
                     // that time.
+                    debug!(our_idx, %now, %timestamp, "update_round - schedule update 1");
                     outcomes.extend(self.schedule_update(timestamp));
                 } else {
                     if self.current_round_start > now {
@@ -1527,11 +1625,12 @@ impl<C: Context + 'static> Zug<C> {
                         .current_round_start
                         .saturating_add(self.proposal_timeout());
                     if current_timeout > now {
+                        debug!(our_idx, %now, %current_timeout, "update_round - schedule update 2");
                         outcomes.extend(self.schedule_update(current_timeout));
                     }
                 }
             } else {
-                error!("No suitable parent for current round");
+                error!(our_idx, "No suitable parent for current round");
             }
         }
 
@@ -1606,8 +1705,12 @@ impl<C: Context + 'static> Zug<C> {
         ancestor_values: Vec<C::ConsensusValue>,
         sender: NodeId,
     ) -> ProtocolOutcomes<C> {
+        let our_idx = self.our_idx();
         if proposal.timestamp() < self.params.start_timestamp() {
-            info!("rejecting proposal with timestamp earlier than era start");
+            info!(
+                our_idx,
+                "rejecting proposal with timestamp earlier than era start"
+            );
             return vec![];
         }
         if let Some((_, parent_proposal)) = proposal
@@ -1616,14 +1719,20 @@ impl<C: Context + 'static> Zug<C> {
         {
             let min_block_time = self.params.min_block_time();
             if proposal.timestamp() < parent_proposal.timestamp().saturating_add(min_block_time) {
-                info!("rejecting proposal with timestamp earlier than the parent");
+                info!(
+                    our_idx,
+                    "rejecting proposal with timestamp earlier than the parent"
+                );
                 return vec![];
             }
             if let (Some(inactive), Some(parent_inactive)) =
                 (proposal.inactive(), parent_proposal.inactive())
             {
                 if !inactive.is_subset(parent_inactive) {
-                    info!("rejecting proposal with more inactive validators than parent");
+                    info!(
+                        our_idx,
+                        "rejecting proposal with more inactive validators than parent"
+                    );
                     return vec![];
                 }
             }
@@ -1674,7 +1783,10 @@ impl<C: Context + 'static> Zug<C> {
         {
             (height, proposal.clone())
         } else {
-            error!(round_id, "missing finalized proposal; this is a bug");
+            error!(
+                our_idx = self.our_idx(),
+                round_id, "missing finalized proposal; this is a bug"
+            );
             return outcomes;
         };
         if let Some(parent_round_id) = proposal.maybe_parent_round_id() {
@@ -1682,7 +1794,11 @@ impl<C: Context + 'static> Zug<C> {
             outcomes.extend(self.finalize_round(parent_round_id));
         }
         for prune_round_id in self.first_non_finalized_round_id..round_id {
-            info!(round_id = prune_round_id, "skipped round");
+            info!(
+                our_idx = self.our_idx(),
+                round_id = prune_round_id,
+                "skipped round"
+            );
             self.round_mut(prune_round_id).prune_skipped();
         }
         self.first_non_finalized_round_id = round_id.saturating_add(1);
@@ -1771,23 +1887,31 @@ impl<C: Context + 'static> Zug<C> {
     /// inserts them into our protocol state and gossips them.
     fn create_echo_and_proposal(&mut self, proposal: Proposal<C>) -> ProtocolOutcomes<C> {
         let round_id = self.current_round;
+        let hashed_prop = HashedProposal::new(proposal.clone());
+        let echo_content = Content::Echo(*hashed_prop.hash());
+        let echo = if let Some(echo) = self.create_message(round_id, echo_content) {
+            echo
+        } else {
+            return vec![];
+        };
         let prop_msg = Message::Proposal {
             round_id,
-            proposal: proposal.clone(),
+            proposal,
             instance_id: *self.instance_id(),
+            echo,
         };
-        let hashed_prop = HashedProposal::new(proposal);
-        let mut outcomes = self.create_message(round_id, Content::Echo(*hashed_prop.hash()));
-        if outcomes.is_empty() {
-            return vec![]; // Failed to create an echo message.
-        }
         if !self.record_entry(&Entry::Proposal(hashed_prop.inner().clone(), round_id)) {
-            error!("could not record own proposal in WAL");
+            error!(
+                our_idx = self.our_idx(),
+                "could not record own proposal in WAL"
+            );
+            vec![]
         } else if self.round_mut(round_id).insert_proposal(hashed_prop) {
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.into()));
+            self.mark_dirty(round_id);
+            vec![ProtocolOutcome::CreatedGossipMessage(prop_msg.into())]
+        } else {
+            vec![]
         }
-        self.mark_dirty(round_id);
-        outcomes
     }
 
     /// Returns a parent if a block with that parent could be proposed in the current round, and the
@@ -1859,6 +1983,7 @@ impl<C: Context + 'static> Zug<C> {
             let min_timeout = (self.config.proposal_timeout.millis() as f64).max(target_timeout);
             self.proposal_timeout_millis = self.proposal_timeout_millis.max(min_timeout);
         }
+        debug!(our_idx = self.our_idx(), %self.proposal_timeout_millis, "proposal timeout updated");
     }
 
     /// Returns `true` if the given validators, together will all faulty validators, form a quorum.
@@ -1964,14 +2089,15 @@ where
         msg: EraMessage<C>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
+        let our_idx = self.our_idx();
         match msg.try_into_zug() {
             Err(_msg) => {
-                warn!(%sender, "received a message for the wrong consensus protocol");
+                warn!(our_idx, %sender, "received a message for the wrong consensus protocol");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(zug_msg) if zug_msg.instance_id() != self.instance_id() => {
                 let instance_id = zug_msg.instance_id();
-                warn!(?instance_id, %sender, "wrong instance ID; disconnecting");
+                warn!(our_idx, ?instance_id, %sender, "wrong instance ID; disconnecting");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(Message::SyncResponse(sync_response)) => {
@@ -1981,7 +2107,14 @@ where
                 round_id,
                 instance_id: _,
                 proposal,
-            }) => self.handle_proposal(round_id, proposal, sender, now),
+                echo,
+            }) => {
+                // TODO: make sure that `echo` is indeed an echo
+                debug!(our_idx, %sender, %proposal, %round_id, "handling proposal with echo");
+                let mut outcomes = self.handle_signed_message(echo, sender, now);
+                outcomes.extend(self.handle_proposal(round_id, proposal, sender, now));
+                outcomes
+            }
             Ok(Message::Signed(signed_msg)) => self.handle_signed_message(signed_msg, sender, now),
             Ok(Message::Evidence(signed_msg, content2, signature2)) => {
                 self.handle_evidence(signed_msg, content2, signature2, sender, now)
@@ -1997,9 +2130,11 @@ where
         msg: EraRequest<C>,
         _now: Timestamp,
     ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+        let our_idx = self.our_idx();
         match msg.try_into_zug() {
             Err(_msg) => {
                 warn!(
+                    our_idx,
                     %sender,
                     "received a request for the wrong consensus protocol"
                 );
@@ -2007,7 +2142,7 @@ where
             }
             Ok(sync_request) if sync_request.instance_id != *self.instance_id() => {
                 let instance_id = sync_request.instance_id;
-                warn!(?instance_id, %sender, "wrong instance ID; disconnecting");
+                warn!(our_idx, ?instance_id, %sender, "wrong instance ID; disconnecting");
                 (vec![ProtocolOutcome::Disconnect(sender)], None)
             }
             Ok(sync_request) => self.handle_sync_request(sync_request, sender),
@@ -2044,7 +2179,11 @@ where
             //     self.synchronizer.add_past_due_stored_vertices(now)
             // }
             timer_id => {
-                error!(timer_id = timer_id.0, "unexpected timer ID");
+                error!(
+                    our_idx = self.our_idx(),
+                    timer_id = timer_id.0,
+                    "unexpected timer ID"
+                );
                 vec![]
             }
         }
@@ -2068,7 +2207,7 @@ where
     }
 
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<C> {
-        error!(?action_id, %now, "unexpected action");
+        error!(our_idx = self.our_idx(), ?action_id, %now, "unexpected action");
         vec![]
     }
 
@@ -2077,13 +2216,13 @@ where
             self.pending_proposal.take()
         {
             if block_context != *proposed_block.context() || round_id != self.current_round {
-                warn!(%proposed_block, "skipping outdated proposal");
+                warn!(our_idx = self.our_idx(), %proposed_block, "skipping outdated proposal");
                 self.pending_proposal = Some((block_context, round_id, maybe_parent_round_id));
                 return vec![];
             }
             maybe_parent_round_id
         } else {
-            error!("unexpected call to propose");
+            error!(our_idx = self.our_idx(), "unexpected call to propose");
             return vec![];
         };
         let inactive = self
@@ -2111,7 +2250,7 @@ where
         let mut outcomes = vec![];
         if valid {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
-                info!(%round_id, %proposal, "handling valid proposal");
+                info!(our_idx = self.our_idx(), %round_id, %proposal, "handling valid proposal");
                 if self.round_mut(round_id).insert_proposal(proposal.clone()) {
                     self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
                     self.mark_dirty(round_id);
@@ -2128,7 +2267,14 @@ where
                 // the value "invalid" even if it just couldn't download the deploys, which could
                 // just be because the original sender went offline.
                 let validator_index = self.leader(round_id).0;
-                info!(%validator_index, %round_id, %sender, %proposal, "dropping invalid proposal");
+                info!(
+                    our_idx = self.our_idx(),
+                    %validator_index,
+                    %round_id,
+                    %sender,
+                    %proposal,
+                    "dropping invalid proposal"
+                );
             }
         }
         outcomes
@@ -2158,6 +2304,12 @@ where
             }
             info!(our_idx = idx.0, "start voting");
             self.active_validator = Some(ActiveValidator { idx, secret });
+            debug!(
+                our_idx = idx.0,
+                %now,
+                start_timestamp=%self.params.start_timestamp(),
+                "activate_validator - schedule update"
+            );
             outcomes.extend(self.schedule_update(self.params.start_timestamp().max(now)));
         } else {
             error!(
@@ -2196,10 +2348,11 @@ where
         self.validators
             .get_index(vid)
             .and_then(|idx| self.faults.get(&idx))
+            .cloned()
             .map(|fault| match fault {
                 Fault::Direct(msg, content, sign) => {
                     vec![ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Evidence(msg.clone(), content.clone(), *sign).into(),
+                        Message::Evidence(msg, content, sign).into(),
                         peer,
                     )]
                 }
@@ -2210,7 +2363,11 @@ where
 
     fn set_paused(&mut self, paused: bool, now: Timestamp) -> ProtocolOutcomes<C> {
         if self.paused && !paused {
-            info!(current_round = self.current_round, "unpausing consensus");
+            info!(
+                our_idx = self.our_idx(),
+                current_round = self.current_round,
+                "unpausing consensus"
+            );
             self.paused = paused;
             // Reset the timeout to give the proposer another chance, after the pause.
             self.current_round_start = Timestamp::MAX;
@@ -2218,7 +2375,11 @@ where
             self.update(now)
         } else {
             if self.paused != paused {
-                info!(current_round = self.current_round, "pausing consensus");
+                info!(
+                    our_idx = self.our_idx(),
+                    current_round = self.current_round,
+                    "pausing consensus"
+                );
             }
             self.paused = paused;
             vec![]
@@ -2247,5 +2408,153 @@ where
 
     fn next_round_length(&self) -> Option<TimeDiff> {
         Some(self.params.min_block_time())
+    }
+}
+
+mod specimen_support {
+    use std::collections::BTreeSet;
+
+    use crate::{
+        components::consensus::{utils::ValidatorIndex, ClContext},
+        utils::specimen::{
+            btree_map_distinct_from_prop, btree_set_distinct_from_prop, largest_variant,
+            vec_prop_specimen, Cache, LargeUniqueSequence, LargestSpecimen, SizeEstimator,
+        },
+    };
+
+    use super::{
+        message::{
+            Content, ContentDiscriminants, Message, MessageDiscriminants, SignedMessage,
+            SyncResponse,
+        },
+        proposal::Proposal,
+        SyncRequest,
+    };
+
+    impl LargestSpecimen for Message<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    MessageDiscriminants::SyncResponse => {
+                        Message::SyncResponse(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::Proposal => Message::Proposal {
+                        round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                        instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                        proposal: LargestSpecimen::largest_specimen(estimator, cache),
+                        echo: LargestSpecimen::largest_specimen(estimator, cache),
+                    },
+                    MessageDiscriminants::Signed => {
+                        Message::Signed(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::Evidence => Message::Evidence(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                },
+            )
+        }
+    }
+
+    impl LargestSpecimen for SyncRequest<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            SyncRequest {
+                round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                proposal_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                has_proposal: LargestSpecimen::largest_specimen(estimator, cache),
+                first_validator_idx: LargestSpecimen::largest_specimen(estimator, cache),
+                echoes: LargestSpecimen::largest_specimen(estimator, cache),
+                true_votes: LargestSpecimen::largest_specimen(estimator, cache),
+                false_votes: LargestSpecimen::largest_specimen(estimator, cache),
+                active: LargestSpecimen::largest_specimen(estimator, cache),
+                faulty: LargestSpecimen::largest_specimen(estimator, cache),
+                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl<E> LargeUniqueSequence<E> for ValidatorIndex
+    where
+        E: SizeEstimator,
+    {
+        fn large_unique_sequence(
+            _estimator: &E,
+            count: usize,
+            _cache: &mut Cache,
+        ) -> BTreeSet<Self> {
+            Iterator::map((0..u32::MAX).rev(), ValidatorIndex::from)
+                .take(count)
+                .collect()
+        }
+    }
+
+    impl LargestSpecimen for SyncResponse<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            SyncResponse {
+                round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                proposal_or_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                echo_sigs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+                true_vote_sigs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+                false_vote_sigs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+                signed_messages: vec_prop_specimen(estimator, "validator_count", cache),
+                evidence: vec_prop_specimen(estimator, "validator_count", cache),
+                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl LargestSpecimen for Proposal<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            Proposal {
+                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
+                maybe_block: LargestSpecimen::largest_specimen(estimator, cache),
+                maybe_parent_round_id: LargestSpecimen::largest_specimen(estimator, cache),
+                inactive: Some(btree_set_distinct_from_prop(
+                    estimator,
+                    "validator_count",
+                    cache,
+                )),
+            }
+        }
+    }
+
+    impl LargestSpecimen for ValidatorIndex {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            u32::largest_specimen(estimator, cache).into()
+        }
+    }
+
+    impl LargestSpecimen for SignedMessage<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            SignedMessage::sign_new(
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                LargestSpecimen::largest_specimen(estimator, cache),
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            )
+        }
+    }
+
+    impl LargestSpecimen for Content<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            if let Some(item) = cache.get::<Self>() {
+                return *item;
+            }
+
+            let item = largest_variant::<Self, ContentDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    ContentDiscriminants::Echo => {
+                        Content::Echo(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    ContentDiscriminants::Vote => {
+                        Content::Vote(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                }
+            });
+            *cache.set(item)
+        }
     }
 }

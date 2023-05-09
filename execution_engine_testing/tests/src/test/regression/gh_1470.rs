@@ -81,6 +81,7 @@ fn setup() -> InMemoryWasmTestBuilder {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         strict_argument_checking,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         WasmConfig::default(),
         SystemConfig::default(),
     );

@@ -11,7 +11,7 @@ use std::{
 
 use prometheus::Counter;
 use tokio::{runtime::Handle, sync::Mutex, task};
-use tracing::{error, trace};
+use tracing::{error, trace, warn};
 
 use casper_types::{EraId, PublicKey};
 
@@ -104,7 +104,7 @@ impl Limiter {
 
         match self.validator_matrix.is_validator_in_era(era, &public_key) {
             None => {
-                error!(%era, "missing validator weights for given era");
+                warn!(%era, "missing validator weights for given era");
                 false
             }
             Some(is_validator) => is_validator,

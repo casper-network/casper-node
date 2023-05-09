@@ -159,7 +159,7 @@ impl<VID> EraReport<VID> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct TerminalBlockData<C: Context> {
     /// The rewards for participating in consensus.
     pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
@@ -170,7 +170,7 @@ pub(crate) struct TerminalBlockData<C: Context> {
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
 /// about all the information contained in this type, as long as the total weight of faulty
 /// validators remains below the threshold.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct FinalizedBlock<C: Context> {
     /// The finalized value.
     pub(crate) value: C::ConsensusValue,

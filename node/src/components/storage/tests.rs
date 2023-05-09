@@ -24,7 +24,7 @@ use super::{
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
     effect::{
-        requests::{BlockCompleteConfirmationRequest, StorageRequest},
+        requests::{MarkBlockCompletedRequest, StorageRequest},
         Multiple,
     },
     storage::{
@@ -179,6 +179,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         &WithDir::new(harness.tmp.path(), cfg),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
+        EraId::default(),
         "test",
         MAX_TTL,
         RECENT_ERA_COUNT,
@@ -208,6 +209,7 @@ fn storage_fixture_from_parts(
         &WithDir::new(harness.tmp.path(), cfg),
         hard_reset_to_start_of_era,
         protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
+        EraId::default(),
         network_name.unwrap_or("test"),
         max_ttl.unwrap_or(MAX_TTL),
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
@@ -229,6 +231,7 @@ fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
         cfg,
         None,
         ProtocolVersion::from_parts(1, 0, 0),
+        EraId::default(),
         "test",
         MAX_TTL,
         RECENT_ERA_COUNT,
@@ -417,7 +420,7 @@ fn put_complete_block(
     });
     assert!(harness.is_idle());
     harness.send_request(storage, move |responder| {
-        BlockCompleteConfirmationRequest {
+        MarkBlockCompletedRequest {
             block_height,
             responder,
         }
@@ -1286,6 +1289,7 @@ fn should_create_subdir_named_after_network() {
         &WithDir::new(harness.tmp.path(), cfg.clone()),
         None,
         ProtocolVersion::from_parts(1, 0, 0),
+        EraId::default(),
         network_name,
         MAX_TTL,
         RECENT_ERA_COUNT,

@@ -25,8 +25,8 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry,
-            UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+            PruneConfig, PruneResult, QueryRequest, QueryResult, RewardItem, StepError,
+            SystemContractRegistry, UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -100,7 +100,7 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    /// Genesis hash.
+    prune_results: Vec<Result<PruneResult, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
@@ -140,6 +140,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             engine_state: Rc::clone(&self.engine_state),
             exec_results: self.exec_results.clone(),
             upgrade_results: self.upgrade_results.clone(),
+            prune_results: self.prune_results.clone(),
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
@@ -166,6 +167,7 @@ impl InMemoryWasmTestBuilder {
         WasmTestBuilder {
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            prune_results: Vec::new(),
             engine_state: Rc::new(engine_state),
             genesis_hash: Some(genesis_hash),
             post_state_hash: Some(genesis_hash),
@@ -187,9 +189,10 @@ impl InMemoryWasmTestBuilder {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
+            engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
-            engine_state: Rc::new(engine_state),
+            prune_results: Vec::new(),
             genesis_hash: maybe_post_state_hash,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
@@ -219,6 +222,7 @@ impl InMemoryWasmTestBuilder {
                 .core_config
                 .vesting_schedule_period
                 .millis(),
+            chainspec_config.core_config.max_delegators_per_validator,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -305,6 +309,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
@@ -335,6 +340,7 @@ impl LmdbWasmTestBuilder {
                 .core_config
                 .vesting_schedule_period
                 .millis(),
+            chainspec_config.core_config.max_delegators_per_validator,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -401,6 +407,7 @@ impl LmdbWasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
+            prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
@@ -879,19 +886,6 @@ where
             .cloned()
     }
 
-    /// Gets the transform map that's cached between runs
-    #[deprecated(
-        since = "2.1.0",
-        note = "Use `get_execution_journals` that returns transforms in the order they were created."
-    )]
-    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
-        self.transforms
-            .clone()
-            .into_iter()
-            .map(|journal| journal.into_iter().collect())
-            .collect()
-    }
-
     /// Gets `ExecutionJournal`s of all passed runs.
     pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
         self.transforms.clone()
@@ -969,23 +963,11 @@ where
         Some(exec_results.iter().map(Rc::clone).collect())
     }
 
-    /// Returns the results of all execs.
-    #[deprecated(since = "2.3.0", note = "use `get_exec_result` instead")]
-    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
-        &self.exec_results
-    }
-
     /// Returns the owned results of a specific exec.
     pub fn get_exec_result_owned(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.get(index)?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
-    }
-
-    /// Returns the results of a specific exec.
-    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
-    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
-        self.exec_results.get(index)
     }
 
     /// Returns a count of exec results.
@@ -1283,27 +1265,13 @@ where
         ret
     }
 
-    /// Gets [`UnbondingPurses`].
-    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
-    pub fn get_withdraws(&mut self) -> UnbondingPurses {
-        let withdraw_purses = self.get_withdraw_purses();
-        let unbonding_purses: UnbondingPurses = withdraw_purses
-            .iter()
-            .map(|(key, withdraw_purse)| {
-                (
-                    key.to_owned(),
-                    withdraw_purse
-                        .iter()
-                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
-                        .collect::<Vec<UnbondingPurse>>(),
-                )
-            })
-            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
-        unbonding_purses
+    /// Gets all `[Key::Balance]`s in global state.
+    pub fn get_balance_keys(&self) -> Vec<Key> {
+        self.get_keys(KeyTag::Balance).unwrap_or_default()
     }
 
-    /// Gets all `[Key::Balance]`s in global state.
-    pub fn get_balance_keys(&mut self) -> Vec<Key> {
+    /// Gets all keys in global state by a prefix.
+    pub fn get_keys(&self, tag: KeyTag) -> Result<Vec<Key>, S::Error> {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -1315,9 +1283,7 @@ where
 
         let reader = tracking_copy.reader();
 
-        reader
-            .keys_with_prefix(correlation_id, &[KeyTag::Balance as u8])
-            .unwrap_or_default()
+        reader.keys_with_prefix(correlation_id, &[tag as u8])
     }
 
     /// Gets a stored value from a contract's named keys.
@@ -1437,7 +1403,7 @@ where
         self.advance_eras_by(auction_delay + 1, reward_items);
     }
 
-    /// Advancess by a single era.
+    /// Advances by a single era.
     pub fn advance_era(&mut self, reward_items: impl IntoIterator<Item = RewardItem>) {
         self.advance_eras_by(1, reward_items);
     }
@@ -1467,5 +1433,93 @@ where
             .config()
             .system_config()
             .handle_payment_costs()
+    }
+
+    /// Commits a prune of leaf nodes from the tip of the merkle trie.
+    pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
+        let result = self
+            .engine_state
+            .commit_prune(CorrelationId::new(), prune_config);
+
+        if let Ok(PruneResult::Success { post_state_hash }) = &result {
+            self.post_state_hash = Some(*post_state_hash);
+        }
+
+        self.prune_results.push(result);
+        self
+    }
+
+    /// Returns a `Result` containing a [`PruneResult`].
+    pub fn get_prune_result(
+        &self,
+        index: usize,
+    ) -> Option<&Result<PruneResult, engine_state::Error>> {
+        self.prune_results.get(index)
+    }
+
+    /// Expects a prune success.
+    pub fn expect_prune_success(&mut self) -> &mut Self {
+        // Check first result, as only first result is interesting for a simple test
+        let result = self
+            .prune_results
+            .last()
+            .expect("Expected to be called after a system upgrade.")
+            .as_ref();
+
+        let prune_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
+        match prune_result {
+            PruneResult::RootNotFound => panic!("Root not found"),
+            PruneResult::DoesNotExist => panic!("Does not exists"),
+            PruneResult::Success { .. } => {}
+        }
+
+        self
+    }
+
+    /// Gets the transform map that's cached between runs
+    #[deprecated(
+        since = "2.1.0",
+        note = "Use `get_execution_journals` that returns transforms in the order they were created."
+    )]
+    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
+        self.transforms
+            .clone()
+            .into_iter()
+            .map(|journal| journal.into_iter().collect())
+            .collect()
+    }
+
+    /// Returns the results of all execs.
+    #[deprecated(
+        since = "2.3.0",
+        note = "use `get_last_exec_results` or `get_exec_result_owned` instead"
+    )]
+    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
+        &self.exec_results
+    }
+
+    /// Returns the results of a specific exec.
+    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
+    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
+        self.exec_results.get(index)
+    }
+
+    /// Gets [`UnbondingPurses`].
+    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+        let withdraw_purses = self.get_withdraw_purses();
+        let unbonding_purses: UnbondingPurses = withdraw_purses
+            .iter()
+            .map(|(key, withdraw_purse)| {
+                (
+                    key.to_owned(),
+                    withdraw_purse
+                        .iter()
+                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
+                        .collect::<Vec<UnbondingPurse>>(),
+                )
+            })
+            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
+        unbonding_purses
     }
 }

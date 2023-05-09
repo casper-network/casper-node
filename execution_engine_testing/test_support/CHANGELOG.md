@@ -28,6 +28,27 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 4.0.0
+
+### Changed
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
+
+
+
+## 3.1.1
+
+### Changed
+* Update chainspec values used in `PRODUCTION_RUN_GENESIS_REQUEST` to match those of Mainnet protocol version 1.4.15.
+
+
+
+## 3.1.0
+
+### Added
+* Add support for `commit_prune` of `casper-execution-engine`.
+
+
+
 ## 3.0.0
 
 ### Changed

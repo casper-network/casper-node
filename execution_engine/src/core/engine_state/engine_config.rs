@@ -8,6 +8,12 @@ pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default value for maximum runtime call stack height configuration option.
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+/// Default max serialized size of `StoredValue`s.
+#[deprecated(
+    since = "3.2.0",
+    note = "not used in `casper-execution-engine` config anymore"
+)]
+pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for strict argument checking.
@@ -35,6 +41,7 @@ pub struct EngineConfig {
     strict_argument_checking: bool,
     /// Vesting schedule period in milliseconds.
     vesting_schedule_period_millis: u64,
+    max_delegators_per_validator: Option<u32>,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
 }
@@ -48,6 +55,7 @@ impl Default for EngineConfig {
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+            max_delegators_per_validator: None,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
         }
@@ -64,6 +72,7 @@ impl EngineConfig {
         minimum_delegation_amount: u64,
         strict_argument_checking: bool,
         vesting_schedule_period_millis: u64,
+        max_delegators_per_validator: Option<u32>,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
     ) -> EngineConfig {
@@ -74,6 +83,7 @@ impl EngineConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             vesting_schedule_period_millis,
+            max_delegators_per_validator,
             wasm_config,
             system_config,
         }
@@ -112,5 +122,10 @@ impl EngineConfig {
     /// Get the vesting schedule period.
     pub fn vesting_schedule_period_millis(&self) -> u64 {
         self.vesting_schedule_period_millis
+    }
+
+    /// Get the max delegators per validator
+    pub fn max_delegators_per_validator(&self) -> Option<u32> {
+        self.max_delegators_per_validator
     }
 }

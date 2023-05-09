@@ -107,6 +107,8 @@ impl ContractPackageIdentifier {
     Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "gens", derive(strum::EnumDiscriminants))]
+#[cfg_attr(feature = "gens", strum_discriminants(derive(strum::EnumIter)))]
 pub enum ExecutableDeployItem {
     /// Executable specified as raw bytes that represent WASM code and an instance of
     /// [`RuntimeArgs`].

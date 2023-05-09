@@ -183,7 +183,7 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block: Option<BlockHeader>,
+    switch_block_header: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
@@ -863,7 +863,7 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockCompleteConfirmationRequest(req) => reactor::wrap_effects(
+            MainEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
@@ -1013,12 +1013,20 @@ impl reactor::Reactor for MainReactor {
             &storage_config,
             hard_reset_to_start_of_era,
             protocol_version,
+            chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
         )?;
+
+        let max_delegators_per_validator =
+            if chainspec.core_config.max_delegators_per_validator == 0 {
+                None
+            } else {
+                Some(chainspec.core_config.max_delegators_per_validator)
+            };
 
         let contract_runtime = ContractRuntime::new(
             protocol_version,
@@ -1029,8 +1037,11 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.max_associated_keys,
             chainspec.core_config.max_runtime_call_stack_height,
             chainspec.core_config.minimum_delegation_amount,
+            chainspec.protocol_config.activation_point,
+            chainspec.core_config.prune_batch_size,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
+            max_delegators_per_validator,
             registry,
         )?;
 
@@ -1166,7 +1177,7 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            switch_block: None,
+            switch_block_header: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
         };
@@ -1411,18 +1422,22 @@ impl MainReactor {
                 block.hash(),
             );
             if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
+                match self
+                    .switch_block_header
+                    .as_ref()
+                    .map(|header| header.height())
+                {
                     Some(current_height) => {
                         if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
+                            self.switch_block_header = Some(block.header().clone());
                         }
                     }
                     None => {
-                        self.switch_block = Some(block.header().clone());
+                        self.switch_block_header = Some(block.header().clone());
                     }
                 }
             } else {
-                self.switch_block = None;
+                self.switch_block_header = None;
             }
         } else {
             error!(

@@ -53,8 +53,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
-        FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError,
+        Deploy, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -205,6 +205,8 @@ pub(crate) struct ContractRuntime {
     exec_queue: ExecQueue,
     /// Cached instance of a [`SystemContractRegistry`].
     system_contract_registry: Option<SystemContractRegistry>,
+    activation_point: ActivationPoint,
+    prune_batch_size: u64,
 }
 
 impl Debug for ContractRuntime {
@@ -460,6 +462,7 @@ impl ContractRuntime {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
+                key_block_height_for_activation_point,
                 meta_block_state,
             } => {
                 let mut effects = Effects::new();
@@ -489,6 +492,8 @@ impl ContractRuntime {
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        let activation_point = self.activation_point;
+                        let prune_batch_size = self.prune_batch_size;
                         effects.extend(
                             Self::execute_finalized_block_or_requeue(
                                 engine_state,
@@ -500,6 +505,9 @@ impl ContractRuntime {
                                 protocol_version,
                                 finalized_block,
                                 deploys,
+                                activation_point,
+                                key_block_height_for_activation_point,
+                                prune_batch_size,
                                 meta_block_state,
                             )
                             .ignore(),
@@ -588,8 +596,11 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
+        activation_point: ActivationPoint,
+        prune_batch_size: u64,
         strict_argument_checking: bool,
         vesting_schedule_period_millis: u64,
+        max_delegators_per_validator: Option<u32>,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -621,6 +632,7 @@ impl ContractRuntime {
             minimum_delegation_amount,
             strict_argument_checking,
             vesting_schedule_period_millis,
+            max_delegators_per_validator,
             wasm_config,
             system_config,
         );
@@ -637,6 +649,8 @@ impl ContractRuntime {
             protocol_version,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
+            activation_point,
+            prune_batch_size,
         })
     }
 
@@ -723,6 +737,9 @@ impl ContractRuntime {
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        activation_point: ActivationPoint,
+        key_block_height_for_activation_point: u64,
+        prune_batch_size: u64,
         mut meta_block_state: MetaBlockState,
     ) where
         REv: From<ContractRuntimeRequest>
@@ -748,6 +765,9 @@ impl ContractRuntime {
                 current_pre_state,
                 finalized_block,
                 deploys,
+                activation_point.era_id(),
+                key_block_height_for_activation_point,
+                prune_batch_size,
             )
         })
         .await
@@ -935,7 +955,7 @@ mod tests {
     };
     use casper_hashing::{ChunkWithProof, Digest};
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, Key, ProtocolVersion, StoredValue,
+        account::AccountHash, bytesrepr, CLValue, EraId, Key, ProtocolVersion, StoredValue,
     };
     use prometheus::Registry;
     use tempfile::tempdir;
@@ -943,7 +963,7 @@ mod tests {
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
-        types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+        types::{ActivationPoint, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
 
     use super::ContractRuntimeError;
@@ -1006,8 +1026,11 @@ mod tests {
             10,
             10,
             10,
+            ActivationPoint::EraId(EraId::from(2)),
+            5,
             true,
             1,
+            None,
             &Registry::default(),
         )
         .unwrap();

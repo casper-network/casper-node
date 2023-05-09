@@ -10,8 +10,6 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
 use openssl::ssl::SslRef;
 #[cfg(test)]
 use rand::RngCore;
@@ -19,6 +17,8 @@ use static_assertions::const_assert;
 use tracing::warn;
 
 use casper_hashing::Digest;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 use super::tls::KeyFingerprint;
 use crate::{types::NodeId, utils};

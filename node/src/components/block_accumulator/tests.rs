@@ -31,7 +31,7 @@ use crate::{
     },
     effect::{
         announcements::ControlAnnouncement,
-        requests::{BlockCompleteConfirmationRequest, ContractRuntimeRequest, NetworkRequest},
+        requests::{ContractRuntimeRequest, MarkBlockCompletedRequest, NetworkRequest},
     },
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Reactor, Runner, TryCrankOutcome},
@@ -85,8 +85,8 @@ enum Event {
     NetworkPeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
 }
 
-impl From<BlockCompleteConfirmationRequest> for Event {
-    fn from(request: BlockCompleteConfirmationRequest) -> Self {
+impl From<MarkBlockCompletedRequest> for Event {
+    fn from(request: MarkBlockCompletedRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
     }
 }
@@ -179,6 +179,7 @@ impl Reactor for MockReactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
             "test",
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),

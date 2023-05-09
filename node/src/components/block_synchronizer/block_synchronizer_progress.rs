@@ -9,12 +9,15 @@ pub(crate) enum BlockSynchronizerProgress {
     Syncing(BlockHash, Option<u64>, Timestamp),
     Executing(BlockHash, u64, EraId),
     Synced(BlockHash, u64, EraId),
+    Stalled(BlockHash, Option<u64>, Timestamp),
 }
 
 impl BlockSynchronizerProgress {
     pub(crate) fn is_active(&self) -> bool {
         match self {
-            BlockSynchronizerProgress::Idle | BlockSynchronizerProgress::Synced(_, _, _) => false,
+            BlockSynchronizerProgress::Idle
+            | BlockSynchronizerProgress::Synced(_, _, _)
+            | BlockSynchronizerProgress::Stalled(_, _, _) => false,
             BlockSynchronizerProgress::Syncing(_, _, _)
             | BlockSynchronizerProgress::Executing(_, _, _) => true,
         }
@@ -44,6 +47,13 @@ impl Display for BlockSynchronizerProgress {
                     f,
                     "block_height: {} block_hash: {} era_id: {}",
                     block_height, block_hash, era_id
+                )
+            }
+            BlockSynchronizerProgress::Stalled(block_hash, block_height, timestamp) => {
+                write!(
+                    f,
+                    "block_height: {:?} timestamp: {} block_hash: {}",
+                    block_height, timestamp, block_hash
                 )
             }
         }

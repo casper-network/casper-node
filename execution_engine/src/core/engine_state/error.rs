@@ -66,7 +66,7 @@ pub enum Error {
     InvalidKeyVariant,
     /// Protocol upgrade error.
     #[error("Protocol upgrade error: {0}")]
-    ProtocolUpgrade(ProtocolUpgradeError),
+    ProtocolUpgrade(#[from] ProtocolUpgradeError),
     /// Invalid deploy item variant.
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),

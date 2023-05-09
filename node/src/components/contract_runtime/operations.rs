@@ -1,14 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
 
 use itertools::Itertools;
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::{
     core::{
         engine_state::{
             self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry,
             DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-            GetEraValidatorsRequest, RewardItem, StepError, StepRequest, StepSuccess,
+            GetEraValidatorsRequest, PruneConfig, PruneResult, RewardItem, StepError, StepRequest,
+            StepSuccess,
         },
         execution,
     },
@@ -36,6 +37,56 @@ use crate::{
     },
 };
 
+fn generate_range_by_index(
+    highest_era: u64,
+    batch_size: u64,
+    batch_index: u64,
+) -> Option<Range<u64>> {
+    let start = batch_index.checked_mul(batch_size)?;
+    let end = cmp::min(start.checked_add(batch_size)?, highest_era);
+    Some(start..end)
+}
+
+/// Calculates era keys to be pruned.
+///
+/// Outcomes:
+/// * Ok(Some(range)) -- these keys should be pruned
+/// * Ok(None) -- nothing to do, either done, or there is not enough eras to prune
+fn calculate_prune_eras(
+    activation_era_id: EraId,
+    activation_height: u64,
+    current_height: u64,
+    batch_size: u64,
+) -> Option<Vec<Key>> {
+    if batch_size == 0 {
+        // Nothing to do, the batch size is 0.
+        return None;
+    }
+
+    let nth_chunk: u64 = match current_height.checked_sub(activation_height) {
+        Some(nth_chunk) => nth_chunk,
+        None => {
+            // Time went backwards, programmer error, etc
+            error!(
+                %activation_era_id,
+                activation_height,
+                current_height,
+                batch_size,
+                "unable to calculate eras to prune (activation height higher than the block height)"
+            );
+            panic!("activation height higher than the block height");
+        }
+    };
+
+    let range = generate_range_by_index(activation_era_id.value(), batch_size, nth_chunk)?;
+
+    if range.is_empty() {
+        return None;
+    }
+
+    Some(range.map(EraId::new).map(Key::EraInfo).collect())
+}
+
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
@@ -45,6 +96,9 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
+    activation_point_era_id: EraId,
+    key_block_height_for_activation_point: u64,
+    prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -175,8 +229,77 @@ pub fn execute_finalized_block(
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
 
-    let proof_of_checksum_registry =
-        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
+    // Pruning
+    if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
+        match calculate_prune_eras(
+            activation_point_era_id,
+            key_block_height_for_activation_point,
+            previous_block_height,
+            prune_batch_size,
+        ) {
+            Some(keys_to_prune) => {
+                let first_key = keys_to_prune.first().copied();
+                let last_key = keys_to_prune.last().copied();
+                info!(
+                    previous_block_height,
+                    %key_block_height_for_activation_point,
+                    %state_root_hash,
+                    first_key=?first_key,
+                    last_key=?last_key,
+                    "commit prune: preparing prune config"
+                );
+                let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
+                match engine_state.commit_prune(CorrelationId::new(), prune_config) {
+                    Ok(PruneResult::RootNotFound) => {
+                        error!(
+                            previous_block_height,
+                            %state_root_hash,
+                            "commit prune: root not found"
+                        );
+                        panic!(
+                            "Root {} not found while performing a prune.",
+                            state_root_hash
+                        );
+                    }
+                    Ok(PruneResult::DoesNotExist) => {
+                        warn!(
+                            previous_block_height,
+                            %state_root_hash,
+                            "commit prune: key does not exist"
+                        );
+                    }
+                    Ok(PruneResult::Success { post_state_hash }) => {
+                        info!(
+                            previous_block_height,
+                            %key_block_height_for_activation_point,
+                            %state_root_hash,
+                            %post_state_hash,
+                            first_key=?first_key,
+                            last_key=?last_key,
+                            "commit prune: success"
+                        );
+                        state_root_hash = post_state_hash;
+                    }
+                    Err(error) => {
+                        error!(
+                            previous_block_height,
+                            %key_block_height_for_activation_point,
+                            %error,
+                            "commit prune: commit prune error"
+                        );
+                        return Err(error.into());
+                    }
+                }
+            }
+            None => {
+                debug!(
+                    previous_block_height,
+                    %key_block_height_for_activation_point,
+                    "commit prune: nothing to do, no more eras to delete"
+                );
+            }
+        }
+    }
 
     let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators
@@ -191,6 +314,7 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
+
     let block = Arc::new(Block::new(
         parent_hash,
         parent_seed,
@@ -204,6 +328,8 @@ pub fn execute_finalized_block(
         .into_iter()
         .map(|id| id.destructure().1)
         .collect();
+    let proof_of_checksum_registry =
+        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
     let approvals_hashes = Box::new(ApprovalsHashes::new(
         block.hash(),
         approvals_hashes,
@@ -419,4 +545,360 @@ fn compute_execution_results_checksum(
     execution_results
         .hash()
         .map_err(BlockCreationError::BytesRepr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calculation_is_safe_with_invalid_input() {
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 5,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
+        assert_eq!(
+            calculate_prune_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),
+            None
+        );
+    }
+
+    #[test]
+    fn calculation_is_lazy() {
+        // NOTE: Range of EraInfos is lazy, so it does not consume memory, but getting the last
+        // batch out of u64::MAX of erainfos needs to iterate over all chunks.
+        assert!(calculate_prune_eras(EraId::new(u64::MAX), 0, u64::MAX, 100,).is_none(),);
+        assert_eq!(
+            calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100,)
+                .unwrap()
+                .len(),
+            100
+        );
+    }
+
+    #[test]
+    fn should_calculate_prune_eras() {
+        let activation_height = 50;
+        let current_height = 50;
+        const ACTIVATION_POINT_ERA_ID: EraId = EraId::new(5);
+
+        // batch size 1
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                1
+            ),
+            Some(vec![Key::EraInfo(EraId::new(0))])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                1
+            ),
+            Some(vec![Key::EraInfo(EraId::new(1))])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                1
+            ),
+            Some(vec![Key::EraInfo(EraId::new(2))])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 3,
+                1
+            ),
+            Some(vec![Key::EraInfo(EraId::new(3))])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 4,
+                1
+            ),
+            Some(vec![Key::EraInfo(EraId::new(4))])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 5,
+                1
+            ),
+            None,
+        );
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 1),
+            None,
+        );
+
+        // batch size 2
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                2
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(0)),
+                Key::EraInfo(EraId::new(1))
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                2
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(2)),
+                Key::EraInfo(EraId::new(3))
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                2
+            ),
+            Some(vec![Key::EraInfo(EraId::new(4))])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 3,
+                2
+            ),
+            None
+        );
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 2),
+            None,
+        );
+
+        // batch size 3
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                3
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(0)),
+                Key::EraInfo(EraId::new(1)),
+                Key::EraInfo(EraId::new(2)),
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                3
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(3)),
+                Key::EraInfo(EraId::new(4)),
+            ])
+        );
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                3
+            ),
+            None
+        );
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 3),
+            None,
+        );
+
+        // batch size 4
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                4
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(0)),
+                Key::EraInfo(EraId::new(1)),
+                Key::EraInfo(EraId::new(2)),
+                Key::EraInfo(EraId::new(3)),
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                4
+            ),
+            Some(vec![Key::EraInfo(EraId::new(4)),])
+        );
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                4
+            ),
+            None
+        );
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 4),
+            None,
+        );
+
+        // batch size 5
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                5
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(0)),
+                Key::EraInfo(EraId::new(1)),
+                Key::EraInfo(EraId::new(2)),
+                Key::EraInfo(EraId::new(3)),
+                Key::EraInfo(EraId::new(4)),
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                5
+            ),
+            None,
+        );
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                5
+            ),
+            None
+        );
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 5),
+            None,
+        );
+
+        // batch size 6
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                6
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(0)),
+                Key::EraInfo(EraId::new(1)),
+                Key::EraInfo(EraId::new(2)),
+                Key::EraInfo(EraId::new(3)),
+                Key::EraInfo(EraId::new(4)),
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                6
+            ),
+            None,
+        );
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                6
+            ),
+            None
+        );
+        assert_eq!(
+            calculate_prune_eras(ACTIVATION_POINT_ERA_ID, activation_height, u64::MAX, 6),
+            None,
+        );
+
+        // batch size max
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height,
+                u64::MAX,
+            ),
+            Some(vec![
+                Key::EraInfo(EraId::new(0)),
+                Key::EraInfo(EraId::new(1)),
+                Key::EraInfo(EraId::new(2)),
+                Key::EraInfo(EraId::new(3)),
+                Key::EraInfo(EraId::new(4)),
+            ])
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 1,
+                u64::MAX,
+            ),
+            None,
+        );
+
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                current_height + 2,
+                u64::MAX,
+            ),
+            None
+        );
+        assert_eq!(
+            calculate_prune_eras(
+                ACTIVATION_POINT_ERA_ID,
+                activation_height,
+                u64::MAX,
+                u64::MAX,
+            ),
+            None,
+        );
+    }
 }

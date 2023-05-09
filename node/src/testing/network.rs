@@ -11,13 +11,14 @@ use std::{
     time::Duration,
 };
 
-use casper_types::testing::TestRng;
 use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
 use tokio::time;
 use tracing::{debug, error_span, field, Span};
 use tracing_futures::Instrument;
+
+use casper_types::testing::TestRng;
 
 use super::ConditionCheckReactor;
 use crate::{

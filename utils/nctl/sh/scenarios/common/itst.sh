@@ -53,26 +53,6 @@ function log_step() {
     STEP=$((STEP + 1))
 }
 
-function do_await_genesis_era_to_complete() {
-    local LOG_STEP=${1:-'true'}
-    local TIMEOUT=${2:-'120'}
-
-    if [ "$LOG_STEP" = "true" ]; then
-        log_step "awaiting genesis era to complete: timeout=$TIMEOUT"
-    fi
-
-    while [ "$(get_chain_era)" -lt "1" ]; do
-        sleep 1.0
-        TIMEOUT=$((TIMEOUT-1))
-        if [ "$TIMEOUT" = '0' ]; then
-            log "ERROR: Timed out before genesis era completed"
-            exit 1
-        else
-            log "... waiting for genesis era to complete: timeout=$TIMEOUT"
-        fi
-    done
-}
-
 function do_wait_until_era() {
     local WAIT_FOR_ERA=${1}
     local LOG_STEP=${2:-'true'}
@@ -149,6 +129,35 @@ function get_reactor_state() {
     echo "$REACTOR_STATE"
 }
 
+function parallel_check_nodes_1_to_5_sync() {
+    local ALL_HASHES
+    local UNIQUE_HASH_COUNT
+    local TIMEOUT_SEC=${1-300}
+    local ATTEMPTS=0
+    
+    while [ "$ATTEMPTS" -le "$TIMEOUT_SEC" ]; do
+        ALL_HASHES=$(get_chain_latest_block_hash 1 & \
+                     get_chain_latest_block_hash 2 & \
+                     get_chain_latest_block_hash 3 & \
+                     get_chain_latest_block_hash 4 & \
+                     get_chain_latest_block_hash 5 & \
+                     wait)
+        log "All hashes:\n$ALL_HASHES"
+        UNIQUE_HASH_COUNT=$(echo $ALL_HASHES | sort | uniq | wc -l)
+        log "Unique hashes count: $UNIQUE_HASH_COUNT"
+        if [ "$UNIQUE_HASH_COUNT" -eq 1 ]; then
+            log "nodes 1 to 5 in sync, proceeding..."
+            nctl-view-chain-height
+            break
+        fi
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [ "$ATTEMPTS" -lt "$TIMEOUT_SEC" ]; then
+            sleep 1
+            log "attempt $ATTEMPTS out of $TIMEOUT_SEC..."
+        fi
+    done
+}
+
 function check_network_sync() {
     local WAIT_TIME_SEC=0
     local FIRST_NODE=${1:-1}
@@ -167,6 +176,7 @@ function check_network_sync() {
         for i in $(eval echo "{$FIRST_NODE..$LAST_NODE}")
         do
             ALL_LFBS[$index]=$(do_read_lfb_hash $i)
+            log "got LFB of node $i"
             index=$((index + 1))
         done
 
@@ -176,6 +186,7 @@ function check_network_sync() {
         for i in $(eval echo "{0..$((LFB_COUNT - 1))}")
         do
             if [[ "$BASE_LFB" != "${ALL_LFBS[$i]}" ]]; then
+                log "not all LFBs equal, will try again"
                 ALL_EQUAL=0
                 break
             fi
@@ -546,4 +557,17 @@ function assert_new_bonded_validator() {
       echo "Could not find key in bids"
       exit 1
     fi
+}
+
+function delegate_to() {
+    local NODE_ID=${1}
+    local ACCOUNT_ID=${2}
+    local AMOUNT=${3}
+
+    log_step "Delegating $AMOUNT from account-$ACCOUNT_ID to validator-$NODE_ID"
+
+    source "$NCTL/sh/contracts-auction/do_delegate.sh" \
+        amount="$AMOUNT" \
+        delegator="$ACCOUNT_ID" \
+        validator="$NODE_ID"
 }

@@ -25,7 +25,8 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, StoredValue, URef, U512,
+    testing::TestRng,
+    CLValue, EraId, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -37,7 +38,7 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
         requests::{
-            BlockCompleteConfirmationRequest, ContractRuntimeRequest, MakeBlockExecutableRequest,
+            ContractRuntimeRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
             NetworkRequest,
         },
         Responder,
@@ -85,8 +86,8 @@ impl From<MakeBlockExecutableRequest> for Event {
     }
 }
 
-impl From<BlockCompleteConfirmationRequest> for Event {
-    fn from(request: BlockCompleteConfirmationRequest) -> Self {
+impl From<MarkBlockCompletedRequest> for Event {
+    fn from(request: MarkBlockCompletedRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
     }
 }
@@ -441,6 +442,7 @@ impl reactor::Reactor for Reactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
             "test",
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
@@ -689,8 +691,10 @@ fn schedule_accept_deploy(
 fn inject_balance_check_for_peer(
     deploy: Box<Deploy>,
     source: Source,
+    rng: &mut TestRng,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    let block_header = Box::new(Block::random(rng).header().clone());
     |effect_builder: EffectBuilder<Event>| {
         let event_metadata = Box::new(EventMetadata::new(deploy, source, Some(responder)));
         effect_builder
@@ -698,7 +702,7 @@ fn inject_balance_check_for_peer(
             .schedule(
                 super::Event::GetBalanceResult {
                     event_metadata,
-                    prestate_hash: Default::default(),
+                    block_header,
                     maybe_balance_value: None,
                     account_hash: Default::default(),
                     verification_start_timestamp: Timestamp::now(),
@@ -776,6 +780,7 @@ async fn run_deploy_acceptor_without_timeout(
                 .process_injected_effects(inject_balance_check_for_peer(
                     fatal_deploy,
                     source.clone(),
+                    &mut rng,
                     deploy_responder,
                 ))
                 .await;

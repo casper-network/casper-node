@@ -9,6 +9,7 @@ const DEFAULT_PAY_COST: u32 = 10_000;
 
 /// Description of the costs of calling standard payment entry points.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct StandardPaymentCosts {
     /// Cost of calling the `pay` entry point.
     pub pay: u32,

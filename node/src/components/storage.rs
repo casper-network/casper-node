@@ -82,8 +82,7 @@ use crate::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
         requests::{
-            BlockCompleteConfirmationRequest, MakeBlockExecutableRequest, NetworkRequest,
-            StorageRequest,
+            MakeBlockExecutableRequest, MarkBlockCompletedRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -199,6 +198,10 @@ pub struct Storage {
     deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
+    /// The activation point era of the current protocol version.
+    activation_era: EraId,
+    /// The height of the final switch block of the previous protocol version.
+    key_block_height_for_activation_point: Option<u64>,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
@@ -223,9 +226,9 @@ pub(crate) enum Event {
     StorageRequest(Box<StorageRequest>),
     /// Incoming net request.
     NetRequestIncoming(Box<NetRequestIncoming>),
-    /// Block completion announcement.
+    /// Mark block completed request.
     #[from]
-    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     /// Make block executable request.
     #[from]
     MakeBlockExecutableRequest(Box<MakeBlockExecutableRequest>),
@@ -268,6 +271,28 @@ pub(crate) enum HighestOrphanedBlockResult {
     MissingFromBlockHeightIndex(u64),
     Orphan(BlockHeader),
     MissingHeader(BlockHash),
+}
+
+impl Display for HighestOrphanedBlockResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            HighestOrphanedBlockResult::MissingHighestSequence => {
+                write!(f, "missing highest sequence")
+            }
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(height) => {
+                write!(f, "height not found in block height index: {}", height)
+            }
+            HighestOrphanedBlockResult::Orphan(block_header) => write!(
+                f,
+                "orphan, height={}, hash={}",
+                block_header.height(),
+                block_header.block_hash()
+            ),
+            HighestOrphanedBlockResult::MissingHeader(block_hash) => {
+                write!(f, "missing header for block hash: {}", block_hash)
+            }
+        }
+    }
 }
 
 impl<REv> Component<REv> for Storage
@@ -332,6 +357,7 @@ impl Storage {
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
+        activation_era: EraId,
         network_name: &str,
         max_ttl: TimeDiff,
         recent_era_count: u64,
@@ -483,6 +509,8 @@ impl Storage {
             switch_block_era_id_index,
             deploy_hash_index,
             completed_blocks: Default::default(),
+            activation_era,
+            key_block_height_for_activation_point: None,
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
@@ -1154,16 +1182,32 @@ impl Storage {
             } => responder
                 .respond(self.put_executed_block(&block, &approvals_hashes, execution_results)?)
                 .ignore(),
+            StorageRequest::GetKeyBlockHeightForActivationPoint { responder } => {
+                // If we haven't already cached the height, try to retrieve the key block header.
+                if self.key_block_height_for_activation_point.is_none() {
+                    let mut txn = self.env.begin_ro_txn()?;
+                    let key_block_era = self.activation_era.predecessor().unwrap_or_default();
+                    let key_block_header =
+                        match self.get_switch_block_header_by_era_id(&mut txn, key_block_era)? {
+                            Some(block_header) => block_header,
+                            None => return Ok(responder.respond(None).ignore()),
+                        };
+                    self.key_block_height_for_activation_point = Some(key_block_header.height());
+                }
+                responder
+                    .respond(self.key_block_height_for_activation_point)
+                    .ignore()
+            }
         })
     }
 
     /// Handles a [`BlockCompletedAnnouncement`].
     fn handle_mark_block_completed_request(
         &mut self,
-        BlockCompleteConfirmationRequest {
+        MarkBlockCompletedRequest {
             block_height,
             responder,
-        }: BlockCompleteConfirmationRequest,
+        }: MarkBlockCompletedRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         let is_new = self.mark_block_complete(block_height)?;
         Ok(responder.respond(is_new).ignore())

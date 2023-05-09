@@ -51,22 +51,31 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> (Duration, Effects<MainEvent>) {
+        const INITIALIZATION_DELAY_SPEED_UP_FACTOR: u64 = 4;
+
         match self.state {
-            ReactorState::Initialize => match self.initialize_next_component(effect_builder) {
-                Some(effects) => (self.control_logic_default_delay.into(), effects),
-                None => {
-                    if false == self.net.has_sufficient_fully_connected_peers() {
-                        info!("Initialize: awaiting sufficient fully-connected peers");
-                        return (self.control_logic_default_delay.into(), Effects::new());
+            ReactorState::Initialize => {
+                // We can be more greedy when cranking through the initialization process as the
+                // progress is expected to happen quickly.
+                let initialization_logic_default_delay =
+                    self.control_logic_default_delay / INITIALIZATION_DELAY_SPEED_UP_FACTOR;
+
+                match self.initialize_next_component(effect_builder) {
+                    Some(effects) => (initialization_logic_default_delay.into(), effects),
+                    None => {
+                        if false == self.net.has_sufficient_fully_connected_peers() {
+                            info!("Initialize: awaiting sufficient fully-connected peers");
+                            return (initialization_logic_default_delay.into(), Effects::new());
+                        }
+                        if let Err(msg) = self.refresh_contract_runtime() {
+                            return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
+                        }
+                        info!("Initialize: switch to CatchUp");
+                        self.state = ReactorState::CatchUp;
+                        (Duration::ZERO, Effects::new())
                     }
-                    if let Err(msg) = self.refresh_contract_runtime() {
-                        return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
-                    }
-                    info!("Initialize: switch to CatchUp");
-                    self.state = ReactorState::CatchUp;
-                    (Duration::ZERO, Effects::new())
                 }
-            },
+            }
             ReactorState::Upgrading => match self.upgrading_instruction() {
                 UpgradingInstruction::CheckLater(msg, wait) => {
                     debug!("Upgrading: {}", msg);
@@ -389,7 +398,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         info!("{:?}: committing upgrade", self.state);
-        let previous_block_header = match &self.switch_block {
+        let previous_block_header = match &self.switch_block_header {
             None => {
                 return Err("switch_block should be Some".to_string());
             }
@@ -462,7 +471,7 @@ impl MainReactor {
     }
 
     pub(super) fn should_commit_upgrade(&self) -> bool {
-        let highest_switch_block_header = match &self.switch_block {
+        let highest_switch_block_header = match &self.switch_block_header {
             None => {
                 return false;
             }
@@ -552,7 +561,7 @@ impl MainReactor {
                 Ok(highest_switch_block_header) => highest_switch_block_header,
                 Err(err) => return Err(err.to_string()),
             };
-        self.switch_block = maybe_highest_switch_block_header.first().cloned();
+        self.switch_block_header = maybe_highest_switch_block_header.first().cloned();
         Ok(())
     }
 }

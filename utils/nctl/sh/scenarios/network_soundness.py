@@ -5,8 +5,8 @@ import os
 import random
 import re
 import subprocess
-import sys
 import threading
+import toml
 from time import sleep
 
 # How long to keep the test running (assuming errorless run)
@@ -14,7 +14,11 @@ TEST_DURATION_SECS = 30 * 60
 
 # Wasm transfers
 DEPLOY_SPAM_INTERVAL_SECS = 3 * 60
-DEPLOY_SPAM_COUNT = 300
+DEPLOY_SPAM_COUNT = 600
+
+# Named keys bloat
+HUGE_DEPLOY_SPAM_INTERVAL_SECS = 60
+HUGE_DEPLOY_SPAM_COUNT = 2
 
 # How long to wait between invoking disturbance scenarios
 DISTURBANCE_INTERVAL_SECS = 5
@@ -24,6 +28,9 @@ PROGRESS_WAIT_TIMEOUT_SECS = 2 * 60
 
 invoke_lock = threading.Lock()
 current_node_count = 5
+path_to_client = ""
+huge_deploy_path = "./utils/nctl/sh/scenarios/smart_contracts/named_keys_bloat.wasm"
+huge_deploy_payment_amount = 10000000000000000
 
 
 # Kill a random node, wait one minute, restart node
@@ -54,12 +61,20 @@ def log(msg):
     return
 
 
-def invoke(command):
+def invoke(command, quiet=False):
+    if not quiet:
+        log("invoking command: {}".format(command))
     invoke_lock.acquire()
-    result = subprocess.check_output(['/bin/bash', '-i', '-c',
-                                      command]).decode("utf-8").rstrip()
-    invoke_lock.release()
-    return result
+    try:
+        result = subprocess.check_output(['/bin/bash', '-i', '-c',
+                                          command]).decode("utf-8").rstrip()
+        return result
+    except subprocess.CalledProcessError as e:
+        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
+            )
+        return ""
+    finally:
+        invoke_lock.release()
 
 
 def compile_node():
@@ -70,13 +85,22 @@ def compile_node():
 
 def start_network():
     log("*** starting network ***")
-    command = "nctl-assets-teardown && nctl-assets-setup && RUST_LOG=debug nctl-start"
+    command = "nctl-assets-teardown && nctl-assets-setup"
+    invoke(command)
+
+    for node in range(1, 11):
+        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(node)
+        chainspec = toml.load(path_to_chainspec)
+        chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
+        toml.dump(chainspec, open(path_to_chainspec, 'w'))
+
+    command = "RUST_LOG=debug nctl-start"
     invoke(command)
 
 
 def get_chain_height(node):
     command = "nctl-view-chain-height node={}".format(node)
-    result = invoke(command)
+    result = invoke(command, True)
     m = re.match(r'.* = ([0-9]*)', result)
     if m and m.group(1):
         return int(m.group(1))
@@ -113,16 +137,34 @@ def deploy_sender_thread(count, interval):
     while True:
         for i in range(count):
             nctl_call = command.format(random.randint(1, current_node_count))
-            invoke(nctl_call)
+            invoke(nctl_call, True)
         log("sent " + str(count) + " deploys and sleeping " + str(interval) +
             " seconds")
         sleep(interval)
     return
 
 
+def huge_deploy_sender_thread(count, interval):
+    global current_node_count
+
+    while True:
+        for i in range(count):
+            random_node = random.randint(1, current_node_count)
+            huge_deploy_path = make_huge_deploy(random_node)
+            command = "{} send-deploy --input {} --node-address http://{} > /dev/null 2>&1".format(
+                path_to_client, huge_deploy_path,
+                get_node_rpc_endpoint(random_node))
+            invoke(command)
+
+        log("sent " + str(count) + " huge deploys and sleeping " +
+            str(interval) + " seconds")
+        sleep(interval)
+    return
+
+
 def get_node_rpc_endpoint(node):
     command = "nctl-view-node-ports node={}".format(node)
-    result = invoke(command)
+    result = invoke(command, True)
     m = re.match(r'.*RPC @ (\d*).*', result)
     if m and m.group(1):
         return "localhost:{}/rpc/".format(int(m.group(1)))
@@ -139,10 +181,50 @@ def start_sending_deploys():
     return handle
 
 
+def start_sending_huge_deploys():
+    log("*** starting sending huge deploys ***")
+    handle = threading.Thread(target=huge_deploy_sender_thread,
+                              args=(HUGE_DEPLOY_SPAM_COUNT,
+                                    HUGE_DEPLOY_SPAM_INTERVAL_SECS))
+    handle.daemon = True
+    handle.start()
+    return handle
+
+
 def test_timer_thread(secs):
     sleep(secs)
-    log("*** " + str(secs) + " secs passed - finishing test ***")
+    log("*** " + str(secs) + " secs passed - running health checks ***")
+    run_health_checks()
+    log("*** test finished successfully ***")
+    invoke("nctl-stop")
     os._exit(0)
+
+
+def run_health_checks():
+    global current_node_count
+    logs_with_chunk_indicator = 0
+    for node in range(1, 11):
+        chunk_indicator_found = False
+        path_to_logs = "./utils/nctl/assets/net-1/nodes/node-{}/logs".format(
+            node)
+        for filename in os.listdir(path_to_logs):
+            if filename != "stderr.log":
+                handle = open(path_to_logs + "/" + filename, "r")
+                for line in handle:
+                    if re.search("chunk #3", line):
+                        chunk_indicator_found = True
+                handle.close()
+        if not chunk_indicator_found:
+            log("*** didn't find 'chunk #3' in log files of node {} ***".
+                format(node))
+        else:
+            log("*** found 'chunk #3' in log files of node {} ***".format(
+                node))
+            logs_with_chunk_indicator += 1
+
+    if logs_with_chunk_indicator == 0:
+        log("*** at least one node should have chunking indicator in logs ***")
+        os._exit(1)
     return
 
 
@@ -154,12 +236,33 @@ def start_test_timer(secs):
     return handle
 
 
+def make_huge_deploy(node):
+    log("*** creating huge deploy ***")
+
+    secret_key = "./utils/nctl/assets/net-1/nodes/node-{}/keys/secret_key.pem".format(
+        node)
+    session_path = "./utils/nctl/sh/scenarios/smart_contracts/named_keys_bloat.wasm"
+    output = "./target/named_keys_bloat_deploy.json"
+    chain_name = "casper-net-1"
+    ttl = "5minutes"
+
+    if os.path.exists(output):
+        os.remove(output)
+    command = "{} make-deploy --output {} --chain-name {} --payment-amount {} --ttl {} --secret-key {} --session-path {} > /dev/null 2>&1".format(
+        path_to_client, output, chain_name, huge_deploy_payment_amount, ttl, secret_key,
+        session_path)
+    invoke(command)
+    return output
+
+
 def prepare_test_env():
     compile_node()
     start_network()
     wait_for_height(2)
     timer_thread = start_test_timer(TEST_DURATION_SECS)
     deploy_sender_handle = start_sending_deploys()
+    huge_deploy_sender_handle = start_sending_huge_deploys()
+    return
 
 
 def stop_node(node):
@@ -230,7 +333,10 @@ def join_node(current_node_count):
     return current_node_count
 
 
+path_to_client = invoke("get_path_to_client")
+
 prepare_test_env()
+
 while True:
     disturbance_1(current_node_count)
     assert_network_is_progressing(current_node_count)

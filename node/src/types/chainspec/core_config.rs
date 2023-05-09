@@ -15,7 +15,7 @@ use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS,
-    TimeDiff,
+    ProtocolVersion, TimeDiff,
 };
 use tracing::{error, warn};
 
@@ -40,7 +40,13 @@ pub struct CoreConfig {
     #[data_size(skip)]
     pub finality_threshold_fraction: Ratio<u64>,
 
+    /// Protocol version from which nodes are required to hold strict finality signatures.
+    pub start_protocol_version_with_strict_finality_signatures_required: ProtocolVersion,
+
     /// Which finality is required for legacy blocks.
+    /// Used to determine finality sufficiency for new joiners syncing blocks created
+    /// in a protocol version before
+    /// `start_protocol_version_with_strict_finality_signatures_required`.
     pub legacy_required_finality: LegacyRequiredFinality,
 
     /// Number of eras before an auction actually defines the set of validators.
@@ -70,6 +76,9 @@ pub struct CoreConfig {
     /// The minimum bound of motes that can be delegated to a validator.
     pub minimum_delegation_amount: u64,
 
+    /// Global state prune batch size (0 means the feature is off in the current protocol version).
+    pub prune_batch_size: u64,
+
     /// Enables strict arguments checking when calling a contract.
     pub strict_argument_checking: bool,
 
@@ -78,6 +87,10 @@ pub struct CoreConfig {
 
     /// Which consensus protocol to use.
     pub consensus_protocol: ConsensusProtocolName,
+
+    /// The maximum amount of delegators per validator.
+    /// if the value is 0, there is no maximum capacity.
+    pub max_delegators_per_validator: u32,
 }
 
 impl CoreConfig {
@@ -140,6 +153,8 @@ impl CoreConfig {
         let minimum_block_time = TimeDiff::from_seconds(rng.gen_range(1..60));
         let validator_slots = rng.gen_range(1..10_000);
         let finality_threshold_fraction = Ratio::new(rng.gen_range(1..100), 100);
+        let start_protocol_version_with_strict_finality_signatures_required =
+            ProtocolVersion::from_parts(1, rng.gen_range(5..10), rng.gen_range(0..100));
         let legacy_required_finality = rng.gen();
         let auction_delay = rng.gen_range(1..5);
         let locked_funds_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
@@ -152,6 +167,7 @@ impl CoreConfig {
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
+        let prune_batch_size = rng.gen_range(0..100);
         let strict_argument_checking = rng.gen();
         let simultaneous_peer_requests = rng.gen_range(3..100);
         let consensus_protocol = rng.gen();
@@ -162,6 +178,7 @@ impl CoreConfig {
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            start_protocol_version_with_strict_finality_signatures_required,
             legacy_required_finality,
             auction_delay,
             locked_funds_period,
@@ -171,9 +188,11 @@ impl CoreConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            prune_batch_size,
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            max_delegators_per_validator: 0,
         }
     }
 }
@@ -186,6 +205,10 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.minimum_block_time.to_bytes()?);
         buffer.extend(self.validator_slots.to_bytes()?);
         buffer.extend(self.finality_threshold_fraction.to_bytes()?);
+        buffer.extend(
+            self.start_protocol_version_with_strict_finality_signatures_required
+                .to_bytes()?,
+        );
         buffer.extend(self.legacy_required_finality.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
@@ -195,9 +218,11 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_associated_keys.to_bytes()?);
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
+        buffer.extend(self.prune_batch_size.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
         buffer.extend(self.consensus_protocol.to_bytes()?);
+        buffer.extend(self.max_delegators_per_validator.to_bytes()?);
         Ok(buffer)
     }
 
@@ -207,6 +232,9 @@ impl ToBytes for CoreConfig {
             + self.minimum_block_time.serialized_length()
             + self.validator_slots.serialized_length()
             + self.finality_threshold_fraction.serialized_length()
+            + self
+                .start_protocol_version_with_strict_finality_signatures_required
+                .serialized_length()
             + self.legacy_required_finality.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
@@ -216,9 +244,11 @@ impl ToBytes for CoreConfig {
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
+            + self.prune_batch_size.serialized_length()
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
             + self.consensus_protocol.serialized_length()
+            + self.max_delegators_per_validator.serialized_length()
     }
 }
 
@@ -229,6 +259,8 @@ impl FromBytes for CoreConfig {
         let (minimum_block_time, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_slots, remainder) = u32::from_bytes(remainder)?;
         let (finality_threshold_fraction, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (start_protocol_version_with_strict_finality_signatures_required, remainder) =
+            ProtocolVersion::from_bytes(remainder)?;
         let (legacy_required_finality, remainder) = LegacyRequiredFinality::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
@@ -238,15 +270,18 @@ impl FromBytes for CoreConfig {
         let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
+        let (prune_batch_size, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
+        let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
             minimum_block_time,
             validator_slots,
             finality_threshold_fraction,
+            start_protocol_version_with_strict_finality_signatures_required,
             legacy_required_finality,
             auction_delay,
             locked_funds_period,
@@ -256,9 +291,11 @@ impl FromBytes for CoreConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            prune_batch_size,
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            max_delegators_per_validator,
         };
         Ok((config, remainder))
     }
