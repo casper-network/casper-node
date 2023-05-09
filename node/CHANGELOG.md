@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## [Unreleased]
+## 1.5.0-rc.1
 
 ### Added
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
