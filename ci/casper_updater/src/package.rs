@@ -1,12 +1,10 @@
 use std::{
-    convert::TryFrom,
     io::{self, Write},
     path::Path,
 };
 
 use regex::Regex;
-
-use casper_types::SemVer;
+use semver::Version;
 
 use crate::{
     dependent_file::DependentFile,
@@ -24,7 +22,7 @@ pub struct Package {
     /// This package's name as specified in its manifest.
     name: String,
     /// This package's current version as specified in its manifest.
-    current_version: SemVer,
+    current_version: Version,
     /// Files which must be updated if this package's version is changed, including this package's
     /// own manifest file.  The other files will often be from a different package.
     dependent_files: &'static Vec<DependentFile>,
@@ -127,7 +125,7 @@ impl Package {
 
         let name = find_value(T::name_regex());
         let version = find_value(T::version_regex());
-        let current_version = SemVer::try_from(&*version).expect("should parse current version");
+        let current_version = Version::parse(&version).expect("should parse current version");
 
         Package {
             name,
@@ -143,7 +141,7 @@ impl Package {
                 self.name, self.current_version
             );
             if let Some(bump_version) = crate::bump_version() {
-                let updated_version = bump_version.update(self.current_version);
+                let updated_version = bump_version.update(&self.current_version);
                 println!("Will be updated to {}", updated_version);
             }
             println!("Files affected by this package's version:");
@@ -155,11 +153,11 @@ impl Package {
         }
 
         let updated_version = match crate::bump_version() {
-            None => match get_updated_version_from_user(&self.name, self.current_version) {
+            None => match get_updated_version_from_user(&self.name, &self.current_version) {
                 Some(version) => version,
                 None => return,
             },
-            Some(bump_version) => bump_version.update(self.current_version),
+            Some(bump_version) => bump_version.update(&self.current_version),
         };
 
         for dependent_file in self.dependent_files {
@@ -173,7 +171,7 @@ impl Package {
     }
 }
 
-pub fn get_updated_version_from_user(name: &str, current_version: SemVer) -> Option<SemVer> {
+pub fn get_updated_version_from_user(name: &str, current_version: &Version) -> Option<Version> {
     loop {
         print!(
             "Current {} version is {}.  Enter new version (leave blank for unchanged): ",
@@ -188,7 +186,7 @@ pub fn get_updated_version_from_user(name: &str, current_version: SemVer) -> Opt
                     return None;
                 }
 
-                let new_version = match SemVer::try_from(&*input) {
+                let new_version = match Version::parse(&input) {
                     Ok(version) => version,
                     Err(error) => {
                         println!("\n{} is not a valid version: {}.", input, error);
@@ -196,7 +194,7 @@ pub fn get_updated_version_from_user(name: &str, current_version: SemVer) -> Opt
                     }
                 };
 
-                if new_version < current_version {
+                if new_version < *current_version {
                     println!(
                         "Updated version ({}) is lower than current version ({})",
                         new_version, current_version
@@ -208,7 +206,7 @@ pub fn get_updated_version_from_user(name: &str, current_version: SemVer) -> Opt
                     }
                 }
 
-                return if new_version == current_version {
+                return if new_version == *current_version {
                     None
                 } else {
                     Some(new_version)

@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 2.0.0
+
+### Added
+* Add `ChunkWithProof` to support chunking of large values, and associated Merkle-proofs of these.
+
+
+
 ## 1.4.4
 
 ### Changed

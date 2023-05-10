@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 3.0.0
 
 ### Added
 * Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
@@ -25,7 +25,7 @@ All notable changes to this project will be documented in this file.  The format
 * Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 * Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "contract-package-". Parsing from the old format is still supported.
-* Applied `#[non_exhaustive]` to error enums.
+* Apply `#[non_exhaustive]` to error enums.
 * Change Debug output of `DeployHash` to hex-encoded string rather than a list of integers.
 
 ### Fixed
@@ -36,7 +36,7 @@ All notable changes to this project will be documented in this file.  The format
 ## 2.0.0
 
 ### Fixed
-* Republished v1.6.0 as v2.0.0 due to missed breaking change in API (addition of new variant to `Key`).
+* Republish v1.6.0 as v2.0.0 due to missed breaking change in API (addition of new variant to `Key`).
 
 
 

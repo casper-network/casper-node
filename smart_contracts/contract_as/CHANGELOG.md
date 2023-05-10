@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 1.5.0-rc.1
 
 ### Added
 * Add `casper_random_bytes` function.

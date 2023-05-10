@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 5.0.0
 
 ### Added
 * Add `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
@@ -22,9 +22,6 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
-
-### Deprecated
-* Deprecate the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
 
 
@@ -69,7 +66,9 @@ All notable changes to this project will be documented in this file.  The format
 * Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
 
 ### Deprecated
-* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
+* Deprecated the `DEFAULT_RUN_GENESIS_REQUEST` in favor of `PRODUCTION_RUN_GENESIS_REQUEST`.
+
+
 
 ## 2.1.0
 
