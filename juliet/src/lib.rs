@@ -33,18 +33,38 @@ pub enum Frame<'a> {
         unverified_channel: u8,
         payload: Option<&'a [u8]>,
     },
+    RequestCancellation {
+        id: RequestId,
+        channel: ChannelId,
+    },
 }
 
 #[derive(Debug)]
 pub struct Receiver<const N: usize> {
     channels: [Channel; N],
-    request_limits: [usize; N],
+    request_limits: [u64; N], // TODO: Consider moving to `Channel`, see also: `increase_cancellation_allowance)`.
     frame_size_limit: u32,
 }
 
 #[derive(Debug)]
 struct Channel {
     pending: BTreeSet<RequestId>,
+    cancellation_allowance: u64, // TODO: Upper bound by max request in flight?
+}
+
+impl Channel {
+    fn increase_cancellation_allowance(&mut self, request_limit: u64) {
+        self.cancellation_allowance = (self.cancellation_allowance + 1).min(request_limit);
+    }
+
+    fn attempt_cancellation(&mut self) -> bool {
+        if self.cancellation_allowance > 0 {
+            self.cancellation_allowance -= 1;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl<const N: usize> Receiver<N> {
@@ -62,6 +82,10 @@ impl<const N: usize> Receiver<N> {
         match header.flags {
             HeaderFlags::ZeroSizedRequest => {
                 let channel = self.validate_request(&header)?;
+                let request_limit = self.request_limit(channel);
+                self.channel_mut(channel)
+                    .increase_cancellation_allowance(request_limit);
+
                 let frame = Frame::Request {
                     id: header.id,
                     channel,
@@ -98,8 +122,22 @@ impl<const N: usize> Receiver<N> {
                     bytes_consumed: HEADER_SIZE,
                 })
             }
-            HeaderFlags::RequestCancellation => todo!(),
-            HeaderFlags::ResponseCancellation => todo!(),
+            HeaderFlags::RequestCancellation => {
+                let channel = self.validate_request_cancellation(&header)?;
+                let frame = Frame::RequestCancellation {
+                    id: header.id,
+                    channel,
+                };
+
+                Ok(ReceiveOutcome::Consumed {
+                    value: frame,
+                    bytes_consumed: HEADER_SIZE,
+                })
+            }
+            HeaderFlags::ResponseCancellation => {
+                // TODO: Find a solution, we need to track requests without race conditions here.
+                todo!()
+            }
             HeaderFlags::RequestWithPayload => {
                 let channel = self.validate_request(&header)?;
 
@@ -110,6 +148,9 @@ impl<const N: usize> Receiver<N> {
                     } => {
                         bytes_consumed += HEADER_SIZE;
                         self.channel_mut(channel).pending.insert(header.id);
+                        let request_limit = self.request_limit(channel);
+                        self.channel_mut(channel)
+                            .increase_cancellation_allowance(request_limit);
 
                         let frame = Frame::Request {
                             id: header.id,
@@ -187,7 +228,7 @@ impl<const N: usize> Receiver<N> {
         let channel_id = Self::validate_channel(&header)?;
         let channel = self.channel(channel_id);
 
-        if channel.pending.len() >= self.request_limit(channel_id) {
+        if channel.pending.len() as u64 >= self.request_limit(channel_id) {
             return Err(Error::RequestLimitExceeded);
         }
 
@@ -198,12 +239,22 @@ impl<const N: usize> Receiver<N> {
         Ok(channel_id)
     }
 
+    fn validate_request_cancellation(&mut self, header: &Header) -> Result<ChannelId, Error> {
+        let channel_id = Self::validate_channel(&header)?;
+        let channel = self.channel_mut(channel_id);
+        if !channel.attempt_cancellation() {
+            Err(Error::ExceededRequestCancellationAllowance)
+        } else {
+            Ok(channel_id)
+        }
+    }
+
     fn validate_response(&self, header: &Header) -> Result<ChannelId, Error> {
         let channel_id = Self::validate_channel(&header)?;
         let channel = self.channel(channel_id);
 
         if !channel.pending.contains(&header.id) {
-            return Err(Error::FictiveRequest(header.id));
+            return Err(Error::FicticiousRequest(header.id));
         }
 
         Ok(channel_id)
@@ -217,7 +268,7 @@ impl<const N: usize> Receiver<N> {
         &mut self.channels[channel_id as usize]
     }
 
-    fn request_limit(&self, channel_id: ChannelId) -> usize {
+    fn request_limit(&self, channel_id: ChannelId) -> u64 {
         self.request_limits[channel_id as usize]
     }
 

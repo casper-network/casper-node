@@ -17,13 +17,16 @@ pub enum Error {
     #[error("request limit exceeded")]
     RequestLimitExceeded,
     /// Peer re-used an in-flight request ID.
-    #[error("duplicate request id")]
+    #[error("duplicate request id")] // TODO: Add ID
     DuplicateRequest,
     /// Peer sent a response for a request that does not exist.
     #[error("fictive request: {0}")]
-    FictiveRequest(RequestId),
-    /// Peer wants to send a segment that, along with its header, would violate the frame size.
-    #[error("segment of {0} would exceed frame size limit")]
+    FicticiousRequest(RequestId),
+    /// Peer attempted to cancel more requests than it made.
+    #[error("exceeded request cancellation allowance")]
+    ExceededRequestCancellationAllowance,
+    /// Peer wants to send a segment that, along with its header, would violate the payload size.
+    #[error("segment of {0} would exceed payload size limit")]
     SegmentSizedExceeded(usize),
     /// Variable size integer overflowed.
     #[error("varint overflow")]
