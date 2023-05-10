@@ -22,7 +22,7 @@ function main() {
     # Wait for network start up
     do_await_genesis_era_to_complete
     # Verify all nodes are in sync
-    parallel_check_nodes_1_to_5_sync
+    parallel_check_network_sync 1 5
     # Stop the node
     do_stop_node '5'
     # Wait until N+1
