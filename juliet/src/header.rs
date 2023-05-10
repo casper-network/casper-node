@@ -1,113 +1,170 @@
-use crate::{ChannelId, RequestId};
-
 /// `juliet` header parsing and serialization.
-
-/// The size of a header in bytes.
-pub(crate) const HEADER_SIZE: usize = 4;
-
+use crate::{ChannelId, Id};
 /// Header structure.
-///
-/// This struct guaranteed to be 1:1 bit compatible to actually serialized headers on little endian
-/// machines, thus serialization/deserialization should be no-ops when compiled with optimizations.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub(crate) struct Header {
-    /// Request/response ID.
-    pub(crate) id: RequestId,
-    /// Channel for the frame this header belongs to.
-    pub(crate) channel: ChannelId,
-    /// Flags.
-    ///
-    /// See protocol documentation for details.
-    pub(crate) flags: HeaderFlags,
-}
+#[repr(transparent)]
+pub(crate) struct Header([u8; Self::SIZE]);
 
-/// Header flags.
-///
-/// At the moment, all flag combinations available require separate code-paths for handling anyway,
-/// thus there are no true "optional" flags. Thus for simplicity, an `enum` is used at the moment.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 #[repr(u8)]
-pub(crate) enum HeaderFlags {
-    /// A request without a segment following it.
-    ZeroSizedRequest = 0b00000000,
-    /// A response without a segment following it.
-    ZeroSizedResponse = 0b00000001,
-    /// An error with no detail segment.
-    Error = 0b00000011,
-    /// Cancellation of a request.
-    RequestCancellation = 0b00000100,
-    /// Cancellation of a response.
-    ResponseCancellation = 0b00000101,
-    /// A request with a segment following it.
-    RequestWithPayload = 0b00001000,
-    /// A response with a segment following it.
-    ResponseWithPayload = 0b00001001,
-    /// An error with a detail segment.
-    ErrorWithMessage = 0b00001010,
+enum ErrorKind {
+    Other = 0,
+    MaxFrameSizeExceeded = 1,
+    InvalidHeader = 2,
+    SegmentViolation = 3,
+    BadVarInt = 4,
+    InvalidChannel = 5,
+    InProgress = 6,
+    ResponseTooLarge = 7,
+    RequestTooLarge = 8,
+    DuplicateRequest = 9,
+    FictitiousRequest = 10,
+    RequestLimitExceeded = 11,
+    FictitiousCancel = 12,
+    CancellationLimitExceeded = 13,
+    // Note: When adding additional kinds, update the `HIGHEST` associated constant.
 }
 
-impl TryFrom<u8> for HeaderFlags {
-    type Error = u8;
+#[derive(Copy, Clone, Debug)]
+#[repr(u8)]
 
-    fn try_from(value: u8) -> Result<Self, u8> {
-        match value {
-            0b00000000 => Ok(HeaderFlags::ZeroSizedRequest),
-            0b00000001 => Ok(HeaderFlags::ZeroSizedResponse),
-            0b00000011 => Ok(HeaderFlags::Error),
-            0b00000100 => Ok(HeaderFlags::RequestCancellation),
-            0b00000101 => Ok(HeaderFlags::ResponseCancellation),
-            0b00001000 => Ok(HeaderFlags::RequestWithPayload),
-            0b00001001 => Ok(HeaderFlags::ResponseWithPayload),
-            0b00001010 => Ok(HeaderFlags::ErrorWithMessage),
-            _ => Err(value),
+enum Kind {
+    Request = 0,
+    Response = 1,
+    RequestPl = 2,
+    ResponsePl = 3,
+    CancelReq = 4,
+    CancelResp = 5,
+}
+
+impl ErrorKind {
+    const HIGHEST: Self = Self::CancellationLimitExceeded;
+}
+
+impl Kind {
+    const HIGHEST: Self = Self::CancelResp;
+}
+
+impl Header {
+    const SIZE: usize = 4;
+    const KIND_ERR_BIT: u8 = 0b1000_0000;
+    const KIND_ERR_MASK: u8 = 0b0000_1111;
+    const KIND_MASK: u8 = 0b0000_0111;
+}
+
+impl Header {
+    #[inline(always)]
+    fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
+        let id = id.to_le_bytes();
+        Header([kind as u8, channel as u8, id[0], id[1]])
+    }
+
+    #[inline(always)]
+    fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
+        let id = id.to_le_bytes();
+        Header([
+            kind as u8 | Header::KIND_ERR_BIT,
+            channel as u8,
+            id[0],
+            id[1],
+        ])
+    }
+
+    #[inline(always)]
+    fn parse(raw: [u8; Header::SIZE]) -> Option<Self> {
+        let header = Header(raw);
+
+        // Check that the kind byte is within valid range.
+        if header.is_error() {
+            if (header.kind_byte() & Self::KIND_ERR_MASK) > ErrorKind::HIGHEST as u8 {
+                return None;
+            }
+        } else {
+            if (header.kind_byte() & Self::KIND_MASK) > Kind::HIGHEST as u8 {
+                return None;
+            }
+        }
+
+        Some(header)
+    }
+
+    #[inline(always)]
+    fn kind_byte(self) -> u8 {
+        self.0[0]
+    }
+
+    #[inline(always)]
+    fn channel(self) -> ChannelId {
+        self.0[1]
+    }
+
+    #[inline(always)]
+    fn id(self) -> Id {
+        let [_, _, id @ ..] = self.0;
+        Id::from_le_bytes(id)
+    }
+
+    #[inline(always)]
+    fn is_error(self) -> bool {
+        self.kind_byte() & Self::KIND_ERR_BIT == Self::KIND_ERR_BIT
+    }
+
+    #[inline(always)]
+    fn error_kind(self) -> ErrorKind {
+        debug_assert!(self.is_error());
+        match self.kind_byte() {
+            0 => ErrorKind::Other,
+            1 => ErrorKind::MaxFrameSizeExceeded,
+            2 => ErrorKind::InvalidHeader,
+            3 => ErrorKind::SegmentViolation,
+            4 => ErrorKind::BadVarInt,
+            5 => ErrorKind::InvalidChannel,
+            6 => ErrorKind::InProgress,
+            7 => ErrorKind::ResponseTooLarge,
+            8 => ErrorKind::RequestTooLarge,
+            9 => ErrorKind::DuplicateRequest,
+            10 => ErrorKind::FictitiousRequest,
+            11 => ErrorKind::RequestLimitExceeded,
+            12 => ErrorKind::FictitiousCancel,
+            13 => ErrorKind::CancellationLimitExceeded,
+            // Would violate validity invariant.
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline(always)]
+    fn kind(self) -> Kind {
+        debug_assert!(!self.is_error());
+        match self.kind_byte() {
+            0 => Kind::Request,
+            1 => Kind::Response,
+            2 => Kind::RequestPl,
+            3 => Kind::ResponsePl,
+            4 => Kind::CancelReq,
+            5 => Kind::CancelResp,
+            // Would violate validity invariant.
+            _ => unreachable!(),
         }
     }
 }
 
-impl TryFrom<[u8; 4]> for Header {
-    type Error = u8; // Invalid flags are returned as the error.
-
-    fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
-        let flags = HeaderFlags::try_from(value[0])?;
-        // TODO: Check if this code is equal to `mem::transmute` usage on LE platforms.
-        Ok(Header {
-            // Safe unwrap here, as the size of `value[2..4]` is exactly the necessary 2 bytes.
-            id: u16::from_le_bytes(value[2..4].try_into().unwrap()),
-            channel: value[1],
-            flags,
-        })
-    }
-}
-
-impl From<Header> for [u8; 4] {
-    #[inline(always)]
-    fn from(header: Header) -> Self {
-        // TODO: Check if this code is equal to `mem::transmute` usage on LE platforms.
-        [
-            header.flags as u8,
-            header.channel,
-            header.id.to_le_bytes()[0],
-            header.id.to_le_bytes()[1],
-        ]
+impl From<Header> for [u8; Header::SIZE] {
+    fn from(value: Header) -> Self {
+        value.0
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Header, HeaderFlags};
+    use super::{ErrorKind, Header};
 
     #[test]
     fn known_headers() {
-        let input = [0x09, 0x34, 0x56, 0x78];
-        let expected = Header {
-            flags: HeaderFlags::ResponseWithPayload,
-            channel: 0x34, // 52
-            id: 0x7856,    // 30806
-        };
+        let input = [0x86, 0x48, 0xAA, 0xBB];
+        let expected = Header::new_error(ErrorKind::InProgress, 0x48, 0xBBAA);
 
         assert_eq!(
-            Header::try_from(input).expect("could not parse header"),
+            Header::parse(input).expect("could not parse header"),
             expected
         );
         assert_eq!(<[u8; 4]>::from(expected), input);
