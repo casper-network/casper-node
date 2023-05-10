@@ -13,6 +13,8 @@ set -e
 #   `timeout=XXX` timeout (in seconds) when syncing.
 #######################################
 function main() {
+    local NODE_STARTUP_ERA
+
     log "------------------------------------------------------------"
     log "Starting Scenario: itst13"
     log "------------------------------------------------------------"
@@ -20,7 +22,7 @@ function main() {
     # Wait for network start up
     do_await_genesis_era_to_complete
     # Verify all nodes are in sync
-    check_network_sync 1  5
+    parallel_check_nodes_1_to_5_sync
     # Stop the node
     do_stop_node '5'
     # Wait until N+1
@@ -39,10 +41,13 @@ function main() {
     get_switch_block '1' '100'
     # Assert node is marked as inactive
     assert_inactive '5'
+    # Remember current era
+    NODE_STARTUP_ERA=$(check_current_era)
+    log "I'll expect the node to switch to KeepUp within era=$NODE_STARTUP_ERA..."
     # Restart node 5
     do_start_node '5' "$(do_read_lfb_hash '1')"
     # Assert joined within expected era
-    assert_joined_in_era_4 '5'
+    assert_joined_in_era_x '5' '300' $NODE_STARTUP_ERA
     # Assert eviction of node
     do_await_era_change '1'
     # Wait 1 block to avoid missing latest switch block
@@ -78,10 +83,11 @@ function main() {
     log "------------------------------------------------------------"
 }
 
-function assert_joined_in_era_4() {
+function assert_joined_in_era_x() {
     local NODE_ID=${1}
     local NODE_PATH=$(get_path_to_node "$NODE_ID")
     local TIMEOUT=${2:-300}
+    local NODE_STARTUP_ERA=${3}
     local OUTPUT
     local REACTOR_STATE
 
@@ -107,7 +113,7 @@ function assert_joined_in_era_4() {
         fi
     done
 
-    assert_same_era '4' '1'
+    assert_same_era $NODE_STARTUP_ERA '1'
 }
 
 # Checks that a validator gets marked as inactive
