@@ -1,6 +1,6 @@
+//! `juliet` header parsing and serialization.
 use std::fmt::Debug;
 
-/// `juliet` header parsing and serialization.
 use crate::{ChannelId, Id};
 /// Header structure.
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -29,64 +29,97 @@ impl Debug for Header {
     }
 }
 
+/// Error kind, from the kind byte.
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
-enum ErrorKind {
+pub(crate) enum ErrorKind {
+    /// Application defined error.
     Other = 0,
+    /// The maximum frame size has been exceeded. This error cannot occur in this implementation,
+    /// which operates solely on streams.
     MaxFrameSizeExceeded = 1,
+    /// An invalid header was received.
     InvalidHeader = 2,
+    /// A segment was sent with a frame where none was allowed, or a segment was too small or missing.
     SegmentViolation = 3,
+    /// A `varint32` could not be decoded.
     BadVarInt = 4,
+    /// Invalid channel: A channel number greater or equal the highest channel number was received.
     InvalidChannel = 5,
+    /// A new request or response was sent without completing the previous one.
     InProgress = 6,
+    /// The indicated size of the response would be exceeded the configured limit.
     ResponseTooLarge = 7,
+    /// The indicated size of the request would be exceeded the configured limit.
     RequestTooLarge = 8,
+    /// Peer attempted to create two in-flight requests with the same ID on the same channel.
     DuplicateRequest = 9,
+    /// Sent a response for request not in-flight.
     FictitiousRequest = 10,
+    /// The dynamic request limit has been exceeded.
     RequestLimitExceeded = 11,
+    /// Response cancellation for a request not in-flight.
     FictitiousCancel = 12,
+    /// Peer sent a request cancellation exceeding the cancellation allowance.
     CancellationLimitExceeded = 13,
     // Note: When adding additional kinds, update the `HIGHEST` associated constant.
 }
 
+/// Frame kind, from the kind byte.
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 
-enum Kind {
+pub(crate) enum Kind {
+    /// A request with no payload.
     Request = 0,
+    /// A response with no payload.
     Response = 1,
+    /// A request that includes a payload.
     RequestPl = 2,
+    /// A response that includes a payload.
     ResponsePl = 3,
+    /// Cancellation of a request.
     CancelReq = 4,
+    /// Cancellation of a response.
     CancelResp = 5,
 }
 
 impl ErrorKind {
+    /// The highest error kind number.
+    ///
+    /// Only error kinds <= `HIGHEST` are valid.
     const HIGHEST: Self = Self::CancellationLimitExceeded;
 }
 
 impl Kind {
+    /// The highest frame kind number.
+    ///
+    /// Only error kinds <= `HIGHEST` are valid.
     const HIGHEST: Self = Self::CancelResp;
 }
 
 impl Header {
+    /// The size (in bytes) of a header.
     const SIZE: usize = 4;
+    /// Bitmask returning the error bit of the kind byte.
     const KIND_ERR_BIT: u8 = 0b1000_0000;
+    /// Bitmask returning the error kind inside the kind byte.
     const KIND_ERR_MASK: u8 = 0b0000_1111;
+    /// Bitmask returning the frame kind inside the kind byte.
     const KIND_MASK: u8 = 0b0000_0111;
-}
 
-impl Header {
+    /// Creates a new non-error header.
     #[inline(always)]
-    fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
+    pub(crate) fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
         let id = id.to_le_bytes();
         Header([kind as u8, channel as u8, id[0], id[1]])
     }
 
+    /// Creates a new error header.
     #[inline(always)]
-    fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
+    pub(crate) fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
         let id = id.to_le_bytes();
         Header([
             kind as u8 | Header::KIND_ERR_BIT,
@@ -96,8 +129,11 @@ impl Header {
         ])
     }
 
+    /// Parse a header from raw bytes.
+    ///
+    /// Returns `None` if the given `raw` bytes are not a valid header.
     #[inline(always)]
-    fn parse(raw: [u8; Header::SIZE]) -> Option<Self> {
+    pub(crate) fn parse(raw: [u8; Header::SIZE]) -> Option<Self> {
         let header = Header(raw);
 
         // Check that the kind byte is within valid range.
@@ -114,29 +150,38 @@ impl Header {
         Some(header)
     }
 
+    /// Returns the raw kind byte.
     #[inline(always)]
     fn kind_byte(self) -> u8 {
         self.0[0]
     }
 
+    /// Returns the channel.
     #[inline(always)]
-    fn channel(self) -> ChannelId {
+    pub(crate) fn channel(self) -> ChannelId {
         self.0[1]
     }
 
+    /// Returns the id.
     #[inline(always)]
-    fn id(self) -> Id {
+    pub(crate) fn id(self) -> Id {
         let [_, _, id @ ..] = self.0;
         Id::from_le_bytes(id)
     }
 
+    /// Returns whether the error bit is set.
     #[inline(always)]
     fn is_error(self) -> bool {
         self.kind_byte() & Self::KIND_ERR_BIT == Self::KIND_ERR_BIT
     }
 
+    /// Returns the error kind.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `Self::is_error()` is not `true`.
     #[inline(always)]
-    fn error_kind(self) -> ErrorKind {
+    pub(crate) fn error_kind(self) -> ErrorKind {
         debug_assert!(self.is_error());
         match self.kind_byte() & Self::KIND_ERR_MASK {
             0 => ErrorKind::Other,
@@ -158,8 +203,13 @@ impl Header {
         }
     }
 
+    /// Returns the frame kind.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `Self::is_error()` is not `false`.
     #[inline(always)]
-    fn kind(self) -> Kind {
+    pub(crate) fn kind(self) -> Kind {
         debug_assert!(!self.is_error());
         match self.kind_byte() & Self::KIND_MASK {
             0 => Kind::Request,
@@ -222,12 +272,12 @@ mod tests {
             Header::parse(input).expect("could not parse header"),
             expected
         );
-        assert_eq!(<[u8; 4]>::from(expected), input);
+        assert_eq!(<[u8; Header::SIZE]>::from(expected), input);
     }
 
     #[proptest]
     fn roundtrip_header(header: Header) {
-        let raw: [u8; 4] = header.into();
+        let raw: [u8; Header::SIZE] = header.into();
 
         assert_eq!(
             Header::parse(raw).expect("failed to roundtrip header"),
