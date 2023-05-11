@@ -133,16 +133,24 @@ impl Header {
     ///
     /// Returns `None` if the given `raw` bytes are not a valid header.
     #[inline(always)]
-    pub(crate) fn parse(raw: [u8; Header::SIZE]) -> Option<Self> {
+    pub(crate) fn parse(mut raw: [u8; Header::SIZE]) -> Option<Self> {
+        // Zero-out reserved bits.
+        raw[0] &= Self::KIND_ERR_MASK | Self::KIND_ERR_BIT;
+
         let header = Header(raw);
 
-        // Check that the kind byte is within valid range.
+        // Check that the kind byte is within valid range and mask reserved bits.
         if header.is_error() {
             if (header.kind_byte() & Self::KIND_ERR_MASK) > ErrorKind::HIGHEST as u8 {
                 return None;
             }
         } else {
             if (header.kind_byte() & Self::KIND_MASK) > Kind::HIGHEST as u8 {
+                return None;
+            }
+
+            // Ensure the 4th bit is not set.
+            if header.0[0] & Self::KIND_MASK != header.0[0] {
                 return None;
             }
         }
@@ -304,11 +312,23 @@ mod tests {
 
                 // Ensure reserved bits are zeroed upon reading.
                 let reencoded: [u8; Header::SIZE] = rebuilt.into();
-                assert_eq!(reencoded, raw);
+                assert_eq!(rebuilt, header);
+                assert_eq!(reencoded, <[u8; Header::SIZE]>::from(header));
             }
             None => {
                 // All good, simply failed to parse.
             }
         }
+    }
+
+    #[test]
+    fn fuzz_header_regressions() {
+        // Bit 4, which is not `RESERVED`, but only valid for errors.
+        let raw = [8, 0, 0, 0];
+        assert!(Header::parse(raw).is_none());
+
+        // Two reserved bits set.
+        let raw = [48, 0, 0, 0];
+        assert!(Header::parse(raw).is_some());
     }
 }
