@@ -1,9 +1,33 @@
+use std::fmt::Debug;
+
 /// `juliet` header parsing and serialization.
 use crate::{ChannelId, Id};
 /// Header structure.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 #[repr(transparent)]
 pub(crate) struct Header([u8; Self::SIZE]);
+
+impl Debug for Header {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_error() {
+            write!(
+                f,
+                "[err:{:?} chan: {} id: {}]",
+                self.error_kind(),
+                self.channel(),
+                self.id()
+            )
+        } else {
+            write!(
+                f,
+                "[{:?} chan: {} id: {}]",
+                self.kind(),
+                self.channel(),
+                self.id()
+            )
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
@@ -114,7 +138,7 @@ impl Header {
     #[inline(always)]
     fn error_kind(self) -> ErrorKind {
         debug_assert!(self.is_error());
-        match self.kind_byte() {
+        match self.kind_byte() & Self::KIND_ERR_MASK {
             0 => ErrorKind::Other,
             1 => ErrorKind::MaxFrameSizeExceeded,
             2 => ErrorKind::InvalidHeader,
@@ -137,7 +161,7 @@ impl Header {
     #[inline(always)]
     fn kind(self) -> Kind {
         debug_assert!(!self.is_error());
-        match self.kind_byte() {
+        match self.kind_byte() & Self::KIND_MASK {
             0 => Kind::Request,
             1 => Kind::Response,
             2 => Kind::RequestPl,
@@ -209,5 +233,12 @@ mod tests {
             Header::parse(raw).expect("failed to roundtrip header"),
             header
         );
+
+        // Verify the `kind` and `err_kind` methods don't panic.
+        if header.is_error() {
+            drop(header.error_kind());
+        } else {
+            drop(header.kind());
+        }
     }
 }
