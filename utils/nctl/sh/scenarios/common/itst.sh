@@ -196,7 +196,7 @@ function parallel_check_network_sync() {
         fi
 
         if [ "$UNIQUE_HASH_COUNT" -eq 1 ]; then
-            log "nodes 1 to $LAST_NODE in sync, proceeding..."
+            log "nodes $FIRST_NODE to $LAST_NODE in sync, proceeding..."
             nctl-view-chain-height
             rm -f $PIPE
             break
