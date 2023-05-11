@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fs, iter,
+    sync::Arc,
+    time::Duration,
+};
 
 use either::Either;
 use num::Zero;
@@ -22,6 +27,7 @@ use crate::{
         },
         gossiper, network, storage,
         upgrade_watcher::NextUpgrade,
+        ComponentState,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -41,7 +47,7 @@ use crate::{
         ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
         NodeRng,
     },
-    utils::{External, Loadable, Source, RESOURCES_PATH},
+    utils::{extract_metric_names, External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
 
@@ -912,4 +918,64 @@ async fn empty_block_validation_regression() {
         [inactive_validator] if malicious_validator == *inactive_validator => {}
         inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
+}
+
+#[tokio::test]
+async fn all_metrics_from_1_5_are_present() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let mut chain = TestChain::new(&mut rng, 2, None);
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    net.settle_on_component_state(
+        &mut rng,
+        "rest_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(59),
+    )
+    .await;
+
+    // Get the node ID.
+    let node_id = *net.nodes().keys().next().unwrap();
+
+    let rest_addr = net.nodes()[&node_id]
+        .main_reactor()
+        .rest_server
+        .bind_address();
+
+    // We let the entire network run in the background, until our request completes.
+    let finish_cranking = net.crank_until_stopped(rng);
+
+    let metrics_response = reqwest::Client::builder()
+        .build()
+        .expect("failed to build client")
+        .get(format!("http://localhost:{}/metrics", rest_addr.port()))
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .expect("request failed")
+        .error_for_status()
+        .expect("error response on metrics request")
+        .text()
+        .await
+        .expect("error retrieving text on metrics request");
+
+    let (_net, _rng) = finish_cranking.await;
+
+    let actual = extract_metric_names(&metrics_response);
+    let raw_1_5 = fs::read_to_string(RESOURCES_PATH.join("metrics-1.5.txt"))
+        .expect("could not read 1.5 metrics snapshot");
+    let metrics_1_5 = extract_metric_names(&raw_1_5);
+
+    let missing: HashSet<_> = metrics_1_5.difference(&actual).collect();
+    assert!(
+        missing.is_empty(),
+        "missing 1.5 metrics in current metrics set: {:?}",
+        missing
+    );
 }

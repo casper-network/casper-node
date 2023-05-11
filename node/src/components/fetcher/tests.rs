@@ -447,7 +447,7 @@ async fn assert_settled(
     rng: &mut TestRng,
     timeout: Duration,
 ) {
-    let has_responded = |_nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    let has_responded = |_nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<Reactor>>>>| {
         fetched.lock().unwrap().0
     };
 

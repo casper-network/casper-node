@@ -9,7 +9,6 @@ use std::{
     collections::{BTreeSet, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    sync::atomic::Ordering,
     time::{Duration, SystemTime},
 };
 
@@ -35,8 +34,8 @@ pub(crate) struct NetworkInsights {
     network_ca: bool,
     /// The public address of the node.
     public_addr: Option<SocketAddr>,
-    /// Whether or not the node is syncing.
-    is_syncing: bool,
+    /// The fingerprint of a consensus key installed.
+    node_key_pair: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
     /// The list of node IDs that are being preferred due to being active validators.
@@ -98,9 +97,9 @@ fn time_delta(now: SystemTime, then: SystemTime) -> impl Display {
 
 impl OutgoingStateInsight {
     /// Constructs a new outgoing state insight from a given outgoing state.
-    fn from_outgoing_state<P>(
+    fn from_outgoing_state(
         anchor: &TimeAnchor,
-        state: &OutgoingState<OutgoingHandle<P>, ConnectionError>,
+        state: &OutgoingState<OutgoingHandle, ConnectionError>,
     ) -> Self {
         match state {
             OutgoingState::Connecting {
@@ -310,7 +309,10 @@ impl NetworkInsights {
             our_id: net.context.our_id(),
             network_ca: net.context.network_ca().is_some(),
             public_addr: net.context.public_addr(),
-            is_syncing: net.context.is_syncing().load(Ordering::Relaxed),
+            node_key_pair: net
+                .context
+                .node_key_pair()
+                .map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
             privileged_active_outgoing_nodes,
             privileged_upcoming_outgoing_nodes,
@@ -334,8 +336,9 @@ impl Display for NetworkInsights {
         }
         writeln!(
             f,
-            "node {} @ {:?} (syncing: {})",
-            self.our_id, self.public_addr, self.is_syncing
+            "node {} @ {}",
+            self.our_id,
+            OptDisplay::new(self.public_addr, "no listen addr")
         )?;
         writeln!(
             f,

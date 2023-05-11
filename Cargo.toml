@@ -6,6 +6,7 @@ members = [
     "execution_engine_testing/tests",
     "hashing",
     "json_rpc",
+    "muxink",
     "node",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
@@ -41,3 +42,7 @@ lto = true
 [profile.bench]
 codegen-units = 1
 lto = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

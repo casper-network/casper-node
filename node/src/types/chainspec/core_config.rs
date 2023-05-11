@@ -87,6 +87,10 @@ pub struct CoreConfig {
 
     /// Which consensus protocol to use.
     pub consensus_protocol: ConsensusProtocolName,
+
+    /// The maximum amount of delegators per validator.
+    /// if the value is 0, there is no maximum capacity.
+    pub max_delegators_per_validator: u32,
 }
 
 impl CoreConfig {
@@ -188,6 +192,7 @@ impl CoreConfig {
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            max_delegators_per_validator: 0,
         }
     }
 }
@@ -217,6 +222,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
         buffer.extend(self.consensus_protocol.to_bytes()?);
+        buffer.extend(self.max_delegators_per_validator.to_bytes()?);
         Ok(buffer)
     }
 
@@ -242,6 +248,7 @@ impl ToBytes for CoreConfig {
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
             + self.consensus_protocol.serialized_length()
+            + self.max_delegators_per_validator.serialized_length()
     }
 }
 
@@ -267,6 +274,7 @@ impl FromBytes for CoreConfig {
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
+        let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -287,6 +295,7 @@ impl FromBytes for CoreConfig {
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            max_delegators_per_validator,
         };
         Ok((config, remainder))
     }

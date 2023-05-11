@@ -182,7 +182,7 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
         }
 
         match self.listen(effect_builder) {
-            Ok(effects) => (effects, ComponentState::Initialized),
+            Ok(effects) => (effects, ComponentState::Initializing),
             Err(error) => (Effects::new(), ComponentState::Fatal(format!("{}", error))),
         }
     }

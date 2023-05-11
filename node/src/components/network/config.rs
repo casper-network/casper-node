@@ -38,6 +38,7 @@ impl Default for Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
+            keylog_path: None,
             min_peers_for_initialization: DEFAULT_MIN_PEERS_FOR_INITIALIZATION,
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
             initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
@@ -83,6 +84,8 @@ pub struct Config {
     pub public_address: String,
     /// Known address of a node on the network used for joining.
     pub known_addresses: Vec<String>,
+    /// If set, logs all TLS keys to this file.
+    pub keylog_path: Option<String>,
     /// Minimum number of fully-connected peers to consider component initialized.
     pub min_peers_for_initialization: u16,
     /// Interval in milliseconds used for gossiping.

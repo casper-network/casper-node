@@ -9,7 +9,7 @@ use openssl::{
 use thiserror::Error;
 use tracing::warn;
 
-use super::{Config, IdentityConfig};
+use super::config::{Config, IdentityConfig};
 use crate::{
     tls::{self, LoadCertError, LoadSecretKeyError, TlsCert, ValidationError},
     types::NodeId,

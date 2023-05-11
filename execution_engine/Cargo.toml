@@ -1,6 +1,6 @@
 [package]
 name = "casper-execution-engine"
-version = "3.1.0" # when updating, also update 'html_root_url' in lib.rs
+version = "4.0.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
 edition = "2018"
 description = "CasperLabs execution engine crates."
@@ -14,8 +14,8 @@ license = "Apache-2.0"
 anyhow = "1.0.33"
 base16 = "0.2.1"
 bincode = "1.3.1"
-casper-hashing = { version = "1.4.3", path = "../hashing" }
-casper-types = { version = "1.6.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema"] }
+casper-hashing = { version = "1.4.4", path = "../hashing" }
+casper-types = { version = "2.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema"] }
 casper-wasm-utils = "1.0.0"
 datasize = "0.2.4"
 either = "1.8.1"

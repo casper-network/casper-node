@@ -6,7 +6,9 @@ mod display_error;
 pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
+mod fuse;
 pub(crate) mod opt_display;
+pub(crate) mod registered_metric;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
@@ -18,22 +20,21 @@ use std::{
     any,
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
-    io,
+    fs::File,
+    io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime},
 };
 
 use datasize::DataSize;
+use fs2::FileExt;
+use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
-#[cfg(test)]
-use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, Registry};
+
+use prometheus::{self, IntGauge};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -44,7 +45,10 @@ pub(crate) use display_error::display_error;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
+pub(crate) use fuse::{DropSwitch, Fuse, ObservableFuse, SharedFuse};
 pub(crate) use round_robin::WeightedRoundRobin;
+#[cfg(test)]
+pub(crate) use tests::extract_metric_names;
 
 /// DNS resolution error.
 #[derive(Debug, Error)]
@@ -156,42 +160,30 @@ pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
 }
 
-/// A flag shared across multiple subsystem.
-#[derive(Copy, Clone, DataSize, Debug)]
-pub(crate) struct SharedFlag(&'static AtomicBool);
+/// An "unlimited semaphore".
+///
+/// Upon construction, `TokenizedCount` increases a given `IntGauge` by one for metrics purposed.
+///
+/// Once it is dropped, the underlying gauge will be decreased by one.
+#[derive(Debug)]
+pub(crate) struct TokenizedCount {
+    /// The gauge modified on construction/drop.
+    gauge: Option<IntGauge>,
+}
 
-impl SharedFlag {
-    /// Creates a new shared flag.
-    ///
-    /// The flag is initially not set.
-    pub(crate) fn new() -> Self {
-        SharedFlag(leak(AtomicBool::new(false)))
-    }
-
-    /// Checks whether the flag is set.
-    pub(crate) fn is_set(self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-
-    /// Set the flag.
-    pub(crate) fn set(self) {
-        self.0.store(true, Ordering::SeqCst)
-    }
-
-    /// Returns a shared instance of the flag for testing.
-    ///
-    /// The returned flag should **never** have `set` be called upon it.
-    #[cfg(test)]
-    pub(crate) fn global_shared() -> Self {
-        static SHARED_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
-
-        *SHARED_FLAG
+impl TokenizedCount {
+    /// Create a new tokenized count, increasing the given gauge.
+    pub(crate) fn new(gauge: IntGauge) -> Self {
+        gauge.inc();
+        TokenizedCount { gauge: Some(gauge) }
     }
 }
 
-impl Default for SharedFlag {
-    fn default() -> Self {
-        Self::new()
+impl Drop for TokenizedCount {
+    fn drop(&mut self) {
+        if let Some(gauge) = self.gauge.take() {
+            gauge.dec();
+        }
     }
 }
 
@@ -329,34 +321,6 @@ where
     (numerator + denominator / T::from(2)) / denominator
 }
 
-/// Creates a prometheus Histogram and registers it.
-pub(crate) fn register_histogram_metric(
-    registry: &Registry,
-    metric_name: &str,
-    metric_help: &str,
-    buckets: Vec<f64>,
-) -> Result<Histogram, prometheus::Error> {
-    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(buckets);
-    let histogram = Histogram::with_opts(histogram_opts)?;
-    registry.register(Box::new(histogram.clone()))?;
-    Ok(histogram)
-}
-
-/// Unregisters a metric from the Prometheus registry.
-#[macro_export]
-macro_rules! unregister_metric {
-    ($registry:expr, $metric:expr) => {
-        $registry
-            .unregister(Box::new($metric.clone()))
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    "unregistering {} failed: was not registered",
-                    stringify!($metric)
-                )
-            });
-    };
-}
-
 /// XORs two byte sequences.
 ///
 /// # Panics
@@ -410,6 +374,47 @@ pub(crate) async fn wait_for_arc_drop<T>(
     false
 }
 
+/// A thread-safe wrapper around a file that writes chunks.
+///
+/// A chunk can (but needn't) be a line. The writer guarantees it will be written to the wrapped
+/// file, even if other threads are attempting to write chunks at the same time.
+#[derive(Clone)]
+pub(crate) struct LockedLineWriter(Arc<Mutex<File>>);
+
+impl LockedLineWriter {
+    /// Creates a new `LockedLineWriter`.
+    ///
+    /// This function does not panic - if any error occurs, it will be logged and ignored.
+    pub(crate) fn new(file: File) -> Self {
+        LockedLineWriter(Arc::new(Mutex::new(file)))
+    }
+
+    /// Writes a chunk to the wrapped file.
+    pub(crate) fn write_line(&self, line: &str) {
+        match self.0.lock() {
+            Ok(mut guard) => {
+                // Acquire a lock on the file. This ensures we do not garble output when multiple
+                // nodes are writing to the same file.
+                if let Err(err) = guard.lock_exclusive() {
+                    warn!(%line, %err, "could not acquire file lock, not writing line");
+                    return;
+                }
+
+                if let Err(err) = guard.write_all(line.as_bytes()) {
+                    warn!(%line, %err, "could not finish writing line");
+                }
+
+                if let Err(err) = guard.unlock() {
+                    warn!(%err, "failed to release file lock in locked line writer, ignored");
+                }
+            }
+            Err(_) => {
+                error!(%line, "line writer lock poisoned, lost line");
+            }
+        }
+    }
+}
+
 /// An anchor for converting an `Instant` into a wall-clock (`SystemTime`) time.
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct TimeAnchor {
@@ -441,13 +446,50 @@ impl TimeAnchor {
     }
 }
 
+/// Discard secondary data from a value.
+pub(crate) trait Peel {
+    /// What is left after discarding the wrapping.
+    type Inner;
+
+    /// Discard "uninteresting" data.
+    fn peel(self) -> Self::Inner;
+}
+
+impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
+    type Inner = Either<A, B>;
+
+    fn peel(self) -> Self::Inner {
+        match self {
+            Either::Left((v, _)) => Either::Left(v),
+            Either::Right((v, _)) => Either::Right(v),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::{collections::HashSet, sync::Arc, time::Duration};
 
-    use crate::utils::SharedFlag;
+    use prometheus::IntGauge;
 
-    use super::{wait_for_arc_drop, xor};
+    use super::{wait_for_arc_drop, xor, TokenizedCount};
+
+    /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
+
+    pub(crate) fn extract_metric_names(raw: &str) -> HashSet<&str> {
+        raw.lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    None
+                } else {
+                    let (full_id, _) = trimmed.split_once(' ')?;
+                    let id = full_id.split_once('{').map(|v| v.0).unwrap_or(full_id);
+                    Some(id)
+                }
+            })
+            .collect()
+    }
 
     #[test]
     fn xor_works() {
@@ -505,20 +547,51 @@ mod tests {
     }
 
     #[test]
-    fn shared_flag_sanity_check() {
-        let flag = SharedFlag::new();
-        let copied = flag;
+    fn tokenized_count_sanity_check() {
+        let gauge = IntGauge::new("sanity_gauge", "tokenized count test gauge")
+            .expect("failed to construct IntGauge in test");
 
-        assert!(!flag.is_set());
-        assert!(!copied.is_set());
-        assert!(!flag.is_set());
-        assert!(!copied.is_set());
+        gauge.inc();
+        gauge.inc();
+        assert_eq!(gauge.get(), 2);
 
-        flag.set();
+        let ticket1 = TokenizedCount::new(gauge.clone());
+        let ticket2 = TokenizedCount::new(gauge.clone());
 
-        assert!(flag.is_set());
-        assert!(copied.is_set());
-        assert!(flag.is_set());
-        assert!(copied.is_set());
+        assert_eq!(gauge.get(), 4);
+        drop(ticket2);
+        assert_eq!(gauge.get(), 3);
+        drop(ticket1);
+        assert_eq!(gauge.get(), 2);
+    }
+
+    #[test]
+    fn can_parse_metrics() {
+        let sample = r#"
+        chain_height 0
+        # HELP consensus_current_era the current era in consensus
+        # TYPE consensus_current_era gauge
+        consensus_current_era 0
+        # HELP consumed_ram_bytes total consumed ram in bytes
+        # TYPE consumed_ram_bytes gauge
+        consumed_ram_bytes 0
+        # HELP contract_runtime_apply_commit time in seconds to commit the execution effects of a contract
+        # TYPE contract_runtime_apply_commit histogram
+        contract_runtime_apply_commit_bucket{le="0.01"} 0
+        contract_runtime_apply_commit_bucket{le="0.02"} 0
+        contract_runtime_apply_commit_bucket{le="0.04"} 0
+        contract_runtime_apply_commit_bucket{le="0.08"} 0
+        contract_runtime_apply_commit_bucket{le="0.16"} 0
+        "#;
+
+        let extracted = extract_metric_names(sample);
+
+        let mut expected = HashSet::new();
+        expected.insert("chain_height");
+        expected.insert("consensus_current_era");
+        expected.insert("consumed_ram_bytes");
+        expected.insert("contract_runtime_apply_commit_bucket");
+
+        assert_eq!(extracted, expected);
     }
 }

@@ -22,7 +22,7 @@ function main() {
     # 1. Verify network is creating blocks
     do_await_n_blocks "5"
     # 2. Verify network is in sync
-    check_network_sync 1 5
+    parallel_check_nodes_1_to_5_sync
     # 3a. Get era
     STOPPED_ERA=$(check_current_era)
     # 3b. Stop node
@@ -34,11 +34,11 @@ function main() {
     do_read_lfb_hash 1
     do_start_node "5" "$LFB_HASH"
     # 6. Verify all nodes are in sync
-    check_network_sync 1 5
+    parallel_check_nodes_1_to_5_sync
     # 7. Verify network is creating blocks post-restart
     do_await_n_blocks "5"
     # 8. Verify all nodes are in sync
-    check_network_sync 1 5
+    parallel_check_nodes_1_to_5_sync
     # 9. Verify node proposed a block
     assert_node_proposed '5' '180'
     # 10. Verify we are in the same era
@@ -46,7 +46,7 @@ function main() {
     # 11. Wait an era
     do_await_era_change
     # 12. Verify all nodes are in sync
-    check_network_sync 1 5
+    parallel_check_nodes_1_to_5_sync
     # 13. Run Health Checks
     # ... restarts=1: due to node being stopped and started
     source "$NCTL"/sh/scenarios/common/health_checks.sh \

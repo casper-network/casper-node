@@ -8,24 +8,19 @@
 use std::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
-    pin::Pin,
-    sync::{Arc, Weak},
 };
 
-use bytes::{Bytes, BytesMut};
 use openssl::ssl::SslRef;
-use pin_project::pin_project;
 #[cfg(test)]
 use rand::RngCore;
 use static_assertions::const_assert;
-use tokio_serde::{Deserializer, Serializer};
-use tracing::{trace, warn};
+use tracing::warn;
 
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
-use super::{tls::KeyFingerprint, Message, Metrics, Payload};
+use super::tls::KeyFingerprint;
 use crate::{types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.
@@ -37,112 +32,6 @@ struct TraceId([u8; 8]);
 impl Display for TraceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(&base16::encode_lower(&self.0))
-    }
-}
-
-/// A metric-updating serializer/deserializer wrapper for network messages.
-///
-/// Classifies each message given and updates the `NetworkingMetrics` accordingly. Also emits a
-/// TRACE-level message to the `net_out` and `net_in` target with a per-message unique hash when
-/// a message is sent or received.
-#[pin_project]
-#[derive(Debug)]
-pub struct CountingFormat<F> {
-    /// The actual serializer performing the work.
-    #[pin]
-    inner: F,
-    /// Identifier for the connection.
-    connection_id: ConnectionId,
-    /// Counter for outgoing messages.
-    out_count: u64,
-    /// Counter for incoming messages.
-    in_count: u64,
-    /// Our role in the connection.
-    role: Role,
-    /// Metrics to update.
-    metrics: Weak<Metrics>,
-}
-
-impl<F> CountingFormat<F> {
-    /// Creates a new counting formatter.
-    #[inline]
-    pub(super) fn new(
-        metrics: Weak<Metrics>,
-        connection_id: ConnectionId,
-        role: Role,
-        inner: F,
-    ) -> Self {
-        Self {
-            metrics,
-            connection_id,
-            out_count: 0,
-            in_count: 0,
-            role,
-            inner,
-        }
-    }
-}
-
-impl<F, P> Serializer<Arc<Message<P>>> for CountingFormat<F>
-where
-    F: Serializer<Arc<Message<P>>>,
-    P: Payload,
-{
-    type Error = F::Error;
-
-    #[inline]
-    fn serialize(self: Pin<&mut Self>, item: &Arc<Message<P>>) -> Result<Bytes, Self::Error> {
-        let this = self.project();
-        let projection: Pin<&mut F> = this.inner;
-
-        let serialized = F::serialize(projection, item)?;
-        let msg_size = serialized.len() as u64;
-        let msg_kind = item.classify();
-        Metrics::record_payload_out(this.metrics, msg_kind, msg_size);
-
-        let trace_id = this
-            .connection_id
-            .create_trace_id(this.role.out_flag(), *this.out_count);
-        *this.out_count += 1;
-
-        trace!(target: "net_out",
-            msg_id = %trace_id,
-            msg_size,
-            msg_kind = %msg_kind, "sending");
-
-        Ok(serialized)
-    }
-}
-
-impl<F, P> Deserializer<Message<P>> for CountingFormat<F>
-where
-    F: Deserializer<Message<P>>,
-    P: Payload,
-{
-    type Error = F::Error;
-
-    #[inline]
-    fn deserialize(self: Pin<&mut Self>, src: &BytesMut) -> Result<Message<P>, Self::Error> {
-        let this = self.project();
-        let projection: Pin<&mut F> = this.inner;
-
-        let msg_size = src.len() as u64;
-
-        let deserialized = F::deserialize(projection, src)?;
-        let msg_kind = deserialized.classify();
-        Metrics::record_payload_in(this.metrics, msg_kind, msg_size);
-
-        let trace_id = this
-            .connection_id
-            .create_trace_id(this.role.in_flag(), *this.in_count);
-        *this.in_count += 1;
-
-        trace!(target: "net_in",
-            msg_id = %trace_id,
-            msg_size,
-            msg_kind = %msg_kind, "received");
-
-        Ok(deserialized)
     }
 }
 
@@ -240,6 +129,7 @@ impl ConnectionId {
     ///
     /// The `flag` should be created using the [`Role::in_flag`] or [`Role::out_flag`] method and
     /// must be created accordingly (`out_flag` when serializing, `in_flag` when deserializing).
+    #[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
     fn create_trace_id(&self, flag: u8, count: u64) -> TraceId {
         // Copy the basic network ID.
         let mut buffer = self.0;
@@ -285,6 +175,7 @@ impl ConnectionId {
 /// Message sending direction.
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
+#[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
 pub(super) enum Role {
     /// Dialer, i.e. initiator of the connection.
     Dialer,
@@ -292,6 +183,7 @@ pub(super) enum Role {
     Listener,
 }
 
+#[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
 impl Role {
     /// Returns a flag suitable for hashing incoming messages.
     #[inline]

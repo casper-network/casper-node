@@ -69,6 +69,18 @@ where
     )
 }
 
+/// Creates a `signed_message`
+fn create_signed_message(
+    validators: &Validators<PublicKey>,
+    round_id: RoundId,
+    content: Content<ClContext>,
+    keypair: &Keypair,
+) -> SignedMessage<ClContext> {
+    let validator_idx = validators.get_index(keypair.public_key()).unwrap();
+    let instance_id = ClContext::hash(INSTANCE_ID_DATA);
+    SignedMessage::sign_new(round_id, instance_id, content, validator_idx, keypair)
+}
+
 /// Creates a `Message::Signed`.
 fn create_message(
     validators: &Validators<PublicKey>,
@@ -76,10 +88,7 @@ fn create_message(
     content: Content<ClContext>,
     keypair: &Keypair,
 ) -> EraMessage<ClContext> {
-    let validator_idx = validators.get_index(keypair.public_key()).unwrap();
-    let instance_id = ClContext::hash(INSTANCE_ID_DATA);
-    let signed_msg =
-        SignedMessage::sign_new(round_id, instance_id, content, validator_idx, keypair);
+    let signed_msg = create_signed_message(validators, round_id, content, keypair);
     Message::Signed(signed_msg).into()
 }
 
@@ -87,11 +96,17 @@ fn create_message(
 fn create_proposal_message(
     round_id: RoundId,
     proposal: &Proposal<ClContext>,
+    validators: &Validators<PublicKey>,
+    keypair: &Keypair,
 ) -> EraMessage<ClContext> {
+    let hashed_proposal = HashedProposal::new(proposal.clone());
+    let echo_content = Content::Echo(*hashed_proposal.hash());
+    let echo = create_signed_message(validators, round_id, echo_content, keypair);
     Message::Proposal {
         round_id,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         proposal: proposal.clone(),
+        echo,
     }
     .into()
 }
@@ -165,6 +180,7 @@ fn remove_proposal(
             round_id,
             instance_id: _,
             proposal,
+            echo: _,
         } = &message
         {
             *round_id == expected_round_id && proposal == expected_proposal
@@ -401,15 +417,12 @@ fn zug_no_fault() {
         maybe_parent_round_id: Some(3),
         inactive: None,
     };
-    let hash4 = proposal4.hash();
 
     // Carol's node joins a bit late, and gets some messages out of order.
     timestamp += block_time;
 
     // Alice makes a proposal in round 2 with parent in round 1. Alice and Bob echo it.
-    let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_proposal_message(2, &proposal2);
+    let msg = create_proposal_message(2, &proposal2, &validators, &alice_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, echo(hash2), &bob_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
@@ -422,15 +435,11 @@ fn zug_no_fault() {
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // Alice makes a proposal in round 1 with no parent, and echoes it.
-    let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_proposal_message(1, &proposal1);
+    let msg = create_proposal_message(1, &proposal1, &validators, &alice_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // Now Carol receives Bob's proposal in round 0. Carol echoes it.
-    let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_proposal_message(0, &proposal0);
+    let msg = create_proposal_message(0, &proposal0, &validators, &bob_kp);
     let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 0, carol_idx, echo(hash0)));
@@ -438,7 +447,10 @@ fn zug_no_fault() {
     expect_no_gossip_block_finalized(outcomes);
 
     timestamp += block_time;
-    let msg = create_proposal_message(2, &proposal2);
+
+    // The first proposal message Carol received had a timestamp in the future, so she didn't store
+    // the proposal. Re-send it to her so that she has a chance to store it now.
+    let msg = create_proposal_message(2, &proposal2, &validators, &alice_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // On timeout, Carol votes to make round 0 skippable.
@@ -499,7 +511,6 @@ fn zug_no_fault() {
     let mut outcomes = sc_c.propose(proposed_block, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_proposal(&mut gossip, 3, &proposal3));
-    assert!(remove_signed(&mut gossip, 3, carol_idx, echo(hash3)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
 
     timestamp += block_time;
@@ -511,7 +522,6 @@ fn zug_no_fault() {
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(remove_signed(&mut gossip, 3, carol_idx, vote(true)));
     assert!(remove_proposal(&mut gossip, 4, &proposal4));
-    assert!(remove_signed(&mut gossip, 4, carol_idx, echo(hash4)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
 
     // Only when Alice also votes for the switch block is it finalized.
@@ -561,7 +571,6 @@ fn zug_faults() {
         maybe_parent_round_id: None,
         inactive: None,
     };
-    let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
         timestamp: timestamp + zug.params.min_block_time(),
@@ -569,20 +578,15 @@ fn zug_faults() {
         maybe_parent_round_id: Some(1),
         inactive: Some(iter::once(carol_idx).collect()),
     };
-    let hash2 = proposal2.hash();
 
     timestamp += zug.params.min_block_time();
 
     // Alice makes sproposals in rounds 1 and 2, echoes and votes for them.
-    let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_proposal_message(1, &proposal1);
+    let msg = create_proposal_message(1, &proposal1, &validators, &alice_kp);
     expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 1, vote(true), &alice_kp);
     expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
-    expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_proposal_message(2, &proposal2);
+    let msg = create_proposal_message(2, &proposal2, &validators, &alice_kp);
     expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, vote(true), &alice_kp);
     expect_no_gossip_block_finalized(zug.handle_message(&mut rng, sender, msg, timestamp));
@@ -666,9 +670,7 @@ fn zug_sends_sync_request() {
     timestamp += timeout;
 
     // Now we get a proposal and echo from Alice, one false vote from Bob, and Carol double-signs.
-    let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
-    let msg = create_proposal_message(0, &proposal0);
+    let msg = create_proposal_message(0, &proposal0, &validators, &alice_kp);
     zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
     zug.handle_message(&mut rng, sender, msg, timestamp);
@@ -753,9 +755,7 @@ fn zug_handles_sync_request() {
 
     // We get a proposal, echo and true vote from Alice, one echo and false vote from Bob, and
     // Carol double-signs.
-    let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
-    zug.handle_message(&mut rng, sender, msg, timestamp);
-    let msg = create_proposal_message(0, &proposal0);
+    let msg = create_proposal_message(0, &proposal0, &validators, &alice_kp);
     zug.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
     zug.handle_message(&mut rng, sender, msg, timestamp);

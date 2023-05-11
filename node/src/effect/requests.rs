@@ -205,6 +205,7 @@ pub(crate) enum NetworkInfoRequest {
     },
     /// Get up to `count` fully-connected peers in random order.
     FullyConnectedPeers {
+        /// Responder to be called with all connected in random order peers.
         count: usize,
         /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,

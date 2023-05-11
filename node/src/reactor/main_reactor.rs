@@ -27,8 +27,6 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
@@ -77,6 +75,11 @@ use crate::{
     },
     utils::{Source, WithDir},
     NodeRng,
+};
+#[cfg(test)]
+use crate::{
+    components::{ComponentState, InitializedComponent},
+    testing::network::NetworkedReactor,
 };
 pub use config::Config;
 pub(crate) use error::Error;
@@ -386,9 +389,11 @@ impl reactor::Reactor for MainReactor {
                 self.storage
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::NetworkPeerProvidingData(NetResponseIncoming { sender, message }) => {
-                reactor::handle_get_response(self, effect_builder, rng, sender, message)
-            }
+            MainEvent::NetworkPeerProvidingData(NetResponseIncoming {
+                sender,
+                message,
+                ticket: _, // TODO: Properly handle ticket.
+            }) => reactor::handle_get_response(self, effect_builder, rng, sender, message),
             MainEvent::AddressGossiper(event) => reactor::wrap_effects(
                 MainEvent::AddressGossiper,
                 self.address_gossiper
@@ -837,15 +842,17 @@ impl reactor::Reactor for MainReactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, demand.into()),
             ),
-            MainEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
-                reactor::handle_fetch_response::<Self, TrieOrChunk>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    &message.0,
-                )
-            }
+            MainEvent::TrieResponseIncoming(TrieResponseIncoming {
+                sender,
+                message,
+                ticket: _, // TODO: Sensibly process ticket.
+            }) => reactor::handle_fetch_response::<Self, TrieOrChunk>(
+                self,
+                effect_builder,
+                rng,
+                sender,
+                &message.0,
+            ),
 
             // STORAGE
             MainEvent::Storage(event) => reactor::wrap_effects(
@@ -1014,6 +1021,13 @@ impl reactor::Reactor for MainReactor {
             config.node.force_resync,
         )?;
 
+        let max_delegators_per_validator =
+            if chainspec.core_config.max_delegators_per_validator == 0 {
+                None
+            } else {
+                Some(chainspec.core_config.max_delegators_per_validator)
+            };
+
         let contract_runtime = ContractRuntime::new(
             protocol_version,
             storage.root_path(),
@@ -1027,6 +1041,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.prune_batch_size,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
+            max_delegators_per_validator,
             registry,
         )?;
 
@@ -1177,6 +1192,16 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    #[cfg(test)]
+    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
+        match name {
+            "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
+                &self.rest_server,
+            )),
+            _ => None,
+        }
     }
 }
 

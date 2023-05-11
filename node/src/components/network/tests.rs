@@ -12,6 +12,7 @@ use std::{
 
 use derive_more::From;
 use futures::FutureExt;
+use muxink::backpressured::Ticket;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
@@ -21,8 +22,8 @@ use tracing::{debug, info};
 use casper_types::SecretKey;
 
 use super::{
-    chain_info::ChainInfo, Config, Event as NetworkEvent, FromIncoming, GossipedAddress, Identity,
-    MessageKind, Network, Payload,
+    chain_info::ChainInfo, unbounded_channels, Config, Event as NetworkEvent, FromIncoming,
+    GossipedAddress, Identity, MessageKind, Network, Payload,
 };
 use crate::{
     components::{
@@ -123,11 +124,12 @@ impl From<ContractRuntimeRequest> for Event {
 }
 
 impl FromIncoming<Message> for Event {
-    fn from_incoming(sender: NodeId, payload: Message) -> Self {
+    fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
         match payload {
             Message::AddressGossiper(message) => Event::AddressGossiperIncoming(GossiperIncoming {
                 sender,
                 message: Box::new(message),
+                ticket: Arc::new(ticket),
             }),
         }
     }
@@ -163,8 +165,8 @@ impl Payload for Message {
         0
     }
 
-    fn is_unsafe_for_syncing_peers(&self) -> bool {
-        false
+    fn get_channel(&self) -> super::Channel {
+        super::Channel::Network
     }
 }
 
@@ -294,7 +296,7 @@ impl Finalize for TestReactor {
 /// Checks whether or not a given network with potentially blocked nodes is completely connected.
 fn network_is_complete(
     blocklist: &HashSet<NodeId>,
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+    nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<TestReactor>>>>,
 ) -> bool {
     // Collect expected nodes.
     let expected: HashSet<_> = nodes
@@ -446,6 +448,10 @@ async fn check_varying_size_network_connects() {
 
     // Try with a few predefined sets of network sizes.
     for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
+        info!(
+            number_of_nodes,
+            "begin varying size network connection test"
+        );
         let timeout = Duration::from_secs(3 * number_of_nodes as u64);
 
         let mut net = TestingNetwork::new();
@@ -487,6 +493,11 @@ async fn check_varying_size_network_connects() {
 
         // This test will run multiple times, so ensure we cleanup all ports.
         net.finalize().await;
+
+        info!(
+            number_of_nodes,
+            "finished varying size network connection test"
+        );
     }
 }
 
@@ -534,4 +545,22 @@ async fn ensure_peers_metric_is_correct() {
 
         net.finalize().await;
     }
+}
+
+#[test]
+fn unbounded_channels_wires_up_correctly() {
+    let (senders, mut receivers) = unbounded_channels::<char, 3>();
+
+    assert_eq!(senders.len(), 3);
+
+    senders[0].send('A').unwrap();
+    senders[0].send('a').unwrap();
+    senders[1].send('B').unwrap();
+    senders[2].send('C').unwrap();
+
+    assert_eq!(receivers[0].recv().now_or_never().unwrap().unwrap(), 'A');
+    assert_eq!(receivers[0].recv().now_or_never().unwrap().unwrap(), 'a');
+    assert_eq!(receivers[1].recv().now_or_never().unwrap().unwrap(), 'B');
+    assert_eq!(receivers[2].recv().now_or_never().unwrap().unwrap(), 'C');
+    assert!(receivers[0].recv().now_or_never().is_none());
 }

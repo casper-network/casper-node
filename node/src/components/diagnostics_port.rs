@@ -17,7 +17,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::{net::UnixListener, sync::watch};
+use tokio::net::UnixListener;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -30,7 +30,7 @@ use crate::{
     },
     reactor::main_reactor::MainEvent,
     types::NodeRng,
-    utils::umask,
+    utils::{umask, DropSwitch, ObservableFuse},
     WithDir,
 };
 pub(crate) use stop_at::StopAtSpec;
@@ -65,8 +65,8 @@ impl Default for Config {
 pub(crate) struct DiagnosticsPort {
     state: ComponentState,
     /// Sender which will cause server and client connections to exit when dropped.
-    #[data_size(skip)]
-    _shutdown_sender: Option<watch::Sender<()>>, // only used for its `Drop` impl
+    #[allow(dead_code)]
+    shutdown_fuse: DropSwitch<ObservableFuse>,
     config: WithDir<Config>,
 }
 
@@ -76,7 +76,7 @@ impl DiagnosticsPort {
         DiagnosticsPort {
             state: ComponentState::Uninitialized,
             config,
-            _shutdown_sender: None,
+            shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
         }
     }
 }
@@ -195,10 +195,6 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Event>, Self::Error> {
-        let (shutdown_sender, shutdown_receiver) = watch::channel(());
-
-        self._shutdown_sender = Some(shutdown_sender);
-
         let cfg = self.config.value();
 
         let socket_path = self.config.with_dir(cfg.socket_path.clone());
@@ -208,7 +204,12 @@ where
             #[allow(clippy::useless_conversion)]
             cfg.socket_umask.into(),
         )?;
-        let server = tasks::server(effect_builder, socket_path, listener, shutdown_receiver);
+        let server = tasks::server(
+            effect_builder,
+            socket_path,
+            listener,
+            self.shutdown_fuse.inner().clone(),
+        );
         Ok(server.ignore())
     }
 }

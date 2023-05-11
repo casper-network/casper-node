@@ -2,7 +2,6 @@ use std::{convert::Infallible, time::Duration};
 
 use futures::{future, TryFutureExt};
 use hyper::server::{conn::AddrIncoming, Builder};
-use tokio::sync::oneshot;
 use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
 use warp::Filter;
@@ -10,16 +9,17 @@ use warp::Filter;
 use casper_types::ProtocolVersion;
 
 use super::{filters, ReactorEventT};
-use crate::effect::EffectBuilder;
+use crate::{
+    components::rest_server::Event, effect::EffectBuilder, reactor::QueueKind,
+    utils::ObservableFuse,
+};
 
 /// Run the REST HTTP server.
-///
-/// A message received on `shutdown_receiver` will cause the server to exit cleanly.
 pub(super) async fn run<REv: ReactorEventT>(
     builder: Builder<AddrIncoming>,
     effect_builder: EffectBuilder<REv>,
     api_version: ProtocolVersion,
-    shutdown_receiver: oneshot::Receiver<()>,
+    shutdown_fuse: ObservableFuse,
     qps_limit: u64,
 ) {
     // REST filters.
@@ -39,7 +39,7 @@ pub(super) async fn run<REv: ReactorEventT>(
             .with(warp::cors().allow_any_origin()),
     );
 
-    // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
+    // Start the server, passing a fuse to allow the server to be shut down gracefully.
     let make_svc =
         hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
 
@@ -48,13 +48,17 @@ pub(super) async fn run<REv: ReactorEventT>(
         .service(make_svc);
 
     let server = builder.serve(rate_limited_service);
+
     info!(address = %server.local_addr(), "started REST server");
+
+    effect_builder
+        .into_inner()
+        .schedule(Event::BindComplete(server.local_addr()), QueueKind::Regular)
+        .await;
 
     // Shutdown the server gracefully.
     let _ = server
-        .with_graceful_shutdown(async {
-            shutdown_receiver.await.ok();
-        })
+        .with_graceful_shutdown(shutdown_fuse.wait_owned())
         .map_err(|error| {
             warn!(%error, "error running REST server");
         })

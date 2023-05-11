@@ -71,6 +71,8 @@ strict_argument_checking = false
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
 consensus_protocol = 'Highway'
+# The maximum amount of delegators per validator. if the value is 0, there is no maximum capacity.
+max_delegators_per_validator = 0
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
@@ -109,7 +111,7 @@ native_transfer_minimum_motes = 2_500_000_000
 # Amount of free memory (in 64kB pages) each contract can use for stack.
 max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
-max_stack_height = 188
+max_stack_height = 200
 
 [wasm.storage_costs]
 # Gas charged per byte stored in the global state.
@@ -158,8 +160,8 @@ br = 440_000
 br_if = 440_000
 return = 440
 select = 440
-call = 440
-call_indirect = 440
+call = 140_000
+call_indirect = 140_000
 drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
@@ -231,7 +233,7 @@ withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
 activate_bid = 10_000
-redelegate = 10_000
+redelegate = 2_500_000_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000

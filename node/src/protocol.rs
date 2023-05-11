@@ -9,6 +9,7 @@ use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
+use muxink::backpressured::Ticket;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
@@ -17,7 +18,7 @@ use crate::{
         consensus,
         fetcher::{FetchItem, FetchResponse, Tag},
         gossiper,
-        network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
+        network::{Channel, EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
     effect::{
         incoming::{
@@ -144,19 +145,45 @@ impl Payload for Message {
         }
     }
 
-    fn is_unsafe_for_syncing_peers(&self) -> bool {
+    #[inline]
+    fn get_channel(&self) -> Channel {
         match self {
-            Message::Consensus(_) => false,
-            Message::ConsensusRequest(_) => false,
-            Message::BlockGossiper(_) => false,
-            Message::DeployGossiper(_) => false,
-            Message::FinalitySignatureGossiper(_) => false,
-            Message::AddressGossiper(_) => false,
-            // Trie requests can deadlock between syncing nodes.
-            Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
-            Message::GetRequest { .. } => false,
-            Message::GetResponse { .. } => false,
-            Message::FinalitySignature(_) => false,
+            Message::Consensus(_) => Channel::Consensus,
+            Message::DeployGossiper(_) => Channel::BulkGossip,
+            Message::AddressGossiper(_) => Channel::BulkGossip,
+            Message::GetRequest {
+                tag,
+                serialized_id: _,
+            } => match tag {
+                Tag::Deploy => Channel::DataRequests,
+                Tag::LegacyDeploy => Channel::SyncDataRequests,
+                Tag::Block => Channel::DataRequests,
+                Tag::BlockHeader => Channel::DataRequests,
+                Tag::TrieOrChunk => Channel::SyncDataRequests,
+                Tag::FinalitySignature => Channel::DataRequests,
+                Tag::SyncLeap => Channel::SyncDataRequests,
+                Tag::ApprovalsHashes => Channel::SyncDataRequests,
+                Tag::BlockExecutionResults => Channel::SyncDataRequests,
+            },
+            Message::GetResponse {
+                tag,
+                serialized_item: _,
+            } => match tag {
+                // TODO: Verify which responses are for sync data.
+                Tag::Deploy => Channel::DataResponses,
+                Tag::LegacyDeploy => Channel::SyncDataResponses,
+                Tag::Block => Channel::DataResponses,
+                Tag::BlockHeader => Channel::DataResponses,
+                Tag::TrieOrChunk => Channel::SyncDataResponses,
+                Tag::FinalitySignature => Channel::DataResponses,
+                Tag::SyncLeap => Channel::SyncDataResponses,
+                Tag::ApprovalsHashes => Channel::SyncDataResponses,
+                Tag::BlockExecutionResults => Channel::SyncDataResponses,
+            },
+            Message::FinalitySignature(_) => Channel::Consensus,
+            Message::ConsensusRequest(_) => Channel::Consensus,
+            Message::BlockGossiper(_) => Channel::BulkGossip,
+            Message::FinalitySignatureGossiper(_) => Channel::BulkGossip,
         }
     }
 }
@@ -304,11 +331,13 @@ where
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
-    fn from_incoming(sender: NodeId, payload: Message) -> Self {
+    fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
+        let ticket = Arc::new(ticket);
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming {
                 sender,
                 message: Box::new(message),
+                ticket,
             }
             .into(),
             Message::ConsensusRequest(_message) => {
@@ -318,67 +347,86 @@ where
             Message::BlockGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),
+                ticket,
             }
             .into(),
             Message::DeployGossiper(message) => GossiperIncoming {
                 sender,
+
                 message: Box::new(message),
+                ticket,
             }
             .into(),
             Message::FinalitySignatureGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),
+                ticket,
             }
             .into(),
             Message::AddressGossiper(message) => GossiperIncoming {
                 sender,
+
                 message: Box::new(message),
+                ticket,
             }
             .into(),
             Message::GetRequest { tag, serialized_id } => match tag {
                 Tag::Deploy => NetRequestIncoming {
                     sender,
                     message: Box::new(NetRequest::Deploy(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::LegacyDeploy => NetRequestIncoming {
                     sender,
+
                     message: Box::new(NetRequest::LegacyDeploy(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::Block => NetRequestIncoming {
                     sender,
                     message: Box::new(NetRequest::Block(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockHeader => NetRequestIncoming {
                     sender,
                     message: Box::new(NetRequest::BlockHeader(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieRequestIncoming {
                     sender,
                     message: Box::new(TrieRequest(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::FinalitySignature => NetRequestIncoming {
                     sender,
+
                     message: Box::new(NetRequest::FinalitySignature(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::SyncLeap => NetRequestIncoming {
                     sender,
                     message: Box::new(NetRequest::SyncLeap(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::ApprovalsHashes => NetRequestIncoming {
                     sender,
+
                     message: Box::new(NetRequest::ApprovalsHashes(serialized_id)),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetRequestIncoming {
                     sender,
+
                     message: Box::new(NetRequest::BlockExecutionResults(serialized_id)),
+                    ticket,
                 }
                 .into(),
             },
@@ -389,52 +437,68 @@ where
                 Tag::Deploy => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::Deploy(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::LegacyDeploy => NetResponseIncoming {
                     sender,
+
                     message: Box::new(NetResponse::LegacyDeploy(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::Block => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::Block(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockHeader => NetResponseIncoming {
                     sender,
+
                     message: Box::new(NetResponse::BlockHeader(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
+
                     message: Box::new(TrieResponse(serialized_item.to_vec())),
+                    ticket,
                 }
                 .into(),
                 Tag::FinalitySignature => NetResponseIncoming {
                     sender,
+
                     message: Box::new(NetResponse::FinalitySignature(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::SyncLeap => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::SyncLeap(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::ApprovalsHashes => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::ApprovalsHashes(serialized_item)),
+                    ticket,
                 }
                 .into(),
                 Tag::BlockExecutionResults => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::BlockExecutionResults(serialized_item)),
+                    ticket,
                 }
                 .into(),
             },
-            Message::FinalitySignature(message) => {
-                FinalitySignatureIncoming { sender, message }.into()
+            Message::FinalitySignature(message) => FinalitySignatureIncoming {
+                sender,
+                message,
+                ticket,
             }
+            .into(),
         }
     }
 

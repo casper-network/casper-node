@@ -33,12 +33,20 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## 1.6.0
+## 2.0.0
+
+### Fixed
+* Republished v1.6.0 as v2.0.0 due to missed breaking change in API (addition of new variant to `Key`).
+
+
+
+## 1.6.0 [YANKED]
 
 ### Added
 * Extend asymmetric key functionality, available via feature `std` (moved from `casper-nodes` crate).
 * Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature `std` (moved from `casper-nodes` crate).
 * Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature `testing`.
+* Add new `Key::EraSummary` key variant under which the era summary info is written on each switch block execution.
 
 ### Deprecated
 * Deprecate `gens` feature: its functionality is included in the new `testing` feature.
