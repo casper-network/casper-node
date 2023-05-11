@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[proptest]
-    fn roundtrip_header(header: Header) {
+    fn roundtrip_valid_headers(header: Header) {
         let raw: [u8; Header::SIZE] = header.into();
 
         assert_eq!(
@@ -289,6 +289,26 @@ mod tests {
             drop(header.error_kind());
         } else {
             drop(header.kind());
+        }
+    }
+
+    #[proptest]
+    fn fuzz_header(raw: [u8; Header::SIZE]) {
+        match Header::parse(raw) {
+            Some(header) => {
+                let rebuilt = if header.is_error() {
+                    Header::new_error(header.error_kind(), header.channel(), header.id())
+                } else {
+                    Header::new(header.kind(), header.channel(), header.id())
+                };
+
+                // Ensure reserved bits are zeroed upon reading.
+                let reencoded: [u8; Header::SIZE] = rebuilt.into();
+                assert_eq!(reencoded, raw);
+            }
+            None => {
+                // All good, simply failed to parse.
+            }
         }
     }
 }
