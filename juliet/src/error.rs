@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-use crate::{ChannelId, RequestId};
+use crate::{ChannelId, Id};
 
 /// Protocol violation.
 #[derive(Debug, Error)]
@@ -21,7 +21,7 @@ pub enum Error {
     DuplicateRequest,
     /// Peer sent a response for a request that does not exist.
     #[error("fictive request: {0}")]
-    FicticiousRequest(RequestId),
+    FicticiousRequest(Id),
     /// Peer attempted to cancel more requests than it made.
     #[error("exceeded request cancellation allowance")]
     ExceededRequestCancellationAllowance,

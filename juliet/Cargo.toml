@@ -6,3 +6,8 @@ authors = [ "Marc Brinkmann <marc@casperlabs.io>" ]
 
 [dependencies]
 thiserror = "1.0.40"
+
+[dev-dependencies]
+proptest = "1.1.0"
+proptest-attr-macro = "1.0.0"
+proptest-derive = "0.3.0"

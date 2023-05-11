@@ -6,6 +6,7 @@ use crate::{ChannelId, Id};
 pub(crate) struct Header([u8; Self::SIZE]);
 
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 enum ErrorKind {
     Other = 0,
@@ -26,6 +27,7 @@ enum ErrorKind {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 
 enum Kind {
@@ -156,7 +158,36 @@ impl From<Header> for [u8; Header::SIZE] {
 
 #[cfg(test)]
 mod tests {
-    use super::{ErrorKind, Header};
+    use proptest::{
+        arbitrary::any,
+        prelude::Arbitrary,
+        prop_oneof,
+        strategy::{BoxedStrategy, Strategy},
+    };
+    use proptest_attr_macro::proptest;
+
+    use crate::{ChannelId, Id};
+
+    use super::{ErrorKind, Header, Kind};
+
+    /// Proptest strategy for `Header`s.
+    fn arb_header() -> impl Strategy<Value = Header> {
+        prop_oneof![
+            any::<(Kind, ChannelId, Id)>().prop_map(|(kind, chan, id)| Header::new(kind, chan, id)),
+            any::<(ErrorKind, ChannelId, Id)>()
+                .prop_map(|(err_kind, chan, id)| Header::new_error(err_kind, chan, id)),
+        ]
+    }
+
+    impl Arbitrary for Header {
+        type Parameters = ();
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_header().boxed()
+        }
+
+        type Strategy = BoxedStrategy<Header>;
+    }
 
     #[test]
     fn known_headers() {
@@ -168,5 +199,15 @@ mod tests {
             expected
         );
         assert_eq!(<[u8; 4]>::from(expected), input);
+    }
+
+    #[proptest]
+    fn roundtrip_header(header: Header) {
+        let raw: [u8; 4] = header.into();
+
+        assert_eq!(
+            Header::parse(raw).expect("failed to roundtrip header"),
+            header
+        );
     }
 }
