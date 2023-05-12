@@ -18,6 +18,18 @@ enum Varint32Result {
     },
 }
 
+impl Varint32Result {
+    #[track_caller]
+    pub fn unwrap(self) -> (NonZeroU8, u32) {
+        match self {
+            Varint32Result::Incomplete | Varint32Result::TooLong | Varint32Result::Overflow => {
+                panic!("`unwrap` called on invalid `Varint32Result`")
+            }
+            Varint32Result::Valid { offset, value } => (offset, value),
+        }
+    }
+}
+
 fn decode_varint32(input: &[u8]) -> Varint32Result {
     let mut value = 0u32;
 
@@ -77,6 +89,8 @@ impl AsRef<[u8]> for Varint32 {
 
 #[cfg(test)]
 mod tests {
+    use proptest_attr_macro::proptest;
+
     use crate::varint::{decode_varint32, Varint32Result};
 
     use super::Varint32;
@@ -131,5 +145,15 @@ mod tests {
         check_decode(0x0000ffff, &[0xff, 0xff, 0x03]);
         check_decode(0xffffffff, &[0xff, 0xff, 0xff, 0xff, 0x0f]);
         check_decode(0x12345678, &[0xf8, 0xac, 0xd1, 0x91, 0x01]);
+    }
+
+    #[proptest]
+    fn roundtrip_value(value: u32) {
+        let encoded = Varint32::encode(value);
+        let decoded = decode_varint32(encoded.as_ref());
+
+        let (offset, decoded_value) = decoded.unwrap();
+        assert_eq!(value, decoded_value);
+        assert_eq!(offset.get() as usize, encoded.as_ref().len());
     }
 }
