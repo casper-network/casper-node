@@ -72,6 +72,7 @@ impl AsRef<[u8]> for Varint32 {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::{any, prop::collection};
     use proptest_attr_macro::proptest;
 
     use crate::varint::{decode_varint32, Varint32Result};
@@ -170,4 +171,13 @@ mod tests {
             Varint32Result::Overflow
         ));
     }
+
+    proptest::proptest! {
+    #[test]
+    fn fuzz_varint(data in collection::vec(any::<u8>(), 0..256)) {
+        if let Varint32Result::Valid{ offset, value } = decode_varint32(&data) {
+            let valid_substring = &data[0..(offset.get() as usize)];
+            check_decode(value, valid_substring);
+        }
+    }}
 }
