@@ -5,19 +5,29 @@
 
 use std::num::NonZeroU8;
 
+/// The bitmask to separate the data-follows bit from actual value bits.
+const VARINT_MASK: u8 = 0b0111_1111;
+
+/// The outcome of a Varint32 decoding.
 #[derive(Copy, Clone, Debug)]
-enum Varint32Result {
+pub enum Varint32Result {
+    /// The input provided indicated more bytes are to follow than available.
     Incomplete,
+    /// Parsing stopped because the resulting integer would exceed `u32::MAX`.
     Overflow,
+    /// Parsing was successful.
     Valid {
         // Note: `offset` is a `NonZero` type to allow niche optimization by the compiler. The
         //       expected size for this `enum` on 64 bit systems is 8 bytes.
+        /// The number of bytes consumed by the varint32.
         offset: NonZeroU8,
+        /// The actual parsed value.
         value: u32,
     },
 }
 
-fn decode_varint32(input: &[u8]) -> Varint32Result {
+/// Decodes a varint32 from the given input.
+pub fn decode_varint32(input: &[u8]) -> Varint32Result {
     let mut value = 0u32;
 
     for (idx, &c) in input.iter().enumerate() {
@@ -39,12 +49,14 @@ fn decode_varint32(input: &[u8]) -> Varint32Result {
     Varint32Result::Incomplete
 }
 
+/// An encoded varint32.
+///
+/// Internally these are stored as six byte arrays to make passing around convenient.
 #[repr(transparent)]
-struct Varint32([u8; 6]);
-
-const VARINT_MASK: u8 = 0b0111_1111;
+pub struct Varint32([u8; 6]);
 
 impl Varint32 {
+    /// Encode a 32-bit integer to variable length.
     pub fn encode(mut value: u32) -> Self {
         let mut output = [0u8; 6];
         let mut count = 0;
@@ -88,7 +100,7 @@ mod tests {
         assert_eq!(Varint32::encode(0x000000ff).as_ref(), &[0xff, 0x01]);
         assert_eq!(Varint32::encode(0x0000ffff).as_ref(), &[0xff, 0xff, 0x03]);
         assert_eq!(
-            Varint32::encode(0xffffffff).as_ref(),
+            Varint32::encode(u32::MAX).as_ref(),
             &[0xff, 0xff, 0xff, 0xff, 0x0f]
         );
 
@@ -138,7 +150,7 @@ mod tests {
         check_decode(0x00000080, &[0x80, 0x01]);
         check_decode(0x000000ff, &[0xff, 0x01]);
         check_decode(0x0000ffff, &[0xff, 0xff, 0x03]);
-        check_decode(0xffffffff, &[0xff, 0xff, 0xff, 0xff, 0x0f]);
+        check_decode(u32::MAX, &[0xff, 0xff, 0xff, 0xff, 0x0f]);
         check_decode(0xf0000000, &[0x80, 0x80, 0x80, 0x80, 0x0f]);
         check_decode(0x12345678, &[0xf8, 0xac, 0xd1, 0x91, 0x01]);
     }
