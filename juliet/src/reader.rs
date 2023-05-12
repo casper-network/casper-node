@@ -30,7 +30,70 @@ struct Channel {
 #[derive(Debug)]
 enum RequestState {
     Ready,
-    InProgress { header: Header },
+    InProgress { header: Header, payload: BytesMut },
+}
+
+impl RequestState {
+    /// Accept additional data to be written.
+    ///
+    /// Assumes that `header` is the first [`Header::SIZE`] bytes of `buffer`. Will advance `buffer`
+    /// past header and payload only on success.
+    fn accept(
+        &mut self,
+        header: Header,
+        buffer: &mut BytesMut,
+        max_frame_size: u32,
+    ) -> Outcome<BytesMut> {
+        debug_assert!(
+            max_frame_size >= 10,
+            "maximum frame size must be enough to hold header and varint"
+        );
+
+        match self {
+            RequestState::Ready => {
+                // We have a new segment, which has a variable size.
+                let segment_buf = &buffer[0..Header::SIZE];
+
+                match decode_varint32(segment_buf) {
+                    Varint32Result::Incomplete => return Incomplete(1),
+                    Varint32Result::Overflow => return header.return_err(ErrorKind::BadVarInt),
+                    Varint32Result::Valid {
+                        offset,
+                        value: total_payload_size,
+                    } => {
+                        // We have a valid varint32. Let's see if we're inside the frame boundary.
+                        let preamble_size = Header::SIZE as u32 + offset.get() as u32;
+                        let max_data_in_frame = (max_frame_size - preamble_size) as u32;
+
+                        // Drop header and length.
+                        buffer.advance(preamble_size as usize);
+                        if total_payload_size <= max_data_in_frame {
+                            let payload = buffer.split_to(total_payload_size as usize);
+
+                            // No need to alter the state, we stay `Ready`.
+                            return Success(payload);
+                        }
+
+                        // The length exceeds the frame boundary, split to maximum and store that.
+                        let partial_payload =
+                            buffer.split_to((max_frame_size - preamble_size) as usize);
+
+                        *self = RequestState::InProgress {
+                            header,
+                            payload: partial_payload,
+                        };
+
+                        // TODO: THIS IS WRONG. LOOP READING. AND CONSIDER ACTUAL BUFFER LENGTH
+                        // ABOVE. We need at least a header to proceed further on.
+                        return Incomplete(Header::SIZE);
+                    }
+                }
+
+                todo!()
+            }
+            RequestState::InProgress { header, payload } => todo!(),
+        }
+    }
 }
 
 impl Channel {
@@ -54,6 +117,16 @@ enum Outcome<T> {
     Incomplete(usize),
     ProtocolErr(Header),
     Success(T),
+}
+
+macro_rules! try_outcome {
+    ($src:expr) => {
+        match $src {
+            Outcome::Incomplete(n) => return Outcome::Incomplete(n),
+            Outcome::ProtocolErr(header) return Outcome::ProtocolErr(header),
+            Outcome::Success(value) => value,
+        }
+    };
 }
 
 use Outcome::{Incomplete, ProtocolErr, Success};
