@@ -6,7 +6,6 @@ mod tests;
 use std::collections::HashSet;
 use std::{borrow::Cow, cmp, collections::VecDeque, convert::TryInto, mem};
 
-use either::Either;
 use num_traits::FromPrimitive;
 use tracing::{error, warn};
 
@@ -326,19 +325,19 @@ where
     let TrieScanRaw { tip, parents } =
         scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
     let tip = match tip {
-        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
-        Either::Right(tip) => tip,
+        LazyTrieLeaf::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
+        LazyTrieLeaf::Right(tip) => tip,
     };
     Ok(TrieScan::new(tip, parents))
 }
 
 struct TrieScanRaw<K, V> {
-    tip: Either<Bytes, Trie<K, V>>,
+    tip: LazyTrieLeaf<K, V>,
     parents: Parents<K, V>,
 }
 
 impl<K, V> TrieScanRaw<K, V> {
-    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>) -> Self {
+    fn new(tip: LazyTrieLeaf<K, V>, parents: Parents<K, V>) -> Self {
         TrieScanRaw { tip, parents }
     }
 }
@@ -368,8 +367,8 @@ where
     loop {
         let maybe_trie_leaf = trie::lazy_trie_deserialize(current)?;
         current_trie = match maybe_trie_leaf {
-            leaf_bytes @ Either::Left(_) => return Ok(TrieScanRaw::new(leaf_bytes, acc)),
-            Either::Right(trie_object) => trie_object,
+            leaf_bytes @ LazyTrieLeaf::Left(_) => return Ok(TrieScanRaw::new(leaf_bytes, acc)),
+            LazyTrieLeaf::Right(trie_object) => trie_object,
         };
         match current_trie {
             _leaf @ Trie::Leaf { .. } => {
@@ -391,7 +390,7 @@ where
                     Some(pointer) => pointer,
                     None => {
                         return Ok(TrieScanRaw::new(
-                            Either::Right(Trie::Node { pointer_block }),
+                            LazyTrieLeaf::Right(Trie::Node { pointer_block }),
                             acc,
                         ));
                     }
@@ -415,7 +414,7 @@ where
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
                     return Ok(TrieScanRaw::new(
-                        Either::Right(Trie::Extension { affix, pointer }),
+                        LazyTrieLeaf::Right(Trie::Extension { affix, pointer }),
                         acc,
                     ));
                 }
@@ -476,7 +475,7 @@ where
 
     // Check that tip is a leaf
     match tip {
-        Either::Left(bytes)
+        LazyTrieLeaf::Left(bytes)
             if {
                 // Partially deserialize a key of a leaf node to ensure that we can only continue if
                 // the key matches what we're looking for.
