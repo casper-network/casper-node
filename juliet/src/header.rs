@@ -113,17 +113,17 @@ impl Header {
     /// Creates a new non-error header.
     #[inline(always)]
     pub(crate) fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
-        let id = id.to_le_bytes();
-        Header([kind as u8, channel as u8, id[0], id[1]])
+        let id = id.get().to_le_bytes();
+        Header([kind as u8, channel.get(), id[0], id[1]])
     }
 
     /// Creates a new error header.
     #[inline(always)]
     pub(crate) fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
-        let id = id.to_le_bytes();
+        let id = id.get().to_le_bytes();
         Header([
             kind as u8 | Header::KIND_ERR_BIT,
-            channel as u8,
+            channel.get(),
             id[0],
             id[1],
         ])
@@ -167,14 +167,14 @@ impl Header {
     /// Returns the channel.
     #[inline(always)]
     pub(crate) fn channel(self) -> ChannelId {
-        self.0[1]
+        ChannelId::new(self.0[1])
     }
 
     /// Returns the id.
     #[inline(always)]
     pub(crate) fn id(self) -> Id {
         let [_, _, id @ ..] = self.0;
-        Id::from_le_bytes(id)
+        Id::new(u16::from_le_bytes(id))
     }
 
     /// Returns whether the error bit is set.
@@ -274,7 +274,8 @@ mod tests {
     #[test]
     fn known_headers() {
         let input = [0x86, 0x48, 0xAA, 0xBB];
-        let expected = Header::new_error(ErrorKind::InProgress, 0x48, 0xBBAA);
+        let expected =
+            Header::new_error(ErrorKind::InProgress, ChannelId::new(0x48), Id::new(0xBBAA));
 
         assert_eq!(
             Header::parse(input).expect("could not parse header"),
