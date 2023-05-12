@@ -86,7 +86,6 @@ mod tests {
         assert_eq!(Varint32::encode(0x0000007f).as_ref(), &[0x7f]);
         assert_eq!(Varint32::encode(0x00000080).as_ref(), &[0x80, 0x01]);
         assert_eq!(Varint32::encode(0x000000ff).as_ref(), &[0xff, 0x01]);
-        assert_eq!(Varint32::encode(0x000000ff).as_ref(), &[0xff, 0x01]);
         assert_eq!(Varint32::encode(0x0000ffff).as_ref(), &[0xff, 0xff, 0x03]);
         assert_eq!(
             Varint32::encode(0xffffffff).as_ref(),
@@ -137,7 +136,6 @@ mod tests {
         check_decode(0x00000040, &[0x40]);
         check_decode(0x0000007f, &[0x7f]);
         check_decode(0x00000080, &[0x80, 0x01]);
-        check_decode(0x000000ff, &[0xff, 0x01]);
         check_decode(0x000000ff, &[0xff, 0x01]);
         check_decode(0x0000ffff, &[0xff, 0xff, 0x03]);
         check_decode(0xffffffff, &[0xff, 0xff, 0xff, 0xff, 0x0f]);
