@@ -8,7 +8,6 @@ use std::num::NonZeroU8;
 #[derive(Copy, Clone, Debug)]
 enum Varint32Result {
     Incomplete,
-    TooLong,
     Overflow,
     Valid {
         // Note: `offset` is a `NonZero` type to allow niche optimization by the compiler. The
@@ -18,33 +17,17 @@ enum Varint32Result {
     },
 }
 
-impl Varint32Result {
-    #[track_caller]
-    pub fn unwrap(self) -> (NonZeroU8, u32) {
-        match self {
-            Varint32Result::Incomplete | Varint32Result::TooLong | Varint32Result::Overflow => {
-                panic!("`unwrap` called on invalid `Varint32Result`")
-            }
-            Varint32Result::Valid { offset, value } => (offset, value),
-        }
-    }
-}
-
 fn decode_varint32(input: &[u8]) -> Varint32Result {
     let mut value = 0u32;
 
     for (idx, &c) in input.iter().enumerate() {
-        value |= ((c & 0b0111_1111) as u32) << (idx * 7);
-
-        if idx > 4 && c & 0b1111_0000 != 0 {
+        if idx >= 4 && c & 0b1111_0000 != 0 {
             return Varint32Result::Overflow;
         }
 
-        if c & 0b1000_0000 != 0 {
-            if idx > 4 {
-                return Varint32Result::TooLong;
-            }
-        } else {
+        value |= ((c & 0b0111_1111) as u32) << (idx * 7);
+
+        if c & 0b1000_0000 == 0 {
             return Varint32Result::Valid {
                 value,
                 offset: NonZeroU8::new((idx + 1) as u8).unwrap(),
@@ -124,13 +107,26 @@ mod tests {
         let decoded = decode_varint32(input);
 
         match decoded {
-            Varint32Result::Incomplete | Varint32Result::TooLong | Varint32Result::Overflow => {
+            Varint32Result::Incomplete | Varint32Result::Overflow => {
                 panic!("unexpected outcome: {:?}", decoded)
             }
             Varint32Result::Valid { offset, value } => {
                 assert_eq!(expected, value);
                 assert_eq!(offset.get() as usize, input.len());
             }
+        }
+
+        // Also ensure that all partial outputs yield `Incomplete`.
+        let mut l = input.len();
+
+        while l > 1 {
+            l -= 1;
+
+            let partial = &input.as_ref()[0..l];
+            assert!(matches!(
+                decode_varint32(partial),
+                Varint32Result::Incomplete
+            ));
         }
     }
 
@@ -144,16 +140,34 @@ mod tests {
         check_decode(0x000000ff, &[0xff, 0x01]);
         check_decode(0x0000ffff, &[0xff, 0xff, 0x03]);
         check_decode(0xffffffff, &[0xff, 0xff, 0xff, 0xff, 0x0f]);
+        check_decode(0xf0000000, &[0x80, 0x80, 0x80, 0x80, 0x0f]);
         check_decode(0x12345678, &[0xf8, 0xac, 0xd1, 0x91, 0x01]);
     }
 
     #[proptest]
     fn roundtrip_value(value: u32) {
         let encoded = Varint32::encode(value);
-        let decoded = decode_varint32(encoded.as_ref());
+        check_decode(value, encoded.as_ref());
+    }
 
-        let (offset, decoded_value) = decoded.unwrap();
-        assert_eq!(value, decoded_value);
-        assert_eq!(offset.get() as usize, encoded.as_ref().len());
+    #[test]
+    fn check_error_conditions() {
+        // Value is too long (no more than 5 bytes allowed).
+        assert!(matches!(
+            decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x01]),
+            Varint32Result::Overflow
+        ));
+
+        // This behavior should already trigger on the fifth byte.
+        assert!(matches!(
+            decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x80]),
+            Varint32Result::Overflow
+        ));
+
+        // Value is too big to be held by a `u32`.
+        assert!(matches!(
+            decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x10]),
+            Varint32Result::Overflow
+        ));
     }
 }
