@@ -5,6 +5,7 @@ edition = "2021"
 authors = [ "Marc Brinkmann <marc@casperlabs.io>" ]
 
 [dependencies]
+bytes = "1.4.0"
 thiserror = "1.0.40"
 
 [dev-dependencies]

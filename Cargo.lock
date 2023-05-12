@@ -2462,6 +2462,7 @@ dependencies = [
 name = "juliet"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "proptest",
  "proptest-attr-macro",
  "proptest-derive",

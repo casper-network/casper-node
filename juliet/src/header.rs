@@ -102,7 +102,7 @@ impl Kind {
 
 impl Header {
     /// The size (in bytes) of a header.
-    const SIZE: usize = 4;
+    pub(crate) const SIZE: usize = 4;
     /// Bitmask returning the error bit of the kind byte.
     const KIND_ERR_BIT: u8 = 0b1000_0000;
     /// Bitmask returning the error kind inside the kind byte.
@@ -179,7 +179,7 @@ impl Header {
 
     /// Returns whether the error bit is set.
     #[inline(always)]
-    fn is_error(self) -> bool {
+    pub(crate) fn is_error(self) -> bool {
         self.kind_byte() & Self::KIND_ERR_BIT == Self::KIND_ERR_BIT
     }
 

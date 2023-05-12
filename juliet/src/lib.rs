@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 mod header;
+mod reader;
 pub mod varint;
 
 /// A channel identifier.
@@ -21,13 +22,13 @@ impl Display for ChannelId {
 impl ChannelId {
     /// Creates a new channel ID.
     #[inline(always)]
-    pub fn new(chan: u8) -> Self {
+    pub const fn new(chan: u8) -> Self {
         ChannelId(chan)
     }
 
     /// Returns the channel ID as [`u8`].
     #[inline(always)]
-    pub fn get(self) -> u8 {
+    pub const fn get(self) -> u8 {
         self.0
     }
 }
@@ -56,13 +57,13 @@ impl Display for Id {
 impl Id {
     /// Creates a new identifier.
     #[inline(always)]
-    pub fn new(id: u16) -> Self {
+    pub const fn new(id: u16) -> Self {
         Id(id)
     }
 
     /// Returns the channel ID as [`u16`].
     #[inline(always)]
-    pub fn get(self) -> u16 {
+    pub const fn get(self) -> u16 {
         self.0
     }
 }
