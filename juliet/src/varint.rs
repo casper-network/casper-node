@@ -5,6 +5,7 @@
 
 use std::num::NonZeroU8;
 
+#[derive(Copy, Clone, Debug)]
 enum Varint32Result {
     Incomplete,
     TooLong,
@@ -17,38 +18,13 @@ enum Varint32Result {
     },
 }
 
-impl Varint32Result {
-    #[inline]
-    fn ok(self) -> Option<u32> {
-        match self {
-            Varint32Result::Incomplete => None,
-            Varint32Result::TooLong => None,
-            Varint32Result::Overflow => None,
-            Varint32Result::Valid { offset, value } => Some(value),
-        }
-    }
-
-    #[track_caller]
-    #[inline]
-    fn unwrap(self) -> u32 {
-        self.ok().unwrap()
-    }
-
-    #[track_caller]
-    #[inline]
-
-    fn expect(self, msg: &str) -> u32 {
-        self.ok().expect(msg)
-    }
-}
-
 fn decode_varint32(input: &[u8]) -> Varint32Result {
     let mut value = 0u32;
 
     for (idx, &c) in input.iter().enumerate() {
-        value |= (c & 0b0111_1111) as u32;
+        value |= ((c & 0b0111_1111) as u32) << (idx * 7);
 
-        if idx > 4 && value & 0b1111_0000 != 0 {
+        if idx > 4 && c & 0b1111_0000 != 0 {
             return Varint32Result::Overflow;
         }
 
@@ -56,9 +32,6 @@ fn decode_varint32(input: &[u8]) -> Varint32Result {
             if idx > 4 {
                 return Varint32Result::TooLong;
             }
-
-            // More bits will follow.
-            value <<= 7;
         } else {
             return Varint32Result::Valid {
                 value,
@@ -104,7 +77,7 @@ impl AsRef<[u8]> for Varint32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::varint::decode_varint32;
+    use crate::varint::{decode_varint32, Varint32Result};
 
     use super::Varint32;
 
@@ -132,22 +105,31 @@ mod tests {
         );
     }
 
+    #[track_caller]
+    fn check_decode(expected: u32, input: &[u8]) {
+        let decoded = decode_varint32(input);
+
+        match decoded {
+            Varint32Result::Incomplete | Varint32Result::TooLong | Varint32Result::Overflow => {
+                panic!("unexpected outcome: {:?}", decoded)
+            }
+            Varint32Result::Valid { offset, value } => {
+                assert_eq!(expected, value);
+                assert_eq!(offset.get() as usize, input.len());
+            }
+        }
+    }
+
     #[test]
     fn decode_known_values() {
-        assert_eq!(0x00000000, decode_varint32(&[0x00]).unwrap());
-        assert_eq!(0x00000040, decode_varint32(&[0x40]).unwrap());
-        assert_eq!(0x0000007f, decode_varint32(&[0x7f]).unwrap());
-        assert_eq!(0x00000080, decode_varint32(&[0x80, 0x01]).unwrap());
-        assert_eq!(0x000000ff, decode_varint32(&[0xff, 0x01]).unwrap());
-        assert_eq!(0x000000ff, decode_varint32(&[0xff, 0x01]).unwrap());
-        assert_eq!(0x0000ffff, decode_varint32(&[0xff, 0xff, 0x03]).unwrap());
-        assert_eq!(
-            0xffffffff,
-            decode_varint32(&[0xff, 0xff, 0xff, 0xff, 0x0f]).unwrap()
-        );
-        assert_eq!(
-            0x12345678,
-            decode_varint32(&[0xf8, 0xac, 0xd1, 0x91, 0x01]).unwrap()
-        );
+        check_decode(0x00000000, &[0x00]);
+        check_decode(0x00000040, &[0x40]);
+        check_decode(0x0000007f, &[0x7f]);
+        check_decode(0x00000080, &[0x80, 0x01]);
+        check_decode(0x000000ff, &[0xff, 0x01]);
+        check_decode(0x000000ff, &[0xff, 0x01]);
+        check_decode(0x0000ffff, &[0xff, 0xff, 0x03]);
+        check_decode(0xffffffff, &[0xff, 0xff, 0xff, 0xff, 0x0f]);
+        check_decode(0x12345678, &[0xf8, 0xac, 0xd1, 0x91, 0x01]);
     }
 }
