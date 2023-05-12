@@ -45,27 +45,33 @@ impl Channel {
     }
 }
 
-enum ReadOutcome {
-    Incomplete(usize),
-    ReturnError(Header),
+enum CompletedRead {
     ErrorReceived(Header),
     NewRequest { id: Id, payload: Option<Bytes> },
 }
 
+enum Outcome<T> {
+    Incomplete(usize),
+    ProtocolErr(Header),
+    Success(T),
+}
+
+use Outcome::{Incomplete, ProtocolErr, Success};
+
 impl Header {
     #[inline]
-    fn return_err(self, kind: ErrorKind) -> ReadOutcome {
-        ReadOutcome::ReturnError(Header::new_error(kind, self.channel(), self.id()))
+    fn return_err<T>(self, kind: ErrorKind) -> Outcome<T> {
+        Outcome::ProtocolErr(Header::new_error(kind, self.channel(), self.id()))
     }
 }
 
 impl<const N: usize> State<N> {
-    fn process_data(&mut self, mut buffer: BytesMut) -> ReadOutcome {
+    fn process_data(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead> {
         // First, attempt to complete a frame.
         loop {
             // We do not have enough data to extract a header, indicate and return.
             if buffer.len() < Header::SIZE {
-                return ReadOutcome::Incomplete(Header::SIZE - buffer.len());
+                return Incomplete(Header::SIZE - buffer.len());
             }
 
             let header_raw: [u8; Header::SIZE] = buffer[0..Header::SIZE].try_into().unwrap();
@@ -73,7 +79,7 @@ impl<const N: usize> State<N> {
                 Some(header) => header,
                 None => {
                     // The header was invalid, return an error.
-                    return ReadOutcome::ReturnError(Header::new_error(
+                    return ProtocolErr(Header::new_error(
                         ErrorKind::InvalidHeader,
                         UNKNOWN_CHANNEL,
                         UNKNOWN_ID,
@@ -84,7 +90,7 @@ impl<const N: usize> State<N> {
             // We have a valid header, check if it is an error.
             if header.is_error() {
                 // TODO: Read the payload of `OTHER` errors.
-                return ReadOutcome::ErrorReceived(header);
+                return Success(CompletedRead::ErrorReceived(header));
             }
 
             // At this point we are guaranteed a valid non-error frame, which has to be on a valid
@@ -108,10 +114,10 @@ impl<const N: usize> State<N> {
                     // incoming set. All we need to do now is to remove it from the buffer.
                     buffer.advance(Header::SIZE);
 
-                    return ReadOutcome::NewRequest {
+                    return Success(CompletedRead::NewRequest {
                         id: header.id(),
                         payload: None,
-                    };
+                    });
                 }
                 Kind::Response => todo!(),
                 Kind::RequestPl => match channel.current_request_state {
@@ -127,7 +133,7 @@ impl<const N: usize> State<N> {
                         let segment_buf = &buffer[0..Header::SIZE];
 
                         match decode_varint32(segment_buf) {
-                            Varint32Result::Incomplete => return ReadOutcome::Incomplete(1),
+                            Varint32Result::Incomplete => return Incomplete(1),
                             Varint32Result::Overflow => {
                                 return header.return_err(ErrorKind::BadVarInt)
                             }
@@ -144,10 +150,10 @@ impl<const N: usize> State<N> {
 
                                     buffer.advance(Header::SIZE + offset);
                                     let payload = buffer.split_to(total_size).freeze();
-                                    return ReadOutcome::NewRequest {
+                                    return Success(CompletedRead::NewRequest {
                                         id: header.id(),
                                         payload: Some(payload),
-                                    };
+                                    });
                                 }
 
                                 todo!() // doesn't fit - check if the segment was filled completely.
