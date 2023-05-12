@@ -1078,7 +1078,10 @@ where
                             return Some(Err(e.into()));
                         }
                     };
-                    debug_assert!(key_bytes.starts_with(&path));
+                    debug_assert!(
+                        key_bytes.starts_with(&path),
+                        "Expected key bytes to start with the current path"
+                    );
                     // only return the leaf if it matches the initial descend path
                     path.extend(&self.initial_descend);
                     if key_bytes.starts_with(&path) {
@@ -1104,7 +1107,10 @@ where
                                     return Some(Err(e));
                                 }
                             };
-                            debug_assert!(maybe_next_trie.is_some());
+                            debug_assert!(
+                                maybe_next_trie.is_some(),
+                                "Trie at the pointer is expected to exist"
+                            );
                             if self.initial_descend.pop_front().is_none() {
                                 self.visited.push(VisitedTrieNode {
                                     trie,
@@ -1142,7 +1148,11 @@ where
                                 return Some(Err(e));
                             }
                         };
-                        debug_assert!({ matches!(&maybe_next_trie, Some(Trie::Node { .. })) });
+                        debug_assert!(
+                            { matches!(&maybe_next_trie, Some(Trie::Node { .. })) },
+                            "Expected a Trie::Node but received {:?}",
+                            maybe_next_trie
+                        );
                         path.extend(affix);
                     }
                 }
