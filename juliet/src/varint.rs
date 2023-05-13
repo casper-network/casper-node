@@ -3,7 +3,7 @@
 //! This module implements the variable length encoding of 32 bit integers, as described in the
 //! juliet RFC.
 
-use std::num::NonZeroU8;
+use std::num::{NonZeroU32, NonZeroU8};
 
 use crate::Outcome::{self, Err, Incomplete, Success};
 
@@ -45,7 +45,7 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
     }
 
     // We found no stop bit, so our integer is incomplete.
-    Incomplete(1)
+    Incomplete(NonZeroU32::new(1).unwrap())
 }
 
 /// An encoded varint32.
@@ -131,7 +131,7 @@ mod tests {
             l -= 1;
 
             let partial = &input.as_ref()[0..l];
-            assert!(matches!(decode_varint32(partial), Outcome::Incomplete(1)));
+            assert!(matches!(decode_varint32(partial), Outcome::Incomplete(n) if n.get() == 1));
         }
     }
 

@@ -1,6 +1,10 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    num::NonZeroU32,
+};
 
 mod header;
+pub(crate) mod multiframe;
 mod reader;
 pub mod varint;
 
@@ -80,7 +84,7 @@ impl From<Id> for u16 {
 #[must_use]
 pub enum Outcome<T, E> {
     /// The given data was incomplete, at least the given amount of additional bytes is needed.
-    Incomplete(usize),
+    Incomplete(NonZeroU32),
     /// An fatal error was found in the given input.
     Err(E),
     /// The parse was successful and the underlying buffer has been modified to extract `T`.

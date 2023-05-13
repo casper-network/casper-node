@@ -1,11 +1,10 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, num::NonZeroU32};
 
 use bytes::{Buf, Bytes, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header, Kind},
     multiframe::MultiFrameReader,
-    varint::{decode_varint32, Varint32Result},
     ChannelId, Id,
     Outcome::{self, Err, Incomplete, Success},
 };
@@ -73,7 +72,7 @@ impl<const N: usize> State<N> {
         loop {
             // We do not have enough data to extract a header, indicate and return.
             if buffer.len() < Header::SIZE {
-                return Incomplete(Header::SIZE - buffer.len());
+                return Incomplete(NonZeroU32::new((Header::SIZE - buffer.len()) as u32).unwrap());
             }
 
             let header_raw: [u8; Header::SIZE] = buffer[0..Header::SIZE].try_into().unwrap();
