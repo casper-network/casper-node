@@ -87,6 +87,24 @@ pub enum Outcome<T, E> {
     Success(T),
 }
 
+impl<T, E> Outcome<T, E> {
+    /// Unwraps the outcome, similar to [`std::result::Result::unwrap`].
+    ///
+    /// Returns the value of [`Outcome::Success`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
+    #[inline]
+    pub fn unwrap(self) -> T {
+        match self {
+            Outcome::Incomplete(n) => panic!("called unwrap on incomplete({}) outcome", n),
+            Outcome::Err(_err) => panic!("called unwrap on error outcome"),
+            Outcome::Success(value) => value,
+        }
+    }
+}
+
 /// `try!` for [`Outcome`].
 ///
 /// Will return [`Outcome::Incomplete`] and [`Outcome::Err`] upwards, or unwrap the value found in

@@ -5,48 +5,47 @@
 
 use std::num::NonZeroU8;
 
+use crate::Outcome::{self, Err, Incomplete, Success};
+
 /// The bitmask to separate the data-follows bit from actual value bits.
 const VARINT_MASK: u8 = 0b0111_1111;
 
-/// The outcome of a Varint32 decoding.
-#[derive(Copy, Clone, Debug)]
-pub enum Varint32Result {
-    /// The input provided indicated more bytes are to follow than available.
-    Incomplete,
-    /// Parsing stopped because the resulting integer would exceed `u32::MAX`.
-    Overflow,
-    /// Parsing was successful.
-    Valid {
-        // Note: `offset` is a `NonZero` type to allow niche optimization by the compiler. The
-        //       expected size for this `enum` on 64 bit systems is 8 bytes.
-        /// The number of bytes consumed by the varint32.
-        offset: NonZeroU8,
-        /// The actual parsed value.
-        value: u32,
-    },
+/// The only possible error for a varint32 parsing, value overflow.
+#[derive(Debug)]
+pub struct Overflow;
+
+/// A successful parse of a varint32.
+///
+/// Contains both the decoded value and the bytes consumed.
+pub struct ParsedU32 {
+    /// The number of bytes consumed by the varint32.
+    // The `NonZeroU8` allows for niche optimization of compound types.
+    pub offset: NonZeroU8,
+    /// The actual parsed value.
+    pub value: u32,
 }
 
 /// Decodes a varint32 from the given input.
-pub fn decode_varint32(input: &[u8]) -> Varint32Result {
+pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
     let mut value = 0u32;
 
     for (idx, &c) in input.iter().enumerate() {
         if idx >= 4 && c & 0b1111_0000 != 0 {
-            return Varint32Result::Overflow;
+            return Err(Overflow);
         }
 
         value |= ((c & 0b0111_1111) as u32) << (idx * 7);
 
         if c & 0b1000_0000 == 0 {
-            return Varint32Result::Valid {
+            return Success(ParsedU32 {
                 value,
                 offset: NonZeroU8::new((idx + 1) as u8).unwrap(),
-            };
+            });
         }
     }
 
     // We found no stop bit, so our integer is incomplete.
-    Varint32Result::Incomplete
+    Incomplete(1)
 }
 
 /// An encoded varint32.
@@ -87,9 +86,12 @@ mod tests {
     use proptest::prelude::{any, prop::collection};
     use proptest_attr_macro::proptest;
 
-    use crate::varint::{decode_varint32, Varint32Result};
+    use crate::{
+        varint::{decode_varint32, Overflow},
+        Outcome,
+    };
 
-    use super::Varint32;
+    use super::{ParsedU32, Varint32};
 
     #[test]
     fn encode_known_values() {
@@ -118,15 +120,9 @@ mod tests {
     fn check_decode(expected: u32, input: &[u8]) {
         let decoded = decode_varint32(input);
 
-        match decoded {
-            Varint32Result::Incomplete | Varint32Result::Overflow => {
-                panic!("unexpected outcome: {:?}", decoded)
-            }
-            Varint32Result::Valid { offset, value } => {
-                assert_eq!(expected, value);
-                assert_eq!(offset.get() as usize, input.len());
-            }
-        }
+        let ParsedU32 { offset, value } = decode_varint32(input).unwrap();
+        assert_eq!(expected, value);
+        assert_eq!(offset.get() as usize, input.len());
 
         // Also ensure that all partial outputs yield `Incomplete`.
         let mut l = input.len();
@@ -135,10 +131,7 @@ mod tests {
             l -= 1;
 
             let partial = &input.as_ref()[0..l];
-            assert!(matches!(
-                decode_varint32(partial),
-                Varint32Result::Incomplete
-            ));
+            assert!(matches!(decode_varint32(partial), Outcome::Incomplete(1)));
         }
     }
 
@@ -166,26 +159,26 @@ mod tests {
         // Value is too long (no more than 5 bytes allowed).
         assert!(matches!(
             decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x01]),
-            Varint32Result::Overflow
+            Outcome::Err(Overflow)
         ));
 
         // This behavior should already trigger on the fifth byte.
         assert!(matches!(
             decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x80]),
-            Varint32Result::Overflow
+            Outcome::Err(Overflow)
         ));
 
         // Value is too big to be held by a `u32`.
         assert!(matches!(
             decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x10]),
-            Varint32Result::Overflow
+            Outcome::Err(Overflow)
         ));
     }
 
     proptest::proptest! {
     #[test]
     fn fuzz_varint(data in collection::vec(any::<u8>(), 0..256)) {
-        if let Varint32Result::Valid{ offset, value } = decode_varint32(&data) {
+        if let Outcome::Success(ParsedU32{ offset, value }) = decode_varint32(&data) {
             let valid_substring = &data[0..(offset.get() as usize)];
             check_decode(value, valid_substring);
         }
