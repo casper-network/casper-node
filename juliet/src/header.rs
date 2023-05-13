@@ -1,7 +1,7 @@
 //! `juliet` header parsing and serialization.
 use std::fmt::Debug;
 
-use crate::{ChannelId, Id};
+use crate::{ChannelId, Id, Outcome};
 /// Header structure.
 #[derive(Copy, Clone, Eq, PartialEq)]
 #[repr(transparent)]
@@ -229,6 +229,12 @@ impl Header {
             // Would violate validity invariant.
             _ => unreachable!(),
         }
+    }
+
+    /// Creates an [`Outcome::ProtocolErr`] with the given kind, and the header's id and channel.
+    #[inline]
+    pub(crate) fn err_outcome<T>(self, kind: ErrorKind) -> Outcome<T, Self> {
+        Outcome::Err(Header::new_error(kind, self.channel(), self.id()))
     }
 }
 

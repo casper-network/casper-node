@@ -4,8 +4,10 @@ use bytes::{Buf, Bytes, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header, Kind},
+    multiframe::MultiFrameReader,
     varint::{decode_varint32, Varint32Result},
     ChannelId, Id,
+    Outcome::{self, Err, Incomplete, Success},
 };
 
 const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
@@ -79,7 +81,7 @@ impl<const N: usize> State<N> {
                 Some(header) => header,
                 None => {
                     // The header was invalid, return an error.
-                    return ProtocolErr(Header::new_error(
+                    return Err(Header::new_error(
                         ErrorKind::InvalidHeader,
                         UNKNOWN_CHANNEL,
                         UNKNOWN_ID,
@@ -97,17 +99,17 @@ impl<const N: usize> State<N> {
             // channel.
             let channel = match self.channels.get_mut(header.channel().get() as usize) {
                 Some(channel) => channel,
-                None => return header.return_err(ErrorKind::InvalidChannel),
+                None => return header.err_outcome(ErrorKind::InvalidChannel),
             };
 
             match header.kind() {
                 Kind::Request => {
                     if channel.is_at_max_requests() {
-                        return header.return_err(ErrorKind::RequestLimitExceeded);
+                        return header.err_outcome(ErrorKind::RequestLimitExceeded);
                     }
 
                     if channel.incoming_requests.insert(header.id()) {
-                        return header.return_err(ErrorKind::DuplicateRequest);
+                        return header.err_outcome(ErrorKind::DuplicateRequest);
                     }
 
                     // At this point, we have a valid request and its ID has been added to our
