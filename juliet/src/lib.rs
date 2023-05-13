@@ -118,7 +118,7 @@ macro_rules! try_outcome {
     ($src:expr) => {
         match $src {
             Outcome::Incomplete(n) => return Outcome::Incomplete(n),
-            Outcome::Err(err) return Outcome::Err(err.into()),
+            Outcome::Err(err) => return Outcome::Err(err.into()),
             Outcome::Success(value) => value,
         }
     };
