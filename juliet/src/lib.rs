@@ -5,7 +5,7 @@ use std::{
 
 mod header;
 pub(crate) mod multiframe;
-mod reader;
+// mod reader;
 pub mod varint;
 
 /// A channel identifier.

@@ -25,13 +25,7 @@ struct Channel {
     request_limit: u32,
     max_request_payload_size: u32,
     max_response_payload_size: u32,
-    current_request_state: RequestState,
-}
-
-#[derive(Debug)]
-enum RequestState {
-    Ready,
-    InProgress { header: Header },
+    current_request_state: MultiFrameReader,
 }
 
 impl Channel {
@@ -51,23 +45,8 @@ enum CompletedRead {
     NewRequest { id: Id, payload: Option<Bytes> },
 }
 
-enum Outcome<T> {
-    Incomplete(usize),
-    ProtocolErr(Header),
-    Success(T),
-}
-
-use Outcome::{Incomplete, ProtocolErr, Success};
-
-impl Header {
-    #[inline]
-    fn return_err<T>(self, kind: ErrorKind) -> Outcome<T> {
-        Outcome::ProtocolErr(Header::new_error(kind, self.channel(), self.id()))
-    }
-}
-
 impl<const N: usize> State<N> {
-    fn process_data(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead> {
+    fn process_data(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
         // First, attempt to complete a frame.
         loop {
             // We do not have enough data to extract a header, indicate and return.
@@ -121,50 +100,7 @@ impl<const N: usize> State<N> {
                     });
                 }
                 Kind::Response => todo!(),
-                Kind::RequestPl => match channel.current_request_state {
-                    RequestState::Ready => {
-                        if channel.is_at_max_requests() {
-                            return header.return_err(ErrorKind::RequestLimitExceeded);
-                        }
-
-                        if channel.incoming_requests.insert(header.id()) {
-                            return header.return_err(ErrorKind::DuplicateRequest);
-                        }
-
-                        let segment_buf = &buffer[0..Header::SIZE];
-
-                        match decode_varint32(segment_buf) {
-                            Varint32Result::Incomplete => return Incomplete(1),
-                            Varint32Result::Overflow => {
-                                return header.return_err(ErrorKind::BadVarInt)
-                            }
-                            Varint32Result::Valid { offset, value } => {
-                                // TODO: Check frame boundary.
-
-                                let offset = offset.get() as usize;
-                                let total_size = value as usize;
-
-                                let payload_buf = &segment_buf[offset..];
-                                if payload_buf.len() >= total_size as usize {
-                                    // Entire payload is already in segment. We can just remove it
-                                    // from the buffer and return.
-
-                                    buffer.advance(Header::SIZE + offset);
-                                    let payload = buffer.split_to(total_size).freeze();
-                                    return Success(CompletedRead::NewRequest {
-                                        id: header.id(),
-                                        payload: Some(payload),
-                                    });
-                                }
-
-                                todo!() // doesn't fit - check if the segment was filled completely.
-                            }
-                        }
-                    }
-                    RequestState::InProgress { header } => {
-                        todo!()
-                    }
-                },
+                Kind::RequestPl => todo!(),
                 Kind::ResponsePl => todo!(),
                 Kind::CancelReq => todo!(),
                 Kind::CancelResp => todo!(),
