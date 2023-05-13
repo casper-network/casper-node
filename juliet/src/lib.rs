@@ -107,6 +107,19 @@ impl<T, E> Outcome<T, E> {
             Outcome::Success(value) => value,
         }
     }
+
+    /// Maps the error of an [`Outcome`].
+    #[inline]
+    pub fn map_err<E2, F>(self, f: F) -> Outcome<T, E2>
+    where
+        F: FnOnce(E) -> E2,
+    {
+        match self {
+            Outcome::Incomplete(n) => Outcome::Incomplete(n),
+            Outcome::Err(err) => Outcome::Err(f(err)),
+            Outcome::Success(value) => Outcome::Success(value),
+        }
+    }
 }
 
 /// `try!` for [`Outcome`].

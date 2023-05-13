@@ -231,10 +231,10 @@ impl Header {
         }
     }
 
-    /// Creates an [`Outcome::ProtocolErr`] with the given kind, and the header's id and channel.
+    /// Creates a new header with the same id and channel but an error kind.
     #[inline]
-    pub(crate) fn err_outcome<T>(self, kind: ErrorKind) -> Outcome<T, Self> {
-        Outcome::Err(Header::new_error(kind, self.channel(), self.id()))
+    pub(crate) fn with_err(self, kind: ErrorKind) -> Self {
+        Header::new_error(kind, self.channel(), self.id())
     }
 }
 
