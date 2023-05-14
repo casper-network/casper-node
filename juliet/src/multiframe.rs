@@ -97,76 +97,75 @@ impl MultiFrameReader {
     }
 }
 
+/// Information about the payload of a starting segment.
 #[derive(Debug)]
-struct SegmentInfo {
-    total_payload_length: u32,
+struct PayloadInfo {
+    /// Total size of the entire message's payload (across all frames).
+    message_length: u32,
+    /// Start of the payload, relative to segment start.
     start: NonZeroU8,
-    payload_segment_len: u32,
+    /// End of the payload, relative to segment start.
+    end: u32,
 }
 
-impl SegmentInfo {
+impl PayloadInfo {
+    /// Returns the length of the payload in the segment.
+    #[inline(always)]
+    fn len(&self) -> u32 {
+        self.end - self.start.get() as u32
+    }
+
+    /// Returns whether the entire message payload is contained in the starting segment.
+    #[inline(always)]
     fn is_complete(&self) -> bool {
-        self.total_payload_length == self.payload_segment_len
+        self.message_length == self.len()
     }
 }
 
+/// Error parsing starting segment.
 #[derive(Copy, Clone, Debug)]
 enum SegmentError {
+    /// The advertised message payload length exceeds the configured limit.
     ExceedsMaxPayloadLength,
+    /// The varint at the beginning could not be parsed.
     BadVarInt,
 }
 
 /// Given a potential segment buffer (which is a frame without the header), finds a start segment.
 ///
-/// Assumes that the first bytes of the buffer are a [`crate::varint`] encoded length.
+/// Assumes that the first bytes of the buffer are a [`crate::varint`] encoded length. Returns the
+/// geometry of the segment that was found.
 fn find_start_segment(
     segment_buf: &[u8],
     max_payload_length: u32,
     max_frame_size: u32,
-) -> Outcome<SegmentInfo, SegmentError> {
+) -> Outcome<PayloadInfo, SegmentError> {
     let ParsedU32 {
-        offset,
-        value: total_payload_length,
+        offset: start,
+        value: message_length,
     } = try_outcome!(decode_varint32(segment_buf).map_err(|_| SegmentError::BadVarInt));
 
     // Ensure it is within allowed range.
-    if total_payload_length > max_payload_length {
+    if message_length > max_payload_length {
         return Err(SegmentError::ExceedsMaxPayloadLength);
     }
 
-    // We have a valid length. Calculate how much space there is in this frame and determine whether or not our payload would fit entirely into the start segment.
-    let full_payload_size = max_frame_size - (offset.get() as u32 + Header::SIZE as u32);
-    if total_payload_length <= full_payload_size {
-        // The entire payload fits into the segment. Check if we have enough. Do all math in 64 bit,
-        // since we have to assume that `total_payload_length` can be up to [`u32::MAX`].
+    // Determine the largest payload that can still fit into this frame.
+    let full_payload_size = max_frame_size - (start.get() as u32 + Header::SIZE as u32);
 
-        if segment_buf.len() as u64 >= total_payload_length as u64 + offset.get() as u64 {
-            Success(SegmentInfo {
-                total_payload_length,
-                start: offset,
-                payload_segment_len: total_payload_length,
-            })
-        } else {
-            // The payload would fit, but we do not have enough data yet.
-            Incomplete(
-                NonZeroU32::new(
-                    total_payload_length - segment_buf.len() as u32 + offset.get() as u32,
-                )
-                .unwrap(),
-            )
-        }
+    // Calculate start and end of payload in this frame, the latter capped by the frame itself.
+    let end = start.get() as u32 + full_payload_size.min(message_length);
+
+    // Determine if segment is complete.
+    if end as usize > segment_buf.len() {
+        let missing = segment_buf.len() - end as usize;
+        // Note: Missing is guaranteed to be <= `u32::MAX` here.
+        Incomplete(NonZeroU32::new(missing as u32).unwrap())
     } else {
-        // The entire frame must be filled according to the RFC.
-        let actual_payload_len = segment_buf.len() - offset.get() as usize;
-        if actual_payload_len < full_payload_size as usize {
-            Incomplete(NonZeroU32::new(full_payload_size - actual_payload_len as u32).unwrap())
-        } else {
-            // Frame is full.
-            Success(SegmentInfo {
-                total_payload_length,
-                start: offset,
-                payload_segment_len: full_payload_size,
-            })
-        }
+        Success(PayloadInfo {
+            message_length,
+            start,
+            end,
+        })
     }
 }
