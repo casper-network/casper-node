@@ -28,8 +28,8 @@ pub(crate) enum MultiFrameReader {
 impl MultiFrameReader {
     /// Process a single frame from a buffer.
     ///
-    /// Assumes that `header` is the first [`Header::SIZE`] bytes of `buffer`. Will advance `buffer`
-    /// past header and payload if and only a successful frame was parsed.
+    /// Assumes that `header` was the first [`Header::SIZE`] preceding `buffer`. Will advance
+    /// `buffer` past header and payload if and only a successful frame was parsed.
     ///
     /// Returns a completed message payload, or `None` if a frame was consumed, but no message
     /// completed yet.
@@ -53,8 +53,6 @@ impl MultiFrameReader {
             buffer.len() >= Header::SIZE,
             "buffer is too small to contain header"
         );
-
-        let segment_buf = &buffer[0..Header::SIZE];
 
         // Check if we got a continuation of a message send already in progress.
         match self {
@@ -90,11 +88,12 @@ impl MultiFrameReader {
         }
 
         // At this point we have to expect a starting segment.
-        let payload_info =
-            try_outcome!(
-                find_start_segment(segment_buf, max_payload_length, max_frame_size)
-                    .map_err(|err| err.into_header())
-            );
+        let payload_info = try_outcome!(find_start_segment(
+            &buffer[Header::SIZE..],
+            max_payload_length,
+            max_frame_size
+        )
+        .map_err(|err| err.into_header()));
 
         // Discard the header and length, then split off the payload.
         buffer.advance(Header::SIZE + payload_info.start.get() as usize);
