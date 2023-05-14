@@ -1,6 +1,9 @@
-use std::num::{NonZeroU32, NonZeroU8};
+use std::{
+    mem,
+    num::{NonZeroU32, NonZeroU8},
+};
 
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Buf, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header},
@@ -15,28 +18,33 @@ use crate::{
 #[derive(Debug)]
 pub(crate) enum MultiFrameReader {
     Ready,
-    InProgress { header: Header, payload: BytesMut },
+    InProgress {
+        header: Header,
+        msg_payload: BytesMut,
+        msg_len: u32,
+    },
 }
 
 impl MultiFrameReader {
-    /// Accept additional data to be written.
+    /// Process a single frame from a buffer.
     ///
     /// Assumes that `header` is the first [`Header::SIZE`] bytes of `buffer`. Will advance `buffer`
     /// past header and payload if and only a successful frame was parsed.
     ///
-    /// Continues parsing until either a complete message is found or additional input is required.
-    /// Will return the message payload associated with the passed in `header`, if complete.
+    /// Returns a completed message payload, or `None` if a frame was consumed, but no message
+    /// completed yet.
     ///
     /// # Panics
     ///
     /// Panics when compiled with debug settings if `max_frame_size` is less than 10 or `buffer` is
     /// shorter than [`Header::SIZE`].
-    pub(crate) fn accept(
+    pub(crate) fn process_frame(
         &mut self,
         header: Header,
         buffer: &mut BytesMut,
+        max_payload_length: u32,
         max_frame_size: u32,
-    ) -> Outcome<BytesMut, Header> {
+    ) -> Outcome<Option<BytesMut>, Header> {
         debug_assert!(
             max_frame_size >= 10,
             "maximum frame size must be enough to hold header and varint"
@@ -48,51 +56,74 @@ impl MultiFrameReader {
 
         let segment_buf = &buffer[0..Header::SIZE];
 
+        // Check if we got a continuation of a message send already in progress.
         match self {
             MultiFrameReader::InProgress {
                 header: pheader,
-                payload,
+                msg_payload,
+                msg_len,
             } if *pheader == header => {
-                todo!("this is the case where we are appending to a message")
-            }
-            MultiFrameReader::InProgress { .. } | MultiFrameReader::Ready => {
-                // We have a new segment, which has a variable size.
-                let ParsedU32 {
-                    offset,
-                    value: total_payload_size,
-                } =
-                    try_outcome!(decode_varint32(segment_buf)
-                        .map_err(|_| header.with_err(ErrorKind::BadVarInt)));
+                let max_frame_payload = max_frame_size - Header::SIZE as u32;
+                let remaining = (*msg_len - msg_payload.len() as u32).min(max_frame_payload);
 
-                // We have a valid varint32. Let's see if we're inside the frame boundary.
-                let preamble_size = Header::SIZE as u32 + offset.get() as u32;
-                let max_data_in_frame = (max_frame_size - preamble_size) as u32;
-
-                // Drop header and length.
-                buffer.advance(preamble_size as usize);
-                if total_payload_size <= max_data_in_frame {
-                    let payload = buffer.split_to(total_payload_size as usize);
-
-                    // No need to alter the state, we stay `Ready`.
-                    return Success(payload);
+                // If we don't have enough data yet, return number of bytes missing.
+                let end = (remaining as u64 + Header::SIZE as u64);
+                if buffer.len() < end as usize {
+                    return Incomplete(
+                        NonZeroU32::new((end - buffer.len() as u64) as u32).unwrap(),
+                    );
                 }
 
-                // The length exceeds the frame boundary, split to maximum and store that.
-                let partial_payload = buffer.split_to((max_frame_size - preamble_size) as usize);
+                // Otherwise, we're good to append to the payload.
+                msg_payload.extend_from_slice(&buffer[Header::SIZE..(end as usize)]);
+                msg_payload.advance(end as usize);
 
-                *self = MultiFrameReader::InProgress {
-                    header,
-                    payload: partial_payload,
-                };
-
-                // TODO: THIS IS WRONG. LOOP READING. AND CONSIDER ACTUAL BUFFER LENGTH
-                // ABOVE. We need at least a header to proceed further on.
-                return Incomplete(NonZeroU32::new(Header::SIZE as u32).unwrap());
-
-                todo!()
+                return Success(if remaining < max_frame_payload {
+                    let rv = mem::take(msg_payload);
+                    *self = MultiFrameReader::Ready;
+                    Some(rv)
+                } else {
+                    None
+                });
             }
-            MultiFrameReader::InProgress { header, payload } => todo!(),
-            _ => todo!(),
+            _ => (),
+        }
+
+        // At this point we have to expect a starting segment.
+        let payload_info =
+            try_outcome!(
+                find_start_segment(segment_buf, max_payload_length, max_frame_size)
+                    .map_err(|err| err.into_header())
+            );
+
+        // Discard the header and length, then split off the payload.
+        buffer.advance(Header::SIZE + payload_info.start.get() as usize);
+        let segment_payload = buffer.split_to(payload_info.len() as usize);
+
+        // We can finally determine our outcome.
+        match self {
+            MultiFrameReader::InProgress { .. } => {
+                if !payload_info.is_complete() {
+                    Err(header.with_err(ErrorKind::InProgress))
+                } else {
+                    Success(Some(segment_payload))
+                }
+            }
+            MultiFrameReader::Ready => {
+                if !payload_info.is_complete() {
+                    // Begin a new multi-frame read.
+                    *self = MultiFrameReader::InProgress {
+                        header,
+                        msg_payload: segment_payload,
+                        msg_len: payload_info.message_length,
+                    };
+                    // The next minimum read is another header.
+                    Incomplete(NonZeroU32::new(Header::SIZE as u32).unwrap())
+                } else {
+                    // The entire message is contained, no need to change state.
+                    Success(Some(segment_payload))
+                }
+            }
         }
     }
 }
@@ -129,6 +160,15 @@ enum SegmentError {
     ExceedsMaxPayloadLength,
     /// The varint at the beginning could not be parsed.
     BadVarInt,
+}
+
+impl SegmentError {
+    fn into_header(self) -> Header {
+        match self {
+            SegmentError::ExceedsMaxPayloadLength => todo!(),
+            SegmentError::BadVarInt => todo!(),
+        }
+    }
 }
 
 /// Given a potential segment buffer (which is a frame without the header), finds a start segment.
