@@ -198,7 +198,8 @@ fn find_start_segment(
 
     // Determine if segment is complete.
     if end as usize > segment_buf.len() {
-        let missing = segment_buf.len() - end as usize;
+        let missing = end as usize - segment_buf.len();
+
         // Note: Missing is guaranteed to be <= `u32::MAX` here.
         Incomplete(NonZeroU32::new(missing as u32).unwrap())
     } else {
@@ -212,27 +213,119 @@ fn find_start_segment(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{io::Write, num::NonZeroU32};
 
-    use bytes::{BufMut, BytesMut};
+    use bytes::{Buf, BufMut, BytesMut};
     use proptest::{collection::vec, prelude::any, proptest};
 
     use crate::{
-        header::{Header, Kind::RequestPl},
+        header::{
+            Header,
+            Kind::{self, RequestPl},
+        },
+        multiframe::PayloadInfo,
         varint::Varint32,
-        ChannelId, Id,
+        ChannelId, Id, Outcome,
     };
 
-    use super::MultiFrameReader;
+    use super::{find_start_segment, MultiFrameReader};
 
-    const MAX_FRAME_SIZE: usize = 500;
-    const FRAME_MAX_PAYLOAD: usize = 500 - Header::SIZE - 2;
+    const FRAME_MAX_PAYLOAD: usize = 500;
+    const MAX_FRAME_SIZE: usize =
+        FRAME_MAX_PAYLOAD + Header::SIZE + Varint32::encode(FRAME_MAX_PAYLOAD as u32).len();
 
     proptest! {
         #[test]
         fn single_frame_message(payload in vec(any::<u8>(), FRAME_MAX_PAYLOAD), garbage in vec(any::<u8>(), 10)) {
             do_single_frame_messages(payload, garbage);
         }
+    }
+
+    #[test]
+    fn find_start_segment_simple_cases() {
+        // Empty case should return 1.
+        assert!(matches!(
+            find_start_segment(&[], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Incomplete(n) if n.get() == 1
+        ));
+
+        // With a length 0, we should get a result after 1 byte.
+        assert!(matches!(
+            find_start_segment(&[0x00], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Success(PayloadInfo {
+                message_length: 0,
+                start,
+                end: 1
+            }) if start.get() == 1
+        ));
+
+        // Additional byte should return the correct amount of extra required bytes.
+        assert!(matches!(
+            find_start_segment(&[0x7], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Incomplete(n) if n.get() == 7
+        ));
+        assert!(matches!(
+            find_start_segment(&[0x7, 0xA0, 0xA1, 0xA2], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Incomplete(n) if n.get() == 4
+        ));
+        assert!(matches!(
+            find_start_segment(&[0x7, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Incomplete(n) if n.get() == 1
+        ));
+        assert!(matches!(
+            find_start_segment(&[0x7, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Success(PayloadInfo {
+                message_length: 7,
+                start,
+                end: 8
+            }) if start.get() == 1
+        ));
+
+        // We can also check if additional data is ignored properly.
+        assert!(matches!(
+            find_start_segment(&[0x7, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xEE], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Success(PayloadInfo {
+                message_length: 7,
+                start,
+                end: 8
+            }) if start.get() == 1
+        ));
+        assert!(matches!(
+            find_start_segment(&[0x7, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xEE, 0xEE, 0xEE,
+                0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE], FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Success(PayloadInfo {
+                message_length: 7,
+                start,
+                end: 8
+            }) if start.get() == 1
+        ));
+
+        // Finally, try with larger value (that doesn't fit into length encoding of 1).
+        // 0x83 0x01 == 0b1000_0011 = 131.
+        let mut buf = vec![0x83, 0x01, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+
+        assert!(matches!(
+            find_start_segment(&buf, FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Incomplete(n) if n.get() == 126
+        ));
+        buf.extend(vec![0xFF; 126]);
+        assert!(matches!(
+            find_start_segment(&buf, FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Success(PayloadInfo {
+                message_length: 131,
+                start,
+                end: 133
+            }) if start.get() == 2
+        ));
+        buf.extend(vec![0x77; 999]);
+        assert!(matches!(
+            find_start_segment(&buf, FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Success(PayloadInfo {
+                message_length: 131,
+                start,
+                end: 133
+            }) if start.get() == 2
+        ));
     }
 
     fn do_single_frame_messages(payload: Vec<u8>, garbage: Vec<u8>) {
