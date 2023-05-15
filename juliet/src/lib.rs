@@ -92,18 +92,16 @@ pub enum Outcome<T, E> {
 }
 
 impl<T, E> Outcome<T, E> {
-    /// Unwraps the outcome, similar to [`std::result::Result::unwrap`].
+    /// Expects the outcome, similar to [`std::result::Result::unwrap`].
     ///
     /// Returns the value of [`Outcome::Success`].
     ///
     /// # Panics
     ///
     /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
-    #[inline]
-    pub fn unwrap(self) -> T {
+    pub fn expect(self, msg: &str) -> T {
         match self {
-            Outcome::Incomplete(n) => panic!("called unwrap on incomplete({}) outcome", n),
-            Outcome::Err(_err) => panic!("called unwrap on error outcome"),
+            _ => panic!("{}", msg),
             Outcome::Success(value) => value,
         }
     }
@@ -118,6 +116,22 @@ impl<T, E> Outcome<T, E> {
             Outcome::Incomplete(n) => Outcome::Incomplete(n),
             Outcome::Err(err) => Outcome::Err(f(err)),
             Outcome::Success(value) => Outcome::Success(value),
+        }
+    }
+
+    /// Unwraps the outcome, similar to [`std::result::Result::unwrap`].
+    ///
+    /// Returns the value of [`Outcome::Success`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
+    #[inline]
+    pub fn unwrap(self) -> T {
+        match self {
+            Outcome::Incomplete(n) => panic!("called unwrap on incomplete({}) outcome", n),
+            Outcome::Err(_err) => panic!("called unwrap on error outcome"),
+            Outcome::Success(value) => value,
         }
     }
 }
