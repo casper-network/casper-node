@@ -9,6 +9,7 @@ pub(crate) mod fmt_limit;
 mod fuse;
 pub(crate) mod opt_display;
 pub(crate) mod registered_metric;
+#[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
 pub(crate) mod specimen;

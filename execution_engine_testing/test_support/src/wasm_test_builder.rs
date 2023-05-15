@@ -514,6 +514,26 @@ impl LmdbWasmTestBuilder {
             .expect("unable to run step request against scratch global state");
         self
     }
+    /// Executes a request to call the system auction contract.
+    pub fn run_auction_with_scratch(
+        &mut self,
+        era_end_timestamp_millis: u64,
+        evicted_validators: Vec<PublicKey>,
+    ) -> &mut Self {
+        let auction = self.get_auction_contract_hash();
+        let run_request = ExecuteRequestBuilder::contract_call_by_hash(
+            *SYSTEM_ADDR,
+            auction,
+            METHOD_RUN_AUCTION,
+            runtime_args! {
+                ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis,
+                ARG_EVICTED_VALIDATORS => evicted_validators,
+            },
+        )
+        .build();
+        self.scratch_exec_and_commit(run_request).expect_success();
+        self
+    }
 }
 
 impl<S> WasmTestBuilder<S>

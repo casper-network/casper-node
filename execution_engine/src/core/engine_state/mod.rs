@@ -28,6 +28,7 @@ use std::{
     rc::Rc,
 };
 
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -429,7 +430,9 @@ where
             let withdraw_keys = tracking_copy
                 .borrow_mut()
                 .get_keys(correlation_id, &KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
+                .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                .into_iter()
+                .collect_vec();
 
             let (unbonding_delay, current_era_id) = {
                 let auction_contract = tracking_copy
@@ -464,12 +467,12 @@ where
                 (delay, era_id)
             };
 
-            for key in withdraw_keys {
+            for key in &withdraw_keys {
                 // Transform only those withdraw purses that are still to be
                 // processed in the unbonding queue.
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
-                    .read(correlation_id, &key)
+                    .read(correlation_id, key)
                     .map_err(|_| Error::FailedToGetWithdrawKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
@@ -501,6 +504,12 @@ where
                 tracking_copy
                     .borrow_mut()
                     .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
+            }
+
+            // Post-migration clean up
+
+            for withdraw_key in withdraw_keys {
+                tracking_copy.borrow_mut().delete(withdraw_key);
             }
         }
 
