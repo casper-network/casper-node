@@ -52,11 +52,12 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 ///
 /// Internally these are stored as six byte arrays to make passing around convenient.
 #[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
 pub struct Varint32([u8; 6]);
 
 impl Varint32 {
     /// Encode a 32-bit integer to variable length.
-    pub fn encode(mut value: u32) -> Self {
+    pub const fn encode(mut value: u32) -> Self {
         let mut output = [0u8; 6];
         let mut count = 0;
 
@@ -72,12 +73,16 @@ impl Varint32 {
         output[5] = count as u8;
         Varint32(output)
     }
+
+    /// Returns the number of bytes in the encoded varint.
+    pub const fn len(self) -> usize {
+        self.0[5] as usize + 1
+    }
 }
 
 impl AsRef<[u8]> for Varint32 {
     fn as_ref(&self) -> &[u8] {
-        let len = self.0[5] as usize + 1;
-        &self.0[0..len]
+        &self.0[0..self.len()]
     }
 }
 
@@ -118,8 +123,6 @@ mod tests {
 
     #[track_caller]
     fn check_decode(expected: u32, input: &[u8]) {
-        let decoded = decode_varint32(input);
-
         let ParsedU32 { offset, value } = decode_varint32(input).unwrap();
         assert_eq!(expected, value);
         assert_eq!(offset.get() as usize, input.len());
@@ -151,6 +154,7 @@ mod tests {
     #[proptest]
     fn roundtrip_value(value: u32) {
         let encoded = Varint32::encode(value);
+        assert_eq!(encoded.len(), encoded.as_ref().len());
         check_decode(value, encoded.as_ref());
     }
 
