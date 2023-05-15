@@ -1,5 +1,5 @@
 use std::{
-    mem,
+    default, mem,
     num::{NonZeroU32, NonZeroU8},
 };
 
@@ -15,8 +15,9 @@ use crate::{
 /// A multi-frame message reader.
 ///
 /// Processes frames into message from a given input stream as laid out in the juliet RFC.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) enum MultiFrameReader {
+    #[default]
     Ready,
     InProgress {
         header: Header,
@@ -36,7 +37,7 @@ impl MultiFrameReader {
     ///
     /// # Panics
     ///
-    /// Panics when compiled with debug settings if `max_frame_size` is less than 10 or `buffer` is
+    /// Panics when compiled with debug profiles if `max_frame_size` is less than 10 or `buffer` is
     /// shorter than [`Header::SIZE`].
     pub(crate) fn process_frame(
         &mut self,
@@ -76,7 +77,7 @@ impl MultiFrameReader {
                 msg_payload.extend_from_slice(&buffer[Header::SIZE..(end as usize)]);
                 msg_payload.advance(end as usize);
 
-                return Success(if remaining < max_frame_payload {
+                return Success(if remaining <= max_frame_payload {
                     let rv = mem::take(msg_payload);
                     *self = MultiFrameReader::Ready;
                     Some(rv)
@@ -206,5 +207,101 @@ fn find_start_segment(
             start,
             end,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use bytes::{BufMut, BytesMut};
+    use proptest::{collection::vec, prelude::any, proptest};
+
+    use crate::{
+        header::{Header, Kind::RequestPl},
+        varint::Varint32,
+        ChannelId, Id,
+    };
+
+    use super::MultiFrameReader;
+
+    const MAX_FRAME_SIZE: usize = 500;
+    const FRAME_MAX_PAYLOAD: usize = 500 - Header::SIZE - 2;
+
+    proptest! {
+        #[test]
+        fn single_frame_message(payload in vec(any::<u8>(), FRAME_MAX_PAYLOAD), garbage in vec(any::<u8>(), 10)) {
+            do_single_frame_messages(payload, garbage);
+        }
+    }
+
+    fn do_single_frame_messages(payload: Vec<u8>, garbage: Vec<u8>) {
+        let buffer = BytesMut::new();
+        let mut writer = buffer.writer();
+
+        let chan = ChannelId::new(2);
+        let id = Id::new(12345);
+
+        let header = Header::new(RequestPl, chan, id);
+
+        // Manually prepare a suitable message buffer.
+        writer.write_all(header.as_ref()).unwrap();
+        writer
+            .write_all(Varint32::encode(payload.len() as u32).as_ref())
+            .unwrap();
+        writer.write_all(&payload).unwrap();
+
+        let buffer = writer.into_inner();
+        // Sanity check constraints.
+        if payload.len() == FRAME_MAX_PAYLOAD {
+            assert_eq!(buffer.len(), MAX_FRAME_SIZE);
+        }
+        let mut writer = buffer.writer();
+
+        // Append some random garbage.
+        writer.write_all(&garbage).unwrap();
+
+        // Buffer is now ready to read.
+        let mut buffer = writer.into_inner();
+
+        // Now we can finally attempt to read it.
+        let mut state = MultiFrameReader::default();
+        let output = state
+            .process_frame(
+                header,
+                &mut buffer,
+                FRAME_MAX_PAYLOAD as u32,
+                MAX_FRAME_SIZE as u32,
+            )
+            // .expect("failed to read using multi frame reader, expected complete single frame")
+            .unwrap()
+            .expect("did not expect state of single frame to return `None`");
+
+        assert_eq!(output, payload);
+    }
+
+    #[test]
+    fn allows_interspersed_messages() {
+        todo!()
+    }
+
+    #[test]
+    fn forbids_exceeding_maximum_message_size() {
+        todo!()
+    }
+
+    #[test]
+    fn bad_varint_causes_error() {
+        todo!()
+    }
+
+    #[test]
+    fn varying_message_sizes() {
+        todo!("proptest")
+    }
+
+    #[test]
+    fn fuzz_multi_frame_reader() {
+        todo!()
     }
 }

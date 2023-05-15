@@ -244,6 +244,12 @@ impl From<Header> for [u8; Header::SIZE] {
     }
 }
 
+impl AsRef<[u8; Header::SIZE]> for Header {
+    fn as_ref(&self) -> &[u8; Header::SIZE] {
+        &self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::{
