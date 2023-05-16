@@ -213,7 +213,10 @@ fn find_start_segment(
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Write, num::NonZeroU32};
+    use std::{
+        io::Write,
+        num::{NonZeroU32, NonZeroU8},
+    };
 
     use bytes::{Buf, BufMut, BytesMut};
     use proptest::{collection::vec, prelude::any, proptest};
@@ -239,6 +242,36 @@ mod tests {
         fn single_frame_message(payload in vec(any::<u8>(), FRAME_MAX_PAYLOAD), garbage in vec(any::<u8>(), 10)) {
             do_single_frame_messages(payload, garbage);
         }
+    }
+
+    #[test]
+    fn payload_info_math() {
+        let info = PayloadInfo {
+            message_length: 0,
+            start: NonZeroU8::new(5).unwrap(),
+            end: 5,
+        };
+
+        assert_eq!(info.len(), 0);
+        assert!(info.is_complete());
+
+        let info = PayloadInfo {
+            message_length: 10,
+            start: NonZeroU8::new(5).unwrap(),
+            end: 15,
+        };
+
+        assert_eq!(info.len(), 10);
+        assert!(info.is_complete());
+
+        let info = PayloadInfo {
+            message_length: 100_000,
+            start: NonZeroU8::new(2).unwrap(),
+            end: 10,
+        };
+
+        assert_eq!(info.len(), 8);
+        assert!(!info.is_complete());
     }
 
     #[test]
