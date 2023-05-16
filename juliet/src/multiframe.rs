@@ -223,7 +223,7 @@ mod tests {
             Header,
             Kind::{self, RequestPl},
         },
-        multiframe::PayloadInfo,
+        multiframe::{PayloadInfo, SegmentError},
         varint::Varint32,
         ChannelId, Id, Outcome,
     };
@@ -325,6 +325,28 @@ mod tests {
                 start,
                 end: 133
             }) if start.get() == 2
+        ));
+    }
+
+    #[test]
+    fn find_start_segment_errors() {
+        let bad_varint = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+        assert!(matches!(
+            find_start_segment(&bad_varint, FRAME_MAX_PAYLOAD as u32, MAX_FRAME_SIZE as u32),
+            Outcome::Err(SegmentError::BadVarInt)
+        ));
+
+        // We expect the size error to be reported immediately, not after parsing the frame.
+        let exceeds_size = [0x09];
+        assert!(matches!(
+            find_start_segment(&exceeds_size, 8, MAX_FRAME_SIZE as u32),
+            Outcome::Err(SegmentError::ExceedsMaxPayloadLength)
+        ));
+        // This should happen regardless of the maximum frame being larger or smaller than the
+        // maximum payload.
+        assert!(matches!(
+            find_start_segment(&exceeds_size, 8, 4),
+            Outcome::Err(SegmentError::ExceedsMaxPayloadLength)
         ));
     }
 
