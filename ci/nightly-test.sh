@@ -95,7 +95,7 @@ function run_soundness_test() {
     # If running on CI, activate NCTL via .bashrc to have it available inside Python subprocesses
     if [ -v DRONE_BRANCH ]; then
         echo "running on DRONE"
-        echo '. /drone/casper-node/utils/nctl/activate' >> /root/.bashrc
+        echo "source $DRONE_ROOT_DIR/utils/nctl/activate" >> $HOME/.bashrc
     else
         echo "NOT running on DRONE"
     fi
