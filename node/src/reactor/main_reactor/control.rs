@@ -401,9 +401,11 @@ impl MainReactor {
         let previous_block_header = match self
             .storage
             .read_highest_switch_block_headers(1)
-            .map(|headers| headers.into_iter().next())
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .next()
         {
-            Ok(Some(header)) => header,
+            Some(header) => header,
             _ => return Err("The highest complete block should be a switch block".to_string()),
         };
 
@@ -478,7 +480,11 @@ impl MainReactor {
                 .chainspec
                 .protocol_config
                 .is_last_block_before_activation(highest_switch_block_header),
-            _ => false,
+            Ok(_) => false,
+            Err(_) => {
+                error!("Storage error when attempting to read the highest switch block header");
+                false
+            }
         }
     }
 

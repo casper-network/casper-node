@@ -127,22 +127,30 @@ impl MainReactor {
                     block.header().era_id(),
                 ))
             }
-            Ok(None)
-                if self
-                    .storage
-                    .read_highest_switch_block_headers(1)
-                    .map_or(false, |h| h.is_empty()) =>
-            {
-                // no trusted hash, no local block, might be genesis
-                self.catch_up_check_genesis()
-            }
             Ok(None) => {
-                // no trusted hash, no local block, no error, must be waiting for genesis
-                info!("CatchUp: waiting to store genesis immediate switch block");
-                Either::Right(CatchUpInstruction::CheckLater(
-                    "waiting for genesis immediate switch block to be stored".to_string(),
-                    self.control_logic_default_delay.into(),
-                ))
+                let highest_switch_block_headers =
+                    match self.storage.read_highest_switch_block_headers(1) {
+                        Ok(headers) => headers,
+                        Err(err) => {
+                            return Either::Right(CatchUpInstruction::Fatal(format!(
+                                "CatchUp: fatal block store error when attempting to read \
+                                                highest complete block: {}",
+                                err
+                            )))
+                        }
+                    };
+
+                if highest_switch_block_headers.is_empty() {
+                    // no trusted hash, no local block, might be genesis
+                    self.catch_up_check_genesis()
+                } else {
+                    // no trusted hash, no local block, no error, must be waiting for genesis
+                    info!("CatchUp: waiting to store genesis immediate switch block");
+                    Either::Right(CatchUpInstruction::CheckLater(
+                        "waiting for genesis immediate switch block to be stored".to_string(),
+                        self.control_logic_default_delay.into(),
+                    ))
+                }
             }
             Err(err) => Either::Right(CatchUpInstruction::Fatal(format!(
                 "CatchUp: fatal block store error when attempting to read \

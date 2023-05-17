@@ -35,13 +35,11 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
-        if false
-            == self
-                .storage
-                .read_highest_block_header()
-                .unwrap_or(None)
-                .map_or(false, |header| header.is_switch_block())
-        {
+        let highest_block_header_is_switch_block = match self.storage.read_highest_block_header() {
+            Ok(header) => header.map_or(false, |header| header.is_switch_block()),
+            Err(err) => return ValidateInstruction::Fatal(err.to_string()),
+        };
+        if false == highest_block_header_is_switch_block {
             // validate status is only checked at switch blocks
             return ValidateInstruction::NonSwitchBlock;
         }
