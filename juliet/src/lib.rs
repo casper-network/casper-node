@@ -99,10 +99,12 @@ impl<T, E> Outcome<T, E> {
     /// # Panics
     ///
     /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
+    #[inline]
+    #[track_caller]
     pub fn expect(self, msg: &str) -> T {
         match self {
-            _ => panic!("{}", msg),
             Outcome::Success(value) => value,
+            Outcome::Incomplete(_) | Outcome::Err(_) => panic!("{}", msg),
         }
     }
 
@@ -127,6 +129,7 @@ impl<T, E> Outcome<T, E> {
     ///
     /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
     #[inline]
+    #[track_caller]
     pub fn unwrap(self) -> T {
         match self {
             Outcome::Incomplete(n) => panic!("called unwrap on incomplete({}) outcome", n),
