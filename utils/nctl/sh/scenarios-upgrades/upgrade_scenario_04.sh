@@ -347,7 +347,7 @@ function _step_12()
 {
     log_step_upgrades 12 "Asserting all nodes are in sync..."
     # args: first node, last node, timeout, log_step
-    check_network_sync '1' '10' '300' 'false'
+    parallel_check_network_sync '1' '10' '300' 'false'
 }
 
 # Step 13: Assert chain didn't stall.

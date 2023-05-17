@@ -92,6 +92,14 @@ function run_soundness_test() {
     # Really-really make sure nothing is leftover
     nctl-assets-teardown
 
+    # If running on CI, activate NCTL via .bashrc to have it available inside Python subprocesses
+    if [ -v DRONE_BRANCH ]; then
+        echo "running on DRONE"
+        echo "source $DRONE_ROOT_DIR/utils/nctl/activate" >> $HOME/.bashrc
+    else
+        echo "NOT running on DRONE"
+    fi
+
     $NCTL/sh/scenarios/network_soundness.py
 
     # Clean up after the test
