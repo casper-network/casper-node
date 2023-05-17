@@ -383,6 +383,13 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn single_frame_message_simple_example() {
+        let mut payload = Vec::new();
+        payload.extend([0xAA, 0xBB, 0xCC, 0xDD, 0xEE]);
+        do_single_frame_messages(payload, vec![]);
+    }
+
     fn do_single_frame_messages(payload: Vec<u8>, garbage: Vec<u8>) {
         let buffer = BytesMut::new();
         let mut writer = buffer.writer();
@@ -393,10 +400,9 @@ mod tests {
         let header = Header::new(RequestPl, chan, id);
 
         // Manually prepare a suitable message buffer.
+        let payload_varint = Varint32::encode(payload.len() as u32);
         writer.write_all(header.as_ref()).unwrap();
-        writer
-            .write_all(Varint32::encode(payload.len() as u32).as_ref())
-            .unwrap();
+        writer.write_all(payload_varint.as_ref()).unwrap();
         writer.write_all(&payload).unwrap();
 
         let buffer = writer.into_inner();
@@ -410,26 +416,96 @@ mod tests {
         writer.write_all(&garbage).unwrap();
 
         // Buffer is now ready to read.
-        let mut buffer = writer.into_inner();
+        let buffer = writer.into_inner().freeze();
 
-        // Now we can finally attempt to read it.
-        let mut state = MultiFrameReader::default();
-        let output = state
-            .process_frame(
-                header,
-                &mut buffer,
-                FRAME_MAX_PAYLOAD as u32,
-                MAX_FRAME_SIZE as u32,
-            )
-            // .expect("failed to read using multi frame reader, expected complete single frame")
-            .unwrap()
-            .expect("did not expect state of single frame to return `None`");
+        // We run this test for every possible read increment up to the entire buffer length.
+        for bytes_per_read in 4..=buffer.len() {
+            let mut source = buffer.clone();
+            let mut buffer = BytesMut::new();
+            let mut state = MultiFrameReader::default();
 
-        assert_eq!(output, payload);
+            while source.has_remaining() {
+                // Determine how much we can read (cannot go past source buffer).
+                let bytes_to_read = bytes_per_read.min(source.remaining());
+                assert!(bytes_to_read > 0);
+
+                let chunk = source.copy_to_bytes(bytes_to_read);
+                buffer.extend_from_slice(&chunk);
+
+                // Calculate how much data we are still expecting to be reported missing.
+                let missing =
+                    Header::SIZE as isize + payload_varint.len() as isize + payload.len() as isize
+                        - buffer.len() as isize;
+
+                // Preserve the buffer length, so we can check whether it remains unchanged later.
+                let buffer_length = buffer.remaining();
+
+                // Having not read the entire header, we are not supposed to call the parser yet.
+                if buffer.remaining() < Header::SIZE {
+                    continue;
+                }
+
+                let outcome = state.process_frame(
+                    header,
+                    &mut buffer,
+                    FRAME_MAX_PAYLOAD as u32,
+                    MAX_FRAME_SIZE as u32,
+                );
+
+                // Check if our assumptions were true.
+                if missing <= 0 {
+                    // We should have a complete frame.
+                    let received = outcome
+                        .expect("expected complete message after finally reading enough bytes")
+                        .expect("did not expect in-progress result once message was complete");
+
+                    assert_eq!(received, payload);
+
+                    // Check the correct amount of data was removed.
+                    assert_eq!(
+                        buffer.remaining() as isize,
+                        garbage.len() as isize + missing
+                    );
+
+                    // TODO: Check remainder is exactly garbage.
+                    break;
+                } else {
+                    // Read was incomplete. If we were not past the header and length varint, the
+                    // expected next read is one bytes (indeterminate), otherwise the remainder.
+                    if let Outcome::Incomplete(n) = outcome {
+                        let expected_incomplete =
+                            if buffer.remaining() >= Header::SIZE + payload_varint.len() {
+                                n.get() as isize
+                            } else {
+                                1
+                            };
+                        assert_eq!(expected_incomplete, n.get() as isize);
+                    } else {
+                        panic!("expected incomplete outcome, got {:?}", outcome)
+                    }
+
+                    // Ensure no data is consumed unless a complete frame is read.
+                    assert_eq!(buffer_length, buffer.remaining());
+                }
+            }
+        }
     }
 
     #[test]
     fn allows_interspersed_messages() {
+        #[derive(Debug)]
+        struct TestPayload(Vec<u8>);
+
+        #[derive(Debug)]
+        enum TestMessage {
+            Request { id: u16 },
+            Response { id: u16 },
+            RequestWithPayload { id: u16, payload: TestPayload },
+            ResponseWithPayload { id: u16, payload: TestPayload },
+            RequestCancellation { id: u16 },
+            ResponseCancellation { id: u16 },
+        }
+
         todo!()
     }
 
@@ -440,6 +516,11 @@ mod tests {
 
     #[test]
     fn bad_varint_causes_error() {
+        todo!()
+    }
+
+    #[test]
+    fn invalid_channel_causes_error() {
         todo!()
     }
 
