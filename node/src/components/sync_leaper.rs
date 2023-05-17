@@ -115,6 +115,15 @@ impl SyncLeaper {
         }
     }
 
+    // drop the leap activity for historical sync
+    pub(crate) fn purge_sync_back_activity(&mut self) {
+        if let Some(activity) = &self.leap_activity {
+            if activity.sync_leap_identifier().trusted_ancestor_only() {
+                self.leap_activity = None;
+            }
+        }
+    }
+
     #[cfg_attr(doc, aquamarine::aquamarine)]
     /// ```mermaid
     /// flowchart TD
