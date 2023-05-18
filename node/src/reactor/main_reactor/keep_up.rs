@@ -296,7 +296,7 @@ impl MainReactor {
                     // be required anymore
                     debug!("KeepUp: synced to TTL or Genesis");
                     self.block_synchronizer.purge_historical();
-                    self.sync_leaper.purge_sync_back_activity();
+                    self.sync_leaper.purge();
                     None
                 }
                 SyncBackInstruction::Syncing => {
