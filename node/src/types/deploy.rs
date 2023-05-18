@@ -29,7 +29,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
+use tracing::{debug, error, warn};
 
 #[cfg(test)]
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
@@ -263,50 +263,47 @@ impl Deploy {
 
     /// Returns `Ok` if this block's body hashes to the value of `body_hash` in the header, and if
     /// this block's header hashes to the value claimed as the block hash.  Otherwise returns `Err`.
-    pub(crate) fn has_valid_hash(&self) -> Result<(), Box<DeployConfigurationFailure>> {
+    pub(crate) fn has_valid_hash(&self) -> Result<(), DeployConfigurationFailure> {
         let serialized_body = serialize_body(&self.payment, &self.session);
         let body_hash = Digest::hash(serialized_body);
         if body_hash != *self.header.body_hash() {
             warn!(?self, ?body_hash, "invalid deploy body hash");
-            return Err(DeployConfigurationFailure::InvalidBodyHash.into());
+            return Err(DeployConfigurationFailure::InvalidBodyHash);
         }
 
         let serialized_header = serialize_header(&self.header);
         let hash = DeployHash::new(Digest::hash(serialized_header));
         if hash != self.hash {
             warn!(?self, ?hash, "invalid deploy hash");
-            return Err(DeployConfigurationFailure::InvalidDeployHash.into());
+            return Err(DeployConfigurationFailure::InvalidDeployHash);
         }
         Ok(())
     }
 
-    /// Returns true if and only if:
+    /// Returns Ok if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
     ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
-    #[allow(clippy::result_large_err)]
     pub fn is_valid(&self) -> Result<(), DeployConfigurationFailure> {
-        self.is_valid
-            .get_or_init(|| validate_deploy(self).map_err(|err| *err))
-            .clone()
+        self.is_valid.get_or_init(|| validate_deploy(self)).clone()
     }
 
-    /// Returns true if and only if:
+    /// Returns Ok if and only if:
     ///   * the chain_name is correct,
-    ///   * the configured parameters are complied with,
-    #[allow(clippy::result_large_err)]
+    ///   * the configured parameters are complied with at the given timestamp
     pub fn is_config_compliant(
         &self,
         chain_name: &str,
         config: &DeployConfig,
         max_associated_keys: u32,
+        at: Timestamp,
     ) -> Result<(), DeployConfigurationFailure> {
         self.is_valid_size(config.max_deploy_size)?;
 
         let header = self.header();
         if header.chain_name() != chain_name {
-            info!(
+            debug!(
                 deploy_hash = %self.hash(),
                 deploy_header = %header,
                 chain_name = %header.chain_name(),
@@ -318,34 +315,10 @@ impl Deploy {
             });
         }
 
-        if header.dependencies().len() > config.max_dependencies as usize {
-            info!(
-                deploy_hash = %self.hash(),
-                deploy_header = %header,
-                max_dependencies = %config.max_dependencies,
-                "deploy dependency ceiling exceeded"
-            );
-            return Err(DeployConfigurationFailure::ExcessiveDependencies {
-                max_dependencies: config.max_dependencies,
-                got: header.dependencies().len(),
-            });
-        }
-
-        if header.ttl() > config.max_ttl {
-            info!(
-                deploy_hash = %self.hash(),
-                deploy_header = %header,
-                max_ttl = %config.max_ttl,
-                "deploy ttl excessive"
-            );
-            return Err(DeployConfigurationFailure::ExcessiveTimeToLive {
-                max_ttl: config.max_ttl,
-                got: header.ttl(),
-            });
-        }
+        header.is_valid(config, at, &self.hash)?;
 
         if self.approvals.len() > max_associated_keys as usize {
-            info!(
+            debug!(
                 deploy_hash = %self.hash(),
                 number_of_associated_keys = %self.approvals.len(),
                 max_associated_keys = %max_associated_keys,
@@ -371,20 +344,21 @@ impl Deploy {
                 .into_t::<U512>()
                 .map_err(|_| DeployConfigurationFailure::FailedToParsePaymentAmount)?;
             if payment_amount > U512::from(config.block_gas_limit) {
-                info!(
+                debug!(
                     amount = %payment_amount,
-                    block_gas_limit = %config.block_gas_limit, "payment amount exceeds block gas limit"
+                    block_gas_limit = %config.block_gas_limit,
+                    "payment amount exceeds block gas limit"
                 );
                 return Err(DeployConfigurationFailure::ExceededBlockGasLimit {
                     block_gas_limit: config.block_gas_limit,
-                    got: payment_amount,
+                    got: Box::new(payment_amount),
                 });
             }
         }
 
         let payment_args_length = self.payment().args().serialized_length();
         if payment_args_length > config.payment_args_max_length as usize {
-            info!(
+            debug!(
                 payment_args_length,
                 payment_args_max_length = config.payment_args_max_length,
                 "payment args excessive"
@@ -397,7 +371,7 @@ impl Deploy {
 
         let session_args_length = self.session().args().serialized_length();
         if session_args_length > config.session_args_max_length as usize {
-            info!(
+            debug!(
                 session_args_length,
                 session_args_max_length = config.session_args_max_length,
                 "session args excessive"
@@ -414,25 +388,25 @@ impl Deploy {
                 .args()
                 .get(ARG_AMOUNT)
                 .ok_or_else(|| {
-                    info!("missing transfer 'amount' runtime argument");
+                    debug!("missing transfer 'amount' runtime argument");
                     DeployConfigurationFailure::MissingTransferAmount
                 })?
                 .clone()
                 .into_t::<U512>()
                 .map_err(|_| {
-                    info!("failed to parse transfer 'amount' runtime argument as a U512");
+                    debug!("failed to parse transfer 'amount' runtime argument as a U512");
                     DeployConfigurationFailure::FailedToParseTransferAmount
                 })?;
             let minimum = U512::from(config.native_transfer_minimum_motes);
             if attempted < minimum {
-                info!(
+                debug!(
                     minimum = %config.native_transfer_minimum_motes,
                     amount = %attempted,
                     "insufficient transfer amount"
                 );
                 return Err(DeployConfigurationFailure::InsufficientTransferAmount {
-                    minimum,
-                    attempted,
+                    minimum: Box::new(minimum),
+                    attempted: Box::new(attempted),
                 });
             }
         }
@@ -650,10 +624,10 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 
 /// Computationally expensive validity check for a given deploy instance, including
 /// asymmetric_key signing verification.
-fn validate_deploy(deploy: &Deploy) -> Result<(), Box<DeployConfigurationFailure>> {
+fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
     if deploy.approvals.is_empty() {
         warn!(?deploy, "deploy has no approvals");
-        return Err(DeployConfigurationFailure::EmptyApprovals.into());
+        return Err(DeployConfigurationFailure::EmptyApprovals);
     }
 
     deploy.has_valid_hash()?;
@@ -664,8 +638,7 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), Box<DeployConfigurationFailure
             return Err(DeployConfigurationFailure::InvalidApproval {
                 index,
                 error_msg: error.to_string(),
-            }
-            .into());
+            });
         }
     }
 
@@ -1268,6 +1241,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1276,7 +1250,12 @@ mod tests {
             chain_name,
         );
         deploy
-            .is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+            .is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp,
+            )
             .expect("should be acceptable");
     }
 
@@ -1286,6 +1265,7 @@ mod tests {
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1303,7 +1283,8 @@ mod tests {
             deploy.is_config_compliant(
                 expected_chain_name,
                 &deploy_config,
-                DEFAULT_MAX_ASSOCIATED_KEYS
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
             ),
             Err(expected_error)
         );
@@ -1318,6 +1299,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
 
         let dependency_count = usize::from(deploy_config.max_dependencies + 1);
 
@@ -1334,7 +1316,12 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1348,6 +1335,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
 
         let ttl = deploy_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
@@ -1364,7 +1352,46 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            ),
+            Err(expected_error)
+        );
+        assert!(
+            deploy.is_valid.get().is_none(),
+            "deploy should not have run expensive `is_valid` call"
+        );
+    }
+
+    #[test]
+    fn not_acceptable_due_to_timestamp_in_future() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+
+        let deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+        let current_timestamp = deploy.header.timestamp() - TimeDiff::from_seconds(1);
+
+        let expected_error = DeployConfigurationFailure::TimestampInFuture {
+            validation_timestamp: current_timestamp,
+            got: deploy.header.timestamp(),
+        };
+
+        assert_eq!(
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1378,6 +1405,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1403,7 +1431,12 @@ mod tests {
         deploy.session = session;
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            ),
             Err(DeployConfigurationFailure::MissingPaymentAmount)
         );
         assert!(
@@ -1417,6 +1450,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1444,7 +1478,12 @@ mod tests {
         deploy.session = session;
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            ),
             Err(DeployConfigurationFailure::FailedToParsePaymentAmount)
         );
         assert!(
@@ -1458,6 +1497,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
         let amount = U512::from(deploy_config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1487,11 +1527,16 @@ mod tests {
 
         let expected_error = DeployConfigurationFailure::ExceededBlockGasLimit {
             block_gas_limit: deploy_config.block_gas_limit,
-            got: amount,
+            got: Box::new(amount),
         };
 
         assert_eq!(
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS),
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1506,6 +1551,7 @@ mod tests {
         let secret_key = SecretKey::random(&mut rng);
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
         let amount = U512::from(deploy_config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1539,7 +1585,12 @@ mod tests {
 
         assert_eq!(
             Ok(()),
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            )
         )
     }
 
@@ -1548,6 +1599,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
         let deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1562,7 +1614,12 @@ mod tests {
                 got: deploy.approvals.len() as u32,
                 max_associated_keys: (deploy.approvals.len() - 1) as u32
             }),
-            deploy.is_config_compliant(chain_name, &deploy_config, max_associated_keys)
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                max_associated_keys,
+                current_timestamp
+            )
         )
     }
 
@@ -1571,6 +1628,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
         let mut deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1586,7 +1644,12 @@ mod tests {
 
         assert_eq!(
             Err(DeployConfigurationFailure::MissingTransferAmount),
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            )
         )
     }
 
@@ -1595,6 +1658,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
         let mut deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1614,7 +1678,12 @@ mod tests {
 
         assert_eq!(
             Err(DeployConfigurationFailure::FailedToParseTransferAmount),
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            )
         )
     }
 
@@ -1623,6 +1692,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let current_timestamp = Timestamp::now();
         let mut deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1645,10 +1715,15 @@ mod tests {
 
         assert_eq!(
             Err(DeployConfigurationFailure::InsufficientTransferAmount {
-                minimum: U512::from(deploy_config.native_transfer_minimum_motes),
-                attempted: insufficient_amount,
+                minimum: Box::new(U512::from(deploy_config.native_transfer_minimum_motes)),
+                attempted: Box::new(insufficient_amount),
             }),
-            deploy.is_config_compliant(chain_name, &deploy_config, DEFAULT_MAX_ASSOCIATED_KEYS)
+            deploy.is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                current_timestamp
+            )
         )
     }
 }
