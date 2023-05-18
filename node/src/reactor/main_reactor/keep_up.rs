@@ -519,9 +519,6 @@ impl MainReactor {
         // era validator weights. if there are other processes which are holding on discovery
         // of relevant newly-seen era validator weights, they should naturally progress
         // themselves via notification on the event loop.
-        if let Err(msg) = self.update_highest_switch_block() {
-            return KeepUpInstruction::Fatal(msg);
-        }
         let block_hash = sync_leap.highest_block_hash();
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "KeepUp: historical sync_back received");
