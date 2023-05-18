@@ -382,9 +382,10 @@ impl MainReactor {
             "CatchUp: leap received"
         );
 
-        for validator_weights in
-            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
-        {
+        for validator_weights in sync_leap.era_validator_weights(
+            self.validator_matrix.fault_tolerance_threshold(),
+            &self.chainspec.protocol_config,
+        ) {
             self.validator_matrix
                 .register_era_validator_weights(validator_weights);
         }

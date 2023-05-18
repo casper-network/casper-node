@@ -523,8 +523,10 @@ impl MainReactor {
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "KeepUp: historical sync_back received");
 
-        let era_validator_weights =
-            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
+        let era_validator_weights = sync_leap.era_validator_weights(
+            self.validator_matrix.fault_tolerance_threshold(),
+            &self.chainspec.protocol_config,
+        );
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "KeepUp: attempt to register historical validators for era");
