@@ -2,7 +2,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
@@ -116,6 +116,8 @@ impl MainReactor {
                     Ok(effects) => {
                         info!("CatchUp: switch to Upgrading");
                         self.state = ReactorState::Upgrading;
+                        self.last_progress = Timestamp::now();
+                        self.attempts = 0;
                         (Duration::ZERO, effects)
                     }
                     Err(msg) => (
@@ -390,6 +392,7 @@ impl MainReactor {
         UpgradingInstruction::should_commit_upgrade(
             self.should_commit_upgrade(),
             self.control_logic_default_delay.into(),
+            self.last_progress,
         )
     }
 
