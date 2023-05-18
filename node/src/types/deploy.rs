@@ -1241,7 +1241,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1249,6 +1248,7 @@ mod tests {
             deploy_config.max_dependencies.into(),
             chain_name,
         );
+        let current_timestamp = deploy.header().timestamp();
         deploy
             .is_config_compliant(
                 chain_name,
@@ -1265,7 +1265,6 @@ mod tests {
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1279,6 +1278,7 @@ mod tests {
             got: wrong_chain_name,
         };
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 expected_chain_name,
@@ -1299,7 +1299,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
 
         let dependency_count = usize::from(deploy_config.max_dependencies + 1);
 
@@ -1315,6 +1314,7 @@ mod tests {
             got: dependency_count,
         };
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
@@ -1335,7 +1335,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
 
         let ttl = deploy_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
@@ -1351,6 +1350,7 @@ mod tests {
             got: ttl,
         };
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
@@ -1405,7 +1405,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1430,6 +1429,7 @@ mod tests {
         deploy.payment = payment;
         deploy.session = session;
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
@@ -1450,7 +1450,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1477,6 +1476,7 @@ mod tests {
         deploy.payment = payment;
         deploy.session = session;
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
@@ -1497,7 +1497,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
         let amount = U512::from(deploy_config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1530,6 +1529,7 @@ mod tests {
             got: Box::new(amount),
         };
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
@@ -1551,7 +1551,6 @@ mod tests {
         let secret_key = SecretKey::random(&mut rng);
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
         let amount = U512::from(deploy_config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1583,6 +1582,7 @@ mod tests {
             None,
         );
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Ok(()),
             deploy.is_config_compliant(
@@ -1599,7 +1599,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
         let deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1609,6 +1608,7 @@ mod tests {
         // This test is to ensure a given limit is being checked.
         // Therefore, set the limit to one less than the approvals in the deploy.
         let max_associated_keys = (deploy.approvals.len() - 1) as u32;
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(DeployConfigurationFailure::ExcessiveApprovals {
                 got: deploy.approvals.len() as u32,
@@ -1628,7 +1628,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
         let mut deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1642,6 +1641,7 @@ mod tests {
         };
         deploy.session = session;
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(DeployConfigurationFailure::MissingTransferAmount),
             deploy.is_config_compliant(
@@ -1658,7 +1658,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
         let mut deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1676,6 +1675,7 @@ mod tests {
         };
         deploy.session = session;
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(DeployConfigurationFailure::FailedToParseTransferAmount),
             deploy.is_config_compliant(
@@ -1692,7 +1692,6 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
-        let current_timestamp = Timestamp::now();
         let mut deploy = create_deploy(
             &mut rng,
             deploy_config.max_ttl,
@@ -1713,6 +1712,7 @@ mod tests {
         };
         deploy.session = session;
 
+        let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(DeployConfigurationFailure::InsufficientTransferAmount {
                 minimum: Box::new(U512::from(deploy_config.native_transfer_minimum_motes)),

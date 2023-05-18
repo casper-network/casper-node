@@ -27,8 +27,8 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        self, genesis::GenesisError, ChainspecRegistry, DeployItem, EngineConfig, EngineState,
+        GenesisSuccess, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -569,7 +569,11 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let result = run_intensive_task(move || {
-                        execute_only(engine_state.as_ref(), execution_prestate, (*deploy).into())
+                        execute_only(
+                            engine_state.as_ref(),
+                            execution_prestate,
+                            DeployItem::from((*deploy).clone()),
+                        )
                     })
                     .await;
                     responder.respond(result).await
