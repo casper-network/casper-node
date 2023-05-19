@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+shopt -s expand_aliases
 
 DRONE_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 SCENARIOS_DIR="$DRONE_ROOT_DIR/utils/nctl/sh/scenarios"
@@ -14,7 +15,7 @@ pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
 
 # Call compile wrapper for client, launcher, and nctl-compile
-bash -i "$DRONE_ROOT_DIR/ci/nctl_compile.sh"
+bash -c "$DRONE_ROOT_DIR/ci/nctl_compile.sh"
 
 function start_run_teardown() {
     local RUN_CMD=$1
@@ -74,16 +75,16 @@ function start_run_teardown() {
 
 function run_nightly_upgrade_test() {
     # setup only needed the first time
-    bash -i ./ci/nctl_upgrade.sh test_id=4
-    bash -i ./ci/nctl_upgrade.sh test_id=5 skip_setup=true
-    bash -i ./ci/nctl_upgrade.sh test_id=6 skip_setup=true
-    bash -i ./ci/nctl_upgrade.sh test_id=7 skip_setup=true
-    bash -i ./ci/nctl_upgrade.sh test_id=8 skip_setup=true
-    bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
-    bash -i ./ci/nctl_upgrade.sh test_id=10
-    bash -i ./ci/nctl_upgrade.sh test_id=11
-    bash -i ./ci/nctl_upgrade.sh test_id=12
-    bash -i ./ci/nctl_upgrade.sh test_id=13
+    bash -c "./ci/nctl_upgrade.sh test_id=4"
+    bash -c "./ci/nctl_upgrade.sh test_id=5 skip_setup=true"
+    bash -c "./ci/nctl_upgrade.sh test_id=6 skip_setup=true"
+    bash -c "./ci/nctl_upgrade.sh test_id=7 skip_setup=true"
+    bash -c "./ci/nctl_upgrade.sh test_id=8 skip_setup=true"
+    bash -c "./ci/nctl_upgrade.sh test_id=9 skip_setup=true"
+    bash -c "./ci/nctl_upgrade.sh test_id=10"
+    bash -c "./ci/nctl_upgrade.sh test_id=11"
+    bash -c "./ci/nctl_upgrade.sh test_id=12"
+    bash -c "./ci/nctl_upgrade.sh test_id=13"
 }
 
 function run_soundness_test() {
@@ -91,14 +92,6 @@ function run_soundness_test() {
 
     # Really-really make sure nothing is leftover
     nctl-assets-teardown
-
-    # If running on CI, activate NCTL via .bashrc to have it available inside Python subprocesses
-    if [ -v DRONE_BRANCH ]; then
-        echo "running on DRONE"
-        echo "source $DRONE_ROOT_DIR/utils/nctl/activate" >> $HOME/.bashrc
-    else
-        echo "NOT running on DRONE"
-    fi
 
     $NCTL/sh/scenarios/network_soundness.py
 
@@ -110,8 +103,6 @@ source "$NCTL/sh/staging/set_override_tomls.sh"
 start_run_teardown "client.sh"
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
-start_run_teardown "itst06.sh"
-start_run_teardown "itst07.sh"
 start_run_teardown "itst11.sh"
 start_run_teardown "itst13.sh"
 start_run_teardown "itst14.sh"
@@ -123,9 +114,13 @@ start_run_teardown "sync_test.sh timeout=500"
 start_run_teardown "gov96.sh"
 start_run_teardown "swap_validator_set.sh"
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
-# without start_run_teardown - this one performs its own assets setup, network start and teardown
+# Without start_run_teardown - this one performs its own assets setup, network start and teardown
 source "$SCENARIOS_DIR/upgrade_after_emergency_upgrade_test_pre_1.5.sh"
 
 run_nightly_upgrade_test
 
 run_soundness_test
+
+# Run these last as they occasionally fail (see https://github.com/casper-network/casper-node/issues/2973)
+start_run_teardown "itst06.sh"
+start_run_teardown "itst07.sh"
