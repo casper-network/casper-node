@@ -753,7 +753,7 @@ where
     ) -> ProtocolOutcomes<C> {
         match msg.deserialize_incoming() {
             Err(err) => {
-                warn!(?err, "could not desrialize highway message");
+                warn!(?err, "could not deserialize highway message");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(HighwayMessage::NewVertex(v))

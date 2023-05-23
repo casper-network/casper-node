@@ -367,9 +367,7 @@ fn assert_targeted_message(
     match outcome {
         ProtocolOutcome::CreatedTargetedMessage(raw_msg, peer0) => {
             assert_eq!(peer, peer0);
-            let msg = raw_msg
-                .deserialize_incoming()
-                .expect("failed to deserialize message");
+            let msg = raw_msg.deserialize_expect();
             match msg {
                 HighwayMessage::RequestDependency(_, got) => assert_eq!(got, expected),
                 other => panic!("unexpected variant: {:?}", other),
