@@ -772,12 +772,21 @@ impl ContractRuntime {
         };
 
         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
-        debug!(
-            next_block_height = new_execution_pre_state.next_block_height,
-            "ContractRuntime: updating new_execution_pre_state",
-        );
-        *shared_pre_state.lock().unwrap() = new_execution_pre_state.clone();
-        debug!("ContractRuntime: updated new_execution_pre_state");
+        {
+            // The `shared_pre_state` could have been set to a block we just fully synced after
+            // doing a sync leap (via a call to `set_initial_state`).  We should not allow a block
+            // which completed execution just after this to set the `shared_pre_state` back to an
+            // earlier block height.
+            let mut shared_pre_state = shared_pre_state.lock().unwrap();
+            if shared_pre_state.next_block_height < new_execution_pre_state.next_block_height {
+                debug!(
+                    next_block_height = new_execution_pre_state.next_block_height,
+                    "ContractRuntime: updating new_execution_pre_state",
+                );
+                *shared_pre_state = new_execution_pre_state.clone();
+                debug!("ContractRuntime: updated new_execution_pre_state");
+            }
+        }
 
         let current_era_id = block.header().era_id();
 
