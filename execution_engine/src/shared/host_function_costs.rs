@@ -203,12 +203,10 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `read_value` host function.
     pub read_value: HostFunction<[Cost; 3]>,
     /// Cost of calling the `dictionary_get` host function.
-    #[serde(alias = "read_value_local")]
     pub dictionary_get: HostFunction<[Cost; 3]>,
     /// Cost of calling the `write` host function.
     pub write: HostFunction<[Cost; 4]>,
     /// Cost of calling the `dictionary_put` host function.
-    #[serde(alias = "write_local")]
     pub dictionary_put: HostFunction<[Cost; 4]>,
     /// Cost of calling the `add` host function.
     pub add: HostFunction<[Cost; 4]>,
