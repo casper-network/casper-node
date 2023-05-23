@@ -4,6 +4,8 @@ mod config;
 mod error;
 mod metrics;
 mod operations;
+#[cfg(test)]
+mod tests;
 mod types;
 
 use std::{
@@ -705,6 +707,7 @@ impl ContractRuntime {
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
+        let next_block_height = sequential_block_state.next_block_height;
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
@@ -719,6 +722,7 @@ impl ContractRuntime {
                 .exec_queue_size
                 .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
         }
+        debug!(next_block_height, "ContractRuntime: set initial state");
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -768,7 +772,10 @@ impl ContractRuntime {
         .await
         {
             Ok(block_and_execution_results) => block_and_execution_results,
-            Err(error) => return fatal!(effect_builder, "{}", error).await,
+            Err(error) => {
+                error!(%error, "failed to execute block");
+                return fatal!(effect_builder, "{}", error).await;
+            }
         };
 
         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
@@ -949,7 +956,7 @@ impl ContractRuntime {
 }
 
 #[cfg(test)]
-mod tests {
+mod trie_chunking_tests {
     use casper_execution_engine::{
         shared::{
             additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
