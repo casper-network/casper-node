@@ -289,45 +289,6 @@ where
     })
 }
 
-struct TrieScan<K, V> {
-    tip: Trie<K, V>,
-    parents: Parents<K, V>,
-}
-
-impl<K, V> TrieScan<K, V> {
-    fn new(tip: Trie<K, V>, parents: Parents<K, V>) -> Self {
-        TrieScan { tip, parents }
-    }
-}
-
-/// Returns a [`TrieScan`] from the given key at a given root in a given store.
-/// A scan consists of the deepest trie variant found at that key, a.k.a. the
-/// "tip", along the with the parents of that variant. Parents are ordered by
-/// their depth from the root (shallow to deep).
-fn scan<K, V, T, S, E>(
-    txn: &T,
-    store: &S,
-    key_bytes: &[u8],
-    root: &Trie<K, V>,
-) -> Result<TrieScan<K, V>, E>
-where
-    K: ToBytes + FromBytes + Clone,
-    V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    let root_bytes = root.to_bytes()?;
-    let TrieScanRaw { tip, parents } =
-        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
-    let tip = match tip {
-        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
-        Either::Right(tip) => tip,
-    };
-    Ok(TrieScan::new(tip, parents))
-}
-
 struct TrieScanRaw<K, V> {
     tip: Either<Bytes, Trie<K, V>>,
     parents: Parents<K, V>,
@@ -339,7 +300,10 @@ impl<K, V> TrieScanRaw<K, V> {
     }
 }
 
-/// Just like scan, however we don't parse the tip.
+/// Returns a [`TrieScanRaw`] from the given key at a given root in a given store.
+/// A scan consists of the deepest trie variant found at that key, a.k.a. the
+/// "tip", along the with the parents of that variant. Parents are ordered by
+/// their depth from the root (shallow to deep). The tip is not parsed.
 fn scan_raw<K, V, T, S, E>(
     txn: &T,
     store: &S,

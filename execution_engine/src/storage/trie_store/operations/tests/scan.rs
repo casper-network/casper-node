@@ -5,7 +5,7 @@ use crate::{
     shared::newtypes::CorrelationId,
     storage::{
         error::{self, in_memory},
-        trie_store::operations::{scan, TrieScan},
+        trie_store::operations::{scan_raw, TrieScanRaw},
     },
 };
 
@@ -26,29 +26,39 @@ where
     let root = store
         .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
-    let TrieScan { mut tip, parents } =
-        scan::<TestKey, TestValue, R::ReadTransaction, S, E>(&txn, store, key, &root)?;
+    let root_bytes = root.to_bytes()?;
+    let TrieScanRaw { mut tip, parents } = scan_raw::<TestKey, TestValue, R::ReadTransaction, S, E>(
+        &txn,
+        store,
+        key,
+        root_bytes.into(),
+    )?;
 
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
-            let tip_bytes = tip.to_bytes().unwrap();
-            Digest::hash(&tip_bytes)
+            match tip {
+                either::Either::Left(leaf_bytes) => Digest::hash(&leaf_bytes),
+                either::Either::Right(trie) => {
+                    let tip_bytes = trie.to_bytes().unwrap();
+                    Digest::hash(&tip_bytes)
+                }
+            }
         };
         match parent {
             Trie::Leaf { .. } => panic!("parents should not contain any leaves"),
             Trie::Node { pointer_block } => {
                 let pointer_tip_hash = pointer_block[<usize>::from(index)].map(|ptr| *ptr.hash());
                 assert_eq!(Some(expected_tip_hash), pointer_tip_hash);
-                tip = Trie::Node { pointer_block };
+                tip = either::Either::Right(Trie::Node { pointer_block });
             }
             Trie::Extension { affix, pointer } => {
                 let pointer_tip_hash = pointer.hash().to_owned();
                 assert_eq!(expected_tip_hash, pointer_tip_hash);
-                tip = Trie::Extension { affix, pointer };
+                tip = either::Either::Right(Trie::Extension { affix, pointer });
             }
         }
     }
-    assert_eq!(root, tip);
+    assert_eq!(root, tip.expect_right("Unexpected leaf found"));
     txn.commit()?;
     Ok(())
 }
