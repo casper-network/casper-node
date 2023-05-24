@@ -16,10 +16,11 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let _counter = TestValue::before_operation(TestOperation::Delete);
+    let delete_op = operations::delete::<K, V, T, S, E> as *mut c_void;
+    let _counter = TestValue::before_operation(delete_op);
     let delete_result =
         operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete);
-    let counter = TestValue::after_operation(TestOperation::Delete);
+    let counter = TestValue::after_operation(delete_op);
     assert_eq!(counter, 0, "Delete should never deserialize a value");
     let delete_result = delete_result?;
     if let DeleteResult::Deleted(new_root) = delete_result {
@@ -190,6 +191,7 @@ mod partial_tries {
 }
 
 mod full_tries {
+    use super::*;
     use std::ops::RangeInclusive;
 
     use proptest::{collection, prelude::*};
@@ -209,7 +211,7 @@ mod full_tries {
                 operations::{
                     delete,
                     tests::{
-                        InMemoryTestContext, LmdbTestContext, TestKey, TestOperation, TestValue,
+                        InMemoryTestContext, LmdbTestContext, TestKey, TestValue,
                         TEST_TRIE_GENERATORS,
                     },
                     write, DeleteResult, WriteResult,
@@ -235,10 +237,13 @@ mod full_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
+        let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
+        let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs {
+            let _counter = TestValue::before_operation(write_op);
             if let WriteResult::Written(new_root) = write::<K, V, _, _, E>(
                 correlation_id,
                 &mut txn,
@@ -251,14 +256,17 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
+            let counter = TestValue::after_operation(write_op);
+            assert_eq!(counter, 0, "Write should never deserialize a value");
         }
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
+        let delete_op = delete::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
         for (key, _value) in pairs.iter().rev() {
-            let _counter = TestValue::before_operation(TestOperation::Delete);
+            let _counter = TestValue::before_operation(delete_op);
             let delete_result =
                 delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &current_root, key);
-            let counter = TestValue::after_operation(TestOperation::Delete);
+            let counter = TestValue::after_operation(delete_op);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
             if let DeleteResult::Deleted(new_root) = delete_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
@@ -336,10 +344,12 @@ mod full_tries {
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
+        let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
+        let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
         let mut expected_root = *root;
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs_to_insert.iter() {
+            let _counter = TestValue::before_operation(write_op);
             if let WriteResult::Written(new_root) =
                 write::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key, value)?
             {
@@ -347,12 +357,15 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
+            let counter = TestValue::after_operation(write_op);
+            assert_eq!(counter, 0, "Write should never deserialize a value");
         }
+        let delete_op = delete::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
         for key in keys_to_delete.iter() {
-            let _counter = TestValue::before_operation(TestOperation::Delete);
+            let _counter = TestValue::before_operation(delete_op);
             let delete_result =
                 delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key);
-            let counter = TestValue::after_operation(TestOperation::Delete);
+            let counter = TestValue::after_operation(delete_op);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
             match delete_result? {
                 DeleteResult::Deleted(new_root) => {
@@ -372,6 +385,7 @@ mod full_tries {
 
         let mut actual_root = *root;
         for (key, value) in pairs_to_insert_less_deleted.iter() {
+            let _counter = TestValue::before_operation(write_op);
             if let WriteResult::Written(new_root) =
                 write::<K, V, _, _, E>(correlation_id, &mut txn, store, &actual_root, key, value)?
             {
@@ -379,6 +393,8 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
+            let counter = TestValue::after_operation(write_op);
+            assert_eq!(counter, 0, "Write should never deserialize a value");
         }
 
         assert_eq!(expected_root, actual_root, "Expected did not match actual");

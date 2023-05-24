@@ -14,6 +14,8 @@ use std::{
     ops::Not,
 };
 
+use backtrace::Backtrace;
+use libc::c_void;
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
@@ -67,12 +69,7 @@ impl FromBytes for TestKey {
 
 const TEST_VAL_LENGTH: usize = 6;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub(crate) enum TestOperation {
-    Delete, // Deleting an existing value should not deserialize V
-}
-
-type Counter = BTreeMap<TestOperation, usize>;
+type Counter = BTreeMap<*mut c_void, usize>;
 
 thread_local! {
     static FROMBYTES_INSIDE_OPERATION: RefCell<Counter>  = RefCell::new(Default::default());
@@ -84,7 +81,7 @@ thread_local! {
 struct TestValue([u8; TEST_VAL_LENGTH]);
 
 impl TestValue {
-    pub(crate) fn before_operation(op: TestOperation) -> usize {
+    pub(crate) fn before_operation(op: *mut c_void) -> usize {
         FROMBYTES_INSIDE_OPERATION.with(|flag| {
             *flag.borrow_mut().entry(op).or_default() += 1;
         });
@@ -97,7 +94,7 @@ impl TestValue {
         })
     }
 
-    pub(crate) fn after_operation(op: TestOperation) -> usize {
+    pub(crate) fn after_operation(op: *mut c_void) -> usize {
         FROMBYTES_INSIDE_OPERATION.with(|flag| {
             *flag.borrow_mut().get_mut(&op).unwrap() -= 1;
         });
@@ -105,9 +102,15 @@ impl TestValue {
         FROMBYTES_COUNTER.with(|counter| counter.borrow().get(&op).copied().unwrap())
     }
 
-    pub(crate) fn increment() {
+    pub(crate) fn increment(backtrace: &Backtrace) {
         let flag = FROMBYTES_INSIDE_OPERATION.with(|flag| flag.borrow().clone());
-        let op = TestOperation::Delete;
+        let operations: Vec<*mut c_void> = flag.keys().cloned().collect();
+        let op = if let Some(op) = first_caller_from_set(backtrace, &operations) {
+            op
+        } else {
+            return;
+        };
+
         if let Some(value) = flag.get(&op) {
             if *value > 0 {
                 FROMBYTES_COUNTER.with(|counter| {
@@ -128,13 +131,27 @@ impl ToBytes for TestValue {
     }
 }
 
+// Determine if a there exists a caller in the backtrace that matches any of the specified symbols
+fn first_caller_from_set(backtrace: &Backtrace, symbols: &[*mut c_void]) -> Option<*mut c_void> {
+    if symbols.is_empty() {
+        return None;
+    }
+
+    backtrace
+        .frames()
+        .iter()
+        .find(|frame| symbols.contains(&frame.symbol_address()))
+        .map(|frame| frame.symbol_address())
+}
+
 impl FromBytes for TestValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (key, rem) = bytes.split_at(TEST_VAL_LENGTH);
         let mut ret = [0u8; TEST_VAL_LENGTH];
         ret.copy_from_slice(key);
 
-        TestValue::increment();
+        let backtrace = Backtrace::new_unresolved();
+        TestValue::increment(&backtrace);
 
         Ok((TestValue(ret), rem))
     }
@@ -649,9 +666,18 @@ where
 
     for leaf in leaves {
         if let Trie::Leaf { key, value } = leaf {
+            let read_op = read::<K, V, T, S, E> as *mut c_void;
+            let _counter = TestValue::before_operation(read_op);
             let maybe_value: ReadResult<V> =
                 read::<_, _, _, _, E>(correlation_id, txn, store, root, key)?;
-            ret.push(ReadResult::Found(*value) == maybe_value)
+            let counter = TestValue::after_operation(read_op);
+            if let ReadResult::Found(value_found) = maybe_value {
+                assert_eq!(
+                    counter, 1,
+                    "Read should deserialize value only once if the key is found"
+                );
+                ret.push(*value == value_found);
+            }
         } else {
             panic!("leaves should only contain leaves")
         }
@@ -806,12 +832,16 @@ where
         return Ok(results);
     }
     let mut root_hash = root_hash.to_owned();
-    let mut txn = environment.create_read_write_txn()?;
+    let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
+    let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
 
     for leaf in leaves.iter() {
         if let Trie::Leaf { key, value } = leaf {
+            let _counter = TestValue::before_operation(write_op);
             let write_result =
                 write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)?;
+            let counter = TestValue::after_operation(write_op);
+            assert_eq!(counter, 0, "Write should never deserialize a value");
             match write_result {
                 WriteResult::Written(hash) => {
                     root_hash = hash;
@@ -878,10 +908,29 @@ where
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
-    let txn = environment.create_read_txn()?;
+    let txn: R::ReadTransaction = environment.create_read_txn()?;
+    let read_op = read::<K, V, R::ReadTransaction, S, E> as *mut c_void;
     for (index, root_hash) in root_hashes.iter().enumerate() {
         for (key, value) in &pairs[..=index] {
+            let _counter = TestValue::before_operation(read_op);
             let result = read::<_, _, _, _, E>(correlation_id, &txn, store, root_hash, key)?;
+            let counter = TestValue::after_operation(read_op);
+
+            match result {
+                ReadResult::Found(_) => {
+                    assert_eq!(
+                        counter, 1,
+                        "Read should deserialize value only once if the key is found"
+                    );
+                }
+                ReadResult::NotFound | ReadResult::RootNotFound => {
+                    assert_eq!(
+                        counter, 0,
+                        "Read should never deserialize value if the key is not found"
+                    );
+                }
+            }
+
             if ReadResult::Found(*value) != result {
                 return Ok(false);
             }
@@ -931,7 +980,9 @@ where
     let mut root_hash = root_hash.to_owned();
     let mut txn = environment.create_read_write_txn()?;
 
+    let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
     for (key, value) in pairs.iter() {
+        let _counter = TestValue::before_operation(write_op);
         match write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)? {
             WriteResult::Written(hash) => {
                 root_hash = hash;
@@ -939,6 +990,8 @@ where
             WriteResult::AlreadyExists => (),
             WriteResult::RootNotFound => panic!("write_leaves given an invalid root"),
         };
+        let counter = TestValue::after_operation(write_op);
+        assert_eq!(counter, 0, "Write should never deserialize a value");
         results.push(root_hash);
     }
     txn.commit()?;
