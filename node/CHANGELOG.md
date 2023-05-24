@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## [Unreleased]
+
+### Added
+* Added the `upgrade_timeout` config option under the `[node]` section.
 
 ## 1.5.0-rc.1
 

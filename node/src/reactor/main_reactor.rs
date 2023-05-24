@@ -185,6 +185,7 @@ pub(crate) struct MainReactor {
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
+    upgrade_timeout: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
 }
@@ -1167,6 +1168,7 @@ impl reactor::Reactor for MainReactor {
             max_attempts: config.node.max_attempts,
             idle_tolerance: config.node.idle_tolerance,
             control_logic_default_delay: config.node.control_logic_default_delay,
+            upgrade_timeout: config.node.upgrade_timeout,
             trusted_hash,
             validator_matrix,
             sync_to_genesis: config.node.sync_to_genesis,

@@ -2,8 +2,6 @@ use std::time::Duration;
 
 use casper_types::{TimeDiff, Timestamp};
 
-const UPGRADE_TIMEOUT_SECONDS: u32 = 30;
-
 pub(super) enum UpgradingInstruction {
     CheckLater(String, Duration),
     CatchUp,
@@ -14,9 +12,10 @@ impl UpgradingInstruction {
         should_commit_upgrade: bool,
         wait: Duration,
         last_progress: Timestamp,
+        upgrade_timeout: TimeDiff,
     ) -> UpgradingInstruction {
         if should_commit_upgrade {
-            if last_progress.elapsed() > TimeDiff::from_seconds(UPGRADE_TIMEOUT_SECONDS) {
+            if last_progress.elapsed() > upgrade_timeout {
                 UpgradingInstruction::CatchUp
             } else {
                 UpgradingInstruction::CheckLater("awaiting upgrade".to_string(), wait)

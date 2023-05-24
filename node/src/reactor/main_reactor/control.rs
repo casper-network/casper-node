@@ -393,6 +393,7 @@ impl MainReactor {
             self.should_commit_upgrade(),
             self.control_logic_default_delay.into(),
             self.last_progress,
+            self.upgrade_timeout,
         )
     }
 
@@ -486,14 +487,12 @@ impl MainReactor {
     pub(super) fn should_commit_upgrade(&self) -> bool {
         // header of latest complete block, and that block needs to be switch block
         let highest_switch_block_header = match self.storage.read_highest_complete_block() {
-            Ok(Some(highest_complete_block)) => {
-                if highest_complete_block.header().is_switch_block() {
-                    highest_complete_block.take_header()
-                } else {
-                    return false;
-                }
+            Ok(Some(highest_complete_block))
+                if highest_complete_block.header().is_switch_block() =>
+            {
+                highest_complete_block.take_header()
             }
-            Ok(None) => {
+            Ok(Some(_)) | Ok(None) => {
                 return false;
             }
             Err(error) => {
