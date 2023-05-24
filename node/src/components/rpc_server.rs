@@ -31,7 +31,6 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::Digest;
 use casper_types::{system::auction::EraValidators, Key, ProtocolVersion, URef};
 
-use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::{
@@ -223,7 +222,6 @@ where
                     effects
                 }
                 Event::RpcRequest(_)
-                | Event::GetBlockResult { .. }
                 | Event::GetBlockTransfersResult { .. }
                 | Event::QueryGlobalStateResult { .. }
                 | Event::QueryEraValidatorsResult { .. }
@@ -248,42 +246,6 @@ where
                     );
                     Effects::new()
                 }
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: Some(BlockIdentifier::Hash(hash)),
-                    only_from_available_block_range,
-                    responder,
-                }) => effect_builder
-                    .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: Some(BlockIdentifier::Hash(hash)),
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: Some(BlockIdentifier::Height(height)),
-                    only_from_available_block_range,
-                    responder,
-                }) => effect_builder
-                    .get_block_at_height_with_metadata_from_storage(
-                        height,
-                        only_from_available_block_range,
-                    )
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: Some(BlockIdentifier::Height(height)),
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: None,
-                    only_from_available_block_range: _,
-                    responder,
-                }) => effect_builder
-                    .get_highest_block_with_metadata_from_storage()
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: None,
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
                 Event::RpcRequest(RpcRequest::GetBlockTransfers {
                     block_hash,
                     responder,
@@ -410,11 +372,6 @@ where
                         .await
                 }
                 .ignore(),
-                Event::GetBlockResult {
-                    maybe_id: _,
-                    result,
-                    main_responder,
-                } => main_responder.respond(result).ignore(),
                 Event::GetBlockTransfersResult {
                     block_hash: _,
                     result,

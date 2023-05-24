@@ -1053,21 +1053,23 @@ impl Storage {
                     }))
                     .ignore()
             }
-            StorageRequest::GetHighestBlockWithMetadata { responder } => {
+            StorageRequest::GetHighestBlockWithMetadata {
+                only_from_available_block_range,
+                responder,
+            } => {
                 let mut txn = self.env.begin_ro_txn()?;
-
-                let highest_block: Block = {
-                    if let Some(block) = self
-                        .block_height_index
-                        .keys()
-                        .last()
-                        .and_then(|&height| self.get_block_by_height(&mut txn, height).transpose())
-                        .transpose()?
-                    {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    }
+                let maybe_height = if only_from_available_block_range {
+                    self.highest_complete_block_height()
+                } else {
+                    self.block_height_index.keys().last().copied()
+                };
+                let height = match maybe_height {
+                    Some(height) => height,
+                    None => return Ok(responder.respond(None).ignore()),
+                };
+                let highest_block = match self.get_block_by_height(&mut txn, height)? {
+                    Some(block) => block,
+                    None => return Ok(responder.respond(None).ignore()),
                 };
                 let hash = highest_block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {

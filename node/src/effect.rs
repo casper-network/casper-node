@@ -1647,12 +1647,16 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
+        only_from_available_block_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetHighestBlockWithMetadata { responder },
+            |responder| StorageRequest::GetHighestBlockWithMetadata {
+                only_from_available_block_range,
+                responder,
+            },
             QueueKind::FromStorage,
         )
         .await

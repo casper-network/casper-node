@@ -49,7 +49,7 @@ use crate::{
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
-    rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
+    rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
@@ -329,8 +329,8 @@ pub(crate) enum StorageRequest {
     GetBlockHeader {
         /// Hash of block to get header of.
         block_hash: BlockHash,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
@@ -339,8 +339,8 @@ pub(crate) enum StorageRequest {
     GetBlockHeaderByHeight {
         /// Height of block to get header of.
         block_height: u64,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
@@ -420,8 +420,8 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHash {
         /// The hash of the block.
         block_hash: BlockHash,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
@@ -439,14 +439,17 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHeight {
         /// The height of the block.
         block_height: BlockHeight,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
+        /// If true, only consider blocks in the available block range, i.e. the highest contiguous
+        /// range of complete blocks.
+        only_from_available_block_range: bool,
         /// The responder to call the results with.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -686,17 +689,6 @@ impl Display for DeployBufferRequest {
 #[derive(Debug)]
 #[must_use]
 pub(crate) enum RpcRequest {
-    /// If `maybe_identifier` is `Some`, return the specified block if it exists, else `None`.  If
-    /// `maybe_identifier` is `None`, return the latest block.
-    GetBlock {
-        /// The identifier (can either be a hash or the height) of the block to be retrieved.
-        maybe_id: Option<BlockIdentifier>,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
-        only_from_available_block_range: bool,
-        /// Responder to call with the result.
-        responder: Responder<Option<Box<BlockWithMetadata>>>,
-    },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
         /// The hash of the block to retrieve transfers for.
@@ -770,15 +762,6 @@ pub(crate) enum RpcRequest {
 impl Display for RpcRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RpcRequest::GetBlock {
-                maybe_id: Some(BlockIdentifier::Hash(hash)),
-                ..
-            } => write!(formatter, "get {}", hash),
-            RpcRequest::GetBlock {
-                maybe_id: Some(BlockIdentifier::Height(height)),
-                ..
-            } => write!(formatter, "get {}", height),
-            RpcRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
             RpcRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers {}", block_hash)
             }
