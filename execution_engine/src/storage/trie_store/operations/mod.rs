@@ -929,45 +929,61 @@ where
                 key: key.to_owned(),
                 value: value.to_owned(),
             };
+            let current_root_bytes = current_root.to_bytes()?;
             let path: Vec<u8> = key.to_bytes()?;
-            let TrieScan { tip, parents } =
-                scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
+            let TrieScanRaw { tip, parents } =
+                scan_raw::<K, V, T, S, E>(txn, store, &path, current_root_bytes.into())?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
-                // If the "tip" is the same as the new leaf, then the leaf
-                // is already in the Trie.
-                Trie::Leaf { .. } if new_leaf == tip => Vec::new(),
-                // If the "tip" is an existing leaf with the same key as the
-                // new leaf, but the existing leaf and new leaf have different
-                // values, then we are in the situation where we are "updating"
-                // an existing leaf.
-                Trie::Leaf {
-                    key: ref leaf_key,
-                    value: ref leaf_value,
-                } if key == leaf_key && value != leaf_value => rehash(new_leaf, parents)?,
-                // If the "tip" is an existing leaf with a different key than
-                // the new leaf, then we are in a situation where the new leaf
-                // shares some common prefix with the existing leaf.
-                Trie::Leaf {
-                    key: ref existing_leaf_key,
-                    ..
-                } if key != existing_leaf_key => {
-                    let existing_leaf_path = existing_leaf_key.to_bytes()?;
-                    let (new_node, parents) = reparent_leaf(&path, &existing_leaf_path, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents);
-                    rehash(new_leaf, parents)?
+                Either::Left(leaf_bytes) => {
+                    let trie_tag = trie::lazy_trie_tag(leaf_bytes.as_slice());
+                    assert_eq!(
+                        trie_tag,
+                        Some(TrieTag::Leaf),
+                        "Unexpected trie variant found instead of a `TrieTag::Leaf`"
+                    );
+
+                    let key_bytes: &[u8] = &leaf_bytes[1..];
+                    let (existing_leaf_key, existing_value_bytes) = K::from_bytes(key_bytes)?;
+
+                    if key != &existing_leaf_key {
+                        // If the "tip" is an existing leaf with a different key than
+                        // the new leaf, then we are in a situation where the new leaf
+                        // shares some common prefix with the existing leaf.
+                        let existing_leaf_path = existing_leaf_key.to_bytes()?;
+                        let (new_node, parents) =
+                            reparent_leaf(&path, &existing_leaf_path, parents)?;
+                        let parents = add_node_to_parents(&path, new_node, parents);
+                        rehash(new_leaf, parents)?
+                    } else {
+                        let new_value_bytes = value.to_bytes()?;
+                        if new_value_bytes != existing_value_bytes {
+                            // If the "tip" is an existing leaf with the same key as the
+                            // new leaf, but the existing leaf and new leaf have different
+                            // values, then we are in the situation where we are "updating"
+                            // an existing leaf.
+                            rehash(new_leaf, parents)?
+                        } else {
+                            // Both key and values are the same.
+                            // If the "tip" is the same as the new leaf, then the leaf
+                            // is already in the Trie.
+                            Vec::new()
+                        }
+                    }
                 }
-                // This case is unreachable, but the compiler can't figure
+                // `trie_scan_raw` will never deserialize a leaf and will always
+                // deserialize other Trie variants.
+                // So this case is unreachable, but the compiler can't figure
                 // that out.
-                Trie::Leaf { .. } => unreachable!(),
+                Either::Right(Trie::Leaf { .. }) => unreachable!(),
                 // If the "tip" is an existing node, then we can add a pointer
                 // to the new leaf to the node's pointer block.
-                node @ Trie::Node { .. } => {
+                Either::Right(node @ Trie::Node { .. }) => {
                     let parents = add_node_to_parents(&path, node, parents);
                     rehash(new_leaf, parents)?
                 }
                 // If the "tip" is an extension node, then we must modify or
                 // replace it, adding a node where necessary.
-                extension @ Trie::Extension { .. } => {
+                Either::Right(extension @ Trie::Extension { .. }) => {
                     let SplitResult {
                         new_node,
                         parents,
