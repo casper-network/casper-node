@@ -69,7 +69,7 @@ function _set_nodes()
     do
         PATH_TO_CFG=$(get_path_to_node "$IDX")/config/1_0_0
         PATH_TO_FILE="$PATH_TO_CFG"/config.toml
-    
+
         cp "$PATH_TO_CONFIG_TOML" "$PATH_TO_CFG"
         cp "$(get_path_to_net)"/chainspec/* "$PATH_TO_CFG"
 
