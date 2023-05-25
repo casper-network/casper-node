@@ -788,10 +788,15 @@ impl ContractRuntime {
             if shared_pre_state.next_block_height < new_execution_pre_state.next_block_height {
                 debug!(
                     next_block_height = new_execution_pre_state.next_block_height,
-                    "ContractRuntime: updating new_execution_pre_state",
+                    "ContractRuntime: updating shared pre-state",
                 );
                 *shared_pre_state = new_execution_pre_state.clone();
-                debug!("ContractRuntime: updated new_execution_pre_state");
+            } else {
+                debug!(
+                    current_next_block_height = shared_pre_state.next_block_height,
+                    attempted_next_block_height = new_execution_pre_state.next_block_height,
+                    "ContractRuntime: not updating shared pre-state to older state"
+                );
             }
         }
 
