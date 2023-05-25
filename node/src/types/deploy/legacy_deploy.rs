@@ -11,16 +11,6 @@ use crate::components::fetcher::{EmptyValidationMetadata, FetchItem, Tag};
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Debug)]
 pub(crate) struct LegacyDeploy(Deploy);
 
-impl LegacyDeploy {
-    #[allow(clippy::result_large_err)]
-    fn is_valid(&self) -> Result<(), DeployConfigurationFailure> {
-        self.0
-            .is_valid
-            .get_or_init(|| validate_legacy_deploy(&self.0).map_err(|err| *err))
-            .clone()
-    }
-}
-
 impl FetchItem for LegacyDeploy {
     type Id = DeployHash;
     type ValidationError = DeployConfigurationFailure;
@@ -33,7 +23,7 @@ impl FetchItem for LegacyDeploy {
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.is_valid()
+        self.0.has_valid_hash().map_err(|err| *err)
     }
 }
 
@@ -73,11 +63,6 @@ impl Display for LegacyDeploy {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "legacy-{}", self.0)
     }
-}
-
-fn validate_legacy_deploy(deploy: &Deploy) -> Result<(), Box<DeployConfigurationFailure>> {
-    deploy.has_valid_hash()?;
-    Ok(())
 }
 
 #[cfg(test)]
