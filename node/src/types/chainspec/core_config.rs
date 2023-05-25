@@ -84,6 +84,17 @@ pub struct CoreConfig {
 
     /// Which consensus protocol to use.
     pub consensus_protocol: ConsensusProtocolName,
+
+    /// The split in finality signature rewards between block producer and participating signers.
+    #[data_size(skip)]
+    pub finders_fee: Ratio<u64>,
+
+    /// The proportion of baseline rewards going to reward finality signatures specifically.
+    #[data_size(skip)]
+    pub finality_signature_proportion: Ratio<u64>,
+
+    /// Lookback interval indicating which past block we are looking at to reward.
+    pub rewards_lag: u32,
 }
 
 impl CoreConfig {
@@ -163,6 +174,9 @@ impl CoreConfig {
         let strict_argument_checking = rng.gen();
         let simultaneous_peer_requests = rng.gen_range(3..100);
         let consensus_protocol = rng.gen();
+        let finders_fee = Ratio::new(rng.gen_range(1..100), 100);
+        let finality_signature_proportion = Ratio::new(rng.gen_range(1..100), 100);
+        let rewards_lag = rng.gen_range(1..10);
 
         CoreConfig {
             era_duration,
@@ -183,6 +197,9 @@ impl CoreConfig {
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            finders_fee,
+            finality_signature_proportion,
+            rewards_lag,
         }
     }
 }
@@ -211,6 +228,9 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
         buffer.extend(self.consensus_protocol.to_bytes()?);
+        buffer.extend(self.finders_fee.to_bytes()?);
+        buffer.extend(self.finality_signature_proportion.to_bytes()?);
+        buffer.extend(self.rewards_lag.to_bytes()?);
         Ok(buffer)
     }
 
@@ -235,6 +255,9 @@ impl ToBytes for CoreConfig {
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
             + self.consensus_protocol.serialized_length()
+            + self.finders_fee.serialized_length()
+            + self.finality_signature_proportion.serialized_length()
+            + self.rewards_lag.serialized_length()
     }
 }
 
@@ -259,6 +282,9 @@ impl FromBytes for CoreConfig {
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
+        let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
+        let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
+        let (rewards_lag, remainder) = u32::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -278,6 +304,9 @@ impl FromBytes for CoreConfig {
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            finders_fee,
+            finality_signature_proportion,
+            rewards_lag,
         };
         Ok((config, remainder))
     }
