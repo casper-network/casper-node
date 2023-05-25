@@ -2,7 +2,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
@@ -93,7 +93,9 @@ impl MainReactor {
                 }
                 CatchUpInstruction::ShutdownForUpgrade => {
                     info!("CatchUp: shutting down for upgrade");
-                    self.state = ReactorState::ShutdownForUpgrade;
+                    self.state = ReactorState::ShutdownForUpgrade {
+                        time_switched: Timestamp::now(),
+                    };
                     (Duration::ZERO, Effects::new())
                 }
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
@@ -148,7 +150,9 @@ impl MainReactor {
                 }
                 KeepUpInstruction::ShutdownForUpgrade => {
                     info!("KeepUp: switch to ShutdownForUpgrade");
-                    self.state = ReactorState::ShutdownForUpgrade;
+                    self.state = ReactorState::ShutdownForUpgrade {
+                        time_switched: Timestamp::now(),
+                    };
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::CheckLater(msg, wait) => {
@@ -180,7 +184,9 @@ impl MainReactor {
                 }
                 ValidateInstruction::ShutdownForUpgrade => {
                     info!("Validate: switch to ShutdownForUpgrade");
-                    self.state = ReactorState::ShutdownForUpgrade;
+                    self.state = ReactorState::ShutdownForUpgrade {
+                        time_switched: Timestamp::now(),
+                    };
                     (Duration::ZERO, Effects::new())
                 }
                 ValidateInstruction::NonSwitchBlock => {
@@ -200,8 +206,8 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
             },
-            ReactorState::ShutdownForUpgrade => {
-                match self.upgrade_shutdown_instruction(effect_builder) {
+            ReactorState::ShutdownForUpgrade { time_switched } => {
+                match self.upgrade_shutdown_instruction(effect_builder, time_switched) {
                     UpgradeShutdownInstruction::Fatal(msg) => (
                         Duration::ZERO,
                         fatal!(effect_builder, "ShutdownForUpgrade: {}", msg).ignore(),

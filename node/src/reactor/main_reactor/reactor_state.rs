@@ -3,6 +3,8 @@ use derive_more::Display;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_types::Timestamp;
+
 /// The state of the reactor.
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
@@ -69,5 +71,8 @@ pub enum ReactorState {
     /// Node is currently caught up and is an active validator.
     Validate,
     /// Node should be shut down for upgrade.
-    ShutdownForUpgrade,
+    ShutdownForUpgrade {
+        /// Timestamp at which the node switched to this state.
+        time_switched: Timestamp,
+    },
 }
