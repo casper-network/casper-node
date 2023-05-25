@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## Unreleased
+## 5.0.0
 
 ### Added
 * Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
@@ -21,9 +21,41 @@ All notable changes to this project will be documented in this file.  The format
 * Fix some integer casts.
 * Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
 * Lift the temporary limit of the size of individual values stored in global state.
-* Lift the temporary limit of the global maximum delegator capacity.
 * Providing incorrect Wasm for execution will cause the default 2.5CSPR to be charged.
-* Update the default `control_flow` opcode cost from `440` to `440000`.
+* Update the default `control_flow` opcode cost from `440` to `440_000`.
+
+
+
+## 4.0.0
+
+### Changed
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
+
+
+
+## 3.1.1
+
+### Changed
+* Update the following constant values to match settings in production chainspec:
+  * `DEFAULT_RET_VALUE_SIZE_WEIGHT`
+  * `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
+  * `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
+  * `DEFAULT_GAS_PER_BYTE_COST`
+  * `DEFAULT_ADD_BID_COST`
+  * `DEFAULT_WITHDRAW_BID_COST`
+  * `DEFAULT_DELEGATE_COST`
+  * `DEFAULT_UNDELEGATE_COST`
+  * `DEFAULT_MAX_STACK_HEIGHT`
+
+
+
+## 3.1.0
+
+### Added
+* Add `commit_prune` functionality to support pruning of entries in global storage.
+
+### Changed
+* Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
 
 
 

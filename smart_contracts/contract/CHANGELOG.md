@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 3.0.0
 
 ### Added
 * Support fetching the calling account's authorization keys via the new function `runtime::list_authorization_keys` which calls the new `ext_ffi::casper_load_authorization_keys`.
@@ -22,9 +22,15 @@ All notable changes to this project will be documented in this file.  The format
 * Add `storage::named_dictionary_get` for reading a named value from a named dictionary.
 
 ### Changed
-* Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 * Update pinned version of Rust to `nightly-2022-08-03`.
+* Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 
+
+
+## 2.0.0
+
+### Changed
+* Update `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here.
 
 
 

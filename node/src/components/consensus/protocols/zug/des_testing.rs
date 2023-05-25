@@ -34,7 +34,7 @@ use crate::{
         },
         traits::{ConsensusValueT, Context, ValidatorSecret},
         utils::{Validators, Weight},
-        ActionId, BlockContext, EraMessage, EraRequest, TimerId,
+        ActionId, BlockContext, SerializedMessage, TimerId,
     },
     types::NodeId,
     NodeRng,
@@ -61,10 +61,10 @@ pub(crate) const TEST_INSTANCE_ID: u64 = 42;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum ZugMessage {
-    GossipMessage(EraMessage<TestContext>),
-    TargetedMessage(EraMessage<TestContext>, NodeId),
-    MessageToRandomPeer(EraMessage<TestContext>),
-    RequestToRandomPeer(EraRequest<TestContext>),
+    GossipMessage(SerializedMessage),
+    TargetedMessage(SerializedMessage, NodeId),
+    MessageToRandomPeer(SerializedMessage),
+    RequestToRandomPeer(SerializedMessage),
     Timer(Timestamp, TimerId),
     QueueAction(ActionId),
     RequestNewBlock(BlockContext<TestContext>),
@@ -81,16 +81,20 @@ enum ZugMessage {
 
 impl ZugMessage {
     fn is_signed_gossip_message(&self) -> bool {
-        if let ZugMessage::GossipMessage(EraMessage::Zug(msg)) = self {
-            matches!(**msg, ZugProtocolMessage::Signed(_))
+        if let ZugMessage::GossipMessage(raw) = self {
+            let deserialized: super::Message<TestContext> =
+                raw.deserialize_incoming().expect("message not valid");
+            matches!(deserialized, ZugProtocolMessage::Signed(_))
         } else {
             false
         }
     }
 
     fn is_proposal(&self) -> bool {
-        if let ZugMessage::GossipMessage(EraMessage::Zug(msg)) = self {
-            matches!(**msg, ZugProtocolMessage::Proposal { .. })
+        if let ZugMessage::GossipMessage(raw) = self {
+            let deserialized: super::Message<TestContext> =
+                raw.deserialize_incoming().expect("message not valid");
+            matches!(deserialized, ZugProtocolMessage::Proposal { .. })
         } else {
             false
         }
@@ -295,21 +299,25 @@ impl ZugValidator {
                 }
             }
             Some(DesFault::Equivocate) => match msg {
-                ZugMessage::GossipMessage(EraMessage::Zug(ref zug_msg)) => match &**zug_msg {
-                    ZugProtocolMessage::Signed(signed_msg @ SignedMessage { content, .. }) => {
-                        match content {
+                ZugMessage::GossipMessage(ref serialized_msg) => {
+                    match serialized_msg.deserialize_incoming::<ZugProtocolMessage<TestContext>>() {
+                        Ok(ZugProtocolMessage::Signed(
+                            signed_msg @ SignedMessage { content, .. },
+                        )) => match content {
                             Content::Echo(hash) => {
                                 let conflicting_message = SignedMessage::sign_new(
                                     signed_msg.round_id,
                                     signed_msg.instance_id,
-                                    Content::Echo(HashWrapper(hash.0.wrapping_add(1))),
+                                    Content::<TestContext>::Echo(HashWrapper(
+                                        hash.0.wrapping_add(1),
+                                    )),
                                     signed_msg.validator_idx,
                                     &TestSecret(signed_msg.validator_idx.0.into()),
                                 );
                                 vec![
-                                    ZugMessage::GossipMessage(EraMessage::Zug(Box::new(
-                                        ZugProtocolMessage::Signed(conflicting_message),
-                                    ))),
+                                    ZugMessage::GossipMessage(SerializedMessage::from_message(
+                                        &ZugProtocolMessage::Signed(conflicting_message),
+                                    )),
                                     msg,
                                 ]
                             }
@@ -317,21 +325,21 @@ impl ZugValidator {
                                 let conflicting_message = SignedMessage::sign_new(
                                     signed_msg.round_id,
                                     signed_msg.instance_id,
-                                    Content::Vote(!vote),
+                                    Content::<TestContext>::Vote(!vote),
                                     signed_msg.validator_idx,
                                     &TestSecret(signed_msg.validator_idx.0.into()),
                                 );
                                 vec![
-                                    ZugMessage::GossipMessage(EraMessage::Zug(Box::new(
-                                        ZugProtocolMessage::Signed(conflicting_message),
-                                    ))),
+                                    ZugMessage::GossipMessage(SerializedMessage::from_message(
+                                        &ZugProtocolMessage::Signed(conflicting_message),
+                                    )),
                                     msg,
                                 ]
                             }
-                        }
+                        },
+                        _ => vec![msg],
                     }
-                    _ => vec![msg],
-                },
+                }
                 _ => vec![msg],
             },
         }

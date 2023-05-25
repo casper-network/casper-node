@@ -21,7 +21,8 @@ use crate::global_state::{
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
-                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
+                delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
+                DeleteResult, ReadResult,
             },
         },
     },
@@ -325,6 +326,32 @@ impl StateProvider for ScratchGlobalState {
             )?;
         txn.commit()?;
         Ok(missing_descendants)
+    }
+
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        mut state_root_hash: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<DeleteResult, Self::Error> {
+        let mut txn = self.environment.create_read_write_txn()?;
+        for key in keys_to_delete {
+            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
+                correlation_id,
+                &mut txn,
+                self.trie_store.deref(),
+                &state_root_hash,
+                key,
+            );
+            match delete_result? {
+                DeleteResult::Deleted(root) => {
+                    state_root_hash = root;
+                }
+                other => return Ok(other),
+            }
+        }
+        txn.commit()?;
+        Ok(DeleteResult::Deleted(state_root_hash))
     }
 }
 

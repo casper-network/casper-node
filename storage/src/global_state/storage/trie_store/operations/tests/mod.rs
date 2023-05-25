@@ -7,7 +7,12 @@ mod scan;
 mod synchronize;
 mod write;
 
-use std::{convert, ops::Not};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    convert,
+    ops::Not,
+};
 
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
@@ -57,9 +62,56 @@ impl FromBytes for TestKey {
 
 const TEST_VAL_LENGTH: usize = 6;
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub(crate) enum TestOperation {
+    Delete, // Deleting an existing value should not deserialize V
+}
+
+type Counter = BTreeMap<TestOperation, usize>;
+
+thread_local! {
+    static FROMBYTES_INSIDE_OPERATION: RefCell<Counter>  = RefCell::new(Default::default());
+    static FROMBYTES_COUNTER: RefCell<Counter> = RefCell::new(Default::default());
+}
+
 /// A short value type for tests.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct TestValue([u8; TEST_VAL_LENGTH]);
+
+impl TestValue {
+    pub(crate) fn before_operation(op: TestOperation) -> usize {
+        FROMBYTES_INSIDE_OPERATION.with(|flag| {
+            *flag.borrow_mut().entry(op).or_default() += 1;
+        });
+
+        FROMBYTES_COUNTER.with(|counter| {
+            let mut counter = counter.borrow_mut();
+            let old = counter.get(&op).copied().unwrap_or_default();
+            *counter.entry(op).or_default() = 0;
+            old
+        })
+    }
+
+    pub(crate) fn after_operation(op: TestOperation) -> usize {
+        FROMBYTES_INSIDE_OPERATION.with(|flag| {
+            *flag.borrow_mut().get_mut(&op).unwrap() -= 1;
+        });
+
+        FROMBYTES_COUNTER.with(|counter| counter.borrow().get(&op).copied().unwrap())
+    }
+
+    pub(crate) fn increment() {
+        let flag = FROMBYTES_INSIDE_OPERATION.with(|flag| flag.borrow().clone());
+        let op = TestOperation::Delete;
+        if let Some(value) = flag.get(&op) {
+            if *value > 0 {
+                FROMBYTES_COUNTER.with(|counter| {
+                    *counter.borrow_mut().entry(op).or_default() += 1;
+                });
+            }
+        }
+    }
+}
 
 impl ToBytes for TestValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -76,6 +128,9 @@ impl FromBytes for TestValue {
         let (key, rem) = bytes.split_at(TEST_VAL_LENGTH);
         let mut ret = [0u8; TEST_VAL_LENGTH];
         ret.copy_from_slice(key);
+
+        TestValue::increment();
+
         Ok((TestValue(ret), rem))
     }
 }

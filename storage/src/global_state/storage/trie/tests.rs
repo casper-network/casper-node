@@ -8,6 +8,8 @@ fn radix_is_256() {
 }
 
 mod pointer_block {
+    use casper_types::U256;
+
     use crate::global_state::storage::trie::*;
 
     /// A defense against changes to [`RADIX`](history::trie::RADIX).
@@ -43,6 +45,49 @@ mod pointer_block {
     fn indexing_off_end() {
         let pointer_block = PointerBlock::new();
         let _val = pointer_block[RADIX];
+    }
+
+    #[test]
+    fn trie_node_descendants_iterator() {
+        fn digest_from_value<T: Into<U256>>(value: T) -> Digest {
+            let mut value_bytes = [0; Digest::LENGTH];
+            let u256: U256 = value.into();
+            u256.to_big_endian(&mut value_bytes);
+            Digest::from(value_bytes)
+        }
+
+        let pointers: Vec<_> = (0..=255u8)
+            .rev()
+            .filter_map(|index| {
+                let hash = digest_from_value(index);
+                if index % 3 == 0 {
+                    Some((index, Pointer::NodePointer(hash)))
+                } else if index % 3 == 1 {
+                    Some((index, Pointer::LeafPointer(hash)))
+                } else if index % 3 == 2 {
+                    None
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect();
+
+        let trie = Trie::<(), ()>::Node {
+            pointer_block: Box::new(PointerBlock::from_indexed_pointers(pointers.as_slice())),
+        };
+        let mut descendants = trie.iter_children();
+        let hashes: Vec<Digest> = descendants.by_ref().collect();
+        assert_eq!(
+            hashes,
+            pointers
+                .into_iter()
+                .rev() // reverse again for correct order
+                .map(|(_idx, pointer)| *pointer.hash())
+                .collect::<Vec<Digest>>()
+        );
+
+        assert_eq!(descendants.next(), None);
+        assert_eq!(descendants.next(), None);
     }
 }
 
@@ -161,27 +206,27 @@ mod proptests {
         }
 
         #[test]
-        fn iter_descendants_trie_leaf(trie_leaf in trie_leaf_arb()) {
-            assert!(trie_leaf.iter_descendants().next().is_none());
+        fn iter_children_trie_leaf(trie_leaf in trie_leaf_arb()) {
+            assert!(trie_leaf.iter_children().next().is_none());
         }
 
         #[test]
-        fn iter_descendants_trie_extension(trie_extension in trie_extension_arb()) {
+        fn iter_children_trie_extension(trie_extension in trie_extension_arb()) {
             let children = if let Trie::Extension { pointer, .. } = trie_extension {
                 vec![*pointer.hash()]
             } else {
                 unreachable!()
             };
-            assert_eq!(children, trie_extension.iter_descendants().collect::<Vec<Digest>>());
+            assert_eq!(children, trie_extension.iter_children().collect::<Vec<Digest>>());
         }
 
         #[test]
-        fn iter_descendants_trie_node(trie_node in trie_node_arb()) {
+        fn iter_children_trie_node(trie_node in trie_node_arb()) {
             let children: Vec<Digest> = trie_node.as_pointer_block().unwrap()
                     .as_indexed_pointers()
                     .map(|(_index, ptr)| *ptr.hash())
                     .collect();
-            assert_eq!(children, trie_node.iter_descendants().collect::<Vec<Digest>>());
+            assert_eq!(children, trie_node.iter_children().collect::<Vec<Digest>>());
         }
     }
 }

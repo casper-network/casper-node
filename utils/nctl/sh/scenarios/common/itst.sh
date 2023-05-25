@@ -53,26 +53,6 @@ function log_step() {
     STEP=$((STEP + 1))
 }
 
-function do_await_genesis_era_to_complete() {
-    local LOG_STEP=${1:-'true'}
-    local TIMEOUT=${2:-'120'}
-
-    if [ "$LOG_STEP" = "true" ]; then
-        log_step "awaiting genesis era to complete: timeout=$TIMEOUT"
-    fi
-
-    while [ "$(get_chain_era)" -lt "1" ]; do
-        sleep 1.0
-        TIMEOUT=$((TIMEOUT-1))
-        if [ "$TIMEOUT" = '0' ]; then
-            log "ERROR: Timed out before genesis era completed"
-            exit 1
-        else
-            log "... waiting for genesis era to complete: timeout=$TIMEOUT"
-        fi
-    done
-}
-
 function do_wait_until_era() {
     local WAIT_FOR_ERA=${1}
     local LOG_STEP=${2:-'true'}
@@ -149,52 +129,91 @@ function get_reactor_state() {
     echo "$REACTOR_STATE"
 }
 
-function check_network_sync() {
-    local WAIT_TIME_SEC=0
+function write_lfb_of_node_to_pipe() {
+    local LOG=${3:-'true'}
+
+    HASH=$(get_chain_latest_block_hash $1)
+    if [ "$LOG" = 'true' ]; then
+        log "writing $HASH for node $1 to pipe"
+    fi
+    echo "$HASH" >$2
+}
+
+function parallel_check_network_sync() {
     local FIRST_NODE=${1:-1}
     local LAST_NODE=${2:-10}
     local SYNC_TIMEOUT_SEC=${3:-"$SYNC_TIMEOUT_SEC"}
     local LOG=${4:-'true'}
 
+    local PIPE=/tmp/casper_lfb_test_pipe
+    local ALL_HASHES=""
+    local EXPECTED
+    local ATTEMPTS=0
+
+    rm -f $PIPE
+    if [[ ! -p $PIPE ]]; then
+        mkfifo $PIPE
+    fi
+
     if [ "$LOG" = 'true' ]; then
         log_step "checking nodes' $FIRST_NODE to $LAST_NODE LFBs are in sync"
     fi
 
-    while [ "$WAIT_TIME_SEC" != "$SYNC_TIMEOUT_SEC" ]; do
-        declare -a ALL_LFBS
-
-        index=0
-        for i in $(eval echo "{$FIRST_NODE..$LAST_NODE}")
+    while [ "$ATTEMPTS" -le "$SYNC_TIMEOUT_SEC" ]; do
+        ALL_HASHES=""
+        EXPECTED=$((LAST_NODE-FIRST_NODE+1))
+        for IDX in $(seq "$FIRST_NODE" "$LAST_NODE")
         do
-            ALL_LFBS[$index]=$(do_read_lfb_hash $i)
-            index=$((index + 1))
+            write_lfb_of_node_to_pipe $IDX $PIPE $LOG &
         done
 
-        LFB_COUNT=${#ALL_LFBS[@]}
-        BASE_LFB=${ALL_LFBS[0]}
-        ALL_EQUAL=1
-        for i in $(eval echo "{0..$((LFB_COUNT - 1))}")
+        while true
         do
-            if [[ "$BASE_LFB" != "${ALL_LFBS[$i]}" ]]; then
-                ALL_EQUAL=0
-                break
+            if read LINE;
+            then
+                if [ "$LOG" = 'true' ]; then
+                    log "read $LINE from pipe"
+                fi
+                ALL_HASHES="$ALL_HASHES $LINE"
+                EXPECTED=$((EXPECTED - 1))
+                if [ "$LOG" = 'true' ]; then
+                    log "expected $EXPECTED"
+                fi
+                if [ "$EXPECTED" -eq "0" ]; then
+                    break
+                fi
             fi
-        done
+        done < $PIPE
+        wait
 
-        if [ "$ALL_EQUAL" -eq 1 ]; then
-            log "nodes $FIRST_NODE to $LAST_NODE in sync, proceeding..."
-            nctl-view-chain-height
-            break
+        if [ "$LOG" = 'true' ]; then
+            log "I have all hashes: $ALL_HASHES"
         fi
 
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
-        if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
+        UNIQUE_HASH_COUNT=$(echo $ALL_HASHES | tr " " "\n" | sort | uniq | wc -l)
+        if [ "$LOG" = 'true' ]; then
+            log "unique hash count: $UNIQUE_HASH_COUNT"
+        fi
+
+        if [ "$UNIQUE_HASH_COUNT" -eq 1 ]; then
+            log "nodes $FIRST_NODE to $LAST_NODE in sync, proceeding..."
+            nctl-view-chain-height
+            rm -f $PIPE
+            break
+        fi
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [ "$ATTEMPTS" -lt "$SYNC_TIMEOUT_SEC" ]; then
+            sleep 1
+            if [ "$LOG" = 'true' ]; then
+                log "attempt $ATTEMPTS out of $SYNC_TIMEOUT_SEC..."
+            fi
+        else
             log "ERROR: Failed to confirm network sync"
             nctl-status
             nctl-view-chain-height
+            rm -f $PIPE
             exit 1
         fi
-        sleep 1
     done
 }
 

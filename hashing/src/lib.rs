@@ -1,5 +1,5 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
-#![doc(html_root_url = "https://docs.rs/casper-hashing/1.4.3")]
+#![doc(html_root_url = "https://docs.rs/casper-hashing/2.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -120,12 +120,6 @@ impl Digest {
         Digest(result)
     }
 
-    /// Provides the same functionality as [`Digest::hash_merkle_tree`].
-    #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
-    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
-        Digest::hash_merkle_tree(vec)
-    }
-
     /// Returns the underlying BLAKE2b hash bytes
     pub fn value(&self) -> [u8; Digest::LENGTH] {
         self.0
@@ -237,6 +231,12 @@ impl Digest {
                     .map(Digest::blake2b_hash),
             )
         }
+    }
+
+    /// Provides the same functionality as [`Digest::hash_merkle_tree`].
+    #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
+    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
+        Digest::hash_merkle_tree(vec)
     }
 }
 

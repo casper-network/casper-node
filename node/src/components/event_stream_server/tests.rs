@@ -9,7 +9,6 @@ use std::{
     time::Duration,
 };
 
-use casper_types::testing::TestRng;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
@@ -22,6 +21,8 @@ use tokio::{
     time,
 };
 use tracing::debug;
+
+use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{logging, testing::assert_schema};

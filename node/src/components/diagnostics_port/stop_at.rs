@@ -79,14 +79,12 @@ mod tests {
 
         #[test]
         fn string_fuzz_stop_at_spec(input in ".*") {
-            let outcome = StopAtSpec::from_str(&input);
-            println!("{:?}", outcome);
+            let _outcome = StopAtSpec::from_str(&input);
         }
 
         #[test]
         fn prefixed_examples(input in "(era|block):.*") {
-            let outcome = StopAtSpec::from_str(&input);
-            println!("{:?}", outcome);
+            let _outcome = StopAtSpec::from_str(&input);
         }
     }
 

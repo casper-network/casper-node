@@ -1,11 +1,12 @@
 use std::{error, io, net::SocketAddr, result};
 
-use casper_hashing::Digest;
-use casper_types::{crypto, ProtocolVersion};
 use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
+
+use casper_hashing::Digest;
+use casper_types::{crypto, ProtocolVersion};
 
 use crate::{
     tls::{LoadCertError, ValidationError},

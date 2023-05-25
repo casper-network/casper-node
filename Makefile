@@ -97,7 +97,7 @@ test-contracts-as: build-contracts-rs build-contracts-as
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "execution_engine_testing/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
-test-contracts: test-contracts-rs test-contracts-as
+test-contracts: test-contracts-rs
 
 .PHONY: check-std-features
 check-std-features:
@@ -142,7 +142,7 @@ audit-as:
 	cd smart_contracts/contract_as && $(NPM) audit --production --audit-level=moderate
 
 .PHONY: audit
-audit: audit-rs audit-as
+audit: audit-rs
 
 .PHONY: doc
 doc:
@@ -218,4 +218,4 @@ setup-as: smart_contracts/contract_as/package.json
 	cd smart_contracts/contract_as && $(NPM) ci
 
 .PHONY: setup
-setup: setup-rs setup-as
+setup: setup-rs

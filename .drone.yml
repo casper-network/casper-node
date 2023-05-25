@@ -136,7 +136,7 @@ steps:
 - name: nctl-compile
   <<: *buildenv
   commands:
-  - bash -i ./ci/nctl_compile.sh
+  - bash -c ./ci/nctl_compile.sh
 
 - name: nctl-upgrade-test
   <<: *buildenv
@@ -146,12 +146,12 @@ steps:
     AWS_SECRET_ACCESS_KEY:
       from_secret: put-drone-aws-sk
   commands:
-  - bash -i ./ci/nctl_upgrade.sh
+  - bash -c ./ci/nctl_upgrade.sh
 
 - name: check CPU features
   <<: *buildenv
   commands:
-  - bash -i ./ci/check_cpu_features.sh  
+  - bash -i ./ci/check_cpu_features.sh
 
 volumes:
 - name: rustup
@@ -480,7 +480,7 @@ steps:
 - name: nctl-compile
   <<: *buildenv
   commands:
-  - bash -i ./ci/nctl_compile.sh
+  - bash -c ./ci/nctl_compile.sh
 
 - name: nctl-nightly-tests
   <<: *buildenv
@@ -490,7 +490,7 @@ steps:
     AWS_SECRET_ACCESS_KEY:
       from_secret: put-drone-aws-sk
   commands:
-  - bash -i ./ci/nightly-test.sh
+  - bash -c ./ci/nightly-test.sh
 
 - name: notify
   image: plugins/slack

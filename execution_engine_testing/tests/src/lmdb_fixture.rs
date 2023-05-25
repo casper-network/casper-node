@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::File,
     io::Write,
     path::{Path, PathBuf},
@@ -25,6 +26,15 @@ pub const RELEASE_1_4_4: &str = "release_1_4_4";
 const STATE_JSON_FILE: &str = "state.json";
 const FIXTURES_DIRECTORY: &str = "fixtures";
 const GENESIS_PROTOCOL_VERSION_FIELD: &str = "protocol_version";
+
+#[cfg(test)]
+const RUN_FIXTURE_GENERATORS_ENV: &str = "RUN_FIXTURE_GENERATORS";
+
+#[cfg(test)]
+pub(crate) fn is_fixture_generator_enabled() -> bool {
+    env::var_os(RUN_FIXTURE_GENERATORS_ENV).is_some()
+}
+
 /// This is a special place in the global state where fixture contains a registry.
 #[cfg(test)]
 pub(crate) const CONTRACT_REGISTRY_SPECIAL_ADDRESS: Key =
@@ -101,7 +111,12 @@ pub fn generate_fixture(
 
     let path_to_data_lmdb = fixture_root.join("global_state").join("data.lmdb");
     if path_to_data_lmdb.exists() {
-        eprintln!("Lmdb fixture located at {} already exists. If you need to re-generate a fixture to ensure a serialization changes are backwards compatible please make sure you are running a specific version, or a past commit. Skipping.", path_to_data_lmdb.display());
+        eprintln!(
+            "Lmdb fixture located at {} already exists. If you need to re-generate a fixture to ensure a serialization \
+            changes are backwards compatible please make sure you are running a specific version, or a past commit. \
+            Skipping.",
+            path_to_data_lmdb.display()
+        );
         return Ok(());
     }
 

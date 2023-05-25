@@ -148,10 +148,8 @@ fn get_delegator_staked_amount(
 }
 
 fn get_era_info(builder: &mut LmdbWasmTestBuilder) -> EraInfo {
-    let era = builder.get_era();
-
     let era_info_value = builder
-        .query(None, Key::EraInfo(era), &[])
+        .query(None, Key::EraSummary, &[])
         .expect("should have value");
 
     era_info_value
@@ -402,18 +400,7 @@ fn should_distribute_delegation_rate_zero() {
     };
     assert!(delegator_2_balance.is_zero());
 
-    let era_info = {
-        let era = builder.get_era();
-
-        let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
-            .expect("should have value");
-
-        era_info_value
-            .as_era_info()
-            .cloned()
-            .expect("should be era info")
-    };
+    let era_info = get_era_info(&mut builder);
 
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
@@ -713,18 +700,7 @@ fn should_withdraw_bids_after_distribute() {
     };
     assert!(!validator_1_balance.is_zero());
 
-    let era_info = {
-        let era = builder.get_era();
-
-        let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
-            .expect("should have value");
-
-        era_info_value
-            .as_era_info()
-            .cloned()
-            .expect("should be era info")
-    };
+    let era_info = get_era_info(&mut builder);
 
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
@@ -1357,18 +1333,7 @@ fn should_distribute_delegation_rate_half() {
     };
     assert_eq!(delegator_2_actual_payout, delegator_2_expected_payout);
 
-    let era_info = {
-        let era = builder.get_era();
-
-        let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
-            .expect("should have value");
-
-        era_info_value
-            .as_era_info()
-            .cloned()
-            .expect("should be era info")
-    };
+    let era_info = get_era_info(&mut builder);
 
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
@@ -1547,18 +1512,7 @@ fn should_distribute_delegation_rate_full() {
     let total_payout = validator_1_updated_stake + delegator_1_updated_stake + delegator_2_balance;
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let era_info = {
-        let era = builder.get_era();
-
-        let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
-            .expect("should have value");
-
-        era_info_value
-            .as_era_info()
-            .cloned()
-            .expect("should be era info")
-    };
+    let era_info = get_era_info(&mut builder);
 
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
@@ -1783,18 +1737,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     };
     assert_eq!(delegator_2_updated_stake, delegator_2_expected_payout);
 
-    let era_info = {
-        let era = builder.get_era();
-
-        let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
-            .expect("should have value");
-
-        era_info_value
-            .as_era_info()
-            .cloned()
-            .expect("should be era info")
-    };
+    let era_info = get_era_info(&mut builder);
 
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),

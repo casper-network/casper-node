@@ -76,6 +76,9 @@ pub struct CoreConfig {
     /// The minimum bound of motes that can be delegated to a validator.
     pub minimum_delegation_amount: u64,
 
+    /// Global state prune batch size (0 means the feature is off in the current protocol version).
+    pub prune_batch_size: u64,
+
     /// Enables strict arguments checking when calling a contract.
     pub strict_argument_checking: bool,
 
@@ -84,6 +87,10 @@ pub struct CoreConfig {
 
     /// Which consensus protocol to use.
     pub consensus_protocol: ConsensusProtocolName,
+
+    /// The maximum amount of delegators per validator.
+    /// if the value is 0, there is no maximum capacity.
+    pub max_delegators_per_validator: u32,
 }
 
 impl CoreConfig {
@@ -160,6 +167,7 @@ impl CoreConfig {
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
+        let prune_batch_size = rng.gen_range(0..100);
         let strict_argument_checking = rng.gen();
         let simultaneous_peer_requests = rng.gen_range(3..100);
         let consensus_protocol = rng.gen();
@@ -180,9 +188,11 @@ impl CoreConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            prune_batch_size,
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            max_delegators_per_validator: 0,
         }
     }
 }
@@ -208,9 +218,11 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_associated_keys.to_bytes()?);
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
+        buffer.extend(self.prune_batch_size.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
         buffer.extend(self.consensus_protocol.to_bytes()?);
+        buffer.extend(self.max_delegators_per_validator.to_bytes()?);
         Ok(buffer)
     }
 
@@ -232,9 +244,11 @@ impl ToBytes for CoreConfig {
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
+            + self.prune_batch_size.serialized_length()
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
             + self.consensus_protocol.serialized_length()
+            + self.max_delegators_per_validator.serialized_length()
     }
 }
 
@@ -256,9 +270,11 @@ impl FromBytes for CoreConfig {
         let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
+        let (prune_batch_size, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
+        let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -275,9 +291,11 @@ impl FromBytes for CoreConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            prune_batch_size,
             strict_argument_checking,
             simultaneous_peer_requests,
             consensus_protocol,
+            max_delegators_per_validator,
         };
         Ok((config, remainder))
     }

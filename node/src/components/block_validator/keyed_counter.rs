@@ -1,10 +1,6 @@
 //! Tracks positive integers for keys.
 
-use std::{
-    collections::HashMap,
-    hash::Hash,
-    ops::{AddAssign, SubAssign},
-};
+use std::{collections::HashMap, hash::Hash};
 
 use datasize::DataSize;
 
@@ -43,7 +39,7 @@ where
                 1
             }
             Some(value) => {
-                value.add_assign(1);
+                *value += 1;
                 *value
             }
         }
@@ -61,7 +57,7 @@ where
             Some(value) => {
                 assert_ne!(*value, 0, "counter should never be zero in tracker");
 
-                value.sub_assign(1);
+                *value -= 1;
 
                 if *value != 0 {
                     return *value;

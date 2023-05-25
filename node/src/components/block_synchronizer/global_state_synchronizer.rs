@@ -39,6 +39,11 @@ const COMPONENT_NAME: &str = "global_state_synchronizer";
 pub(crate) struct RootHash(Digest);
 
 impl RootHash {
+    #[cfg(test)]
+    pub(crate) fn new(digest: Digest) -> Self {
+        Self(digest)
+    }
+
     pub(crate) fn into_inner(self) -> Digest {
         self.0
     }

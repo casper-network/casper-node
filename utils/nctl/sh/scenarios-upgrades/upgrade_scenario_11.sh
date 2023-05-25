@@ -228,7 +228,7 @@ function _step_07()
 
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
         log "...preparing $NODE_ID"
-        _emergency_upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$NCTL_CASPER_HOME/resources/local/config.toml" "$NCTL/overrides/upgrade_scenario_11.post.chainspec.toml.in" "false"
+        _emergency_upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$STATE_HASH" 1 "$(get_count_of_genesis_nodes)" "$NCTL_CASPER_HOME/resources/local/config.toml" "$NCTL/overrides/upgrade_scenario_10.post.chainspec.toml.in" "false"
         log "...starting $NODE_ID"
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done

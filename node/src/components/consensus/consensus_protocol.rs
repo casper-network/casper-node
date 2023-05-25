@@ -12,10 +12,12 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
-    components::consensus::{traits::Context, ActionId, EraMessage, EraRequest, TimerId},
+    components::consensus::{traits::Context, ActionId, TimerId},
     types::NodeId,
     NodeRng,
 };
+
+use super::era_supervisor::SerializedMessage;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -189,10 +191,10 @@ pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
-    CreatedGossipMessage(EraMessage<C>),
-    CreatedTargetedMessage(EraMessage<C>, NodeId),
-    CreatedMessageToRandomPeer(EraMessage<C>),
-    CreatedRequestToRandomPeer(EraRequest<C>),
+    CreatedGossipMessage(SerializedMessage),
+    CreatedTargetedMessage(SerializedMessage, NodeId),
+    CreatedMessageToRandomPeer(SerializedMessage),
+    CreatedRequestToRandomPeer(SerializedMessage),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -241,7 +243,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
 
@@ -250,9 +252,9 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraRequest<C>,
+        msg: SerializedMessage,
         now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>);
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;

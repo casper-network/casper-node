@@ -20,7 +20,7 @@ function main()
     local INTERVAL=${4}
     local NODE_ID=${5}
     local VERBOSE=${6}
-    
+
     local CHAIN_NAME
     local GAS_PAYMENT
     local NODE_ADDRESS
@@ -28,8 +28,10 @@ function main()
     local CP1_SECRET_KEY
     local CP1_ACCOUNT_KEY
     local CP2_ACCOUNT_KEY
-    local DISPATCHED
+    local DISPATCH_ATTEMPTS
+    local SUCCESSFUL_DISPATCH_COUNT
     local DISPATCH_NODE_ADDRESS
+    local OUTPUT
 
     CHAIN_NAME=$(get_chain_name)
     GAS_PAYMENT=${GAS_PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
@@ -61,11 +63,12 @@ function main()
         log "... dispatched deploys:"
     fi
 
-    DISPATCHED=0
-    while [ $DISPATCHED -lt "$TRANSFERS" ];
-    do
+    DISPATCH_ATTEMPTS=0
+    SUCCESSFUL_DISPATCH_COUNT=0
+    while [ $DISPATCH_ATTEMPTS -lt "$TRANSFERS" ]; do
+        DISPATCH_ATTEMPTS=$((DISPATCH_ATTEMPTS + 1))
         DISPATCH_NODE_ADDRESS=${NODE_ADDRESS:-$(get_node_address_rpc)}
-        DEPLOY_HASH=$(
+        OUTPUT=$(
             $PATH_TO_CLIENT put-deploy \
                 --chain-name "$CHAIN_NAME" \
                 --node-address "$DISPATCH_NODE_ADDRESS" \
@@ -74,19 +77,24 @@ function main()
                 --secret-key "$CP1_SECRET_KEY" \
                 --session-arg "$(get_cl_arg_u512 'amount' "$AMOUNT")" \
                 --session-arg "$(get_cl_arg_account_hash 'target' "$CP2_ACCOUNT_HASH")" \
-                --session-path "$PATH_TO_CONTRACT" \
-                | jq '.result.deploy_hash' \
-                | sed -e 's/^"//' -e 's/"$//'
+                --session-path "$PATH_TO_CONTRACT"
             )
-        DISPATCHED=$((DISPATCHED + 1))
-        if [ $VERBOSE == true ]; then
-            log "... #$DISPATCHED :: $DISPATCH_NODE_ADDRESS :: $DEPLOY_HASH"
-        fi        
+        if [[ $? -eq 0 ]]; then
+            SUCCESSFUL_DISPATCH_COUNT=$((SUCCESSFUL_DISPATCH_COUNT + 1))
+            DEPLOY_HASH=$(echo $OUTPUT | jq '.result.deploy_hash' | sed -e 's/^"//' -e 's/"$//')
+            if [ $VERBOSE == true ]; then
+                log "... #$DISPATCH_ATTEMPTS :: $DISPATCH_NODE_ADDRESS :: $DEPLOY_HASH"
+            fi
+        else
+            if [ $VERBOSE == true ]; then
+                log "... #$DISPATCH_ATTEMPTS :: $DISPATCH_NODE_ADDRESS :: FAILED to send"
+            fi
+        fi
         sleep "$INTERVAL"
     done
 
     if [ $VERBOSE == true ]; then
-        log "dispatched $TRANSFERS wasm transfers"
+        log "successfully dispatched $SUCCESSFUL_DISPATCH_COUNT of $DISPATCH_ATTEMPTS wasm transfers"
     fi
 }
 
@@ -108,7 +116,7 @@ do
     case "$KEY" in
         amount) AMOUNT=${VALUE} ;;
         interval) INTERVAL=${VALUE} ;;
-        node) NODE_ID=${VALUE} ;;        
+        node) NODE_ID=${VALUE} ;;
         transfers) TRANSFERS=${VALUE} ;;
         user) USER_ID=${VALUE} ;;
         verbose) VERBOSE=${VALUE} ;;

@@ -119,9 +119,9 @@ impl<'a> From<&'a Era> for EraMetadata<'a> {
 mod tests {
     use std::iter;
 
-    use super::*;
-
     use casper_types::testing::TestRng;
+
+    use super::*;
 
     fn preset_validators(rng: &mut TestRng) -> HashSet<PublicKey> {
         iter::repeat_with(|| PublicKey::random(rng))
