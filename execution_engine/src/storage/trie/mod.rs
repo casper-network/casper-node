@@ -596,6 +596,8 @@ where
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        // NOTE: When changing this make sure all partial deserializers that are referencing
+        // `LazyTrieLeaf` are also updated.
         writer.push(u8::from(self.tag()));
         match self {
             Trie::Leaf { key, value } => {

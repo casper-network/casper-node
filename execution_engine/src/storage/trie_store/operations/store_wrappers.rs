@@ -8,13 +8,12 @@ use crate::storage::{store::Store, trie::Trie, trie_store::TrieStore};
 /// A [`TrieStore`] wrapper that panics in debug mode whenever an attempt to deserialize [`V`] is
 /// made, otherwise it behaves as a [`TrieStore`].
 ///
-/// The debug panic is used to ensure that this wrapper has  To ensure this wrapper has zero
-/// overhead, a debug assertion is used.
-pub(crate) struct EnsureNeverDeserializes<'a, K, V, S>(&'a S, PhantomData<*const (K, V)>)
+/// To ensure this wrapper has zero overhead, a debug assertion is used.
+pub(crate) struct NonDeserializingStore<'a, K, V, S>(&'a S, PhantomData<*const (K, V)>)
 where
     S: TrieStore<K, V>;
 
-impl<'a, K, V, S> EnsureNeverDeserializes<'a, K, V, S>
+impl<'a, K, V, S> NonDeserializingStore<'a, K, V, S>
 where
     S: TrieStore<K, V>,
 {
@@ -23,7 +22,7 @@ where
     }
 }
 
-impl<'a, K, V, S> Store<Digest, Trie<K, V>> for EnsureNeverDeserializes<'a, K, V, S>
+impl<'a, K, V, S> Store<Digest, Trie<K, V>> for NonDeserializingStore<'a, K, V, S>
 where
     S: TrieStore<K, V>,
 {

@@ -1,4 +1,4 @@
-pub(crate) mod debug_store;
+pub(crate) mod store_wrappers;
 #[cfg(test)]
 mod tests;
 
@@ -26,7 +26,7 @@ use crate::{
     },
 };
 
-use self::debug_store::EnsureNeverDeserializes;
+use self::store_wrappers::NonDeserializingStore;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
@@ -1038,7 +1038,7 @@ struct VisitedTrieNode<K, V> {
 pub struct KeysIterator<'a, 'b, K, V, T, S: TrieStore<K, V>> {
     initial_descend: VecDeque<u8>,
     visited: Vec<VisitedTrieNode<K, V>>,
-    store: EnsureNeverDeserializes<'a, K, V, S>, //&'a S,
+    store: NonDeserializingStore<'a, K, V, S>,
     txn: &'b T,
     state: KeysIteratorState<K, V, S>,
 }
@@ -1222,7 +1222,7 @@ where
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
 {
-    let store = debug_store::EnsureNeverDeserializes::new(store);
+    let store = store_wrappers::NonDeserializingStore::new(store);
     let (visited, init_state): (Vec<VisitedTrieNode<K, V>>, _) = match store.get_raw(txn, root) {
         Ok(None) => (vec![], KeysIteratorState::Ok),
         Err(e) => (vec![], KeysIteratorState::ReturnError(e)),
