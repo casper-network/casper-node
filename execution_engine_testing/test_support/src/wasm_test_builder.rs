@@ -859,6 +859,30 @@ where
         step_result
     }
 
+    /// Distributes the rewards.
+    pub fn distribute(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        proposer: PublicKey,
+        next_block_height: u64,
+        time: u64,
+    ) -> Result<Digest, StepError> {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let post_state_hash = self.engine_state.distribute_block_rewards(
+            CorrelationId::new(),
+            pre_state_hash,
+            protocol_version,
+            proposer,
+            next_block_height,
+            time,
+        )?;
+
+        self.post_state_hash = Some(post_state_hash);
+
+        Ok(post_state_hash)
+    }
+
     /// Expects a successful run
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test

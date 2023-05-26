@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    WasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
@@ -14,7 +14,7 @@ use casper_storage::global_state::storage::state::{CommitProvider, StateProvider
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
-    EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, U512,
+    EraId, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs, U512,
 };
 
 use crate::lmdb_fixture;
@@ -216,7 +216,7 @@ fn gh_3710_commit_prune_should_delete_values() {
 
 const DEFAULT_REWARD_AMOUNT: u64 = 1_000_000;
 
-fn add_validator_and_wait_for_rotation<S>(builder: &mut WasmTestBuilder<S>)
+fn add_validator_and_wait_for_rotation<S>(builder: &mut WasmTestBuilder<S>, public_key: &PublicKey)
 where
     S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
@@ -225,13 +225,13 @@ where
     const DELEGATION_RATE: DelegationRate = 10;
 
     let args = runtime_args! {
-        auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_PUBLIC_KEY => public_key.clone(),
         auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         auction::ARG_AMOUNT => U512::from(DEFAULT_REWARD_AMOUNT),
     };
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
+        public_key.to_account_hash(),
         builder.get_auction_contract_hash(),
         auction::METHOD_ADD_BID,
         args,
@@ -257,22 +257,21 @@ where
     }
 }
 
-fn progress_eras_with_rewards<S, F>(builder: &mut WasmTestBuilder<S>, _rewards: F, era_count: usize)
+fn distribute_rewards<S>(builder: &mut WasmTestBuilder<S>, block_height: u64, proposer: &PublicKey)
 where
     S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error> + fmt::Debug,
-    F: Fn(EraId) -> u64,
 {
-    let current_era_id = builder.get_era();
-    for era_counter in current_era_id.iter(era_count.try_into().unwrap()) {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(era_counter)
-            .build();
-        builder.step(step_request).unwrap();
-    }
+    builder
+        .distribute(
+            None,
+            ProtocolVersion::V1_0_0,
+            proposer.clone(),
+            block_height,
+            0,
+        )
+        .unwrap();
 }
 
 #[ignore]
@@ -281,12 +280,8 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    add_validator_and_wait_for_rotation(&mut builder);
-    progress_eras_with_rewards(
-        &mut builder,
-        |era_counter| era_counter.value() * DEFAULT_REWARD_AMOUNT,
-        FIXTURE_N_ERAS,
-    );
+    add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 
     let era_info_keys = builder.get_keys(KeyTag::EraInfo).unwrap();
     assert_eq!(era_info_keys, Vec::new());
@@ -297,12 +292,9 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
 
     let era_summary_1 = era_summary_1.as_era_info().expect("era summary");
 
-    // Double the reward in next era to observe that the summary changes.
-    progress_eras_with_rewards(
-        &mut builder,
-        |era_counter| era_counter.value() * (DEFAULT_REWARD_AMOUNT * 2),
-        1,
-    );
+    // Reward another validator to observe that the summary changes.
+    add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_PROPOSER_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY);
 
     let era_summary_2 = builder
         .query(None, Key::EraSummary, &[])
@@ -335,7 +327,7 @@ mod fixture {
     };
 
     use super::{FIXTURE_N_ERAS, GH_3710_FIXTURE};
-    use crate::{lmdb_fixture, test::regression::gh_3710::DEFAULT_REWARD_AMOUNT};
+    use crate::lmdb_fixture;
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
     #[test]
@@ -346,14 +338,10 @@ mod fixture {
         // To generate this fixture again you have to re-run this code release-1.4.13.
         let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
         lmdb_fixture::generate_fixture(GH_3710_FIXTURE, genesis_request, |builder| {
-            super::add_validator_and_wait_for_rotation(builder);
+            super::add_validator_and_wait_for_rotation(builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 
             // N more eras that pays out rewards
-            super::progress_eras_with_rewards(
-                builder,
-                |era_counter| era_counter.value() * DEFAULT_REWARD_AMOUNT,
-                FIXTURE_N_ERAS,
-            );
+            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 
             let last_era_info = EraId::new(builder.get_auction_delay() + FIXTURE_N_ERAS as u64);
             let last_era_info_key = Key::EraInfo(last_era_info);
