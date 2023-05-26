@@ -63,6 +63,7 @@ function _set_nodes()
 
     local IDX
     local PATH_TO_FILE
+    local SPECULATIVE_EXEC_ADDR
 
     for IDX in $(seq 1 "$(get_count_of_nodes)")
     do
@@ -71,6 +72,8 @@ function _set_nodes()
 
         cp "$PATH_TO_CONFIG_TOML" "$PATH_TO_CFG"
         cp "$(get_path_to_net)"/chainspec/* "$PATH_TO_CFG"
+
+        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_FILE || true)
 
         local SCRIPT=(
             "import toml;"
@@ -83,7 +86,15 @@ function _set_nodes()
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$IDX")';"
             "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
             "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$IDX")';"
-            "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
+        )
+
+        if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
+            SCRIPT+=(
+                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
+            )
+        fi
+
+        SCRIPT+=(
             "toml.dump(cfg, open('$PATH_TO_FILE', 'w'));"
         )
 
