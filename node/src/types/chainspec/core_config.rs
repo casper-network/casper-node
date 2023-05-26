@@ -94,7 +94,7 @@ pub struct CoreConfig {
     pub finality_signature_proportion: Ratio<u64>,
 
     /// Lookback interval indicating which past block we are looking at to reward.
-    pub rewards_lag: u32,
+    pub rewards_lag: u64,
 }
 
 impl CoreConfig {
@@ -284,7 +284,7 @@ impl FromBytes for CoreConfig {
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
         let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
         let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
-        let (rewards_lag, remainder) = u32::from_bytes(remainder)?;
+        let (rewards_lag, remainder) = u64::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
