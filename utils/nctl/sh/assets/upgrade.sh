@@ -18,7 +18,7 @@ function _upgrade_node() {
     local ACTIVATE_ERA=${2}
     local NODE_ID=${3}
     local CONFIG_PATH=${4}
-    local PATH_TO_NET
+    local PATH_TO_NET=$(get_path_to_net)
     local PATH_TO_CONFIG_FILE
     local SPECULATIVE_EXEC_ADDR
     local PATH_TO_CHAINSPEC_FILE=${5:-"$PATH_TO_NET/chainspec/chainspec.toml"}
