@@ -161,6 +161,7 @@ impl MainReactor {
                 }
                 KeepUpInstruction::CatchUp => {
                     self.block_synchronizer.purge();
+                    self.sync_leaper.purge();
                     info!("KeepUp: switch to CatchUp");
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
