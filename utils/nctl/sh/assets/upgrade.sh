@@ -26,8 +26,6 @@ function _upgrade_node() {
     local PATH_TO_NODE
     local CHAIN_NAME
 
-    PATH_TO_NET=$(get_path_to_net)
-
     # Set chainspec file.
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
     PATH_TO_UPGRADED_CHAINSPEC_FILE="$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/chainspec.toml
