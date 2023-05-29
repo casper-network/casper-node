@@ -76,6 +76,12 @@ strict_argument_checking = false
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
 consensus_protocol = 'Highway'
+# The split in finality signature rewards between block producer and participating signers.
+finders_fee = [1, 5]
+# The proportion of baseline rewards going to reward finality signatures specifically.
+finality_signature_proportion = [1, 2]
+# Lookback interval indicating which past block we are looking at to reward.
+rewards_lag = 3
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
