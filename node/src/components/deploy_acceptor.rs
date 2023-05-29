@@ -256,21 +256,18 @@ impl DeployAcceptor {
         }
 
         // We only perform expiry checks on deploys received from the client.
-        if source.is_client() {
-            let current_node_timestamp = Timestamp::now();
-            if deploy.header().expired(current_node_timestamp) {
-                let time_of_expiry = deploy.header().expires();
-                debug!(%deploy, "deploy has expired");
-                return self.handle_invalid_deploy_result(
-                    effect_builder,
-                    Box::new(EventMetadata::new(deploy, source, maybe_responder)),
-                    Error::ExpiredDeploy {
-                        deploy_expiry_timestamp: time_of_expiry,
-                        current_node_timestamp,
-                    },
-                    verification_start_timestamp,
-                );
-            }
+        if source.is_client() && deploy.header().expired(verification_start_timestamp) {
+            let time_of_expiry = deploy.header().expires();
+            debug!(%deploy, "deploy has expired");
+            return self.handle_invalid_deploy_result(
+                effect_builder,
+                Box::new(EventMetadata::new(deploy, source, maybe_responder)),
+                Error::ExpiredDeploy {
+                    deploy_expiry_timestamp: time_of_expiry,
+                    current_node_timestamp: verification_start_timestamp,
+                },
+                verification_start_timestamp,
+            );
         }
 
         // If this has been received from the speculative exec server, use the block specified in
@@ -914,7 +911,9 @@ impl DeployAcceptor {
             source,
             maybe_responder,
         } = *event_metadata;
-        self.metrics.observe_rejected(verification_start_timestamp);
+        if !matches!(source, Source::SpeculativeExec(_)) {
+            self.metrics.observe_rejected(verification_start_timestamp);
+        }
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
             // The client has submitted an invalid deploy
