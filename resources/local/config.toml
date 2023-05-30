@@ -21,6 +21,11 @@ control_logic_default_delay = '1sec'
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
 
+# An optional value for timeout when in the ShutdownForUpgrade state, after which the node will upgrade
+# even if not all conditions are satisfied.
+# If no value is supplied, it defaults to double the gossip.validate_and_store_timeout value.
+# shutdown_for_upgrade_timeout = '2min'
+
 
 # =================================
 # Configuration options for logging

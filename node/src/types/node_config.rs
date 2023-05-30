@@ -33,6 +33,10 @@ pub struct NodeConfig {
 
     /// Flag which forces the node to resync all of the blocks.
     pub force_resync: bool,
+
+    /// Shutdown for upgrade state timeout - if `None`, defaults to double
+    /// `gossip.validate_and_store_timeout`.
+    pub shutdown_for_upgrade_timeout: Option<TimeDiff>,
 }
 
 impl Default for NodeConfig {
@@ -44,6 +48,7 @@ impl Default for NodeConfig {
             max_attempts: DEFAULT_MAX_ATTEMPTS,
             control_logic_default_delay: DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY.parse().unwrap(),
             force_resync: false,
+            shutdown_for_upgrade_timeout: None,
         }
     }
 }

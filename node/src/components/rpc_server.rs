@@ -416,7 +416,7 @@ where
                             ChainspecInfo::new(network_name, next_upgrade),
                             consensus_status,
                             node_uptime,
-                            reactor_state,
+                            reactor_state.into(),
                             last_progress,
                             available_block_range,
                             block_sync,

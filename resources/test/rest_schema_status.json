@@ -265,43 +265,14 @@
     },
     "ReactorState": {
       "description": "The state of the reactor.",
-      "anyOf": [
-        {
-          "type": "string",
-          "enum": [
-            "Initialize",
-            "CatchUp",
-            "Upgrading",
-            "KeepUp",
-            "Validate"
-          ]
-        },
-        {
-          "description": "Node should be shut down for upgrade.",
-          "type": "object",
-          "required": [
-            "ShutdownForUpgrade"
-          ],
-          "properties": {
-            "ShutdownForUpgrade": {
-              "type": "object",
-              "required": [
-                "time_switched"
-              ],
-              "properties": {
-                "time_switched": {
-                  "description": "Timestamp at which the node switched to this state.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Timestamp"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "additionalProperties": false
-        }
+      "type": "string",
+      "enum": [
+        "Initialize",
+        "CatchUp",
+        "Upgrading",
+        "KeepUp",
+        "Validate",
+        "ShutdownForUpgrade"
       ]
     },
     "AvailableBlockRange": {

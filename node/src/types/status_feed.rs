@@ -50,7 +50,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         round_length: Some(TimeDiff::from_millis(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
         node_uptime: Duration::from_secs(13),
-        reactor_state: ReactorState::Initialize,
+        reactor_state: JsonReactorState::Initialize,
         last_progress: Timestamp::from(0),
         available_block_range: AvailableBlockRange::RANGE_0_0,
         block_sync: BlockSynchronizerStatus::doc_example().clone(),
@@ -82,6 +82,36 @@ impl ChainspecInfo {
     }
 }
 
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[schemars(description = "The state of the reactor.", rename = "ReactorState")]
+pub enum JsonReactorState {
+    /// Get all components and reactor state set up on start.
+    Initialize,
+    /// Orient to the network and attempt to catch up to tip.
+    CatchUp,
+    /// Running commit upgrade and creating immediate switch block.
+    Upgrading,
+    /// Stay caught up with tip.
+    KeepUp,
+    /// Node is currently caught up and is an active validator.
+    Validate,
+    /// Node should be shut down for upgrade.
+    ShutdownForUpgrade,
+}
+
+impl From<ReactorState> for JsonReactorState {
+    fn from(state: ReactorState) -> Self {
+        match state {
+            ReactorState::Initialize => JsonReactorState::Initialize,
+            ReactorState::CatchUp => JsonReactorState::CatchUp,
+            ReactorState::Upgrading => JsonReactorState::Upgrading,
+            ReactorState::KeepUp => JsonReactorState::KeepUp,
+            ReactorState::Validate => JsonReactorState::Validate,
+            ReactorState::ShutdownForUpgrade { .. } => JsonReactorState::ShutdownForUpgrade,
+        }
+    }
+}
+
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
 pub struct StatusFeed {
@@ -100,7 +130,7 @@ pub struct StatusFeed {
     /// Time that passed since the node has started.
     pub node_uptime: Duration,
     /// The current state of node reactor.
-    pub reactor_state: ReactorState,
+    pub reactor_state: JsonReactorState,
     /// Timestamp of the last recorded progress in the reactor.
     pub last_progress: Timestamp,
     /// The available block range in storage.
@@ -119,7 +149,7 @@ impl StatusFeed {
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
         node_uptime: Duration,
-        reactor_state: ReactorState,
+        reactor_state: JsonReactorState,
         last_progress: Timestamp,
         available_block_range: AvailableBlockRange,
         block_sync: BlockSynchronizerStatus,
@@ -197,7 +227,7 @@ pub struct GetStatusResult {
     /// Time that passed since the node has started.
     pub uptime: TimeDiff,
     /// The current state of node reactor.
-    pub reactor_state: ReactorState,
+    pub reactor_state: JsonReactorState,
     /// Timestamp of the last recorded progress in the reactor.
     pub last_progress: Timestamp,
     /// The available block range in storage.

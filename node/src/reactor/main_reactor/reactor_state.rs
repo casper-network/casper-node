@@ -1,6 +1,5 @@
 use datasize::DataSize;
 use derive_more::Display;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
@@ -55,11 +54,8 @@ use casper_types::Timestamp;
 ///     Leap --> F[initiate SyncLeap<br/>and retry later]
 ///     BlockSync --> G[initiate BlockSync<br/>and retry later]
 /// ```
-#[derive(
-    Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,
-)]
-#[schemars(description = "The state of the reactor.")]
-pub enum ReactorState {
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display)]
+pub(crate) enum ReactorState {
     /// Get all components and reactor state set up on start.
     Initialize,
     /// Orient to the network and attempt to catch up to tip.

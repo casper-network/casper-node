@@ -1169,7 +1169,10 @@ impl reactor::Reactor for MainReactor {
             max_attempts: config.node.max_attempts,
             idle_tolerance: config.node.idle_tolerance,
             control_logic_default_delay: config.node.control_logic_default_delay,
-            shutdown_for_upgrade_timeout: config.gossip.validate_and_store_timeout * 2,
+            shutdown_for_upgrade_timeout: config
+                .node
+                .shutdown_for_upgrade_timeout
+                .unwrap_or(config.gossip.validate_and_store_timeout * 2),
             trusted_hash,
             validator_matrix,
             switch_block_header: None,
