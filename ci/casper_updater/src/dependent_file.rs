@@ -5,7 +5,7 @@ use std::{
 
 use regex::Regex;
 
-/// A file which is dependent on the version of a certain CasperLabs crate.
+/// A file which is dependent on the version of a certain Casper Labs crate.
 pub struct DependentFile {
     /// Full path to the file.
     path: PathBuf,

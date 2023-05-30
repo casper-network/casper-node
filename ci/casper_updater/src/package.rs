@@ -16,7 +16,7 @@ use crate::{
 
 const CAPTURE_INDEX: usize = 2;
 
-/// Represents a published CasperLabs crate or AssemblyScript package which may need its version
+/// Represents a published Casper Labs crate or AssemblyScript package which may need its version
 /// updated.
 pub struct Package {
     /// This package's name as specified in its manifest.

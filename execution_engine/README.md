@@ -7,7 +7,7 @@
 [![Documentation](https://docs.rs/casper-execution-engine/badge.svg)](https://docs.rs/casper-execution-engine)
 [![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/casper-network/casper-node/blob/master/LICENSE)
 
-The main component of the CasperLabs Wasm execution engine.
+The main component of the Casper Labs Wasm execution engine.
 
 ## License
 
