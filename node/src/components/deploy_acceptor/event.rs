@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use serde::Serialize;
 
@@ -10,21 +13,21 @@ use casper_types::{
 use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
-    effect::{announcements::RpcServerAnnouncement, Responder},
+    effect::Responder,
     types::{BlockHeader, Deploy},
 };
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(crate) deploy: Box<Deploy>,
+    pub(crate) deploy: Arc<Deploy>,
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
     pub(crate) fn new(
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Self {
@@ -41,7 +44,7 @@ impl EventMetadata {
 pub(crate) enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
@@ -98,18 +101,6 @@ pub(crate) enum Event {
         maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     },
-}
-
-impl From<RpcServerAnnouncement> for Event {
-    fn from(announcement: RpcServerAnnouncement) -> Self {
-        match announcement {
-            RpcServerAnnouncement::DeployReceived { deploy, responder } => Event::Accept {
-                deploy,
-                source: Source::Client,
-                maybe_responder: responder,
-            },
-        }
-    }
 }
 
 impl Display for Event {

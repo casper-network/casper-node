@@ -39,7 +39,7 @@ use crate::{
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
-        deploy_acceptor::Error,
+        deploy_acceptor,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -49,7 +49,7 @@ use crate::{
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
-    rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
+    rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
@@ -329,8 +329,8 @@ pub(crate) enum StorageRequest {
     GetBlockHeader {
         /// Hash of block to get header of.
         block_hash: BlockHash,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
@@ -339,8 +339,8 @@ pub(crate) enum StorageRequest {
     GetBlockHeaderByHeight {
         /// Height of block to get header of.
         block_height: u64,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
@@ -357,7 +357,7 @@ pub(crate) enum StorageRequest {
     /// Store given deploy.
     PutDeploy {
         /// Deploy to store.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// Responder to call with the result.  Returns `true` if the deploy was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -420,8 +420,8 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHash {
         /// The hash of the block.
         block_hash: BlockHash,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
@@ -439,14 +439,17 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHeight {
         /// The height of the block.
         block_height: BlockHeight,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
+        /// If true, only consider blocks in the available block range, i.e. the highest contiguous
+        /// range of complete blocks.
+        only_from_available_block_range: bool,
         /// The responder to call the results with.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -686,24 +689,6 @@ impl Display for DeployBufferRequest {
 #[derive(Debug)]
 #[must_use]
 pub(crate) enum RpcRequest {
-    /// Submit a deploy to be announced.
-    SubmitDeploy {
-        /// The deploy to be announced.
-        deploy: Box<Deploy>,
-        /// Responder to call.
-        responder: Responder<Result<(), Error>>,
-    },
-    /// If `maybe_identifier` is `Some`, return the specified block if it exists, else `None`.  If
-    /// `maybe_identifier` is `None`, return the latest block.
-    GetBlock {
-        /// The identifier (can either be a hash or the height) of the block to be retrieved.
-        maybe_id: Option<BlockIdentifier>,
-        /// Flag indicating whether storage should check the block availability before trying to
-        /// retrieve it.
-        only_from_available_block_range: bool,
-        /// Responder to call with the result.
-        responder: Responder<Option<Box<BlockWithMetadata>>>,
-    },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
         /// The hash of the block to retrieve transfers for.
@@ -772,31 +757,11 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<AvailableBlockRange>,
     },
-    /// Executs a deploy against a specified block, returning the effects.
-    /// Does not commit the effects. This is a "read-only" action.
-    SpeculativeDeployExecute {
-        /// Block header representing the state on top of which we will run the deploy.
-        block_header: Box<BlockHeader>,
-        /// Deploy to execute.
-        deploy: Box<Deploy>,
-        /// Responder.
-        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
-    },
 }
 
 impl Display for RpcRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RpcRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
-            RpcRequest::GetBlock {
-                maybe_id: Some(BlockIdentifier::Hash(hash)),
-                ..
-            } => write!(formatter, "get {}", hash),
-            RpcRequest::GetBlock {
-                maybe_id: Some(BlockIdentifier::Height(height)),
-                ..
-            } => write!(formatter, "get {}", height),
-            RpcRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
             RpcRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers {}", block_hash)
             }
@@ -842,7 +807,6 @@ impl Display for RpcRequest {
             RpcRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range")
             }
-            RpcRequest::SpeculativeDeployExecute { .. } => write!(formatter, "execute deploy"),
         }
     }
 }
@@ -959,7 +923,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// Hash of a block on top of which to execute the deploy.
         execution_prestate: SpeculativeExecutionState,
         /// Deploy to execute.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// Results
         responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
     },
@@ -1212,6 +1176,28 @@ impl Display for SetNodeStopRequest {
         match self.stop_at {
             None => f.write_str("clear node stop"),
             Some(stop_at) => write!(f, "set node stop to: {}", stop_at),
+        }
+    }
+}
+
+/// A request to accept a new deploy.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct AcceptDeployRequest {
+    pub(crate) deploy: Arc<Deploy>,
+    pub(crate) speculative_exec_at_block: Option<Box<BlockHeader>>,
+    pub(crate) responder: Responder<Result<(), deploy_acceptor::Error>>,
+}
+
+impl Display for AcceptDeployRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.speculative_exec_at_block.is_some() {
+            write!(
+                f,
+                "accept deploy {} for speculative exec",
+                self.deploy.hash()
+            )
+        } else {
+            write!(f, "accept deploy {}", self.deploy.hash())
         }
     }
 }

@@ -57,10 +57,10 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::ChainspecRawBytesRequest,
+        requests::{AcceptDeployRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
@@ -306,17 +306,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
-                deploy,
-                responder,
-            }) => {
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
-                    source: Source::Client,
-                    maybe_responder: responder,
-                };
-                self.dispatch_event(effect_builder, rng, MainEvent::DeployAcceptor(event))
-            }
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -683,6 +672,27 @@ impl reactor::Reactor for MainReactor {
                 self.deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
+            MainEvent::AcceptDeployRequest(AcceptDeployRequest {
+                deploy,
+                speculative_exec_at_block,
+                responder,
+            }) => {
+                let source = if let Some(block) = speculative_exec_at_block {
+                    Source::SpeculativeExec(block)
+                } else {
+                    Source::Client
+                };
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source,
+                    maybe_responder: Some(responder),
+                };
+                reactor::wrap_effects(
+                    MainEvent::DeployAcceptor,
+                    self.deploy_acceptor
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
@@ -719,6 +729,12 @@ impl reactor::Reactor for MainReactor {
                                 event_stream_server::Event::DeployAccepted(deploy),
                             ),
                         ));
+                    }
+                    Source::SpeculativeExec(_) => {
+                        error!(
+                            ?deploy,
+                            "deploy acceptor should not announce speculative exec deploys"
+                        );
                     }
                 }
 
@@ -759,7 +775,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     deploy_acceptor::Event::Accept {
-                        deploy: item,
+                        deploy: Arc::new(*item),
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },

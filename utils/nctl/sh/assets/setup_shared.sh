@@ -433,6 +433,7 @@ function setup_asset_node_configs()
         SCRIPT+=(
             "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
         )
+
         python3 -c "${SCRIPT[*]}"
     done
 }

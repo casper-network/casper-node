@@ -475,20 +475,29 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<BlockWithMetadata, Error> {
-    // Get the block from storage or the latest from the linear chain.
-    let maybe_result = effect_builder
-        .make_request(
-            |responder| RpcRequest::GetBlock {
-                maybe_id,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
+    let maybe_result = match maybe_id {
+        Some(BlockIdentifier::Hash(hash)) => {
+            effect_builder
+                .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
+                .await
+        }
+        Some(BlockIdentifier::Height(height)) => {
+            effect_builder
+                .get_block_at_height_with_metadata_from_storage(
+                    height,
+                    only_from_available_block_range,
+                )
+                .await
+        }
+        None => {
+            effect_builder
+                .get_highest_block_with_metadata_from_storage(only_from_available_block_range)
+                .await
+        }
+    };
 
     if let Some(block_with_metadata) = maybe_result {
-        return Ok(*block_with_metadata);
+        return Ok(block_with_metadata);
     }
 
     // TODO: Potential optimization: We might want to make the `GetBlock` actually return the
