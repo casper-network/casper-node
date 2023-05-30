@@ -67,8 +67,8 @@
 
 #![doc(html_root_url = "https://docs.rs/casper-json-rpc/1.0.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
+    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/Casper_Monogram_Favicon_Red_RGB.png",
+    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/Casper_Monogram_Red_RGB.png",
     test(attr(deny(warnings)))
 )]
 #![warn(
