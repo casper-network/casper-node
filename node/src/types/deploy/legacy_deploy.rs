@@ -22,8 +22,8 @@ impl FetchItem for LegacyDeploy {
         *self.0.hash()
     }
 
-    fn validate(&self, metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.0.validate(metadata)
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.0.has_valid_hash()
     }
 }
 
