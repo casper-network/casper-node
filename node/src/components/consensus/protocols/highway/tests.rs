@@ -22,6 +22,7 @@ use crate::{
         },
         traits::Context,
         utils::{ValidatorIndex, Weight},
+        SerializedMessage,
     },
     types::BlockPayload,
 };
@@ -124,7 +125,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = *ALICE_NODE_ID;
-    let msg = highway_message.into();
+    let msg = SerializedMessage::from_message(&highway_message);
     let outcomes = highway_protocol.handle_message(&mut rng, sender.to_owned(), msg, now);
     assert_eq!(&*outcomes, [ProtocolOutcome::Disconnect(sender)]);
 }
@@ -155,7 +156,7 @@ fn send_a_valid_wire_unit() {
 
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = *ALICE_NODE_ID;
-    let msg = highway_message.into();
+    let msg = SerializedMessage::from_message(&highway_message);
 
     let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
     while let Some(outcome) = outcomes.pop() {
@@ -205,7 +206,7 @@ fn detect_doppelganger() {
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert!(highway_protocol.is_active());
     let sender = *ALICE_NODE_ID;
-    let msg = highway_message.into();
+    let msg = SerializedMessage::from_message(&highway_message);
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.

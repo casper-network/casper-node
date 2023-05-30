@@ -24,8 +24,7 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FatalAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UnexecutedBlockAnnouncement,
-            UpgradeWatcherAnnouncement,
+            PeerBehaviorAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -34,9 +33,9 @@ use crate::{
             TrieResponseIncoming,
         },
         requests::{
-            BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
-            BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
+            AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest,
+            BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
+            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
             NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest,
             SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
@@ -77,8 +76,6 @@ pub(crate) enum MainEvent {
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
-    #[from]
-    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
     RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
@@ -188,6 +185,8 @@ pub(crate) enum MainEvent {
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
+    AcceptDeployRequest(AcceptDeployRequest),
+    #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
@@ -277,6 +276,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             MainEvent::Consensus(_) => "Consensus",
             MainEvent::DeployAcceptor(_) => "DeployAcceptor",
+            MainEvent::AcceptDeployRequest(_) => "AcceptDeployRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::DeployFetcher(_) => "DeployFetcher",
             MainEvent::DeployGossiper(_) => "DeployGossiper",
@@ -316,7 +316,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
-            MainEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             MainEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             MainEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
             MainEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -383,6 +382,7 @@ impl Display for MainEvent {
             MainEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             MainEvent::Consensus(event) => write!(f, "consensus: {}", event),
             MainEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            MainEvent::AcceptDeployRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             MainEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
@@ -485,9 +485,6 @@ impl Display for MainEvent {
             MainEvent::FatalAnnouncement(fatal_ann) => write!(f, "fatal: {}", fatal_ann),
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)
-            }
-            MainEvent::RpcServerAnnouncement(ann) => {
-                write!(f, "api server announcement: {}", ann)
             }
             MainEvent::DeployAcceptorAnnouncement(ann) => {
                 write!(f, "deploy acceptor announcement: {}", ann)

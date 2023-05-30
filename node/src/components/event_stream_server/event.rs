@@ -12,7 +12,7 @@ use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalityS
 pub enum Event {
     Initialize,
     BlockAdded(Arc<Block>),
-    DeployAccepted(Box<Deploy>),
+    DeployAccepted(Arc<Deploy>),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,

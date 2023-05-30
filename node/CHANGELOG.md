@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+
+## Unreleased
+
+### Changed
+* `speculative_exec` server now routes deploys to `DeployAcceptor` for more comprehensive validation, including cryptographic verification of signatures.
+
+
+
 ## 1.5.0-rc.1
 
 ### Added

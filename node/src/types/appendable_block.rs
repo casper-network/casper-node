@@ -89,9 +89,11 @@ impl AppendableBlock {
         {
             return Err(AddError::Duplicate);
         }
-        if !footprint
-            .header
-            .is_valid(&self.deploy_config, self.timestamp)
+        if footprint.header.expired(self.timestamp)
+            || footprint
+                .header
+                .is_valid(&self.deploy_config, self.timestamp, transfer.deploy_hash())
+                .is_err()
         {
             return Err(AddError::InvalidDeploy);
         }
@@ -120,9 +122,11 @@ impl AppendableBlock {
         if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {
             return Err(AddError::Duplicate);
         }
-        if !footprint
-            .header
-            .is_valid(&self.deploy_config, self.timestamp)
+        if footprint.header.expired(self.timestamp)
+            || footprint
+                .header
+                .is_valid(&self.deploy_config, self.timestamp, deploy.deploy_hash())
+                .is_err()
         {
             return Err(AddError::InvalidDeploy);
         }
