@@ -1,6 +1,6 @@
 # `casper-contract`
 
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/Casper_Assoc_Wordmark_Red_RGB.png)](https://casper.network/)
 
 [![Crates.io](https://img.shields.io/crates/v/casper-contract)](https://crates.io/crates/casper-contract)
 [![Documentation](https://docs.rs/casper-contract/badge.svg)](https://docs.rs/casper-contract)

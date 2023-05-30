@@ -1,4 +1,4 @@
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/Casper_Assoc_Wordmark_Red_RGB.png)](https://casper.network/)
 
 # casper-node
 

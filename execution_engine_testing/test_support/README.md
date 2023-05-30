@@ -1,6 +1,6 @@
 # `casper-engine-test-support`
 
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/Casper_Assoc_Wordmark_Red_RGB.png)](https://casper.network/)
 
 [![Build Status](https://drone-auto-casper-network.casperlabs.io/api/badges/casper-network/casper-node/status.svg?branch=dev)](http://drone-auto-casper-network.casperlabs.io/casper-network/casper-node)
 [![Crates.io](https://img.shields.io/crates/v/casper-engine-test-support)](https://crates.io/crates/casper-engine-test-support)
