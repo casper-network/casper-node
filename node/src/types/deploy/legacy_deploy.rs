@@ -23,7 +23,7 @@ impl FetchItem for LegacyDeploy {
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.0.has_valid_hash().map_err(|err| *err)
+        self.0.has_valid_hash()
     }
 }
 
