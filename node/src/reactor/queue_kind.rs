@@ -98,7 +98,7 @@ impl QueueKind {
             QueueKind::NetworkLowPriority => 1,
             QueueKind::NetworkInfo => 2,
             QueueKind::NetworkDemand => 2,
-            QueueKind::NetworkIncoming => 4,
+            QueueKind::NetworkIncoming => 8,
             QueueKind::Network => 4,
             QueueKind::Regular => 4,
             QueueKind::Fetch => 4,
