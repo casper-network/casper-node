@@ -2,7 +2,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
@@ -116,6 +116,8 @@ impl MainReactor {
                     Ok(effects) => {
                         info!("CatchUp: switch to Upgrading");
                         self.state = ReactorState::Upgrading;
+                        self.last_progress = Timestamp::now();
+                        self.attempts = 0;
                         (Duration::ZERO, effects)
                     }
                     Err(msg) => (
@@ -391,6 +393,8 @@ impl MainReactor {
         UpgradingInstruction::should_commit_upgrade(
             self.should_commit_upgrade(),
             self.control_logic_default_delay.into(),
+            self.last_progress,
+            self.upgrade_timeout,
         )
     }
 
@@ -399,11 +403,21 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
         info!("{:?}: committing upgrade", self.state);
-        let previous_block_header = match &self.switch_block_header {
-            None => {
-                return Err("switch_block should be Some".to_string());
+
+        // header of latest complete block, and that block needs to be switch block
+        let previous_block_header = match self
+            .storage
+            .read_highest_complete_block()
+            .map_err(|err| format!("Could not read highest complete block: {}", err))?
+        {
+            Some(highest_complete_block) => {
+                if highest_complete_block.header().is_switch_block() {
+                    highest_complete_block.take_header()
+                } else {
+                    return Err("Latest complete block is not a switch block".to_string());
+                }
             }
-            Some(header) => header.clone(),
+            None => return Err("No complete block found in storage".to_string()),
         };
 
         match self.chainspec.ee_upgrade_config(
@@ -472,16 +486,28 @@ impl MainReactor {
     }
 
     pub(super) fn should_commit_upgrade(&self) -> bool {
-        let highest_switch_block_header = match &self.switch_block_header {
-            None => {
+        // header of latest complete block, and that block needs to be switch block
+        let highest_switch_block_header = match self.storage.read_highest_complete_block() {
+            Ok(Some(highest_complete_block))
+                if highest_complete_block.header().is_switch_block() =>
+            {
+                highest_complete_block.take_header()
+            }
+            Ok(Some(_)) | Ok(None) => {
                 return false;
             }
-            Some(header) => header,
+            Err(error) => {
+                error!(
+                    "Could not read highest complete block from storage: {}",
+                    error
+                );
+                return false;
+            }
         };
 
         self.chainspec
             .protocol_config
-            .is_last_block_before_activation(highest_switch_block_header)
+            .is_last_block_before_activation(&highest_switch_block_header)
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
@@ -554,15 +580,5 @@ impl MainReactor {
                 self.attempts += 1;
             }
         }
-    }
-
-    pub(crate) fn update_highest_switch_block(&mut self) -> Result<(), String> {
-        let maybe_highest_switch_block_header =
-            match self.storage.read_highest_switch_block_headers(1) {
-                Ok(highest_switch_block_header) => highest_switch_block_header,
-                Err(err) => return Err(err.to_string()),
-            };
-        self.switch_block_header = maybe_highest_switch_block_header.first().cloned();
-        Ok(())
     }
 }

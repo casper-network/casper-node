@@ -8,6 +8,7 @@ use casper_types::TimeDiff;
 const DEFAULT_IDLE_TOLERANCE: &str = "20min";
 const DEFAULT_MAX_ATTEMPTS: usize = 3;
 const DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY: &str = "1sec";
+const DEFAULT_UPGRADE_TIMEOUT: &str = "30sec";
 
 /// Node fast-sync configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
@@ -33,6 +34,9 @@ pub struct NodeConfig {
 
     /// Flag which forces the node to resync all of the blocks.
     pub force_resync: bool,
+
+    /// Maximum time a node will wait for an upgrade to commit.
+    pub upgrade_timeout: TimeDiff,
 }
 
 impl Default for NodeConfig {
@@ -44,6 +48,7 @@ impl Default for NodeConfig {
             max_attempts: DEFAULT_MAX_ATTEMPTS,
             control_logic_default_delay: DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY.parse().unwrap(),
             force_resync: false,
+            upgrade_timeout: DEFAULT_UPGRADE_TIMEOUT.parse().unwrap(),
         }
     }
 }

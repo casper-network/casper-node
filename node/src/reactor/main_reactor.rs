@@ -72,8 +72,8 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, MetaBlock,
+        MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -180,12 +180,12 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block_header: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
+    upgrade_timeout: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
 }
@@ -1184,9 +1184,9 @@ impl reactor::Reactor for MainReactor {
             max_attempts: config.node.max_attempts,
             idle_tolerance: config.node.idle_tolerance,
             control_logic_default_delay: config.node.control_logic_default_delay,
+            upgrade_timeout: config.node.upgrade_timeout,
             trusted_hash,
             validator_matrix,
-            switch_block_header: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
         };
@@ -1407,42 +1407,23 @@ impl MainReactor {
             return effects;
         }
 
-        // Set the current switch block only after the block is marked complete.
         // We *always* want to initialize the contract runtime with the highest complete block.
         // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
         // the immediate switch block is stored and *also* marked complete.
         // This will allow the contract runtime to initialize properly (see
         // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
         // `KeepUp`.
-        if state.is_marked_complete() {
-            debug!(
-                "MetaBlock: marked complete: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            if block.header().is_switch_block() {
-                match self
-                    .switch_block_header
-                    .as_ref()
-                    .map(|header| header.height())
-                {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block_header = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block_header = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block_header = None;
-            }
-        } else {
+        if !state.is_marked_complete() {
             error!(
                 block = %*block,
                 ?state,
                 "should be a complete block after passing to accumulator"
+            );
+        } else {
+            debug!(
+                "MetaBlock: block is marked complete: {} {}",
+                block.height(),
+                block.hash(),
             );
         }
 
