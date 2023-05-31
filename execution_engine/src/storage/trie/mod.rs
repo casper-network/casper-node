@@ -527,10 +527,10 @@ where
     let trie_tag = lazy_trie_tag(&bytes);
 
     if trie_tag == Some(TrieTag::Leaf) {
-        Ok(Either::Left(bytes))
+        Ok(LazyTrieLeaf::Left(bytes))
     } else {
         let deserialized: Trie<K, V> = bytesrepr::deserialize(bytes.into())?;
-        Ok(Either::Right(deserialized))
+        Ok(LazyTrieLeaf::Right(deserialized))
     }
 }
 
@@ -538,11 +538,11 @@ pub(crate) fn lazy_trie_iter_children<K, V>(
     trie_bytes: &LazyTrieLeaf<K, V>,
 ) -> DescendantsIterator {
     match trie_bytes {
-        Either::Left(_) => {
+        LazyTrieLeaf::Left(_) => {
             // Leaf bytes does not have any children
             DescendantsIterator::ZeroOrOne(None)
         }
-        Either::Right(trie) => {
+        LazyTrieLeaf::Right(trie) => {
             // Trie::Node or Trie::Extension has children
             trie.iter_children()
         }
@@ -596,6 +596,8 @@ where
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        // NOTE: When changing this make sure all partial deserializers that are referencing
+        // `LazyTrieLeaf` are also updated.
         writer.push(u8::from(self.tag()));
         match self {
             Trie::Leaf { key, value } => {
