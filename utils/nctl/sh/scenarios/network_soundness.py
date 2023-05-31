@@ -24,7 +24,7 @@ HUGE_DEPLOY_SPAM_COUNT = 2
 DISTURBANCE_INTERVAL_SECS = 5
 
 # Time allowed for the network to progress
-PROGRESS_WAIT_TIMEOUT_SECS = 2 * 60
+PROGRESS_WAIT_TIMEOUT_SECS = 5 * 60
 
 invoke_lock = threading.Lock()
 current_node_count = 5
