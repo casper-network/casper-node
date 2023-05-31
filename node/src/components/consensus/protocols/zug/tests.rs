@@ -314,7 +314,13 @@ fn expect_timer(outcomes: &ProtocolOutcomes<ClContext>, timestamp: Timestamp, ti
 
 /// Creates a new payload with the given random bit and no deploys or transfers.
 fn new_payload(random_bit: bool) -> Arc<BlockPayload> {
-    Arc::new(BlockPayload::new(vec![], vec![], vec![], random_bit))
+    Arc::new(BlockPayload::new(
+        vec![],
+        vec![],
+        vec![],
+        Default::default(),
+        random_bit,
+    ))
 }
 
 fn vote(v: bool) -> Content<ClContext> {

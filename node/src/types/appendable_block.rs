@@ -13,6 +13,8 @@ use crate::types::{
     DeployHashWithApprovals,
 };
 
+use super::block::PastFinalitySignatures;
+
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
     #[error("would exceed maximum transfer count per block")]
@@ -159,12 +161,19 @@ impl AppendableBlock {
     pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
+        past_finality_signatures: PastFinalitySignatures,
         random_bit: bool,
     ) -> BlockPayload {
         let AppendableBlock {
             deploys, transfers, ..
         } = self;
-        BlockPayload::new(deploys, transfers, accusations, random_bit)
+        BlockPayload::new(
+            deploys,
+            transfers,
+            accusations,
+            past_finality_signatures,
+            random_bit,
+        )
     }
 
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no

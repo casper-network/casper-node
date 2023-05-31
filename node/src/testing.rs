@@ -399,6 +399,7 @@ pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) 
 /// Assert that the file at `schema_path` matches the provided `RootSchema`, which can be derived
 /// from `schemars::schema_for!` or `schemars::schema_for_value!`, for example. This method will
 /// create a temporary file with the actual schema and print the location if it fails.
+#[track_caller]
 pub fn assert_schema(schema_path: String, actual_schema: RootSchema) {
     let expected_schema = fs::read_to_string(&schema_path).unwrap();
     let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
