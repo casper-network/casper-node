@@ -146,7 +146,7 @@ impl MainReactor {
                     }
                     Err(storage_err) => {
                         return Either::Right(CatchUpInstruction::Fatal(format!(
-                            "Could not read storage to find highest switch block header: {}",
+                            "CatchUp: Could not read storage to find highest switch block header: {}",
                             storage_err
                         )));
                     }

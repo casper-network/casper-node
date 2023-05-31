@@ -1403,6 +1403,12 @@ impl MainReactor {
                 ?state,
                 "should be a complete block after passing to accumulator"
             );
+        } else {
+            debug!(
+                "MetaBlock: block is marked complete: {} {}",
+                block.height(),
+                block.hash(),
+            );
         }
 
         debug!(

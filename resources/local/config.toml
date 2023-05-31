@@ -21,7 +21,7 @@ control_logic_default_delay = '1sec'
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
 
-# Maximum time a node will wait for an upgrade to commit
+# Maximum time a node will wait for an upgrade to commit.
 upgrade_timeout = '30sec'
 
 # =================================

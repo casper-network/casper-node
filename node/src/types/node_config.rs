@@ -35,7 +35,7 @@ pub struct NodeConfig {
     /// Flag which forces the node to resync all of the blocks.
     pub force_resync: bool,
 
-    /// Maximum time a node will wait for an upgrade to commit
+    /// Maximum time a node will wait for an upgrade to commit.
     pub upgrade_timeout: TimeDiff,
 }
 
