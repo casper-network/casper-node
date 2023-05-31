@@ -81,3 +81,10 @@ pub trait Context: Clone + DataSize + Debug + Eq + Ord + Hash + Send {
         signature: &<Self::ValidatorSecret as ValidatorSecret>::Signature,
     ) -> bool;
 }
+
+/// A marker trait indicating that the given type is a valid consensus message to be sent across the
+/// network.
+///
+/// Only implement this for types that are native to the consensus module and never for `Vec<u8>`,
+/// as this would break accidental double-serialization protection.
+pub trait ConsensusNetworkMessage {}

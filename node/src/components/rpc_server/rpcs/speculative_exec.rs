@@ -3,15 +3,15 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::str;
+use std::{str, sync::Arc};
 
 use async_trait::async_trait;
-use casper_execution_engine::core::engine_state::Error as EngineStateError;
-use casper_json_rpc::ReservedErrorCode;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::core::engine_state::Error as EngineStateError;
+use casper_json_rpc::ReservedErrorCode;
 use casper_types::{ExecutionResult, ProtocolVersion};
 
 use super::{
@@ -21,8 +21,8 @@ use super::{
     Error, ErrorCode, ReactorEventT, RpcWithParams,
 };
 use crate::{
-    effect::{requests::RpcRequest, EffectBuilder},
-    reactor::QueueKind,
+    components::contract_runtime::SpeculativeExecutionState,
+    effect::EffectBuilder,
     types::{Block, BlockHash, Deploy},
 };
 
@@ -89,7 +89,7 @@ impl RpcWithParams for SpeculativeExec {
             block_identifier: maybe_block_id,
             deploy,
         } = params;
-        // This RPC request is restricted by the block availability index.
+        let deploy = Arc::new(deploy);
         let only_from_available_block_range = true;
 
         let block = common::get_block(
@@ -99,15 +99,22 @@ impl RpcWithParams for SpeculativeExec {
         )
         .await?;
         let block_hash = *block.hash();
+        let execution_prestate = SpeculativeExecutionState {
+            state_root_hash: *block.state_root_hash(),
+            block_time: block.timestamp(),
+            protocol_version: block.protocol_version(),
+        };
+
+        let accept_deploy_result = effect_builder
+            .try_accept_deploy(Arc::clone(&deploy), Some(Box::new(block.take_header())))
+            .await;
+
+        if let Err(error) = accept_deploy_result {
+            return Err(Error::new(ErrorCode::InvalidDeploy, error.to_string()));
+        }
+
         let result = effect_builder
-            .make_request(
-                |responder| RpcRequest::SpeculativeDeployExecute {
-                    block_header: Box::new(block.take_header()),
-                    deploy: Box::new(deploy),
-                    responder,
-                },
-                QueueKind::Api,
-            )
+            .speculative_execute_deploy(execution_prestate, Arc::clone(&deploy))
             .await;
 
         match result {
@@ -127,7 +134,7 @@ impl RpcWithParams for SpeculativeExec {
                 let rpc_error = match error {
                     EngineStateError::RootNotFound(_) => Error::new(ErrorCode::NoSuchStateRoot, ""),
                     EngineStateError::WasmPreprocessing(error) => {
-                        Error::new(ErrorCode::InvalidDeploy, format!("{}", error))
+                        Error::new(ErrorCode::InvalidDeploy, error.to_string())
                     }
                     EngineStateError::InvalidDeployItemVariant(error) => {
                         Error::new(ErrorCode::InvalidDeploy, error)
@@ -158,7 +165,7 @@ impl RpcWithParams for SpeculativeExec {
                     | EngineStateError::FailedToGetWithdrawPurses
                     | EngineStateError::FailedToRetrieveUnbondingDelay
                     | EngineStateError::FailedToRetrieveEraId => {
-                        Error::new(ReservedErrorCode::InternalError, format!("{}", error))
+                        Error::new(ReservedErrorCode::InternalError, error.to_string())
                     }
                     _ => Error::new(
                         ReservedErrorCode::InternalError,

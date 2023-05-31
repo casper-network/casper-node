@@ -279,7 +279,7 @@ max_body_bytes = 2_621_440
 [speculative_exec_server]
 
 # Flag which enables the speculative execution JSON-RPC HTTP server.
-enable_server = false
+enable_server = true
 
 # Listening address for speculative execution JSON-RPC HTTP server.  If the port
 # is set to 0, a random port will be used.

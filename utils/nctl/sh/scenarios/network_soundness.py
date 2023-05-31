@@ -66,8 +66,9 @@ def invoke(command, quiet=False):
         log("invoking command: {}".format(command))
     invoke_lock.acquire()
     try:
-        result = subprocess.check_output(['/bin/bash', '-i', '-c',
-                                          command]).decode("utf-8").rstrip()
+        result = subprocess.check_output(['/bin/bash', '-c',
+                                          'shopt -s expand_aliases\nsource $NCTL/activate\n{}'
+                                         .format(command)]).decode("utf-8").rstrip()
         return result
     except subprocess.CalledProcessError as e:
         log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"

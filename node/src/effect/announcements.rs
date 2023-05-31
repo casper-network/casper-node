@@ -19,7 +19,6 @@ use casper_types::{EraId, ExecutionEffect, PublicKey, Timestamp, U512};
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
         fetcher::FetchItem,
         gossiper::GossipItem,
@@ -166,36 +165,13 @@ impl QueueDumpFormat {
     }
 }
 
-/// An RPC API server announcement.
-#[derive(Debug, Serialize)]
-#[must_use]
-pub(crate) enum RpcServerAnnouncement {
-    /// A new deploy received.
-    DeployReceived {
-        /// The received deploy.
-        deploy: Box<Deploy>,
-        /// A client responder in the case where a client submits a deploy.
-        responder: Option<Responder<Result<(), Error>>>,
-    },
-}
-
-impl Display for RpcServerAnnouncement {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RpcServerAnnouncement::DeployReceived { deploy, .. } => {
-                write!(formatter, "api server received {}", deploy.hash())
-            }
-        }
-    }
-}
-
 /// A `DeployAcceptor` announcement.
 #[derive(Debug, Serialize)]
 pub(crate) enum DeployAcceptorAnnouncement {
     /// A deploy which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewDeploy {
         /// The new deploy.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// The source (peer or client) of the deploy.
         source: Source,
     },
@@ -203,7 +179,7 @@ pub(crate) enum DeployAcceptorAnnouncement {
     /// An invalid deploy was received.
     InvalidDeploy {
         /// The invalid deploy.
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         /// The source (peer or client) of the deploy.
         source: Source,
     },
