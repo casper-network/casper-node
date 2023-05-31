@@ -91,6 +91,17 @@ pub struct CoreConfig {
     /// The maximum amount of delegators per validator.
     /// if the value is 0, there is no maximum capacity.
     pub max_delegators_per_validator: u32,
+
+    /// The split in finality signature rewards between block producer and participating signers.
+    #[data_size(skip)]
+    pub finders_fee: Ratio<u64>,
+
+    /// The proportion of baseline rewards going to reward finality signatures specifically.
+    #[data_size(skip)]
+    pub finality_signature_proportion: Ratio<u64>,
+
+    /// Lookback interval indicating which past block we are looking at to reward.
+    pub rewards_lag: u64,
 }
 
 impl CoreConfig {
@@ -171,6 +182,9 @@ impl CoreConfig {
         let strict_argument_checking = rng.gen();
         let simultaneous_peer_requests = rng.gen_range(3..100);
         let consensus_protocol = rng.gen();
+        let finders_fee = Ratio::new(rng.gen_range(1..100), 100);
+        let finality_signature_proportion = Ratio::new(rng.gen_range(1..100), 100);
+        let rewards_lag = rng.gen_range(1..10);
 
         CoreConfig {
             era_duration,
@@ -193,6 +207,9 @@ impl CoreConfig {
             simultaneous_peer_requests,
             consensus_protocol,
             max_delegators_per_validator: 0,
+            finders_fee,
+            finality_signature_proportion,
+            rewards_lag,
         }
     }
 }
@@ -223,6 +240,9 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
         buffer.extend(self.consensus_protocol.to_bytes()?);
         buffer.extend(self.max_delegators_per_validator.to_bytes()?);
+        buffer.extend(self.finders_fee.to_bytes()?);
+        buffer.extend(self.finality_signature_proportion.to_bytes()?);
+        buffer.extend(self.rewards_lag.to_bytes()?);
         Ok(buffer)
     }
 
@@ -249,6 +269,9 @@ impl ToBytes for CoreConfig {
             + self.simultaneous_peer_requests.serialized_length()
             + self.consensus_protocol.serialized_length()
             + self.max_delegators_per_validator.serialized_length()
+            + self.finders_fee.serialized_length()
+            + self.finality_signature_proportion.serialized_length()
+            + self.rewards_lag.serialized_length()
     }
 }
 
@@ -275,6 +298,9 @@ impl FromBytes for CoreConfig {
         let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
         let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
+        let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
+        let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
+        let (rewards_lag, remainder) = u64::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -296,6 +322,9 @@ impl FromBytes for CoreConfig {
             simultaneous_peer_requests,
             consensus_protocol,
             max_delegators_per_validator,
+            finders_fee,
+            finality_signature_proportion,
+            rewards_lag,
         };
         Ok((config, remainder))
     }

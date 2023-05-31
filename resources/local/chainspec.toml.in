@@ -73,6 +73,12 @@ simultaneous_peer_requests = 5
 consensus_protocol = 'Highway'
 # The maximum amount of delegators per validator. if the value is 0, there is no maximum capacity.
 max_delegators_per_validator = 0
+# The split in finality signature rewards between block producer and participating signers.
+finders_fee = [1, 5]
+# The proportion of baseline rewards going to reward finality signatures specifically.
+finality_signature_proportion = [1, 2]
+# Lookback interval indicating which past block we are looking at to reward.
+rewards_lag = 3
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
