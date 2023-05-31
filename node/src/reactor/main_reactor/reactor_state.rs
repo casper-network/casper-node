@@ -72,3 +72,11 @@ pub(crate) enum ReactorState {
         time_switched: Timestamp,
     },
 }
+
+impl ReactorState {
+    pub(crate) fn new_shutdown_for_upgrade() -> ReactorState {
+        ReactorState::ShutdownForUpgrade {
+            time_switched: Timestamp::now(),
+        }
+    }
+}
