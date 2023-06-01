@@ -202,7 +202,7 @@ impl Debug for Message {
             Message::GetRequest { tag, serialized_id } => f
                 .debug_struct("GetRequest")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_id))
+                .field("serialized_id", &HexFmt(serialized_id))
                 .finish(),
             Message::GetResponse {
                 tag,
@@ -210,7 +210,10 @@ impl Debug for Message {
             } => f
                 .debug_struct("GetResponse")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_item))
+                .field(
+                    "serialized_item",
+                    &format!("{} bytes", serialized_item.len()),
+                )
                 .finish(),
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()

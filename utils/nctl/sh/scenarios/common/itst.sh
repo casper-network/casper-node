@@ -39,6 +39,7 @@ function clean_up() {
             tar -cvzf "${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz * > /dev/null 2>&1
             aws s3 cp ./"${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz s3://nctl.casperlabs.io/nightly-logs/ > /dev/null 2>&1
             log "Download the dump file: curl -O https://s3.us-east-2.amazonaws.com/nctl.casperlabs.io/nightly-logs/${DRONE_BUILD_NUMBER}_nctl_dump.tar.gz"
+            log "\nextra log lines to push\ndownload instructions above\nserver license expired banner\n"
             popd
         fi
     fi
