@@ -9,8 +9,15 @@ use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 /// List of identifiers for finality signatures for a particular past block.
+///
+/// That past block height is current_height - rewards_lag, the latter being defined
+/// in the chainspec.
+///
+/// We need to wait for a few blocks to pass (`rewards_lag`) to store the finality
+/// signers because we need a bit of time to get the block finality.
 #[derive(
     Clone,
     DataSize,
@@ -33,19 +40,32 @@ impl PastFinalitySignatures {
         public_keys: &BTreeSet<PublicKey>,
         all_validators: impl IntoIterator<Item = &'a PublicKey>,
     ) -> Self {
-        let bits = all_validators
+        // Take the validators list
+        // Replace the ones who signed with 1 and the ones who didn't with 0
+        // Pack everything into bytes
+        let bytes: Vec<_> = all_validators
             .into_iter()
             .map(|key| public_keys.contains(key))
             .chunks(8)
             .into_iter()
             .map(|bits| {
                 bits.enumerate()
-                    .map(|(i, bit)| u8::from(bit) << (7 - i))
-                    .fold(0, |acc, u| acc | u)
+                    .fold(0, |accumulated, (index, is_present)| {
+                        accumulated | (u8::from(is_present) << (7 - index))
+                    })
             })
             .collect();
 
-        PastFinalitySignatures(bits)
+        let included_count: u32 = bytes.iter().map(|c| c.count_ones()).sum();
+        if included_count as usize != public_keys.len() {
+            error!(
+                included_count,
+                expected_count = public_keys.len(),
+                "error creating past finality signatures from validator set"
+            );
+        }
+
+        PastFinalitySignatures(bytes)
     }
 
     #[allow(dead_code)] //TODO remove it when the code is used in a next ticket
@@ -105,6 +125,7 @@ mod tests {
         testing::TestRng,
         PublicKey,
     };
+    use rand::{seq::IteratorRandom, Rng};
     use std::collections::BTreeSet;
 
     #[test]
@@ -182,12 +203,25 @@ mod tests {
     #[test]
     fn serialization_roundtrip_of_random_data() {
         let rng = &mut TestRng::new();
-        let data = PastFinalitySignatures::random(rng, 123);
+        let n_validators = rng.gen_range(50..200);
+        let all_validators: BTreeSet<_> = std::iter::repeat_with(|| PublicKey::random(rng))
+            .take(n_validators)
+            .collect();
+        let n_to_sign = rng.gen_range(0..all_validators.len());
+        let public_keys = all_validators
+            .iter()
+            .cloned()
+            .choose_multiple(rng, n_to_sign)
+            .into_iter()
+            .collect();
 
-        let serialized = data.to_bytes().unwrap();
+        let past_finality_signatures =
+            PastFinalitySignatures::from_validator_set(&public_keys, all_validators.iter());
+
+        let serialized = past_finality_signatures.to_bytes().unwrap();
         let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
 
-        assert_eq!(data, deserialized);
+        assert_eq!(public_keys, deserialized.into_validator_set(all_validators));
         assert_eq!(rest, &[0u8; 0]);
     }
 }
@@ -217,5 +251,5 @@ impl PastFinalitySignatures {
 
 /// Divides by 8 but round to the higher integer.
 fn div_by_8_ceil(n: usize) -> usize {
-    n / 8 + usize::from(n % 8 != 0)
+    (n + 7) / 8
 }

@@ -288,8 +288,8 @@ impl BlockPayload {
         self.deploy_hashes().chain(self.transfer_hashes())
     }
 
-    /// The list of deploy hashes chained with the list of transfer hashes.
-    pub fn past_finality_signatures(&self) -> &PastFinalitySignatures {
+    /// The finality signature for the past block defined by the lag from the chainspec.
+    pub(crate) fn past_finality_signatures(&self) -> &PastFinalitySignatures {
         &self.past_finality_signatures
     }
 
