@@ -15,6 +15,7 @@ pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
 /// Description of the costs of calling `handle_payment` entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct HandlePaymentCosts {
     /// Cost of calling the `get_payment_purse` entry point.
     pub get_payment_purse: u32,

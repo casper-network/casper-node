@@ -24,7 +24,7 @@ use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     testing::TestRng,
-    CLValue, StoredValue, URef, U512,
+    CLValue, EraId, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -440,6 +440,7 @@ impl reactor::Reactor for Reactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
             "test",
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),

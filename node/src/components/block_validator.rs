@@ -12,7 +12,7 @@ mod keyed_counter;
 mod tests;
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     sync::Arc,
 };
@@ -28,7 +28,7 @@ use casper_types::Timestamp;
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        fetcher::EmptyValidationMetadata,
+        fetcher::{EmptyValidationMetadata, FetchedData},
         Component,
     },
     effect::{
@@ -42,8 +42,6 @@ use crate::{
     NodeRng,
 };
 use keyed_counter::KeyedCounter;
-
-use crate::components::fetcher::FetchedData;
 
 const COMPONENT_NAME: &str = "block_validator";
 
@@ -90,7 +88,7 @@ pub(crate) enum Event {
     #[display(fmt = "{} found", dt_hash)]
     DeployFound {
         dt_hash: DeployOrTransferHash,
-        deploy_info: Box<DeployFootprint>,
+        deploy_footprint: Box<DeployFootprint>,
     },
 
     /// A request to find a specific deploy, potentially from a peer, failed.
@@ -109,33 +107,14 @@ pub(crate) enum Event {
 pub(crate) struct BlockValidationState {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
-    /// The deploys that have not yet been "crossed off" the list of potential misses.
     /// The set of approvals contains approvals from deploys that would be finalized with the
     /// block.
     missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<Approval>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
-    /// Peers that should have the data.
-    sources: VecDeque<NodeId>,
 }
 
 impl BlockValidationState {
-    /// Adds alternative source of data.
-    /// Returns true if we already know about the peer.
-    fn add_source(&mut self, peer: NodeId) -> bool {
-        if self.sources.contains(&peer) {
-            true
-        } else {
-            self.sources.push_back(peer);
-            false
-        }
-    }
-
-    /// Returns a peer, if there is any, that we haven't yet tried.
-    fn source(&mut self) -> Option<NodeId> {
-        self.sources.pop_front()
-    }
-
     fn respond<REv>(&mut self, value: bool) -> Effects<REv> {
         self.responders
             .drain(..)
@@ -231,47 +210,37 @@ where
                     return responder.respond(false).ignore();
                 }
 
-                match self.validation_states.entry(block) {
-                    Entry::Occupied(mut entry) => {
-                        // The entry already exists.
-                        if entry.get().missing_deploys.is_empty() {
-                            // Block has already been validated successfully, early return to
-                            // caller.
-                            effects.extend(responder.respond(true).ignore());
-                        } else {
-                            // We register ourselves as someone interested in the ultimate
-                            // validation result.
-                            entry.get_mut().responders.push(responder);
-                            // And add an alternative source of data.
-                            entry.get_mut().add_source(sender);
-                        }
-                    }
-                    Entry::Vacant(entry) => {
-                        // Our entry is vacant - create an entry to track the state.
-                        let in_flight = &mut self.in_flight;
-                        effects.extend(entry.key().deploys_and_transfers_iter().flat_map(
-                            |(dt_hash, _)| {
-                                // For every request, increase the number of in-flight...
-                                in_flight.inc(&dt_hash.into());
-                                // ...then request it.
-                                fetch_deploy(effect_builder, dt_hash, sender)
-                            },
-                        ));
-                        let block_timestamp = entry.key().timestamp();
-                        let deploy_config = self.chainspec.deploy_config;
-                        entry.insert(BlockValidationState {
-                            appendable_block: AppendableBlock::new(deploy_config, block_timestamp),
-                            missing_deploys: block_deploys,
-                            responders: smallvec![responder],
-                            sources: VecDeque::new(), /* This is empty b/c we create the first
-                                                       * request using `sender`. */
-                        });
-                    }
+                let block_timestamp = block.timestamp();
+                let state = self
+                    .validation_states
+                    .entry(block)
+                    .or_insert(BlockValidationState {
+                        appendable_block: AppendableBlock::new(
+                            self.chainspec.deploy_config,
+                            block_timestamp,
+                        ),
+                        missing_deploys: block_deploys.clone(),
+                        responders: smallvec![],
+                    });
+
+                if state.missing_deploys.is_empty() {
+                    // Block has already been validated successfully, early return to caller.
+                    return responder.respond(true).ignore();
                 }
+
+                // We register ourselves as someone interested in the ultimate validation result.
+                state.responders.push(responder);
+
+                effects.extend(block_deploys.into_iter().flat_map(|(dt_hash, _)| {
+                    // For every request, increase the number of in-flight...
+                    self.in_flight.inc(&dt_hash.into());
+                    // ...then request it.
+                    fetch_deploy(effect_builder, dt_hash, sender)
+                }));
             }
             Event::DeployFound {
                 dt_hash,
-                deploy_info,
+                deploy_footprint,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
                 self.in_flight.dec(&dt_hash.into());
@@ -289,18 +258,18 @@ where
                             DeployOrTransferHash::Deploy(hash) => {
                                 state.appendable_block.add_deploy(
                                     DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &deploy_info,
+                                    &deploy_footprint,
                                 )
                             }
                             DeployOrTransferHash::Transfer(hash) => {
                                 state.appendable_block.add_transfer(
                                     DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &deploy_info,
+                                    &deploy_footprint,
                                 )
                             }
                         };
                         if let Err(err) = add_result {
-                            info!(block = ?key, %dt_hash, ?deploy_info, ?err, "block invalid");
+                            info!(block = ?key, %dt_hash, ?deploy_footprint, ?err, "block invalid");
                             invalid.push(key.clone());
                         }
                     }
@@ -328,43 +297,18 @@ where
                     return Effects::new();
                 }
 
-                // Flag indicating whether we've retried fetching the deploy.
-                let mut retried = false;
-
                 self.validation_states.retain(|key, state| {
                     if !state.missing_deploys.contains_key(&dt_hash) {
                         return true;
                     }
-                    if retried {
-                        // We don't want to retry downloading the same element more than once.
-                        return true;
-                    }
-                    match state.source() {
-                        Some(peer) => {
-                            info!(%dt_hash, ?peer, "trying the next peer");
-                            // There's still hope to download the deploy.
-                            effects.extend(fetch_deploy(effect_builder, dt_hash, peer));
-                            retried = true;
-                            true
-                        }
-                        None => {
-                            // Notify everyone still waiting on it that all is lost.
-                            info!(
-                                block = ?key, %dt_hash,
-                                "could not validate the deploy. block is invalid"
-                            );
-                            // This validation state contains a failed deploy hash, it can never
-                            // succeed.
-                            effects.extend(state.respond(false));
-                            false
-                        }
-                    }
-                });
 
-                if retried {
-                    // If we retried, we need to increase this counter.
-                    self.in_flight.inc(&dt_hash.into());
-                }
+                    // Notify everyone still waiting on it that all is lost.
+                    info!(block = ?key, %dt_hash, "could not validate the deploy. block is invalid");
+                    // This validation state contains a deploy hash we failed to fetch from all
+                    // sources, it can never succeed.
+                    effects.extend(state.respond(false));
+                    false
+                });
             }
             Event::CannotConvertDeploy(dt_hash) => {
                 // Deploy is invalid. There's no point waiting for other in-flight requests to
@@ -432,9 +376,9 @@ where
             return Event::CannotConvertDeploy(dt_hash);
         }
         match deploy.footprint() {
-            Ok(deploy_info) => Event::DeployFound {
+            Ok(deploy_footprint) => Event::DeployFound {
                 dt_hash,
-                deploy_info: Box::new(deploy_info),
+                deploy_footprint: Box::new(deploy_footprint),
             },
             Err(error) => {
                 warn!(

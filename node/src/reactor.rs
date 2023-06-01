@@ -55,8 +55,11 @@ use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
+use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
+
+#[cfg(target_os = "linux")]
+use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
     components::{
@@ -75,11 +78,7 @@ use crate::{
         TrieOrChunk,
     },
     unregister_metric,
-    utils::{
-        self,
-        rlimit::{Limit, OpenFiles, ResourceLimit},
-        SharedFlag, WeightedRoundRobin,
-    },
+    utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
 };
 pub(crate) use queue_kind::QueueKind;
@@ -103,9 +102,11 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
+#[cfg(target_os = "linux")]
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
+#[cfg(target_os = "linux")]
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
@@ -131,16 +132,22 @@ fn adjust_open_files_limit() {
                 if let Err(err) = new_limit.set() {
                     warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
                 } else {
-                    debug!(?new_limit, "successfully increased open files limit");
+                    tracing::debug!(?new_limit, "successfully increased open files limit");
                 }
             } else {
-                debug!(
+                tracing::debug!(
                     ?current_limit,
                     "not changing open files limit, already sufficient"
                 );
             }
         }
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+/// File handle limit adjustment shim.
+fn adjust_open_files_limit() {
+    info!("not on linux, not adjusting open files limit");
 }
 
 /// Event scheduler
@@ -832,7 +839,7 @@ where
         self.is_shutting_down.set();
         self.scheduler.seal();
         for (ancestor, event) in self.scheduler.drain_queues().await {
-            debug!(?ancestor, %event, "drained event");
+            tracing::debug!(?ancestor, %event, "drained event");
         }
         self.reactor
     }

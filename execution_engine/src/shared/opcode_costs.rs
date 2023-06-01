@@ -1,9 +1,9 @@
 //! Support for Wasm opcode costs.
 use std::{convert::TryInto, num::NonZeroU32};
 
+use casper_wasm_utils::rules::{MemoryGrowCost, Rules};
 use datasize::DataSize;
 use parity_wasm::elements::Instruction;
-use pwasm_utils::rules::{MemoryGrowCost, Rules};
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -51,23 +51,23 @@ pub const DEFAULT_CONTROL_FLOW_ELSE_OPCODE: u32 = 440;
 /// Default cost of the `end` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_END_OPCODE: u32 = 440;
 /// Default cost of the `br` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_OPCODE: u32 = 440000;
+pub const DEFAULT_CONTROL_FLOW_BR_OPCODE: u32 = 440_000;
 /// Default cost of the `br_if` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 440000;
-/// Default fixed cost of the `br_table` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 440000;
-/// Default multiplier for the size of targets in `br_table` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
+pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 440_000;
 /// Default cost of the `return` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_RETURN_OPCODE: u32 = 440;
-/// Default cost of the `call` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_CALL_OPCODE: u32 = 440;
-/// Default cost of the `call_indirect` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE: u32 = 440;
-/// Default cost of the `drop` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_DROP_OPCODE: u32 = 440;
 /// Default cost of the `select` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_SELECT_OPCODE: u32 = 440;
+/// Default cost of the `call` Wasm opcode.
+pub const DEFAULT_CONTROL_FLOW_CALL_OPCODE: u32 = 140_000;
+/// Default cost of the `call_indirect` Wasm opcode.
+pub const DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE: u32 = 140_000;
+/// Default cost of the `drop` Wasm opcode.
+pub const DEFAULT_CONTROL_FLOW_DROP_OPCODE: u32 = 440;
+/// Default fixed cost of the `br_table` Wasm opcode.
+pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 440_000;
+/// Default multiplier for the size of targets in `br_table` Wasm opcode.
+pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 
 /// Definition of a cost table for a Wasm `br_table` opcode.
 ///
@@ -78,6 +78,7 @@ pub const DEFAULT_CONTROL_FLOW_SELECT_OPCODE: u32 = 440;
 /// ```
 // This is done to encourage users to avoid writing code with very long `br_table`s.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct BrTableCost {
     /// Fixed cost charge for `br_table` opcode.
     pub cost: u32,
@@ -144,6 +145,7 @@ impl FromBytes for BrTableCost {
 
 /// Definition of a cost table for a Wasm control flow opcodes.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct ControlFlowCosts {
     /// Cost for `block` opcode.
     pub block: u32,
@@ -324,6 +326,7 @@ impl Distribution<ControlFlowCosts> for Standard {
 ///
 /// This is taken (partially) from parity-ethereum.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct OpcodeCosts {
     /// Bit operations multiplier.
     pub bit: u32,

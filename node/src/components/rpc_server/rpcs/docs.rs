@@ -17,7 +17,9 @@ use casper_types::ProtocolVersion;
 
 use super::{
     account::PutDeploy,
-    chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
+    chain::{
+        GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
+    },
     info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
     state::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
@@ -28,7 +30,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 4, 13);
+    ProtocolVersion::from_parts(1, 5, 0);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -102,6 +104,10 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetAuctionInfo>(
         "returns the bids and validators as of either a specific block (by height or hash), or \
         the most recently added block",
+    );
+    schema.push_with_optional_params::<GetEraSummary>(
+        "returns the era summary at either a specific block (by height or hash), or the most \
+        recently added block",
     );
 
     schema

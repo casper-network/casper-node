@@ -10,7 +10,7 @@
 function get_bootstrap_known_address()
 {
     local NODE_ID=${1}
-    local NET_ID=${NET_ID:-1}    
+    local NET_ID=${NET_ID:-1}
     local NODE_PORT=$((NCTL_BASE_PORT_NETWORK + (NET_ID * 100) + NODE_ID))
 
     echo "'127.0.0.1:$NODE_PORT'"
@@ -37,7 +37,7 @@ function get_count_of_genesis_nodes()
 # Returns count of all network nodes.
 #######################################
 function get_count_of_nodes()
-{    
+{
     find "$(get_path_to_net)"/nodes/* -maxdepth 0 -type d | wc -l
 }
 
@@ -54,7 +54,7 @@ function get_count_of_up_nodes()
         if [ "$(get_node_is_up "$NODE_ID")" == true ]; then
             COUNT=$((COUNT + 1))
         fi
-    done    
+    done
 
     echo $COUNT
 }
@@ -63,7 +63,7 @@ function get_count_of_up_nodes()
 # Returns count of test users.
 #######################################
 function get_count_of_users()
-{    
+{
     find "$(get_path_to_net)"/users/* -maxdepth 0 -type d | wc -l
 }
 
@@ -76,7 +76,7 @@ function get_network_bind_address()
 {
     local NODE_ID=${1}
 
-    echo "0.0.0.0:$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")"   
+    echo "0.0.0.0:$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")"
 }
 
 #######################################
@@ -113,7 +113,7 @@ function get_network_known_addresses()
 #######################################
 function get_node_address_event()
 {
-    local NODE_ID=${1}    
+    local NODE_ID=${1}
 
     echo "http://localhost:$(get_node_port "$NCTL_BASE_PORT_SSE" "$NODE_ID")"
 }
@@ -125,7 +125,7 @@ function get_node_address_event()
 #######################################
 function get_node_address_rest()
 {
-    local NODE_ID=${1}   
+    local NODE_ID=${1}
 
     echo "http://localhost:$(get_node_port "$NCTL_BASE_PORT_REST" "$NODE_ID")"
 }
@@ -137,7 +137,7 @@ function get_node_address_rest()
 #######################################
 function get_node_address_rpc()
 {
-    local NODE_ID=${1}      
+    local NODE_ID=${1}
 
     echo "http://localhost:$(get_node_port "$NCTL_BASE_PORT_RPC" "$NODE_ID")"
 }
@@ -149,7 +149,7 @@ function get_node_address_rpc()
 #######################################
 function get_node_address_rpc_for_curl()
 {
-    local NODE_ID=${1}   
+    local NODE_ID=${1}
 
     echo "$(get_node_address_rpc "$NODE_ID")/rpc"
 }
@@ -177,9 +177,9 @@ function get_node_for_dispatch()
 #######################################
 function get_node_is_up()
 {
-    local NODE_ID=${1}  
-    local NODE_PORT  
-    
+    local NODE_ID=${1}
+    local NODE_PORT
+
     NODE_PORT=$(get_node_port_rpc "$NODE_ID")
 
     if grep -q "$NODE_PORT (LISTEN)" <<< "$(lsof -i -P -n)"; then
@@ -197,9 +197,9 @@ function get_node_is_up()
 #######################################
 function get_node_port()
 {
-    local BASE_PORT=${1}    
-    local NODE_ID=${2:-$(get_node_for_dispatch)}    
-    local NET_ID=${NET_ID:-1}    
+    local BASE_PORT=${1}
+    local NODE_ID=${2:-$(get_node_for_dispatch)}
+    local NET_ID=${NET_ID:-1}
 
     # TODO: Need to handle case of more than 99 nodes.
     echo $((BASE_PORT + (NET_ID * 100) + NODE_ID))
@@ -212,7 +212,7 @@ function get_node_port()
 #######################################
 function get_node_port_speculative_exec()
 {
-    local NODE_ID=${1}    
+    local NODE_ID=${1}
 
     get_node_port "$NCTL_BASE_PORT_SPEC_EXEC" "$NODE_ID"
 }
@@ -224,7 +224,7 @@ function get_node_port_speculative_exec()
 #######################################
 function get_node_port_rest()
 {
-    local NODE_ID=${1}    
+    local NODE_ID=${1}
 
     get_node_port "$NCTL_BASE_PORT_REST" "$NODE_ID"
 }
@@ -236,7 +236,7 @@ function get_node_port_rest()
 #######################################
 function get_node_port_rpc()
 {
-    local NODE_ID=${1}    
+    local NODE_ID=${1}
 
     get_node_port "$NCTL_BASE_PORT_RPC" "$NODE_ID"
 }
@@ -248,7 +248,7 @@ function get_node_port_rpc()
 #######################################
 function get_node_port_sse()
 {
-    local NODE_ID=${1}    
+    local NODE_ID=${1}
 
     get_node_port "$NCTL_BASE_PORT_SSE" "$NODE_ID"
 }
@@ -260,7 +260,7 @@ function get_node_port_sse()
 #######################################
 function get_node_staking_weight()
 {
-    local NODE_ID=${1}    
+    local NODE_ID=${1}
 
     echo $((NCTL_VALIDATOR_BASE_WEIGHT + NODE_ID))
 }
@@ -280,11 +280,11 @@ function get_process_group_members()
     if [ "$PROCESS_GROUP" == "$NCTL_PROCESS_GROUP_1" ]; then
         SEQ_START=1
         SEQ_END=$(get_count_of_bootstrap_nodes)
-    
+
     elif [ "$PROCESS_GROUP" == "$NCTL_PROCESS_GROUP_2" ]; then
         SEQ_START=$(($(get_count_of_bootstrap_nodes) + 1))
         SEQ_END=$(get_count_of_genesis_nodes)
-    
+
     elif [ "$PROCESS_GROUP" == "$NCTL_PROCESS_GROUP_3" ]; then
         SEQ_START=$(($(get_count_of_genesis_nodes) + 1))
         SEQ_END=$(get_count_of_nodes)
@@ -311,9 +311,9 @@ function get_process_group_members()
 #######################################
 function get_process_name_of_node()
 {
-    local NODE_ID=${1} 
-    local NET_ID=${NET_ID:-1}    
-    
+    local NODE_ID=${1}
+    local NET_ID=${NET_ID:-1}
+
     echo "casper-net-$NET_ID-node-$NODE_ID"
 }
 
@@ -324,13 +324,13 @@ function get_process_name_of_node()
 #######################################
 function get_process_name_of_node_in_group()
 {
-    local NODE_ID=${1} 
+    local NODE_ID=${1}
     local NODE_PROCESS_NAME
     local PROCESS_GROUP_NAME
 
     NODE_PROCESS_NAME=$(get_process_name_of_node "$NODE_ID")
     PROCESS_GROUP_NAME=$(get_process_name_of_node_group "$NODE_ID")
-    
+
     echo "$PROCESS_GROUP_NAME:$NODE_PROCESS_NAME"
 }
 
@@ -342,8 +342,8 @@ function get_process_name_of_node_in_group()
 #######################################
 function get_process_name_of_node_group()
 {
-    local NODE_ID=${1} 
-    
+    local NODE_ID=${1}
+
     if [ "$NODE_ID" -le "$(get_count_of_bootstrap_nodes)" ]; then
         echo "$NCTL_PROCESS_GROUP_1"
     elif [ "$NODE_ID" -le "$(get_count_of_genesis_nodes)" ]; then
@@ -360,3 +360,36 @@ function get_count_of_started_nodes()
 {
     nctl-status | grep -v 'Not started' | wc -l
 }
+
+
+#######################################
+# Returns only if the chain has reached genesis (interpreted as era>=2)
+#######################################
+function do_await_genesis_era_to_complete() {
+    local LOG_STEP=${1:-'true'}
+    local TIMEOUT=${2:-'240'}
+    local CURRENT_ERA
+
+    if [ "$LOG_STEP" = "true" ]; then
+        log_step "awaiting genesis era to complete: timeout=$TIMEOUT"
+    fi
+
+    while :
+    do
+        CURRENT_ERA=$(get_chain_era)
+        if [ "$CURRENT_ERA" -ge "2" ]
+        then
+            log "genesis reached, era=$CURRENT_ERA"
+            return
+        fi
+        TIMEOUT=$((TIMEOUT-1))
+        if [ "$TIMEOUT" = '0' ]; then
+            log "ERROR: Timed out before genesis era completed"
+            exit 1
+        else
+            log "... waiting for genesis era to complete: timeout=$TIMEOUT, current era=$CURRENT_ERA"
+        fi
+        sleep 1.0
+    done
+}
+

@@ -90,7 +90,10 @@ impl SyncLeaper {
         })
     }
 
-    // called from Reactor control logic to scrape results
+    /// Returns whether a sync leap is ongoing or completed and its state if so.
+    ///
+    /// If a sync leap has been completed, successfully or not, the results are returned and the
+    /// attempt is removed, effectively making the component idle.
     pub(crate) fn leap_status(&mut self) -> LeapState {
         match &self.leap_activity {
             None => LeapState::Idle,
@@ -112,6 +115,14 @@ impl SyncLeaper {
                 }
                 result
             }
+        }
+    }
+
+    /// Causes any ongoing sync leap attempt to be abandoned, i.e. results gathered so far are
+    /// dropped and responses received later for this attempt are ignored.
+    pub(crate) fn purge(&mut self) {
+        if let Some(activity) = self.leap_activity.take() {
+            debug!(identifier = %activity.sync_leap_identifier(), "purging sync leap");
         }
     }
 

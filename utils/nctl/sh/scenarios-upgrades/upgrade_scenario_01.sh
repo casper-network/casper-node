@@ -65,7 +65,7 @@ function _step_01()
     source "$NCTL/sh/node/start.sh" node=all
 }
 
-# Step 02: Await era-id >= 1.
+# Step 02: Await for genesis
 function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"

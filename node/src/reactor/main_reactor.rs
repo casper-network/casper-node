@@ -1006,12 +1006,20 @@ impl reactor::Reactor for MainReactor {
             &storage_config,
             hard_reset_to_start_of_era,
             protocol_version,
+            chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
         )?;
+
+        let max_delegators_per_validator =
+            if chainspec.core_config.max_delegators_per_validator == 0 {
+                None
+            } else {
+                Some(chainspec.core_config.max_delegators_per_validator)
+            };
 
         let contract_runtime = ContractRuntime::new(
             protocol_version,
@@ -1022,8 +1030,11 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.max_associated_keys,
             chainspec.core_config.max_runtime_call_stack_height,
             chainspec.core_config.minimum_delegation_amount,
+            chainspec.protocol_config.activation_point,
+            chainspec.core_config.prune_batch_size,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
+            max_delegators_per_validator,
             registry,
         )?;
 

@@ -22,7 +22,7 @@ function main() {
     # 1. Verify network is creating blocks
     do_await_n_blocks '5'
     # 2. Verify network is in sync
-    check_network_sync 1 5
+    parallel_check_network_sync 1 5
     # 3. Background transfers so we can stop the node mid-stream
     do_background_wasmless_transfers '5'
     # 4. Stop node being sent transfers
@@ -34,7 +34,7 @@ function main() {
     do_read_lfb_hash '1'
     do_start_node '5' "$LFB_HASH"
     # 7. Verify network is in sync
-    check_network_sync 1 5
+    parallel_check_network_sync 1 5
     # 8. Give the transfers a chance to be included
     do_await_n_blocks '30'
     # 9. Walkback and verify transfers were included in blocks
@@ -70,7 +70,7 @@ function do_background_wasmless_transfers() {
 function check_transfer_inclusion() {
     local NODE_ID=${1}
     local WALKBACK=${2}
-    local TRANSFER_HASHES=$(cat "$DEPLOY_LOG" | awk -F'::' '{print $4}' | sed 's/^[ \t]*//' | sed '/^[[:space:]]*$/d')
+    local TRANSFER_HASHES=$(cat "$DEPLOY_LOG" | awk -F'::' '{print $4}' | sed 's/^[ \t]*//' | sed '/^[[:space:]]*$/d' | sed '/FAILED to send/d')
     local TRANSFER_COUNT=$(echo "$TRANSFER_HASHES" | wc -l)
     local HASH
     log_step "Checking transfer inclusion..."

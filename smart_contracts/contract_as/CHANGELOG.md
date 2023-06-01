@@ -11,10 +11,31 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 1.5.0-rc.1
 
 ### Added
 * Add `casper_random_bytes` function.
+
+
+
+## 1.4.15-alt
+
+### Changed
+* Version bump to match casper-node version.
+
+
+
+## 1.4.15
+
+### Changed
+* Version bump to match casper-node version.
+
+
+
+## 1.4.14
+
+### Changed
+* Version bump to match casper-node version.
 
 
 

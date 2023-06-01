@@ -9,15 +9,15 @@ pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
 /// Default cost of the `read_seigniorage_recipients` auction entry point.
 pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 /// Default cost of the `add_bid` auction entry point.
-pub const DEFAULT_ADD_BID_COST: u32 = 10_000;
+pub const DEFAULT_ADD_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
-pub const DEFAULT_WITHDRAW_BID_COST: u32 = 10_000;
+pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `delegate` auction entry point.
-pub const DEFAULT_DELEGATE_COST: u32 = 10_000;
+pub const DEFAULT_DELEGATE_COST: u32 = 2_500_000_000;
 /// Default cost of the `redelegate` auction entry point.
-pub const DEFAULT_REDELEGATE_COST: u32 = 10_000;
+pub const DEFAULT_REDELEGATE_COST: u32 = 2_500_000_000;
 /// Default cost of the `undelegate` auction entry point.
-pub const DEFAULT_UNDELEGATE_COST: u32 = 10_000;
+pub const DEFAULT_UNDELEGATE_COST: u32 = 2_500_000_000;
 /// Default cost of the `run_auction` auction entry point.
 pub const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
 /// Default cost of the `slash` auction entry point.
@@ -35,6 +35,7 @@ pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct AuctionCosts {
     /// Cost of calling the `get_era_validators` entry point.
     pub get_era_validators: u32,

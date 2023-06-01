@@ -12,13 +12,14 @@ use super::{
 /// Default maximum number of pages of the Wasm memory.
 pub const DEFAULT_WASM_MAX_MEMORY: u32 = 64;
 /// Default maximum stack height.
-pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 188;
+pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 200;
 
 /// Configuration of the Wasm execution environment.
 ///
 /// This structure contains various Wasm execution configuration options, such as memory limits,
 /// stack limits and costs.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct WasmConfig {
     /// Maximum amount of heap memory (represented in 64kB pages) each contract can use.
     pub max_memory: u32,

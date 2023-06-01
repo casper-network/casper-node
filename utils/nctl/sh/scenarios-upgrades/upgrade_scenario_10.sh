@@ -3,13 +3,12 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1 running at ProtocolVersion 1_3_0 commit.
+# 1. Start v1 running at ProtocolVersion 1_4_5 commit.
 # 2. Waits for genesis era to complete.
 # 3. Query auction-info at block height 1.
 # 4. Run through an upgrade
 # 5. Query auction-info at block height 1 and compare with previous result.
-# 6. Run Health Checks
-# 7. Successful test cleanup.
+# 6. Successful test cleanup.
 
 # ----------------------------------------------------------------
 # Imports.
@@ -17,7 +16,6 @@
 
 source "$NCTL/sh/utils/main.sh"
 source "$NCTL/sh/node/svc_$NCTL_DAEMON_TYPE".sh
-source "$NCTL/sh/scenarios/common/itst.sh"
 
 # ----------------------------------------------------------------
 # MAIN
@@ -41,26 +39,17 @@ function _main()
       _step_04
       _step_05
       _step_06
-      _step_07
 }
 
 # Step 01: Start network from pre-built stage.
 function _step_01()
 {
     local STAGE_ID=${1}
-    local PATH_TO_STAGE
-    local PATH_TO_PROTO1
-
-    PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
-    pushd "$PATH_TO_STAGE"
-    PATH_TO_PROTO1=$(ls -d */ | sort | head -n 1 | tr -d '/')
-    popd
 
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID" \
-            chainspec_path="$NCTL/remotes/1.3.0/chainspec.toml.in"
+            stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -68,15 +57,45 @@ function _step_01()
 function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
+    await_n_eras '1' 'true' '5.0'
+}
 
-    do_await_genesis_era_to_complete 'false'
+function assert_present_era_infos() {
+    local NODE_ID=${1}
+    local BLOCK=$(nctl-view-chain-block)
+    local CURRENT_ERA_ID=$(jq -r '.header.era_id' <<< "$BLOCK")
+    local SEQ_END=$(($CURRENT_ERA_ID-1))
+    local STATE_ROOT_HASH=$(jq -r '.header.state_root_hash' <<< "$BLOCK")
+    log "state root hash $STATE_ROOT_HASH"
+    local total=0
+    for i in $(seq 0 $SEQ_END);
+    do
+        OUTPUT=$($(get_path_to_client) \
+            query-global-state \
+            --node-address "$(get_node_address_rpc "$NODE_ID")" \
+            --state-root-hash "$STATE_ROOT_HASH" \
+            --key era-$i)
+        RESULT="$?"
+        if [ $RESULT -eq 0 ]; then
+            local total=$(($total+1))
+        else
+            log Unable to query era $i
+            log $OUTPUT
+            exit 1
+        fi
+    done
+    if [ ! $total -eq $CURRENT_ERA_ID ]; then
+        log "Expected $CURRENT_ERA_ID era infos but queried $total"
+        exit 1
+    fi
 }
 
 # Step 03: Query auction info
 function _step_03() {
-    log_step_upgrades 3 "querying for historical information"
+    local NODE_ID=${1}
+    log_step_upgrades 3 "querying for latest era infos"
 
-    HISTORIC_AUCTION_INFO="$(get_auction_state_at_block_1)"
+    assert_present_era_infos
 }
 
 # Step 04: Upgrade network from stage.
@@ -89,51 +108,63 @@ function _step_04()
     log "... setting upgrade assets"
     source "$NCTL/sh/assets/upgrade_from_stage.sh" \
         stage="$STAGE_ID" \
-        chainspec_path="$NCTL_CASPER_HOME/resources/local/chainspec.toml.in" \
-        verbose=false
+        verbose=false \
+        chainspec_path="$NCTL/overrides/upgrade_scenario_10.post.chainspec.toml.in"
 
-    log "... awaiting 2 eras + 1 block"
-    nctl-await-n-eras offset='2' sleep_interval='5.0' timeout='180'
-    await_n_blocks 1
+    log "... awaiting era"
+
+    # previous protocol had era id of 1, and new version apparently activates at era 3
+    await_n_eras '2' 'true' '5.0'
+    log "... awaiting multiple blocks"
+    await_n_blocks 5
 }
 
 function _step_05() {
-    log_step_upgrades 5 "querying for historical information after upgrade"
+    log_step_upgrades 5 "... asserting that there are no era infos present in the global state"
+    local NODE_ID=${1}
+    local BLOCK=$(nctl-view-chain-block)
 
-    local AUCTION_INFO="$(get_auction_state_at_block_1)"
-
-    if [ "$AUCTION_INFO" != "$HISTORIC_AUCTION_INFO" ]; then
-      log "Error auction info does not match"
-      echo "$AUCTION_INFO"
-      echo "$HISTORIC_AUCTION_INFO"
-      exit 1
+    local CURRENT_ERA_ID=$(jq -r '.header.era_id' <<< "$BLOCK")
+    local SEQ=$(($CURRENT_ERA_ID-1))
+    local STATE_ROOT_HASH=$(jq -r '.header.state_root_hash' <<< "$BLOCK")
+    log "state root hash $STATE_ROOT_HASH"
+    local TOTAL=0
+    set +e
+    for i in $(seq 0 $SEQ);
+    do
+        OUTPUT=$($(get_path_to_client) \
+            query-global-state \
+            --node-address "$(get_node_address_rpc "$NODE_ID")" \
+            --state-root-hash "$STATE_ROOT_HASH" \
+            --key era-$i)
+        RESULT="$?"
+        if [ $RESULT -eq 0 ]; then
+            TOTAL=$(($TOTAL+1))
+        else
+            log "Querying for era $i output"
+            log "$OUTPUT"
+        fi
+    done
+    set -e
+    log "found $TOTAL era infos for a total of $CURRENT_ERA_ID eras"
+    if [ ! $TOTAL -eq 0 ]; then
+        log "Should have 0 era infos total..."
+        exit 1
+    else
+        log "Success!"
     fi
-
 }
 
-# Step 06: Run NCTL health checks
+# Step 06: Terminate.
 function _step_06()
 {
-    # restarts=5 - Nodes that upgrade
-    log_step_upgrades 9 "running health checks"
-    source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='0' \
-            equivocators='0' \
-            doppels='0' \
-            crashes=0 \
-            restarts=5 \
-            ejections=0
-}
-
-# Step 07: Terminate.
-function _step_07()
-{
-    log_step_upgrades 7 "test successful - tidying up"
+    log_step_upgrades 6 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
     log_break
 }
+
 
 #######################################
 # Returns auction info at a block

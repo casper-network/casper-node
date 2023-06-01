@@ -7,6 +7,7 @@ pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
 pub(crate) mod opt_display;
+#[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
 pub(crate) mod specimen;

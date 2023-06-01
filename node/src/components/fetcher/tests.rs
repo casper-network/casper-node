@@ -277,6 +277,7 @@ impl ReactorTrait for Reactor {
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
             chainspec.hard_reset_to_start_of_era(),
             chainspec.protocol_config.version,
+            chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.unbonding_delay,

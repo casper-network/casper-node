@@ -21,8 +21,8 @@ use crate::{
         trie_store::{
             in_memory::InMemoryTrieStore,
             operations::{
-                self, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
-                ReadResult, WriteResult,
+                self, delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
+                DeleteResult, ReadResult, WriteResult,
             },
         },
     },
@@ -282,6 +282,31 @@ impl StateProvider for InMemoryGlobalState {
             >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
+    }
+
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        mut root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<DeleteResult, Self::Error> {
+        let mut txn = self.environment.create_read_write_txn()?;
+        for key in keys_to_delete {
+            match delete::<Key, StoredValue, _, _, Self::Error>(
+                correlation_id,
+                &mut txn,
+                self.trie_store.deref(),
+                &root,
+                key,
+            )? {
+                DeleteResult::Deleted(state) => {
+                    root = state;
+                }
+                other => return Ok(other),
+            }
+        }
+        txn.commit()?;
+        Ok(DeleteResult::Deleted(root))
     }
 }
 

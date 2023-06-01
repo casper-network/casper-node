@@ -192,6 +192,7 @@ where
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
+    max_delegators_per_validator: Option<u32>,
 ) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller.into());
@@ -220,15 +221,29 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
                                         provider,
                                         new_validator.clone().to_account_hash(),
                                     )?;
-                                    handle_delegation(
-                                        provider,
-                                        bid,
-                                        unbonding_purse.unbonder_public_key().clone(),
-                                        new_validator.clone(),
-                                        *unbonding_purse.bonding_purse(),
-                                        *unbonding_purse.amount(),
-                                    )
-                                    .map(|_| ())?
+
+                                    if is_under_max_delegator_cap(
+                                        max_delegators_per_validator,
+                                        new_validator_bid.delegators().len(),
+                                    ) {
+                                        handle_delegation(
+                                            provider,
+                                            bid,
+                                            unbonding_purse.unbonder_public_key().clone(),
+                                            new_validator.clone(),
+                                            *unbonding_purse.bonding_purse(),
+                                            *unbonding_purse.amount(),
+                                        )
+                                        .map(|_| ())?
+                                    } else {
+                                        // Move funds from bid purse to unbonding purse
+                                        provider.unbond(unbonding_purse).map_err(|err| {
+                                            error!(
+                                            "Error unbonding purse {err:?} (delegator cap reached for new validator)"
+                                        );
+                                            ApiError::from(Error::TransferToUnbondingPurse)
+                                        })?
+                                    }
                                 } else {
                                     // Move funds from bid purse to unbonding purse
                                     provider.unbond(unbonding_purse).map_err(|err| {
@@ -482,4 +497,13 @@ pub(crate) fn era_validators_from_snapshot(
             (era_id, validator_weights)
         })
         .collect()
+}
+
+fn is_under_max_delegator_cap(
+    max_delegators_per_validator: Option<u32>,
+    new_validator_delegator_len: usize,
+) -> bool {
+    max_delegators_per_validator
+        .map(|limit| new_validator_delegator_len < limit as usize)
+        .unwrap_or(true)
 }

@@ -73,7 +73,6 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
 
     let mut rng = casper_types::testing::TestRng::new();
     if upgrade_entries > 0 {
-        println!("Adding {upgrade_entries} global state update entries");
         for _ in 0..upgrade_entries {
             global_state_update.insert(
                 Key::URef(URef::new(rng.gen(), AccessRights::empty())),
@@ -90,7 +89,6 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
             .with_global_state_update(global_state_update)
             .build()
     };
-    println!("starting upgrade");
     let start = Instant::now();
     builder
         .upgrade_with_upgrade_request_using_scratch(
@@ -105,7 +103,6 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         "upgrade took too long! {} (millis)",
         elapsed.as_millis()
     );
-    println!("upgrade took {} millis", elapsed.as_millis());
     let new_contract = builder
         .get_contract(mint_contract_hash)
         .expect("should have mint contract");

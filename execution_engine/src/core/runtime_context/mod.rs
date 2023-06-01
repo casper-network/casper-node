@@ -313,10 +313,6 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
-            Key::Unbond(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
             Key::Dictionary(_) => {
                 self.named_keys.remove(name);
                 Ok(())
@@ -324,6 +320,14 @@ where
             Key::SystemContractRegistry => {
                 error!("should not remove the system contract registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
+            Key::EraSummary => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
+            Key::Unbond(_) => {
+                self.named_keys.remove(name);
+                Ok(())
             }
             Key::ChainspecRegistry => {
                 error!("should not remove the chainspec registry key");
@@ -592,7 +596,7 @@ where
 
     /// Write an era info instance to the global state.
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
-        if let Key::EraInfo(_) = key {
+        if let Key::EraSummary = key {
             // Writing an `EraInfo` for 100 validators will not exceed write size limit.
             self.tracking_copy
                 .borrow_mut()
@@ -785,9 +789,10 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => true,
             Key::Withdraw(_) => true,
-            Key::Unbond(_) => true,
             Key::Dictionary(_) => true,
             Key::SystemContractRegistry => true,
+            Key::EraSummary => true,
+            Key::Unbond(_) => true,
             Key::ChainspecRegistry => true,
             Key::ChecksumRegistry => true,
         }
@@ -804,13 +809,10 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::Unbond(_) => false,
-            Key::Dictionary(_) => {
-                // Dictionary is a special case that will not be readable by default, but the access
-                // bits are verified from within API call.
-                false
-            }
+            Key::Dictionary(_) => false,
             Key::SystemContractRegistry => false,
+            Key::EraSummary => false,
+            Key::Unbond(_) => false,
             Key::ChainspecRegistry => false,
             Key::ChecksumRegistry => false,
         }
@@ -827,13 +829,10 @@ where
             Key::Balance(_) => false,
             Key::Bid(_) => false,
             Key::Withdraw(_) => false,
-            Key::Unbond(_) => false,
-            Key::Dictionary(_) => {
-                // Dictionary is a special case that will not be readable by default, but the access
-                // bits are verified from within API call.
-                false
-            }
+            Key::Dictionary(_) => false,
             Key::SystemContractRegistry => false,
+            Key::EraSummary => false,
+            Key::Unbond(_) => false,
             Key::ChainspecRegistry => false,
             Key::ChecksumRegistry => false,
         }

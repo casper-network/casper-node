@@ -36,7 +36,7 @@ use casper_types::{
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas,
+    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Gas,
     GrantedAccess, Key, NamedArg, Parameter, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
@@ -861,10 +861,17 @@ where
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
+                let max_delegators_per_validator = self.config.max_delegators_per_validator();
                 let minimum_delegation_amount = self.config.minimum_delegation_amount();
 
                 let result = runtime
-                    .delegate(delegator, validator, amount, minimum_delegation_amount)
+                    .delegate(
+                        delegator,
+                        validator,
+                        amount,
+                        max_delegators_per_validator,
+                        minimum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -916,8 +923,14 @@ where
                 let evicted_validators =
                     Self::get_named_argument(runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
+                let max_delegators_per_validator = self.config.max_delegators_per_validator();
+
                 runtime
-                    .run_auction(era_end_timestamp_millis, evicted_validators)
+                    .run_auction(
+                        era_end_timestamp_millis,
+                        evicted_validators,
+                        max_delegators_per_validator,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)
@@ -1813,7 +1826,7 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
         if self.context.base_key() != Key::from(self.context.get_system_contract(AUCTION)?) {
             return Err(Error::InvalidContext);
         }
@@ -1822,7 +1835,7 @@ where
             return Ok(());
         }
 
-        self.context.write_era_info(Key::EraInfo(era_id), era_info);
+        self.context.write_era_info(Key::EraSummary, era_info);
 
         Ok(())
     }

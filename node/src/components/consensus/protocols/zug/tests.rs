@@ -18,7 +18,6 @@ use crate::{
             BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
         },
         traits::Context,
-        EraMessage,
     },
     testing,
     types::BlockPayload,
@@ -87,9 +86,9 @@ fn create_message(
     round_id: RoundId,
     content: Content<ClContext>,
     keypair: &Keypair,
-) -> EraMessage<ClContext> {
+) -> SerializedMessage {
     let signed_msg = create_signed_message(validators, round_id, content, keypair);
-    Message::Signed(signed_msg).into()
+    SerializedMessage::from_message(&Message::Signed(signed_msg))
 }
 
 /// Creates a `Message::Proposal`
@@ -98,17 +97,16 @@ fn create_proposal_message(
     proposal: &Proposal<ClContext>,
     validators: &Validators<PublicKey>,
     keypair: &Keypair,
-) -> EraMessage<ClContext> {
+) -> SerializedMessage {
     let hashed_proposal = HashedProposal::new(proposal.clone());
     let echo_content = Content::Echo(*hashed_proposal.hash());
     let echo = create_signed_message(validators, round_id, echo_content, keypair);
-    Message::Proposal {
+    SerializedMessage::from_message(&Message::Proposal {
         round_id,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         proposal: proposal.clone(),
         echo,
-    }
-    .into()
+    })
 }
 
 /// Removes all `CreatedGossipMessage`s from `outcomes` and returns the messages, after
@@ -121,18 +119,20 @@ fn remove_gossip(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let msg = match outcome {
-            ProtocolOutcome::CreatedGossipMessage(EraMessage::Zug(msg)) => &**msg,
+            ProtocolOutcome::CreatedGossipMessage(serialized_msg) => {
+                serialized_msg.deserialize_expect::<Message<ClContext>>()
+            }
             _ => return true,
         };
         assert_eq!(*msg.instance_id(), expected_instance_id);
-        if let Message::Signed(signed_msg) = msg {
+        if let Message::Signed(ref signed_msg) = msg {
             let public_key = validators
                 .id(signed_msg.validator_idx)
                 .expect("validator ID")
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(msg.clone());
+        result.push(msg);
         false
     });
     result
@@ -204,9 +204,7 @@ fn remove_requests_to_random(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let msg: SyncRequest<ClContext> = match outcome {
-            ProtocolOutcome::CreatedRequestToRandomPeer(msg) => {
-                msg.clone().try_into_zug().expect("Zug request")
-            }
+            ProtocolOutcome::CreatedRequestToRandomPeer(msg) => msg.deserialize_expect(),
             _ => return true,
         };
         assert_eq!(msg.instance_id, expected_instance_id);
@@ -227,21 +225,24 @@ fn remove_targeted_messages(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let (msg, peer) = match outcome {
-            ProtocolOutcome::CreatedTargetedMessage(EraMessage::Zug(msg), peer) => (&**msg, *peer),
+            ProtocolOutcome::CreatedTargetedMessage(serialized_message, peer) => (
+                serialized_message.deserialize_expect::<Message<ClContext>>(),
+                *peer,
+            ),
             _ => return true,
         };
         if peer != expected_peer {
             return true;
         }
         assert_eq!(*msg.instance_id(), expected_instance_id);
-        if let Message::Signed(signed_msg) = msg {
+        if let Message::Signed(ref signed_msg) = msg {
             let public_key = validators
                 .id(signed_msg.validator_idx)
                 .expect("validator ID")
                 .clone();
             assert!(signed_msg.verify_signature(&public_key));
         }
-        result.push(msg.clone());
+        result.push(msg);
         false
     });
     result
@@ -290,7 +291,7 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
     for outcome in outcomes {
         match outcome {
             ProtocolOutcome::FinalizedBlock(fb) => panic!("unexpected finalized block: {:?}", fb),
-            ProtocolOutcome::CreatedGossipMessage(EraMessage::Zug(msg)) => {
+            ProtocolOutcome::CreatedGossipMessage(msg) => {
                 panic!("unexpected gossip message {:?}", msg);
             }
             ProtocolOutcome::CreateNewBlock(block_context) => {
@@ -794,12 +795,16 @@ fn zug_handles_sync_request() {
         faulty: zug.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
         instance_id: *zug.instance_id(),
     };
-    let (outcomes, response) = zug.handle_request_message(&mut rng, sender, msg.into(), timestamp);
+    let (outcomes, response) = zug.handle_request_message(
+        &mut rng,
+        sender,
+        SerializedMessage::from_message(&msg),
+        timestamp,
+    );
     assert_eq!(
         response
             .expect("response")
-            .try_into_zug()
-            .expect("Zug message"),
+            .deserialize_expect::<Message<_>>(),
         Message::SyncResponse(SyncResponse {
             round_id: 0,
             proposal_or_hash: Some(Either::Left(proposal0)),
@@ -827,16 +832,20 @@ fn zug_handles_sync_request() {
         faulty: zug.validator_bit_field(first_validator_idx, vec![].into_iter()),
         instance_id: *zug.instance_id(),
     };
-    let (mut outcomes, response) =
-        zug.handle_request_message(&mut rng, sender, msg.into(), timestamp);
+    let (mut outcomes, response) = zug.handle_request_message(
+        &mut rng,
+        sender,
+        SerializedMessage::from_message(&msg),
+        timestamp,
+    );
     assert_eq!(
         remove_targeted_messages(&validators, sender, &mut outcomes),
         vec![]
     );
     expect_no_gossip_block_finalized(outcomes);
 
-    let sync_response = match response.expect("response").try_into_zug() {
-        Ok(Message::SyncResponse(sync_response)) => sync_response,
+    let sync_response = match response.expect("response").deserialize_expect() {
+        Message::SyncResponse(sync_response) => sync_response,
         result => panic!("unexpected message: {:?}", result),
     };
 

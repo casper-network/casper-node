@@ -7,6 +7,7 @@ use tracing::{debug, warn};
 
 use casper_hashing::Digest;
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
+use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{bytesrepr::ToBytes, Key};
 
 use super::{
@@ -47,7 +48,19 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
     path: Vec<String>,
 ) -> Result<(StoredValue, String), Error> {
     let (value, proofs) = state::run_query(effect_builder, state_root_hash, base_key, path).await?;
+    encode_query_success(value, proofs)
+}
 
+/// Converts the result of a successful global state query to a tuple of the JSON-compatible stored
+/// value and Merkle proof of the value.
+///
+/// The proof is bytesrepr-encoded, and then hex-encoded.
+///
+/// On error, a `warp_json_rpc::Error` is returned suitable for sending as a JSON-RPC response.
+pub(super) fn encode_query_success(
+    value: casper_types::StoredValue,
+    proofs: Vec<TrieMerkleProof<Key, casper_types::StoredValue>>,
+) -> Result<(StoredValue, String), Error> {
     let value_compat = match StoredValue::try_from(value) {
         Ok(value_compat) => value_compat,
         Err(error) => {

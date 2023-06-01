@@ -11,7 +11,21 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 2.0.0
+
+### Added
+* Add `ChunkWithProof` to support chunking of large values, and associated Merkle-proofs of these.
+
+
+
+## 1.4.4
+
+### Changed
+* Update dependencies.
+
+
+
+## 1.4.0
 
 ### Added
 * Initial release of crate providing `Digest` type and hashing methods, including the structs to handle proofs for chunks of data.

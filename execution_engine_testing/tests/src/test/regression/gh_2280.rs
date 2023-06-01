@@ -761,6 +761,7 @@ fn make_engine_config(
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         new_wasm_config,
         new_system_config,
     )

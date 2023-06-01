@@ -930,9 +930,9 @@ where
                 // data.
                 let (era_id_ptr, era_id_size, era_info_ptr, era_info_size): (u32, u32, u32, u32) =
                     Args::parse(args)?;
-                let era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
+                let _era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
                 let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
-                self.record_era_info(era_id, era_info)?;
+                self.record_era_summary(era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
 

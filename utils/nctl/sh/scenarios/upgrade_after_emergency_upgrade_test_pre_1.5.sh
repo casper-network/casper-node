@@ -62,10 +62,10 @@ function main() {
     # 15. Run Health Checks
     # ... restarts=26: due to nodes being stopped and started; node 1 3 times, nodes 2-5 2 times,
     # ................ node 6-10 3 times (start at 1.4.8, restart to 1.4.7 for sync, then 2 upgrades)
-    # ... errors=ignore: disabled due to non-deterministic error messages "could not send response
+    # ... errors: ignore pattern due to non-deterministic error messages "could not send response
     # .................. to request down oneshot channel"
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors='0;ignore:to request down oneshot channel' \
             equivocators=0 \
             doppels=0 \
             crashes=0 \
@@ -92,6 +92,10 @@ function do_prepare_stage() {
     local STARTING_VERSION=${2}
     local INCREMENT
     local RC_VERSION
+
+    log "... removing stray remotes and stages"
+    rm -rf $(get_path_to_stages)
+    rm -rf $(get_path_to_remotes)
 
     log "... setting remote 1.4.7"
 
@@ -126,13 +130,6 @@ function do_start_network() {
     nctl-assets-setup-from-stage stage=1
     nctl-start
     sleep 10
-}
-
-function do_await_genesis_era_to_complete() {
-    log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "2" ]; do
-        sleep 1.0
-    done
 }
 
 function do_stop_network() {
@@ -226,7 +223,14 @@ function do_prepare_upgrade() {
 function do_restart_network() {
     log_step "restarting the network: starting both old and new validators"
     # start the network
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
+    # do not pass the trusted hash to the original validators - they already have all the blocks
+    # and will simply pick up at the upgrade point
+    for NODE_ID in $(seq 1 5); do
+        do_node_start "$NODE_ID"
+    done
+    # the new validators need the trusted hash in order to be able to sync to the network, as they
+    # don't have any blocks at this point
+    for NODE_ID in $(seq 6 "$(get_count_of_nodes)"); do
         do_node_start "$NODE_ID" "$TRUSTED_HASH"
     done
 }

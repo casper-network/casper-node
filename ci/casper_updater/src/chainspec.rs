@@ -1,11 +1,7 @@
-use std::{
-    convert::TryFrom,
-    io::{self, Write},
-};
+use std::io::{self, Write};
 
 use regex::Regex;
-
-use casper_types::SemVer;
+use semver::Version;
 
 use crate::{package, regex_data};
 
@@ -15,7 +11,7 @@ const CAPTURE_INDEX: usize = 2;
 /// updated.
 pub struct Chainspec {
     /// The current production protocol version.
-    current_protocol_version: SemVer,
+    current_protocol_version: Version,
     /// The current production activation point.
     current_activation_point: String,
 }
@@ -25,10 +21,11 @@ impl Chainspec {
         let chainspec_path = crate::root_dir().join("resources/production/chainspec.toml");
 
         let chainspec = &regex_data::chainspec_protocol_version::DEPENDENT_FILES[0];
+        let contents = chainspec.contents();
 
         let find_value = |regex: &Regex| {
             regex
-                .captures(chainspec.contents())
+                .captures(&contents)
                 .unwrap_or_else(|| {
                     panic!(
                         "should find protocol version and activation point in {}",
@@ -49,8 +46,8 @@ impl Chainspec {
 
         let protocol_version = find_value(&regex_data::chainspec_protocol_version::REGEX);
         let current_activation_point = find_value(&regex_data::chainspec_activation_point::REGEX);
-        let current_protocol_version = SemVer::try_from(protocol_version.as_str())
-            .expect("should parse current protocol version");
+        let current_protocol_version =
+            Version::parse(&protocol_version).expect("should parse current protocol version");
 
         Chainspec {
             current_protocol_version,
@@ -65,7 +62,7 @@ impl Chainspec {
                 self.current_protocol_version
             );
             if let Some(bump_version) = crate::bump_version() {
-                let updated_protocol_version = bump_version.update(self.current_protocol_version);
+                let updated_protocol_version = bump_version.update(&self.current_protocol_version);
                 println!("Will be updated to {}", updated_protocol_version);
             }
             println!("Files affected by the protocol version:");
@@ -96,12 +93,12 @@ impl Chainspec {
         let updated_protocol_version = match crate::bump_version() {
             None => match package::get_updated_version_from_user(
                 "chainspec protocol",
-                self.current_protocol_version,
+                &self.current_protocol_version,
             ) {
                 Some(version) => version,
                 None => return,
             },
-            Some(bump_version) => bump_version.update(self.current_protocol_version),
+            Some(bump_version) => bump_version.update(&self.current_protocol_version),
         };
 
         for dependent_file in &*regex_data::chainspec_protocol_version::DEPENDENT_FILES {

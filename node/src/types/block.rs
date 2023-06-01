@@ -70,9 +70,9 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let inactive_validators = vec![public_key_3];
 
     let rewards = IntoIterator::into_iter([
-        (PublicKey::ed25519_from_bytes([69; 32]).unwrap(), 1500),
-        (PublicKey::ed25519_from_bytes([70; 32]).unwrap(), 4800),
-        (PublicKey::ed25519_from_bytes([71; 32]).unwrap(), 9000),
+        (PublicKey::ed25519_from_bytes([3; 32]).unwrap(), 1500),
+        (PublicKey::ed25519_from_bytes([6; 32]).unwrap(), 4800),
+        (PublicKey::ed25519_from_bytes([9; 32]).unwrap(), 9000),
     ])
     .collect();
 
@@ -1914,6 +1914,19 @@ impl BlockExecutionResultsOrChunk {
     /// Returns the hash of the block this execution result belongs to.
     pub fn block_hash(&self) -> &BlockHash {
         &self.block_hash
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
+        Self {
+            block_hash,
+            value: ValueOrChunk::Value(vec![casper_types::ExecutionResult::Success {
+                effect: Default::default(),
+                transfers: vec![],
+                cost: U512::from(123),
+            }]),
+            is_valid: OnceCell::with_value(Ok(true)),
+        }
     }
 }
 
